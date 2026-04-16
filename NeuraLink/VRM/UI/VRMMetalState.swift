@@ -170,7 +170,7 @@ final class VRMMetalState {
 
         orbitTarget = SIMD3<Float>(center.x, center.y + height * 0.1, center.z)
         let halfFOV: Float = .pi / 6
-        orbitDistance = (height * 0.55) / tan(halfFOV) + 0.3
+        orbitDistance = (height * 0.60) / tan(halfFOV) + 0.3
         orbitDistanceLimits = (orbitDistance * 0.35)...(orbitDistance * 3.0)
 
         orbitYaw = 0
