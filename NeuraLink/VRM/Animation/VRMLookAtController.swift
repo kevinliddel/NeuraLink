@@ -37,6 +37,7 @@ public class VRMLookAtController {
 
     private var leftEyeBoneIndex: Int?
     private var rightEyeBoneIndex: Int?
+    private var neckBoneIndex: Int?
     private var headBoneIndex: Int?
 
     private var currentYaw: Float = 0
@@ -61,6 +62,7 @@ public class VRMLookAtController {
             leftEyeBoneIndex = humanoid.humanBones[.leftEye]?.node
             rightEyeBoneIndex = humanoid.humanBones[.rightEye]?.node
             headBoneIndex = humanoid.humanBones[.head]?.node
+            neckBoneIndex = humanoid.humanBones[.neck]?.node
         }
 
         // Choose mode: prefer expressions if LookAt expressions with binds are available.
@@ -144,9 +146,37 @@ public class VRMLookAtController {
             if let lookAt = lookAtData { eyePosition += lookAt.offsetFromHeadBone }
         }
 
-        let direction = normalize(targetPos - eyePosition)
-        targetYaw = atan2(direction.x, direction.z)
-        targetPitch = asin(clamp(direction.y, min: -1, max: 1))
+        let worldDirection = normalize(targetPos - eyePosition)
+
+        var direction = worldDirection
+        
+        // Find a representative root or parent-less node to determine model facing
+        let referenceNode = model.nodes.first(where: { $0.parent == nil }) ?? model.nodes.first
+        if let referenceNode {
+            var modelRotation = simd_quatf(referenceNode.worldMatrix)
+            
+            // Critical sync with VRMRenderer+Interface logic:
+            // VRM 1.0 models are rotated 180 in the shader to face +Z
+            if model.specVersion == .v1_0 {
+                modelRotation *= simd_quatf(angle: .pi, axis: [0, 1, 0])
+            }
+            
+            direction = modelRotation.inverse.act(worldDirection)
+        }
+
+        // Clamp target angles to biological limits (prevents eyes from looking through the head)
+        let limitYaw: Float = 75 * (.pi / 180)  // 75 degrees max side-to-side
+        let limitPitch: Float = 35 * (.pi / 180) // 35 degrees max up/down
+
+        if model.specVersion == .v1_0 {
+            // VRM 1.0 faces -Z locally. We treat -Z as the forward baseline.
+            targetYaw = clamp(atan2(-direction.x, -direction.z), min: -limitYaw, max: limitYaw)
+            targetPitch = clamp(asin(clamp(direction.y, min: -1, max: 1)), min: -limitPitch, max: limitPitch)
+        } else {
+            // VRM 0.x faces +Z locally.
+            targetYaw = clamp(atan2(direction.x, direction.z), min: -limitYaw, max: limitYaw)
+            targetPitch = clamp(asin(clamp(direction.y, min: -1, max: 1)), min: -limitPitch, max: limitPitch)
+        }
 
         switch state {
         case .thinking:
@@ -186,14 +216,46 @@ public class VRMLookAtController {
     private func applyToBones() {
         guard let model = model else { return }
 
-        let yawQuat = simd_quatf(angle: currentYaw * 0.5, axis: [0, 1, 0])
-        let pitchQuat = simd_quatf(angle: currentPitch * 0.5, axis: [1, 0, 0])
-        let rotation = yawQuat * pitchQuat
+        // Distribution coefficients:
+        // Neck: 20%, Head: 50%, Eyes: 30%
+        let neckWeight: Float = 0.20
+        let headWeight: Float = 0.50
+        let eyeWeight: Float = 0.30
+
+        // Clamps for head/neck (eyes are secondary to head movement)
+        let neckLimitYaw: Float = 25 * (.pi / 180)
+        let headLimitYaw: Float = 60 * (.pi / 180)
+        let headLimitPitch: Float = 40 * (.pi / 180)
+
+        // Apply to Neck
+        if let neckIndex = neckBoneIndex, neckIndex < model.nodes.count {
+            let neck = model.nodes[neckIndex]
+            let yaw = clamp(currentYaw * neckWeight, min: -neckLimitYaw, max: neckLimitYaw)
+            let pitch = currentPitch * neckWeight * 0.5 // Minimal vertical neck movement
+            neck.rotation = simd_quatf(angle: yaw, axis: [0, 1, 0]) * simd_quatf(angle: pitch, axis: [1, 0, 0])
+            neck.updateLocalMatrix()
+            neck.updateWorldTransform()
+        }
+
+        // Apply to Head
+        if let headIndex = headBoneIndex, headIndex < model.nodes.count {
+            let head = model.nodes[headIndex]
+            let yaw = clamp(currentYaw * headWeight, min: -headLimitYaw, max: headLimitYaw)
+            let pitch = clamp(currentPitch * headWeight, min: -headLimitPitch, max: headLimitPitch)
+            head.rotation = simd_quatf(angle: yaw, axis: [0, 1, 0]) * simd_quatf(angle: pitch, axis: [1, 0, 0])
+            head.updateLocalMatrix()
+            head.updateWorldTransform()
+        }
+
+        // Apply to Eyes (Relative to head)
+        let eyeYaw = currentYaw * eyeWeight
+        let eyePitch = currentPitch * eyeWeight
+        let eyeRotation = simd_quatf(angle: eyeYaw, axis: [0, 1, 0]) * simd_quatf(angle: eyePitch, axis: [1, 0, 0])
 
         for index in [leftEyeBoneIndex, rightEyeBoneIndex].compactMap({ $0 }) {
             guard index < model.nodes.count else { continue }
             let node = model.nodes[index]
-            node.rotation = rotation
+            node.rotation = eyeRotation
             node.updateLocalMatrix()
             node.updateWorldTransform()
         }

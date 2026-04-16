@@ -28,9 +28,10 @@ final class VRMMetalState {
     var orbitYaw: Float = 0
     var orbitPitch: Float = 0
     var orbitDistance: Float = 3
-    var orbitTarget: SIMD3<Float> = .zero
     var orbitDistanceLimits: ClosedRange<Float> = 1...10
+    private var lastCameraPosition: SIMD3<Float> = [0, 1.6, 3]
     private var gestureHandler: VRMGestureHandler?
+    var orbitTarget: SIMD3<Float> = [0, 1.6, 0]
 
     static let pitchMin: Float = -35 * .pi / 180
     static let pitchMax: Float = 60 * .pi / 180
@@ -71,6 +72,11 @@ final class VRMMetalState {
     func display(_ model: VRMModel) {
         currentModel = model
         renderer?.loadModel(model)
+
+        // Enable gaze tracking
+        renderer?.lookAtController?.enabled = true
+        renderer?.lookAtController?.target = .camera
+
         setupCamera(for: model)
         renderer?.setup3PointLighting()
         loadDefaultAnimation(for: model)
@@ -158,6 +164,12 @@ final class VRMMetalState {
 
         animationPlayer.update(deltaTime: dt, model: model)
         animationPlayer.applyMorphWeights(to: renderer?.expressionController)
+
+        // Update look-at tracking (eyes, head, neck)
+        if let lookAt = renderer?.lookAtController {
+            lookAt.cameraPosition = lastCameraPosition
+            lookAt.update(deltaTime: dt)
+        }
     }
 
     // MARK: - Camera Setup
@@ -196,8 +208,11 @@ final class VRMMetalState {
             orbitTarget.y + orbitDistance * sp,
             orbitTarget.z + orbitDistance * cos(orbitYaw) * cp
         )
+        lastCameraPosition = eye
+
         renderer.viewMatrix = OrthographicCamera.makeLookAt(
             eye: eye, target: orbitTarget, up: SIMD3<Float>(0, 1, 0)
         )
     }
 }
+

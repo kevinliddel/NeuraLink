@@ -34,5 +34,4 @@ DerivedData/
 *.log
 
 # MD file
-task.md
-progress.md
+rule.md
