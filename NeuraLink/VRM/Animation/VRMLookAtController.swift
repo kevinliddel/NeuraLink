@@ -150,19 +150,29 @@ public class VRMLookAtController {
 
         var direction = worldDirection
         
-        // Find a representative root or parent-less node to determine model facing
-        let referenceNode = model.nodes.first(where: { $0.parent == nil }) ?? model.nodes.first
-        if let referenceNode {
-            var modelRotation = simd_quatf(referenceNode.worldMatrix)
-            
-            // Critical sync with VRMRenderer+Interface logic:
-            // VRM 1.0 models are rotated 180 in the shader to face +Z
-            if model.specVersion == .v1_0 {
-                modelRotation *= simd_quatf(angle: .pi, axis: [0, 1, 0])
+        // Determine the reference orientation for the face. 
+        // We prefer the Parent of the Head bone to correctly un-rotate the world target 
+        // into the character's forward-facing space.
+        var referenceRotation = simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
+        
+        if let headIndex = headBoneIndex, headIndex < model.nodes.count {
+            let head = model.nodes[headIndex]
+            if let parent = head.parent {
+                referenceRotation = simd_quatf(parent.worldMatrix)
+            } else {
+                referenceRotation = simd_quatf(head.worldMatrix)
             }
-            
-            direction = modelRotation.inverse.act(worldDirection)
+        } else if let root = model.nodes.first(where: { $0.parent == nil }) ?? model.nodes.first {
+            referenceRotation = simd_quatf(root.worldMatrix)
         }
+        
+        // Critical sync with VRMRenderer+Interface logic:
+        // VRM 1.0 models are rotated 180 in the shader to face +Z visually.
+        if model.specVersion == .v1_0 {
+            referenceRotation *= simd_quatf(angle: .pi, axis: [0, 1, 0])
+        }
+        
+        direction = referenceRotation.inverse.act(worldDirection)
 
         // Clamp target angles to biological limits (prevents eyes from looking through the head)
         let limitYaw: Float = 75 * (.pi / 180)  // 75 degrees max side-to-side
@@ -171,7 +181,7 @@ public class VRMLookAtController {
         if model.specVersion == .v1_0 {
             // VRM 1.0 faces -Z locally. We treat -Z as the forward baseline.
             targetYaw = clamp(atan2(-direction.x, -direction.z), min: -limitYaw, max: limitYaw)
-            targetPitch = clamp(asin(clamp(direction.y, min: -1, max: 1)), min: -limitPitch, max: limitPitch)
+            targetPitch = -clamp(asin(clamp(direction.y, min: -1, max: 1)), min: -limitPitch, max: limitPitch)
         } else {
             // VRM 0.x faces +Z locally.
             targetYaw = clamp(atan2(direction.x, direction.z), min: -limitYaw, max: limitYaw)
@@ -231,8 +241,9 @@ public class VRMLookAtController {
         if let neckIndex = neckBoneIndex, neckIndex < model.nodes.count {
             let neck = model.nodes[neckIndex]
             let yaw = clamp(currentYaw * neckWeight, min: -neckLimitYaw, max: neckLimitYaw)
-            let pitch = currentPitch * neckWeight * 0.5 // Minimal vertical neck movement
-            neck.rotation = simd_quatf(angle: yaw, axis: [0, 1, 0]) * simd_quatf(angle: pitch, axis: [1, 0, 0])
+            let pitch = currentPitch * neckWeight * 0.5 
+            let rotation = simd_quatf(angle: yaw, axis: [0, 1, 0]) * simd_quatf(angle: pitch, axis: [1, 0, 0])
+            neck.rotation = neck.initialRotation * rotation
             neck.updateLocalMatrix()
             neck.updateWorldTransform()
         }
@@ -242,7 +253,8 @@ public class VRMLookAtController {
             let head = model.nodes[headIndex]
             let yaw = clamp(currentYaw * headWeight, min: -headLimitYaw, max: headLimitYaw)
             let pitch = clamp(currentPitch * headWeight, min: -headLimitPitch, max: headLimitPitch)
-            head.rotation = simd_quatf(angle: yaw, axis: [0, 1, 0]) * simd_quatf(angle: pitch, axis: [1, 0, 0])
+            let rotation = simd_quatf(angle: yaw, axis: [0, 1, 0]) * simd_quatf(angle: pitch, axis: [1, 0, 0])
+            head.rotation = head.initialRotation * rotation
             head.updateLocalMatrix()
             head.updateWorldTransform()
         }
@@ -255,7 +267,7 @@ public class VRMLookAtController {
         for index in [leftEyeBoneIndex, rightEyeBoneIndex].compactMap({ $0 }) {
             guard index < model.nodes.count else { continue }
             let node = model.nodes[index]
-            node.rotation = eyeRotation
+            node.rotation = node.initialRotation * eyeRotation
             node.updateLocalMatrix()
             node.updateWorldTransform()
         }
