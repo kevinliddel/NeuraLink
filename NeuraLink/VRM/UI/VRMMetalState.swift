@@ -97,7 +97,9 @@ final class VRMMetalState {
         if animURL == nil,
             let modelsDir = Bundle.main.url(forResource: "Models", withExtension: nil)
         {
-            let all = (try? FileManager.default.contentsOfDirectory(at: modelsDir, includingPropertiesForKeys: nil)) ?? []
+            let all =
+                (try? FileManager.default.contentsOfDirectory(
+                    at: modelsDir, includingPropertiesForKeys: nil)) ?? []
             animURL = all.first { $0.pathExtension.lowercased() == "vrma" }
         }
 
@@ -114,7 +116,9 @@ final class VRMMetalState {
                     self.animationPlayer.isLooping = true
                     self.animationPlayer.load(clip)
                     self.startAnimationTicker()
-                    vrmLog("[VRMMetalState] ✅ Loaded animation '\(url.lastPathComponent)' (\(String(format: "%.2f", clip.duration))s)")
+                    vrmLog(
+                        "[VRMMetalState] ✅ Loaded animation '\(url.lastPathComponent)' (\(String(format: "%.2f", clip.duration))s)"
+                    )
                 }
             } catch {
                 vrmLog("[VRMMetalState] ⚠️ Failed to load animation: \(error)")
@@ -164,7 +168,7 @@ final class VRMMetalState {
         let size = bounds.max - bounds.min
         let height = max(size.y, 0.5)
 
-        orbitTarget = SIMD3<Float>(center.x, center.y - height * 0.1, center.z)
+        orbitTarget = SIMD3<Float>(center.x, center.y + height * 0.1, center.z)
         let halfFOV: Float = .pi / 6
         orbitDistance = (height * 0.55) / tan(halfFOV) + 0.3
         orbitDistanceLimits = (orbitDistance * 0.35)...(orbitDistance * 3.0)
