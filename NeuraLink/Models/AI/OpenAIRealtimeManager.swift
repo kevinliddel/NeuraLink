@@ -42,14 +42,17 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
     }
     
     private func setupAudioSession() {
-        let session = AVAudioSession.sharedInstance()
+        let rtcSession = RTCAudioSession.sharedInstance()
+        rtcSession.lockForConfiguration()
         do {
-            try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .defaultToSpeaker])
-            try session.setActive(true)
-            print("AI: AVAudioSession configured and activated")
+            try rtcSession.setCategory(.playAndRecord, with: [.allowBluetooth, .defaultToSpeaker])
+            try rtcSession.setMode(.voiceChat)
+            try rtcSession.setActive(true)
+            print("AI: RTCAudioSession configured and activated")
         } catch {
-            print("AI: Failed to configure AVAudioSession: \(error)")
+            print("AI: Failed to configure RTCAudioSession: \(error)")
         }
+        rtcSession.unlockForConfiguration()
     }
     
     /// Starts the Realtime session
@@ -258,7 +261,11 @@ extension OpenAIRealtimeManager: RTCPeerConnectionDelegate {
     }
     
     func peerConnection(_ peerConnection: RTCPeerConnection, didAdd stream: RTCMediaStream) {
-        print("AI: Stream added")
+        print("AI: Stream added with \(stream.audioTracks.count) audio tracks")
+        for track in stream.audioTracks {
+            track.isEnabled = true
+            print("AI: Audio track \(track.trackId) enabled")
+        }
     }
     
     func peerConnection(_ peerConnection: RTCPeerConnection, didRemove stream: RTCMediaStream) {
@@ -295,6 +302,10 @@ extension OpenAIRealtimeManager: RTCPeerConnectionDelegate {
     
     func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCPeerConnectionState) {
         print("AI: PeerConnection state changed: \(newState.rawValue)")
+    }
+    
+    func peerConnection(_ peerConnection: RTCPeerConnection, didStartReceiver receiver: RTCRtpReceiver, streams: [RTCMediaStream]) {
+        print("AI: Started receiver for \(receiver.track?.kind ?? "unknown") track")
     }
 }
 
