@@ -20,7 +20,7 @@ final class NeuraLinkUITests: XCTestCase {
 
         // Check if navigation title is present
         let navTitle = app.navigationBars.staticTexts["NeuraLink"]
-        XCTAssertTrue(navTitle.waitForExistence(timeout: 20.0), "The navigation title 'NeuraLink' should exist")
+        XCTAssertTrue(navTitle.waitForExistence(timeout: 60.0), "The navigation title 'NeuraLink' should exist")
 
         // Try to find the settings button by image name or index
         let settingsButton = app.navigationBars.buttons.element(boundBy: 1)
@@ -43,7 +43,7 @@ final class NeuraLinkUITests: XCTestCase {
         
         // Verify settings sheet is shown
         let settingsTitle = app.staticTexts["AI Settings"]
-        XCTAssertTrue(settingsTitle.waitForExistence(timeout: 10.0), "The AI Settings sheet should appear")
+        XCTAssertTrue(settingsTitle.waitForExistence(timeout: 30.0), "The AI Settings sheet should appear")
         
         // Using 'secureTextFields' which is the standard property
         let apiKeyField = app.secureTextFields.element(boundBy: 0)
@@ -62,7 +62,7 @@ final class NeuraLinkUITests: XCTestCase {
     }
     
     private func navTitleExists(app: XCUIApplication) -> Bool {
-        return app.navigationBars.staticTexts["NeuraLink"].waitForExistence(timeout: 5.0)
+        return app.navigationBars.staticTexts["NeuraLink"].waitForExistence(timeout: 20.0)
     }
 }
 

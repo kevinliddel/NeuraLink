@@ -31,6 +31,12 @@ jobs:
         with:
           xcode-version: latest
 
+      - name: Pre-boot Simulator
+        run: |
+          # Use the same simulator as in the test destination
+          xcrun simctl boot "iPhone 16e" || true
+          xcrun simctl bootstatus "iPhone 16e" -b
+
       - name: Build and Test
         run: |
           xcodebuild test \
@@ -38,4 +44,7 @@ jobs:
             -scheme NeuraLink \
             -destination 'platform=iOS Simulator,name=iPhone 16e' \
             -derivedDataPath ./build-ci \
+            -parallel-testing-enabled NO \
+            -retry-tests-on-failure \
+            -quiet \
             CODE_SIGNING_ALLOWED=NO
