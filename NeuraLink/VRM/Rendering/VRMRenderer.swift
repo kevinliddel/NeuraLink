@@ -331,14 +331,19 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
 
         // Load expressions if available
         if let expressions = model.expressions {
-            // Register preset expressions
-            for (preset, expression) in expressions.preset {
-                expressionController?.registerExpression(expression, for: preset)
-            }
+            // VRM 1.x morphTargetBind.node is a glTF NODE index; the renderer
+            // keys weights by MESH index. Build the map once and remap before registering.
+            let nodeToMesh: [Int: Int] = model.specVersion == .v0_0
+                ? [:]
+                : buildNodeToMeshMap(from: model.gltf)
 
-            // Register custom expressions
+            for (preset, expression) in expressions.preset {
+                let expr = nodeToMesh.isEmpty ? expression : remapExpressionNodes(expression, map: nodeToMesh)
+                expressionController?.registerExpression(expr, for: preset)
+            }
             for (name, expression) in expressions.custom {
-                expressionController?.registerCustomExpression(expression, name: name)
+                let expr = nodeToMesh.isEmpty ? expression : remapExpressionNodes(expression, map: nodeToMesh)
+                expressionController?.registerCustomExpression(expr, name: name)
             }
         }
 
@@ -404,5 +409,25 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
             lookAtController?.enabled = false
             lookAtController?.target = .camera
         }
+    }
+
+    // MARK: - Expression Node Remapping (VRM 1.x)
+
+    private func buildNodeToMeshMap(from gltf: GLTFDocument) -> [Int: Int] {
+        var map = [Int: Int]()
+        guard let nodes = gltf.nodes else { return map }
+        for (nodeIndex, node) in nodes.enumerated() {
+            if let meshIndex = node.mesh { map[nodeIndex] = meshIndex }
+        }
+        return map
+    }
+
+    private func remapExpressionNodes(_ expression: VRMExpression, map: [Int: Int]) -> VRMExpression {
+        var resolved = expression
+        resolved.morphTargetBinds = expression.morphTargetBinds.compactMap { bind in
+            guard let meshIndex = map[bind.node] else { return nil }
+            return VRMMorphTargetBind(node: meshIndex, index: bind.index, weight: bind.weight)
+        }
+        return resolved
     }
 }
