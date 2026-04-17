@@ -6,6 +6,11 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		041E13972F913CD900D2D110 /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = 041E13962F913CD900D2D110 /* WebRTC */; };
+		041E139A2F913E1500D2D110 /* Starscream in Frameworks */ = {isa = PBXBuildFile; productRef = 041E13992F913E1500D2D110 /* Starscream */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		041E11EE2F8E782800D2D110 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -29,9 +34,22 @@
 		041E11F72F8E782800D2D110 /* NeuraLinkUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = NeuraLinkUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		041E139C2F91FD1800D2D110 /* Exceptions for "NeuraLink" folder in "NeuraLink" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 041E11DD2F8E782300D2D110 /* NeuraLink */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		041E11E02F8E782300D2D110 /* NeuraLink */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				041E139C2F91FD1800D2D110 /* Exceptions for "NeuraLink" folder in "NeuraLink" target */,
+			);
 			path = NeuraLink;
 			sourceTree = "<group>";
 		};
@@ -52,6 +70,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				041E13972F913CD900D2D110 /* WebRTC in Frameworks */,
+				041E139A2F913E1500D2D110 /* Starscream in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -112,6 +132,8 @@
 			);
 			name = NeuraLink;
 			packageProductDependencies = (
+				041E13962F913CD900D2D110 /* WebRTC */,
+				041E13992F913E1500D2D110 /* Starscream */,
 			);
 			productName = NeuraLink;
 			productReference = 041E11DE2F8E782300D2D110 /* NeuraLink.app */;
@@ -195,6 +217,10 @@
 			);
 			mainGroup = 041E11D52F8E782300D2D110;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				041E13952F913CD900D2D110 /* XCRemoteSwiftPackageReference "WebRTC" */,
+				041E13982F913E1500D2D110 /* XCRemoteSwiftPackageReference "Starscream" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 041E11DF2F8E782300D2D110 /* Products */;
 			projectDirPath = "";
@@ -400,6 +426,7 @@
 				DEVELOPMENT_TEAM = 3G3WS7F2CM;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = NeuraLink/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -432,6 +459,7 @@
 				DEVELOPMENT_TEAM = 3G3WS7F2CM;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = NeuraLink/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -578,6 +606,38 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		041E13952F913CD900D2D110 /* XCRemoteSwiftPackageReference "WebRTC" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/stasel/WebRTC.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 147.0.0;
+			};
+		};
+		041E13982F913E1500D2D110 /* XCRemoteSwiftPackageReference "Starscream" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/daltoniam/Starscream.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 4.0.8;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		041E13962F913CD900D2D110 /* WebRTC */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 041E13952F913CD900D2D110 /* XCRemoteSwiftPackageReference "WebRTC" */;
+			productName = WebRTC;
+		};
+		041E13992F913E1500D2D110 /* Starscream */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 041E13982F913E1500D2D110 /* XCRemoteSwiftPackageReference "Starscream" */;
+			productName = Starscream;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 041E11D62F8E782300D2D110 /* Project object */;
 }

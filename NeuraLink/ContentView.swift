@@ -11,17 +11,60 @@ import SwiftUI
 struct ContentView: View {
 
     @State private var selectedModelURL: URL? = VRMModelRegistry.defaultModel?.url
+    @State private var aiState = RealtimeChatState.shared
+    @State private var settings = OpenAISettings.shared
 
     var body: some View {
         NavigationStack {
-            VRMSceneView(modelURL: selectedModelURL)
-                .navigationTitle("NeuraLink")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar { modelPickerMenu }
+            ZStack {
+                VRMSceneView(modelURL: selectedModelURL)
+                
+                if aiState.isOverlayVisible {
+                    RealtimeChatOverlay()
+                        .transition(.move(edge: .bottom))
+                }
+            }
+            .navigationTitle("NeuraLink")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                aiToggle
+                settingsButton
+                modelPickerMenu
+            }
+            .allowsHitTesting(!aiState.showSettings)
+            .sheet(isPresented: $aiState.showSettings) {
+                AISettingsView()
+            }
         }
     }
 
     // MARK: - Toolbar
+
+    @ToolbarContentBuilder
+    private var aiToggle: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            Button {
+                withAnimation(.spring()) {
+                    aiState.isOverlayVisible.toggle()
+                }
+            } label: {
+                Image(systemName: "sparkles")
+                    .foregroundStyle(aiState.isOverlayVisible ? .purple : .primary)
+            }
+            .disabled(!settings.hasValidKey)
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var settingsButton: some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) {
+            Button {
+                aiState.showSettings = true
+            } label: {
+                Image(systemName: "gearshape")
+            }
+        }
+    }
 
     @ToolbarContentBuilder
     private var modelPickerMenu: some ToolbarContent {

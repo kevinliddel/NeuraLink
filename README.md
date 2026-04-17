@@ -29,3 +29,10 @@ A native iOS VRM model viewer built from scratch using **Metal** and **SwiftUI**
 
 The app will automatically look for `Sonya.vrm` or `Ekaterina.vrm` on launch.  
 A `default_state.vrma` or `idle.vrma` in the bundle will be looped as the idle animation.
+
+## Package
+
+Here are the necessary package as of now
+
+1. [WebRTC](https://github.com/stasel/WebRTC.git)
+2. [Starscream](https://github.com/daltoniam/Starscream.git)

@@ -14,6 +14,10 @@ import simd
 final class VRMMetalState {
     let mtkView: MTKView
     var renderer: VRMRenderer?
+    
+    // AI Integration
+    private let aiState = RealtimeChatState.shared
+    
     var isModelLoaded: Bool = false
     var errorMessage: String?
     var currentModel: VRMModel?
@@ -169,6 +173,14 @@ final class VRMMetalState {
         if let lookAt = renderer?.lookAtController {
             lookAt.cameraPosition = lastCameraPosition
             lookAt.update(deltaTime: dt)
+        }
+        
+        // AI Lip-Sync
+        if aiState.status == .speaking {
+            // Map audio level to mouth-open weight
+            // Threshold at 0.05 to avoid jitter on silence
+            let weight = aiState.audioLevel > 0.05 ? aiState.audioLevel * 1.5 : 0.0
+            renderer?.expressionController?.setExpressionWeight(.aa, weight: min(weight, 1.0))
         }
     }
 
