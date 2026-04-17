@@ -70,4 +70,12 @@ struct NeuraLinkTests {
         #expect(model.meta.licenseUrl == "https://vrm.dev")
         #expect(model.isVRM0 == false)
     }
+
+    @Test("Node Name Normalization")
+    func testNormalization() {
+        // Accessing internal function via @testable
+        #expect(normalizeNodeName("Hips") == "hips")
+        #expect(normalizeNodeName("Left_Arm_01") == "leftarm01")
+        #expect(normalizeNodeName("Head (Root)") == "headroot")
+    }
 }
