@@ -192,8 +192,7 @@ final class VRMMetalState {
             isPlayingAppear = false
             if let clip = pendingDefaultClip {
                 pendingDefaultClip = nil
-                animationPlayer.isLooping = true
-                animationPlayer.load(clip)
+                animationPlayer.crossfade(to: clip, duration: 0.5, from: model)
             }
         }
 

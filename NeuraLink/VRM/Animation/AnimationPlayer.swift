@@ -36,6 +36,13 @@ public final class AnimationPlayer: @unchecked Sendable {
     private var hasLoggedFirstFrame = false
     private let constraintSolver = ConstraintSolver()
 
+    // Crossfade blend state
+    private typealias NodePose = (rotation: simd_quatf, translation: SIMD3<Float>, scale: SIMD3<Float>)
+    private var blendSnapshot: [Int: NodePose] = [:]
+    private var blendElapsed: Float = 0
+    private var blendDuration: Float = 0
+    private var isBlending = false
+
     public init() {}
 
     public func load(_ clip: AnimationClip) {
@@ -43,6 +50,26 @@ public final class AnimationPlayer: @unchecked Sendable {
             self.clip = clip
             self.currentTime = 0
             self.isPlaying = true
+        }
+    }
+
+    /// Smoothly blends from the current node poses to `newClip` over `duration` seconds.
+    public func crossfade(to newClip: AnimationClip, duration: Float, from model: VRMModel) {
+        model.withLock {
+            var snapshot = [Int: NodePose]()
+            for (i, node) in model.nodes.enumerated() {
+                snapshot[i] = (node.rotation, node.translation, node.scale)
+            }
+            playerLock.withLock {
+                blendSnapshot = snapshot
+                blendElapsed = 0
+                blendDuration = max(duration, 0.001)
+                isBlending = true
+                isLooping = true
+                clip = newClip
+                currentTime = 0
+                isPlaying = true
+            }
         }
     }
 
@@ -142,7 +169,29 @@ public final class AnimationPlayer: @unchecked Sendable {
                 }
             }
 
-            // 3. Process Morph Tracks
+            // 3. Crossfade blend — lerp snapshot toward new-clip pose
+            let (needsBlend, snap, elapsed, dur) = playerLock.withLock {
+                (isBlending, blendSnapshot, blendElapsed, blendDuration)
+            }
+            if needsBlend {
+                let raw = min(elapsed / dur, 1.0)
+                let t = raw * raw * (3.0 - 2.0 * raw)  // smoothstep
+                for (nodeIdx, pose) in snap {
+                    guard nodeIdx < model.nodes.count else { continue }
+                    let node = model.nodes[nodeIdx]
+                    node.rotation = simd_slerp(pose.rotation, node.rotation, t)
+                    node.translation = pose.translation + (node.translation - pose.translation) * t
+                    node.scale = pose.scale + (node.scale - pose.scale) * t
+                    node.updateLocalMatrix()
+                }
+                let newElapsed = elapsed + deltaTime
+                playerLock.withLock {
+                    blendElapsed = newElapsed
+                    if newElapsed >= dur { isBlending = false }
+                }
+            }
+
+            // 4. Process Morph Tracks
             playerLock.withLock {
                 currentMorphWeights.removeAll()
                 for track in clip.morphTracks {
@@ -151,12 +200,12 @@ public final class AnimationPlayer: @unchecked Sendable {
                 }
             }
 
-            // 4. Solve node constraints (twist bones, etc.)
+            // 5. Solve node constraints (twist bones, etc.)
             if !model.nodeConstraints.isEmpty {
                 constraintSolver.solve(constraints: model.nodeConstraints, nodes: model.nodes)
             }
 
-            // 5. Propagate World Transforms
+            // 6. Propagate World Transforms
             model.updateNodeTransforms()
 
             if debugFirstFrame {
