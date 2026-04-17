@@ -31,20 +31,30 @@ jobs:
         with:
           xcode-version: latest
 
+      - name: Build for Testing
+        run: |
+          xcodebuild build-for-testing \
+            -project NeuraLink.xcodeproj \
+            -scheme NeuraLink \
+            -destination 'platform=iOS Simulator,name=iPhone 16e' \
+            -derivedDataPath ./build-ci \
+            CODE_SIGNING_ALLOWED=NO
+
       - name: Pre-boot Simulator
         run: |
-          # Use the same simulator as in the test destination
+          # Ensure a clean slate
+          xcrun simctl shutdown all || true
+          xcrun simctl erase "iPhone 16e" || true
           xcrun simctl boot "iPhone 16e" || true
           xcrun simctl bootstatus "iPhone 16e" -b
 
-      - name: Build and Test
+      - name: Test Without Building
         run: |
-          xcodebuild test \
+          xcodebuild test-without-building \
             -project NeuraLink.xcodeproj \
             -scheme NeuraLink \
             -destination 'platform=iOS Simulator,name=iPhone 16e' \
             -derivedDataPath ./build-ci \
             -parallel-testing-enabled NO \
             -retry-tests-on-failure \
-            -quiet \
             CODE_SIGNING_ALLOWED=NO
