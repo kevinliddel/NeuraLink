@@ -176,9 +176,9 @@ final class VRMMetalState {
             lookAt.update(deltaTime: dt)
         }
         
-        // AI Lip-Sync
-        let lipLevel: Float = aiState.status == .speaking ? aiState.audioLevel : 0
-        lipSyncController.update(audioLevel: lipLevel, deltaTime: dt)
+        // AI Lip-Sync — driven by inbound-rtp audioLevel (OpenAI audio only),
+        // not by status, so mouth stays in sync through the WebRTC jitter buffer drain.
+        lipSyncController.update(audioLevel: aiState.audioLevel, deltaTime: dt)
         lipSyncController.apply(to: renderer?.expressionController)
     }
 

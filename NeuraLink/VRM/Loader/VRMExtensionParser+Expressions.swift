@@ -114,7 +114,7 @@ extension VRMExtensionParser {
             for bind in morphTargetBinds {
                 guard let node = bind["node"] as? Int,
                     let index = bind["index"] as? Int,
-                    let weight = bind["weight"] as? Float
+                    let weight = parseFloatValue(bind["weight"])
                 else { continue }
                 expression.morphTargetBinds.append(
                     VRMMorphTargetBind(node: node, index: index, weight: weight))
