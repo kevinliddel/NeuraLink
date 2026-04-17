@@ -25,6 +25,7 @@ final class VRMMetalState {
 
     // Animation
     private let animationPlayer = AnimationPlayer()
+    private let lipSyncController = VRMLipSyncController()
     private var displayLink: CADisplayLink?
     private var lastTickTimestamp: CFTimeInterval = 0
 
@@ -176,12 +177,9 @@ final class VRMMetalState {
         }
         
         // AI Lip-Sync
-        if aiState.status == .speaking {
-            // Map audio level to mouth-open weight
-            // Threshold at 0.05 to avoid jitter on silence
-            let weight = aiState.audioLevel > 0.05 ? aiState.audioLevel * 1.5 : 0.0
-            renderer?.expressionController?.setExpressionWeight(.aa, weight: min(weight, 1.0))
-        }
+        let lipLevel: Float = aiState.status == .speaking ? aiState.audioLevel : 0
+        lipSyncController.update(audioLevel: lipLevel, deltaTime: dt)
+        lipSyncController.apply(to: renderer?.expressionController)
     }
 
     // MARK: - Camera Setup
