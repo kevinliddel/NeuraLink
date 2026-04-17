@@ -93,6 +93,7 @@ final class VRMMetalState {
         renderer?.lookAtController?.target = .camera
 
         setupCamera(for: model)
+        // Sky lighting overrides this every tick; kept for the very first rendered frame.
         renderer?.setup3PointLighting()
         loadAnimationSequence(for: model)
         isModelLoaded = true
@@ -198,6 +199,10 @@ final class VRMMetalState {
 
         animationPlayer.update(deltaTime: dt, model: model)
         animationPlayer.applyMorphWeights(to: renderer?.expressionController)
+
+        // Advance sky and re-derive lighting from current local time
+        renderer?.updateSky(deltaTime: dt)
+        renderer?.applySkyLighting()
 
         // Update look-at tracking (eyes, head, neck)
         if let lookAt = renderer?.lookAtController {

@@ -148,6 +148,9 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
     // Character priority system for hybrid rendering
     public var prioritySystem: CharacterPrioritySystem?
 
+    // Sky background renderer
+    var skyRenderer: SkyRenderer?
+
     // Sprite rendering pipeline
     var spritePipelineState: MTLRenderPipelineState?
     var spriteVertexBuffer: MTLBuffer?
@@ -315,6 +318,7 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
         setupSpritePipeline()
         setupCachedStates()
         setupTripleBuffering()
+        setupSkyRenderer()
     }
 
     /// Loads a VRM model into the renderer and initializes all subsystems.

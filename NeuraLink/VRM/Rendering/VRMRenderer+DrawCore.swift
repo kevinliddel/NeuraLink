@@ -85,6 +85,9 @@ extension VRMRenderer {
             return
         }
 
+        // Draw sky background first so it renders behind the VRM model
+        drawSky(encoder: encoder)
+
         // Update LookAt controller
         if let lookAtController = lookAtController, lookAtController.enabled {
             // Extract camera position from view matrix
