@@ -46,6 +46,8 @@ public struct VRMSceneView: View {
         } else {
             MetalKitView(mtkView: state.mtkView)
                 .ignoresSafeArea()
+                .opacity(state.modelAlpha)
+                .animation(.easeIn(duration: 0.4), value: state.modelAlpha)
         }
     }
 
@@ -110,11 +112,11 @@ public struct VRMSceneView: View {
     private func loadModel() async {
         guard state.isMetalAvailable, let url = modelURL else { return }
         state.clear()
+        autoConnectAI()
         do {
             guard let device = state.mtkView.device else { return }
             let model = try await VRMModel.load(from: url, device: device)
             state.display(model)
-            autoConnectAI()
         } catch {
             state.errorMessage = error.localizedDescription
         }

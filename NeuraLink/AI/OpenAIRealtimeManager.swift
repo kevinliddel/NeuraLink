@@ -72,10 +72,12 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
         }
         
         state.status = .connecting
-        setupAudioSession()
         print("AI: Connecting to OpenAI Realtime...")
-        setupPeerConnection()
-        createAndSendOffer()
+        Task.detached(priority: .userInitiated) { [weak self] in
+            self?.setupAudioSession()
+            self?.setupPeerConnection()
+            self?.createAndSendOffer()
+        }
     }
     
     /// Stops the Realtime session

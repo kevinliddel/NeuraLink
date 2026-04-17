@@ -28,6 +28,12 @@ final class VRMMetalState {
     private let lipSyncController = VRMLipSyncController()
     private var displayLink: CADisplayLink?
     private var lastTickTimestamp: CFTimeInterval = 0
+    private var isPlayingAppear = false
+    private var pendingDefaultClip: AnimationClip?
+    private var firstFrameApplied = false
+
+    // Drives fade-in of the Metal view so T-pose is never visible
+    var modelAlpha: Double = 0
 
     // Orbit camera
     var orbitYaw: Float = 0
@@ -72,6 +78,10 @@ final class VRMMetalState {
         isModelLoaded = false
         errorMessage = nil
         currentModel = nil
+        isPlayingAppear = false
+        pendingDefaultClip = nil
+        firstFrameApplied = false
+        modelAlpha = 0
     }
 
     func display(_ model: VRMModel) {
@@ -84,54 +94,58 @@ final class VRMMetalState {
 
         setupCamera(for: model)
         renderer?.setup3PointLighting()
-        loadDefaultAnimation(for: model)
+        loadAnimationSequence(for: model)
         isModelLoaded = true
     }
 
-    // MARK: - Default Animation
+    // MARK: - Animation Sequence
 
-    private func loadDefaultAnimation(for model: VRMModel) {
-        let names = ["default_state"]
-        let exts = ["vrma"]
-        var animURL: URL?
-
-        for name in names {
-            for ext in exts {
-                if let url = Bundle.main.url(forResource: name, withExtension: ext) {
-                    animURL = url
-                    break
-                }
-            }
-            if animURL != nil { break }
+    private static func findVRMA(named name: String) -> URL? {
+        if let url = Bundle.main.url(forResource: name, withExtension: "vrma") { return url }
+        guard let dir = Bundle.main.url(forResource: "Models", withExtension: nil),
+              let all = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
+        else { return nil }
+        return all.first {
+            $0.pathExtension.lowercased() == "vrma" &&
+            $0.deletingPathExtension().lastPathComponent.lowercased() == name.lowercased()
         }
+    }
 
-        if animURL == nil,
-            let modelsDir = Bundle.main.url(forResource: "Models", withExtension: nil)
-        {
-            let all =
-                (try? FileManager.default.contentsOfDirectory(
-                    at: modelsDir, includingPropertiesForKeys: nil)) ?? []
-            animURL = all.first { $0.pathExtension.lowercased() == "vrma" }
-        }
+    private func loadAnimationSequence(for model: VRMModel) {
+        let appearURL  = Self.findVRMA(named: "appear")
+        let defaultURL = Self.findVRMA(named: "default_state")
 
-        guard let url = animURL else {
-            vrmLog("[VRMMetalState] No default .vrma found — model will display in bind pose")
+        guard let defaultURL else {
+            vrmLog("[VRMMetalState] No default_state.vrma found — showing bind pose")
+            modelAlpha = 1.0
             return
         }
 
         Task.detached(priority: .userInitiated) { [weak self] in
             guard let self else { return }
             do {
-                let clip = try VRMAnimationLoader.loadVRMA(from: url, model: model)
-                await MainActor.run {
-                    self.animationPlayer.isLooping = true
-                    self.animationPlayer.load(clip)
-                    self.startAnimationTicker()
-                    vrmLog(
-                        "[VRMMetalState] ✅ Loaded animation '\(url.lastPathComponent)' (\(String(format: "%.2f", clip.duration))s)"
-                    )
+                if let appearURL {
+                    // Load both concurrently so there is no extra delay
+                    async let a = VRMAnimationLoader.loadVRMA(from: appearURL, model: model)
+                    async let d = VRMAnimationLoader.loadVRMA(from: defaultURL, model: model)
+                    let (appearClip, defaultClip) = try await (a, d)
+                    await MainActor.run {
+                        self.pendingDefaultClip = defaultClip
+                        self.isPlayingAppear = true
+                        self.animationPlayer.isLooping = false
+                        self.animationPlayer.load(appearClip)
+                        self.startAnimationTicker()
+                    }
+                } else {
+                    let clip = try await VRMAnimationLoader.loadVRMA(from: defaultURL, model: model)
+                    await MainActor.run {
+                        self.animationPlayer.isLooping = true
+                        self.animationPlayer.load(clip)
+                        self.startAnimationTicker()
+                    }
                 }
             } catch {
+                await MainActor.run { self.modelAlpha = 1.0 }
                 vrmLog("[VRMMetalState] ⚠️ Failed to load animation: \(error)")
             }
         }
@@ -166,6 +180,22 @@ final class VRMMetalState {
             dt = Float(min(now - lastTickTimestamp, 1.0 / 30.0))
         }
         lastTickTimestamp = now
+
+        // Fade in on first rendered frame — hides T-pose
+        if !firstFrameApplied && dt > 0 {
+            firstFrameApplied = true
+            withAnimation(.easeIn(duration: 0.4)) { modelAlpha = 1.0 }
+        }
+
+        // Seamless appear → default_state transition
+        if isPlayingAppear && animationPlayer.isFinished {
+            isPlayingAppear = false
+            if let clip = pendingDefaultClip {
+                pendingDefaultClip = nil
+                animationPlayer.isLooping = true
+                animationPlayer.load(clip)
+            }
+        }
 
         animationPlayer.update(deltaTime: dt, model: model)
         animationPlayer.applyMorphWeights(to: renderer?.expressionController)

@@ -10,32 +10,51 @@ import XCTest
 final class NeuraLinkUITests: XCTestCase {
 
     override func setUpWithError() throws {
-        // Put setup code here. This method is called before the invocation of each test method in the class.
-
-        // In UI tests it is usually best to stop immediately when a failure occurs.
         continueAfterFailure = false
-
-        // In UI tests it’s important to set the initial state - such as interface orientation - required for your tests before they run. The setUp method is a good place to do this.
-    }
-
-    override func tearDownWithError() throws {
-        // Put teardown code here. This method is called after the invocation of each test method in the class.
     }
 
     @MainActor
-    func testExample() throws {
-        // UI tests must launch the application that they test.
+    func testAppLaunchAndBasicUI() throws {
         let app = XCUIApplication()
         app.launch()
 
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
+        // Check if navigation title is present
+        let navTitle = app.navigationBars["NeuraLink"]
+        XCTAssertTrue(navTitle.exists, "The navigation title 'NeuraLink' should exist")
+
+        // Check if settings button exists
+        // SwiftUI buttons with images often have the image's name as the label
+        let settingsButton = app.buttons["gearshape"]
+        XCTAssertTrue(settingsButton.exists, "The settings button (gearshape) should exist")
+        
+        // Check if model picker exists
+        let modelPicker = app.buttons["chevron.up.chevron.down"]
+        XCTAssertTrue(modelPicker.exists, "The model picker button (chevron) should exist")
     }
 
     @MainActor
-    func testLaunchPerformance() throws {
-        // This measures how long it takes to launch your application.
-        measure(metrics: [XCTApplicationLaunchMetric()]) {
-            XCUIApplication().launch()
-        }
+    func testSettingsSheet() throws {
+        let app = XCUIApplication()
+        app.launch()
+        
+        let settingsButton = app.buttons["gearshape"]
+        XCTAssertTrue(settingsButton.exists)
+        settingsButton.tap()
+        
+        // Verify settings sheet is shown
+        let settingsTitle = app.staticTexts["AI Settings"]
+        XCTAssertTrue(settingsTitle.waitForExistence(timeout: 5.0), "The AI Settings sheet should appear")
+        
+        // Check for specific elements in settings
+        let apiKeyLabel = app.staticTexts["OpenAI API Key"]
+        XCTAssertTrue(apiKeyLabel.exists, "API Key section should be visible")
+        
+        // Close settings
+        let doneButton = app.buttons["Done"]
+        XCTAssertTrue(doneButton.exists)
+        doneButton.tap()
+        
+        // Verify we are back
+        XCTAssertFalse(settingsTitle.exists, "The settings sheet should be dismissed")
     }
 }
