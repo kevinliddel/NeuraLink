@@ -123,8 +123,7 @@ extension VRMRenderer {
 
                         // OPTIMIZATION: Use cached lowercased string
                         if item.materialNameLower.contains("skin")
-                            && item.effectiveAlphaMode == "mask"
-                        {
+                            && item.effectiveAlphaMode == "mask" {
                             // Use a mid cutoff to respect cutout regions (eyes/mouth)
                             item.effectiveAlphaCutoff = max(0.5, material.alphaCutoff)
                         }
@@ -136,8 +135,7 @@ extension VRMRenderer {
                 // Clothing materials (tops, bottoms, shoes) keep MASK for proper cutout.
                 let isBodyOrSkinMaterial =
                     materialNameLower.contains("body") || materialNameLower.contains("skin")
-                if isBodyOrSkinMaterial && !item.isFaceMaterial && item.effectiveAlphaMode == "mask"
-                {
+                if isBodyOrSkinMaterial && !item.isFaceMaterial && item.effectiveAlphaMode == "mask" {
                     item.effectiveAlphaMode = "opaque"
                 }
 
@@ -146,16 +144,14 @@ extension VRMRenderer {
                     // Classify face material by type and set category + renderOrder
                     // Body detection - must come before skin check since body materials contain "skin"
                     if item.materialNameLower.contains("body")
-                        && !item.materialNameLower.contains("face")
-                    {
+                        && !item.materialNameLower.contains("face") {
                         item.faceCategory = "body"
                         item.renderOrder = 0  // body renders first, pushed back by depth bias
                     } else if item.materialNameLower.contains("lace")
                         || item.materialNameLower.contains("collar")
                         || item.materialNameLower.contains("ribbon")
                         || item.materialNameLower.contains("frill")
-                        || item.materialNameLower.contains("ruffle")
-                    {
+                        || item.materialNameLower.contains("ruffle") {
                         // TransparentWithZWrite - semi-transparent overlays that need depth writing
                         item.faceCategory = "transparentZWrite"
                         item.renderOrder = 8  // After opaque, before regular blend
@@ -164,28 +160,24 @@ extension VRMRenderer {
                         || item.materialNameLower.contains("bottoms")
                         || item.materialNameLower.contains("skirt")
                         || item.materialNameLower.contains("shorts")
-                        || item.materialNameLower.contains("pants")
-                    {
+                        || item.materialNameLower.contains("pants") {
                         item.faceCategory = "clothing"
                         item.renderOrder = 8  // Same as transparentZWrite for proper layering
                     } else if item.materialNameLower.contains("mouth")
-                        || item.materialNameLower.contains("lip")
-                    {
+                        || item.materialNameLower.contains("lip") {
                         // Face mouth/lip overlays - render after base face skin
                         item.faceCategory = "faceOverlay"
                         item.renderOrder = 2  // after skin (1), before eyebrow (2) - same as eyebrow but named differently
                     } else if item.materialNameLower.contains("skin")
                         || (item.materialNameLower.contains("face")
-                            && !item.materialNameLower.contains("eye"))
-                    {
+                            && !item.materialNameLower.contains("eye")) {
                         item.faceCategory = "skin"
                         item.renderOrder = 1  // faceSkin - base face renders first
                     } else if item.materialNameLower.contains("brow") {
                         item.faceCategory = "eyebrow"
                         item.renderOrder = 2  // faceEyebrow
                     } else if item.materialNameLower.contains("line")
-                        || item.materialNameLower.contains("lash")
-                    {
+                        || item.materialNameLower.contains("lash") {
                         item.faceCategory = "eyeline"
                         item.renderOrder = 3  // faceEyeline
                     } else if item.materialNameLower.contains("highlight") {

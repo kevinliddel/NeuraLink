@@ -77,8 +77,7 @@ public class VRMLookAtController {
         if eyesHaveExpressions {
             mode = .expression
         } else if lookAtData?.type == .expression
-            || (leftEyeBoneIndex == nil && rightEyeBoneIndex == nil)
-        {
+            || (leftEyeBoneIndex == nil && rightEyeBoneIndex == nil) {
             mode = .expression
         } else {
             mode = .bone

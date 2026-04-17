@@ -98,8 +98,7 @@ extension SpringBoneComputeSystem {
                 // Calculate rest length (distance to parent in bind pose)
                 if jointIndexInChain > 0, let node = model.nodes[safe: joint.node],
                     let parentJoint = spring.joints[safe: jointIndexInChain - 1],
-                    let parentNode = model.nodes[safe: parentJoint.node]
-                {
+                    let parentNode = model.nodes[safe: parentJoint.node] {
                     let restLength = simd_distance(node.worldPosition, parentNode.worldPosition)
                     restLengths.append(restLength)
                 } else {
@@ -114,8 +113,7 @@ extension SpringBoneComputeSystem {
                         let nextNode = model.nodes[safe: nextJoint.node],
                         jointIndexInChain > 0,
                         let prevJoint = spring.joints[safe: jointIndexInChain - 1],
-                        let prevNode = model.nodes[safe: prevJoint.node]
-                    {
+                        let prevNode = model.nodes[safe: prevJoint.node] {
                         let bindDirWorld = simd_normalize(
                             nextNode.worldPosition - prevNode.worldPosition)
                         boneBindDirections.append(bindDirWorld)
@@ -131,8 +129,7 @@ extension SpringBoneComputeSystem {
                 // - Used for ROTATION calculation in Swift
                 // - Used for GPU STIFFNESS via bindDirections[parentIndex] in shader
                 if let nextJoint = spring.joints[safe: jointIndexInChain + 1],
-                    let nextNode = model.nodes[safe: nextJoint.node]
-                {
+                    let nextNode = model.nodes[safe: nextJoint.node] {
                     let bindDirWorld = simd_normalize(
                         nextNode.worldPosition - currentNode.worldPosition)
                     if let parentNode = currentNode.parent {
@@ -270,8 +267,7 @@ extension SpringBoneComputeSystem {
         // Copy initial positions to both prev and curr buffers
         if let bonePosPrev = buffers.bonePosPrev,
             let bonePosCurr = buffers.bonePosCurr,
-            !initialPositions.isEmpty
-        {
+            !initialPositions.isEmpty {
             let prevPtr = bonePosPrev.contents().bindMemory(
                 to: SIMD3<Float>.self, capacity: initialPositions.count)
             let currPtr = bonePosCurr.contents().bindMemory(

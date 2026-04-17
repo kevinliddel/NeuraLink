@@ -101,12 +101,10 @@ extension VRMModel {
         if let humanoid = humanoid {
             // Get hips position as center reference
             if let hipsIndex = humanoid.getBoneNode(.hips),
-                hipsIndex < nodes.count
-            {
+                hipsIndex < nodes.count {
                 // Get head for height
                 if let headIndex = humanoid.getBoneNode(.head),
-                    headIndex < nodes.count
-                {
+                    headIndex < nodes.count {
                     let headNode = nodes[headIndex]
                     let headPos = SIMD3<Float>(
                         headNode.worldMatrix[3][0],
@@ -118,8 +116,7 @@ extension VRMModel {
 
                 // Get feet for bottom
                 if let leftFootIndex = humanoid.getBoneNode(.leftFoot),
-                    leftFootIndex < nodes.count
-                {
+                    leftFootIndex < nodes.count {
                     let footNode = nodes[leftFootIndex]
                     let footPos = SIMD3<Float>(
                         footNode.worldMatrix[3][0],

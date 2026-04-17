@@ -252,8 +252,7 @@ extension VRMRenderer {
             let outlineVertexFunction = library.makeFunction(name: "mtoon_outline_vertex")
             let outlineFragmentFunction = library.makeFunction(name: "mtoon_outline_fragment")
             if let outlineVertexFunc = outlineVertexFunction,
-                let outlineFragmentFunc = outlineFragmentFunction
-            {
+                let outlineFragmentFunc = outlineFragmentFunction {
                 let outlineDescriptor = MTLRenderPipelineDescriptor()
                 outlineDescriptor.label = "mtoon_outline"
                 outlineDescriptor.vertexFunction = outlineVertexFunc

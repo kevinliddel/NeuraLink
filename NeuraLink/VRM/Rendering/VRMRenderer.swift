@@ -402,8 +402,7 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
 
         // Initialize LookAt controller if model has lookAt data or eye bones
         if model.lookAt != nil || model.humanoid?.humanBones[.leftEye] != nil
-            || model.humanoid?.humanBones[.rightEye] != nil
-        {
+            || model.humanoid?.humanBones[.rightEye] != nil {
             lookAtController?.setup(model: model, expressionController: expressionController)
             // Default to DISABLED to avoid misaligned eyes; can be enabled explicitly by apps
             lookAtController?.enabled = false

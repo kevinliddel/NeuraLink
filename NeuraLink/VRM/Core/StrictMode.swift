@@ -48,16 +48,16 @@ public struct RendererConfig {
     public var maxFrameLuma: Float = 0.95
 
     /// Filter to render only specific mesh/material/primitive (for debugging)
-    public var renderFilter: RenderFilter? = nil
+    public var renderFilter: RenderFilter?
 
     /// Render only draw calls [0..N] from sorted draw list (for debugging)
-    public var drawUntil: Int? = nil
+    public var drawUntil: Int?
 
     /// Render only draw call K from sorted draw list (for debugging)
-    public var drawOnlyIndex: Int? = nil
+    public var drawOnlyIndex: Int?
 
     /// Use identity matrices for specified skin index (A/B test for palette corruption)
-    public var testIdentityPalette: Int? = nil
+    public var testIdentityPalette: Int?
 
     /// MSAA sample count for multisample anti-aliasing (1 = disabled, 4 = 4x MSAA)
     /// Alpha-to-coverage for MASK materials requires sampleCount > 1

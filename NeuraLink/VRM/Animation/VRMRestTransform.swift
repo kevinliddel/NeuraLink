@@ -66,8 +66,8 @@ func buildModelRestTransforms(model: VRMModel?) -> [VRMHumanoidBone: RestTransfo
 
 private func gltfMatrix(from values: [Float]) -> float4x4 {
     float4x4(
-        SIMD4<Float>(values[0], values[4], values[8],  values[12]),
-        SIMD4<Float>(values[1], values[5], values[9],  values[13]),
+        SIMD4<Float>(values[0], values[4], values[8], values[12]),
+        SIMD4<Float>(values[1], values[5], values[9], values[13]),
         SIMD4<Float>(values[2], values[6], values[10], values[14]),
         SIMD4<Float>(values[3], values[7], values[11], values[15]))
 }

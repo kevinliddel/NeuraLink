@@ -252,8 +252,7 @@ extension VRMRenderer {
             || meshNameLower.contains("face") || meshNameLower.contains("eye")
 
         if let materialIndex = primitive.materialIndex,
-            materialIndex < model.materials.count
-        {
+            materialIndex < model.materials.count {
             let material = model.materials[materialIndex]
 
             // Set VRM version for version-aware shading (0 = VRM 0.0, 1 = VRM 1.0)
@@ -319,8 +318,7 @@ extension VRMRenderer {
                 // The mouth mesh UVs are centered at (0.4, 0.48) which is the blank face area
                 // We need to shift them to the lip texture area around (0.7, 0.7)
                 if item.materialNameLower.contains("mouth")
-                    || item.materialNameLower.contains("lip")
-                {
+                    || item.materialNameLower.contains("lip") {
                     mtoonUniforms.uvOffsetX = 0.35  // Shift right to lip area
                     mtoonUniforms.uvOffsetY = 0.25  // Shift down to lip area
                     mtoonUniforms.uvScale = 0.5  // Scale down to fit lip texture

@@ -74,20 +74,19 @@ extension VRMRenderer {
             }
 
             // Get texture size if available
-            var textureSize: [Int]? = nil
+            var textureSize: [Int]?
             if let baseTexture = material.baseColorTexture,
-                let mtlTexture = baseTexture.mtlTexture
-            {
+                let mtlTexture = baseTexture.mtlTexture {
                 textureSize = [mtlTexture.width, mtlTexture.height]
             }
 
             // Get MToon shade color if available
-            var mtoonShadeColor: [Float]? = nil
+            var mtoonShadeColor: [Float]?
             if let mtoon = material.mtoon {
                 mtoonShadeColor = [
                     mtoon.shadeColorFactor.x,
                     mtoon.shadeColorFactor.y,
-                    mtoon.shadeColorFactor.z,
+                    mtoon.shadeColorFactor.z
                 ]
             }
 
@@ -100,7 +99,7 @@ extension VRMRenderer {
                     material.baseColorFactor.x,
                     material.baseColorFactor.y,
                     material.baseColorFactor.z,
-                    material.baseColorFactor.w,
+                    material.baseColorFactor.w
                 ],
                 hasBaseTexture: material.baseColorTexture != nil,
                 textureSize: textureSize,

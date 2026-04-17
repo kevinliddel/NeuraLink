@@ -1,0 +1,66 @@
+disabled_rules:
+  - trailing_whitespace
+  - comment_spacing
+  - orphaned_doc_comment
+  - force_cast
+  - force_try
+  - for_where
+  - redundant_string_enum_value
+  - todo
+  - implicit_optional_initialization
+  - force_unwrapping
+  - shorthand_operator
+  - static_over_final_class
+  - non_optional_string_data_conversion
+  - unused_enumerated
+  - large_tuple
+  - convenience_type
+  - function_parameter_count
+  - identifier_name
+  - closure_parameter_position
+  - inclusive_language
+
+opt_in_rules:
+  - fatal_error_message
+  - empty_count
+  - contains_over_first_not_nil
+
+# Rule 1 Enforcement: Max 500 lines per file
+file_length:
+  warning: 495
+  error: 525
+
+# Rule 7 Enforcement: Low complexity
+cyclomatic_complexity:
+  warning: 60
+  error: 80
+
+function_body_length:
+  warning: 300
+  error: 500
+
+type_body_length:
+  warning: 500
+  error: 800
+
+line_length:
+  warning: 300
+  error: 400
+
+included:
+  - NeuraLink
+  - NeuraLinkTests
+  - NeuraLinkUITests
+
+excluded:
+  - Pods
+  - build-tests
+  - build-uitests
+  - build-all-final
+  - build-ci
+  - build-all-final-v2
+  - build-uitests-final
+  - build-uitests-final-v2
+  - build-uitests-final-v3
+  - build-uitests-final-v4
+  - build-uitests-final-v5

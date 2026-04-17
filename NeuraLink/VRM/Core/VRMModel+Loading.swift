@@ -103,8 +103,7 @@ extension VRMModel {
                         gltf.textures?[safe: textureIndex]?.name ?? "texture_\(textureIndex)"
 
                     if let mtlTexture = try await textureLoader.loadTexture(
-                        at: textureIndex, sRGB: useSRGB)
-                    {
+                        at: textureIndex, sRGB: useSRGB) {
                         let vrmTexture = VRMTexture(name: textureName)
                         vrmTexture.mtlTexture = mtlTexture
                         textures.append(vrmTexture)

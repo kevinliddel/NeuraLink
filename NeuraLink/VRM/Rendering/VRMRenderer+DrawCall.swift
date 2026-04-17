@@ -96,8 +96,7 @@ extension VRMRenderer {
             }
 
             if skinIndex >= 0 && skinIndex < model.skins.count,
-                let jointBuffer = skinningSystem?.getJointMatricesBuffer()
-            {
+                let jointBuffer = skinningSystem?.getJointMatricesBuffer() {
                 let byteOffset = model.skins[skinIndex].bufferByteOffset
                 encoder.setVertexBuffer(
                     jointBuffer, offset: byteOffset, index: ResourceIndices.jointMatricesBuffer)
@@ -135,8 +134,7 @@ extension VRMRenderer {
             if let mtoon = material.mtoon {
                 if let textureIndex = mtoon.shadeMultiplyTexture,
                     textureIndex < model.textures.count,
-                    let mtlTexture = model.textures[textureIndex].mtlTexture
-                {
+                    let mtlTexture = model.textures[textureIndex].mtlTexture {
                     encoder.setFragmentTexture(mtlTexture, index: 1)
                     mtoonUniforms.hasShadeMultiplyTexture = 1
                 } else {
@@ -148,8 +146,7 @@ extension VRMRenderer {
             if let mtoon = material.mtoon,
                 let shadingShift = mtoon.shadingShiftTexture,
                 shadingShift.index < model.textures.count,
-                let mtlTexture = model.textures[shadingShift.index].mtlTexture
-            {
+                let mtlTexture = model.textures[shadingShift.index].mtlTexture {
                 encoder.setFragmentTexture(mtlTexture, index: 2)
                 mtoonUniforms.hasShadingShiftTexture = 1
                 mtoonUniforms.shadingShiftTextureScale = shadingShift.scale ?? 1.0
@@ -168,8 +165,7 @@ extension VRMRenderer {
             if let mtoon = material.mtoon,
                 let textureIndex = mtoon.matcapTexture,
                 textureIndex < model.textures.count,
-                let mtlTexture = model.textures[textureIndex].mtlTexture
-            {
+                let mtlTexture = model.textures[textureIndex].mtlTexture {
                 encoder.setFragmentTexture(mtlTexture, index: 5)
                 mtoonUniforms.hasMatcapTexture = 1
             }
@@ -177,8 +173,7 @@ extension VRMRenderer {
             if let mtoon = material.mtoon,
                 let textureIndex = mtoon.rimMultiplyTexture,
                 textureIndex < model.textures.count,
-                let mtlTexture = model.textures[textureIndex].mtlTexture
-            {
+                let mtlTexture = model.textures[textureIndex].mtlTexture {
                 encoder.setFragmentTexture(mtlTexture, index: 6)
                 mtoonUniforms.hasRimMultiplyTexture = 1
             }
@@ -186,8 +181,7 @@ extension VRMRenderer {
             if let mtoon = material.mtoon,
                 let textureIndex = mtoon.uvAnimationMaskTexture,
                 textureIndex < model.textures.count,
-                let mtlTexture = model.textures[textureIndex].mtlTexture
-            {
+                let mtlTexture = model.textures[textureIndex].mtlTexture {
                 encoder.setFragmentTexture(mtlTexture, index: 7)
                 mtoonUniforms.hasUvAnimationMaskTexture = 1
             }
@@ -219,33 +213,27 @@ extension VRMRenderer {
             // Expression-driven material color overrides
             if let materialIndex = primitive.materialIndex {
                 let ec = expressionController
-                if let c = ec?.getMaterialColorOverride(materialIndex: materialIndex, type: .color)
-                {
+                if let c = ec?.getMaterialColorOverride(materialIndex: materialIndex, type: .color) {
                     mtoonUniforms.baseColorFactor = c
                 }
                 if let c = ec?.getMaterialColorOverride(
-                    materialIndex: materialIndex, type: .emissionColor)
-                {
+                    materialIndex: materialIndex, type: .emissionColor) {
                     mtoonUniforms.emissiveFactor = SIMD3<Float>(c.x, c.y, c.z)
                 }
                 if let c = ec?.getMaterialColorOverride(
-                    materialIndex: materialIndex, type: .shadeColor)
-                {
+                    materialIndex: materialIndex, type: .shadeColor) {
                     mtoonUniforms.shadeColorFactor = SIMD3<Float>(c.x, c.y, c.z)
                 }
                 if let c = ec?.getMaterialColorOverride(
-                    materialIndex: materialIndex, type: .matcapColor)
-                {
+                    materialIndex: materialIndex, type: .matcapColor) {
                     mtoonUniforms.matcapFactor = SIMD3<Float>(c.x, c.y, c.z)
                 }
                 if let c = ec?.getMaterialColorOverride(
-                    materialIndex: materialIndex, type: .rimColor)
-                {
+                    materialIndex: materialIndex, type: .rimColor) {
                     mtoonUniforms.parametricRimColorFactor = SIMD3<Float>(c.x, c.y, c.z)
                 }
                 if let c = ec?.getMaterialColorOverride(
-                    materialIndex: materialIndex, type: .outlineColor)
-                {
+                    materialIndex: materialIndex, type: .outlineColor) {
                     mtoonUniforms.outlineColorFactor = SIMD3<Float>(c.x, c.y, c.z)
                 }
             }
@@ -259,8 +247,7 @@ extension VRMRenderer {
             // Matrix slice validation
             if isSkinned,
                 let skinIndex = item.node.skin ?? (primitive.hasJoints ? Optional(0) : nil),
-                skinIndex >= 0 && skinIndex < model.skins.count
-            {
+                skinIndex >= 0 && skinIndex < model.skins.count {
                 let skin = model.skins[skinIndex]
                 assert(
                     skinningSystem?.getJointMatricesBuffer() != nil,

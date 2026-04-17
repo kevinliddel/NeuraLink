@@ -10,8 +10,7 @@ import simd
 
 // MARK: - Projection Matrix Helpers
 
-func makePerspective(fovyRadians: Float, aspectRatio: Float, nearZ: Float, farZ: Float) -> float4x4
-{
+func makePerspective(fovyRadians: Float, aspectRatio: Float, nearZ: Float, farZ: Float) -> float4x4 {
     let ys = 1 / tanf(fovyRadians * 0.5)
     let xs = ys / aspectRatio
     let zs = farZ / (nearZ - farZ)

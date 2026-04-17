@@ -206,7 +206,7 @@ public class TextureLoader {
         let options: [MTKTextureLoader.Option: Any] = [
             .textureUsage: MTLTextureUsage.shaderRead.rawValue,
             .textureStorageMode: MTLStorageMode.private.rawValue,
-            .SRGB: sRGB,
+            .SRGB: sRGB
         ]
 
         do {
@@ -233,8 +233,7 @@ public class TextureLoader {
     }
 
     private func createTexture(from cgImage: CGImage, textureIndex: Int, sRGB: Bool) throws
-        -> MTLTexture?
-    {
+        -> MTLTexture? {
         vrmLog("[TextureLoader] createTexture(from CGImage) called, sRGB=\(sRGB)")
 
         // MTKTextureLoader seems to crash when called from background async context

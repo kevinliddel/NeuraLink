@@ -134,7 +134,7 @@ public struct VRMLoadingOptimization: OptionSet, Sendable {
 
     /// Default optimizations for production use.
     public static let `default`: VRMLoadingOptimization = [
-        .skipVerboseLogging, .parallelTextureDecoding,
+        .skipVerboseLogging, .parallelTextureDecoding
     ]
 
     /// Maximum performance optimizations (may reduce quality).
@@ -146,7 +146,7 @@ public struct VRMLoadingOptimization: OptionSet, Sendable {
         .parallelTextureLoading,
         .parallelMeshLoading,
         .preloadBuffers,
-        .parallelMaterialLoading,
+        .parallelMaterialLoading
     ]
 }
 
@@ -263,7 +263,7 @@ internal actor VRMLoadingContext {
         let overallProgress = calculateOverallProgress()
 
         // Calculate estimated time remaining
-        var estimatedTimeRemaining: TimeInterval? = nil
+        var estimatedTimeRemaining: TimeInterval?
         if overallProgress > 0.01 {
             let totalEstimatedTime = elapsedTime / overallProgress
             estimatedTimeRemaining = totalEstimatedTime - elapsedTime

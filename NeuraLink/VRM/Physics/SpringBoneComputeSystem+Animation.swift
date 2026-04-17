@@ -24,8 +24,7 @@ extension SpringBoneComputeSystem {
         // Update root bone positions from animated transforms
         for spring in springBone.springs {
             if let firstJoint = spring.joints.first,
-                let node = model.nodes[safe: firstJoint.node]
-            {
+                let node = model.nodes[safe: firstJoint.node] {
                 animatedPositions.append(node.worldPosition)
                 rootIndex += 1
             }
@@ -48,7 +47,7 @@ extension SpringBoneComputeSystem {
         lastRootPositions = animatedPositions
 
         // Copy to GPU buffer
-        if animatedPositions.count > 0 {
+        if !animatedPositions.isEmpty {
             animatedRootPositionsBuffer.contents().copyMemory(
                 from: animatedPositions,
                 byteCount: MemoryLayout<SIMD3<Float>>.stride * animatedPositions.count

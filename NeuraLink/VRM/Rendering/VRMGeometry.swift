@@ -10,7 +10,6 @@ import Metal
 import simd
 
 // MARK: - VRM Mesh
-
 public class VRMMesh {
     public let name: String?
     public var primitives: [VRMPrimitive] = []
@@ -92,8 +91,7 @@ public class VRMPrimitive {
         primitive.primitiveType = MTLPrimitiveType(gltfMode: mode)
 
         // UNIFIED PATH: Load all attributes into VertexData struct and interleave manually.
-        // This ensures all primitives, interleaved or not, produce a vertex buffer
-        // with the exact layout expected by the renderer.
+        // This ensures all primitives, interleaved or not, produce a vertex buffer with the exact layout expected by the renderer.
         var vertexData = VertexData()
 
         // Load positions (required)
@@ -289,8 +287,7 @@ public class VRMPrimitive {
             if let positionDeltas = target.positionDeltas {
                 let bufferSize = positionDeltas.count * MemoryLayout<SIMD3<Float>>.stride
                 if let buffer = device.makeBuffer(
-                    bytes: positionDeltas, length: bufferSize, options: .storageModeShared)
-                {
+                    bytes: positionDeltas, length: bufferSize, options: .storageModeShared) {
                     morphPositionBuffers.append(buffer)
                 }
             }
@@ -299,8 +296,7 @@ public class VRMPrimitive {
             if let normalDeltas = target.normalDeltas {
                 let bufferSize = normalDeltas.count * MemoryLayout<SIMD3<Float>>.stride
                 if let buffer = device.makeBuffer(
-                    bytes: normalDeltas, length: bufferSize, options: .storageModeShared)
-                {
+                    bytes: normalDeltas, length: bufferSize, options: .storageModeShared) {
                     morphNormalBuffers.append(buffer)
                 }
             }
@@ -309,8 +305,7 @@ public class VRMPrimitive {
             if let tangentDeltas = target.tangentDeltas {
                 let bufferSize = tangentDeltas.count * MemoryLayout<SIMD3<Float>>.stride
                 if let buffer = device.makeBuffer(
-                    bytes: tangentDeltas, length: bufferSize, options: .storageModeShared)
-                {
+                    bytes: tangentDeltas, length: bufferSize, options: .storageModeShared) {
                     morphTangentBuffers.append(buffer)
                 }
             }
@@ -422,15 +417,6 @@ public class VRMPrimitive {
     // MARK: - Iron Dome Sanitization
 
     /// Sanitizes joint indices to prevent vertex explosions from out-of-bounds bone references.
-    ///
-    /// This is the "Iron Dome" sanitizer that catches:
-    /// - **Sentinel values**: 65535 (0xFFFF) used by some exporters to mean "no bone"
-    /// - **Out-of-bounds indices**: Joint indices >= actual bone count
-    ///
-    /// Both cases are remapped to joint 0 (root bone) with their weight zeroed out.
-    ///
-    /// - Parameter maxJointIndex: The maximum valid joint index (skin.joints.count - 1)
-    /// - Returns: Number of joints that were sanitized
     @discardableResult
     public func sanitizeJoints(maxJointIndex: Int) -> Int {
         guard hasJoints, let vertexBuffer = vertexBuffer, vertexCount > 0 else {

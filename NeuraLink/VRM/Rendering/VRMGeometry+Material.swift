@@ -89,15 +89,13 @@ public class VRMMaterial {
 
         // Load normal texture (provides surface detail like nose contours)
         if let normalTextureInfo = gltfMaterial.normalTexture,
-            normalTextureInfo.index < textures.count
-        {
+            normalTextureInfo.index < textures.count {
             normalTexture = textures[normalTextureInfo.index]
         }
 
         // Load emissive texture (for glow effects)
         if let emissiveTextureInfo = gltfMaterial.emissiveTexture,
-            emissiveTextureInfo.index < textures.count
-        {
+            emissiveTextureInfo.index < textures.count {
             emissiveTexture = textures[emissiveTextureInfo.index]
         }
 
@@ -112,8 +110,7 @@ public class VRMMaterial {
         // Parse MToon extension if present
         // VRM 1.0: per-material VRMC_materials_mtoon extension
         if let extensions = gltfMaterial.extensions,
-            let mtoonExt = extensions["VRMC_materials_mtoon"] as? [String: Any]
-        {
+            let mtoonExt = extensions["VRMC_materials_mtoon"] as? [String: Any] {
             mtoon = parseMToonExtension(mtoonExt, textures: textures)
 
             // VRM 1.0: explicit transparentWithZWrite flag
@@ -177,14 +174,12 @@ public class VRMMaterial {
     }
 
     private func parseMToonExtension(_ mtoonExt: [String: Any], textures: [VRMTexture])
-        -> VRMMToonMaterial
-    {
+        -> VRMMToonMaterial {
         var mtoon = VRMMToonMaterial()
 
         // Shade color factor
         if let shadeColorFactor = mtoonExt["shadeColorFactor"] as? [Double],
-            shadeColorFactor.count >= 3
-        {
+            shadeColorFactor.count >= 3 {
             mtoon.shadeColorFactor = SIMD3<Float>(
                 Float(shadeColorFactor[0]),
                 Float(shadeColorFactor[1]),
@@ -214,16 +209,14 @@ public class VRMMaterial {
 
         // Parametric rim lighting
         if let parametricRimColorFactor = mtoonExt["parametricRimColorFactor"] as? [Double],
-            parametricRimColorFactor.count >= 3
-        {
+            parametricRimColorFactor.count >= 3 {
             mtoon.parametricRimColorFactor = SIMD3<Float>(
                 Float(parametricRimColorFactor[0]),
                 Float(parametricRimColorFactor[1]),
                 Float(parametricRimColorFactor[2]))
         }
         if let parametricRimFresnelPowerFactor = mtoonExt["parametricRimFresnelPowerFactor"]
-            as? Double
-        {
+            as? Double {
             mtoon.parametricRimFresnelPowerFactor = Float(parametricRimFresnelPowerFactor)
         }
         if let parametricRimLiftFactor = mtoonExt["parametricRimLiftFactor"] as? Double {
@@ -241,8 +234,7 @@ public class VRMMaterial {
             mtoon.outlineWidthFactor = Float(outlineWidthFactor)
         }
         if let outlineColorFactor = mtoonExt["outlineColorFactor"] as? [Double],
-            outlineColorFactor.count >= 3
-        {
+            outlineColorFactor.count >= 3 {
             mtoon.outlineColorFactor = SIMD3<Float>(
                 Float(outlineColorFactor[0]),
                 Float(outlineColorFactor[1]),
@@ -253,31 +245,26 @@ public class VRMMaterial {
         }
 
         // UV Animation properties
-        if let uvAnimationScrollXSpeedFactor = mtoonExt["uvAnimationScrollXSpeedFactor"] as? Double
-        {
+        if let uvAnimationScrollXSpeedFactor = mtoonExt["uvAnimationScrollXSpeedFactor"] as? Double {
             mtoon.uvAnimationScrollXSpeedFactor = Float(uvAnimationScrollXSpeedFactor)
         }
-        if let uvAnimationScrollYSpeedFactor = mtoonExt["uvAnimationScrollYSpeedFactor"] as? Double
-        {
+        if let uvAnimationScrollYSpeedFactor = mtoonExt["uvAnimationScrollYSpeedFactor"] as? Double {
             mtoon.uvAnimationScrollYSpeedFactor = Float(uvAnimationScrollYSpeedFactor)
         }
         if let uvAnimationRotationSpeedFactor = mtoonExt["uvAnimationRotationSpeedFactor"]
-            as? Double
-        {
+            as? Double {
             mtoon.uvAnimationRotationSpeedFactor = Float(uvAnimationRotationSpeedFactor)
         }
 
         // Texture references
         if let shadeMultiplyTexture = mtoonExt["shadeMultiplyTexture"] as? [String: Any],
-            let index = shadeMultiplyTexture["index"] as? Int
-        {
+            let index = shadeMultiplyTexture["index"] as? Int {
             mtoon.shadeMultiplyTexture = index
         }
 
         // Shading shift texture with scale support
         if let shadingShiftTexture = mtoonExt["shadingShiftTexture"] as? [String: Any],
-            let index = shadingShiftTexture["index"] as? Int
-        {
+            let index = shadingShiftTexture["index"] as? Int {
             let texCoord = shadingShiftTexture["texCoord"] as? Int
             let scale = shadingShiftTexture["scale"] as? Double
             mtoon.shadingShiftTexture = VRMShadingShiftTexture(
@@ -289,30 +276,26 @@ public class VRMMaterial {
 
         // MatCap texture
         if let matcapTexture = mtoonExt["matcapTexture"] as? [String: Any],
-            let index = matcapTexture["index"] as? Int
-        {
+            let index = matcapTexture["index"] as? Int {
             mtoon.matcapTexture = index
         }
 
         // Rim multiply texture
         if let rimMultiplyTexture = mtoonExt["rimMultiplyTexture"] as? [String: Any],
-            let index = rimMultiplyTexture["index"] as? Int
-        {
+            let index = rimMultiplyTexture["index"] as? Int {
             mtoon.rimMultiplyTexture = index
         }
 
         // Outline width multiply texture
         if let outlineWidthMultiplyTexture = mtoonExt["outlineWidthMultiplyTexture"]
             as? [String: Any],
-            let index = outlineWidthMultiplyTexture["index"] as? Int
-        {
+            let index = outlineWidthMultiplyTexture["index"] as? Int {
             mtoon.outlineWidthMultiplyTexture = index
         }
 
         // UV animation mask texture
         if let uvAnimationMaskTexture = mtoonExt["uvAnimationMaskTexture"] as? [String: Any],
-            let index = uvAnimationMaskTexture["index"] as? Int
-        {
+            let index = uvAnimationMaskTexture["index"] as? Int {
             mtoon.uvAnimationMaskTexture = index
         }
 

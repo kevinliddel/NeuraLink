@@ -83,8 +83,7 @@ extension VRMRenderer {
             }
 
             if let outlineOverride = expressionController?.getMaterialColorOverride(
-                materialIndex: materialIndex, type: .outlineColor)
-            {
+                materialIndex: materialIndex, type: .outlineColor) {
                 mtoonUniforms.outlineColorFactor = SIMD3<Float>(
                     outlineOverride.x, outlineOverride.y, outlineOverride.z)
             }

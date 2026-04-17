@@ -141,7 +141,7 @@ public class VRMBuilder {
             let bufferView: [String: Any] = [
                 "buffer": 0,
                 "byteOffset": bufferViewOffset,
-                "byteLength": byteLength,
+                "byteLength": byteLength
             ]
             bufferViews.append(bufferView)
 
@@ -154,7 +154,7 @@ public class VRMBuilder {
                 "byteOffset": 0,
                 "componentType": componentType,
                 "count": count,
-                "type": type,
+                "type": type
             ]
             accessors.append(accessorDict)
 
@@ -210,16 +210,16 @@ public class VRMBuilder {
         var documentDict: [String: Any] = [
             "asset": [
                 "version": "2.0",
-                "generator": "VRMBuilder (GameOfMods)",
+                "generator": "VRMBuilder (GameOfMods)"
             ],
             "scene": 0,
             "scenes": [
                 [
                     "name": "Scene",
-                    "nodes": [0],  // Root is hips
+                    "nodes": [0]  // Root is hips
                 ]
             ],
-            "extensionsUsed": ["VRMC_vrm"],
+            "extensionsUsed": ["VRMC_vrm"]
         ]
 
         if let copyright = meta.copyrightInformation {
@@ -285,7 +285,7 @@ public class VRMBuilder {
                 "name": boneData.bone.rawValue,
                 "translation": translation,
                 "rotation": [0, 0, 0, 1],  // Identity quaternion
-                "scale": scale,
+                "scale": scale
             ]
 
             if let children = boneData.children {
@@ -341,13 +341,13 @@ public class VRMBuilder {
                     "attributes": [
                         "POSITION": 0,
                         "NORMAL": 1,
-                        "TEXCOORD_0": 2,
+                        "TEXCOORD_0": 2
                     ],
                     "indices": 3,
                     "material": 0,
-                    "mode": 4,  // TRIANGLES
+                    "mode": 4  // TRIANGLES
                 ]
-            ],
+            ]
         ]
 
         let jsonData = try! JSONSerialization.data(withJSONObject: meshDict)
@@ -366,13 +366,13 @@ public class VRMBuilder {
                     "attributes": [
                         "POSITION": positionAccessor,
                         "NORMAL": normalAccessor,
-                        "TEXCOORD_0": texcoordAccessor,
+                        "TEXCOORD_0": texcoordAccessor
                     ],
                     "indices": indicesAccessor,
                     "material": 0,
-                    "mode": 4,  // TRIANGLES
+                    "mode": 4  // TRIANGLES
                 ]
-            ],
+            ]
         ]
 
         let jsonData = try! JSONSerialization.data(withJSONObject: meshDict)
@@ -391,10 +391,10 @@ public class VRMBuilder {
             "pbrMetallicRoughness": [
                 "baseColorFactor": [skinColor.x, skinColor.y, skinColor.z, 1.0],
                 "metallicFactor": 0.0,
-                "roughnessFactor": 1.0,
+                "roughnessFactor": 1.0
             ],
             "alphaMode": "OPAQUE",
-            "doubleSided": false,
+            "doubleSided": false
         ]
 
         let jsonData = try! JSONSerialization.data(withJSONObject: materialDict)

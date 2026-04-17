@@ -42,8 +42,7 @@ public final class VRMPipelineCache: @unchecked Sendable {
 
             // Fallback: look for packaged metallib if needed
             if let url = Bundle.main.url(
-                forResource: "VRMMetalKitShaders", withExtension: "metallib")
-            {
+                forResource: "VRMMetalKitShaders", withExtension: "metallib") {
                 do {
                     let library = try device.makeLibrary(URL: url)
                     libraries[key] = library

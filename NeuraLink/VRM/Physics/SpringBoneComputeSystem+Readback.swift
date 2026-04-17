@@ -83,8 +83,7 @@ extension SpringBoneComputeSystem {
         for i in 0..<buffers.numBones {
             let pos = latestPositionsSnapshot[i]
             if pos.x.isNaN || pos.y.isNaN || pos.z.isNaN || pos.x.isInfinite || pos.y.isInfinite
-                || pos.z.isInfinite
-            {
+                || pos.z.isInfinite {
                 // Replace with zero - writeBonesToNodes will skip this bone
                 latestPositionsSnapshot[i] = SIMD3<Float>(repeating: Float.nan)
                 nanCount += 1
@@ -102,8 +101,7 @@ extension SpringBoneComputeSystem {
 
             // NaN guard: skip if positions are invalid
             if currentPos.x.isNaN || currentPos.y.isNaN || currentPos.z.isNaN || nextPos.x.isNaN
-                || nextPos.y.isNaN || nextPos.z.isNaN
-            {
+                || nextPos.y.isNaN || nextPos.z.isNaN {
                 continue
             }
 
@@ -125,8 +123,7 @@ extension SpringBoneComputeSystem {
 
             // NaN guard: skip if bind direction is invalid
             if bindDirInParentSpace.x.isNaN || bindDirInParentSpace.y.isNaN
-                || bindDirInParentSpace.z.isNaN || simd_length(bindDirInParentSpace) < 0.001
-            {
+                || bindDirInParentSpace.z.isNaN || simd_length(bindDirInParentSpace) < 0.001 {
                 continue
             }
 
@@ -136,8 +133,7 @@ extension SpringBoneComputeSystem {
 
             // NaN guard for parent rotation
             if parentRot.real.isNaN || parentRot.imag.x.isNaN || parentRot.imag.y.isNaN
-                || parentRot.imag.z.isNaN
-            {
+                || parentRot.imag.z.isNaN {
                 currentNode.localRotation = currentNode.initialRotation
                 currentNode.updateLocalMatrix()
                 currentNode.updateWorldTransform()
@@ -204,8 +200,7 @@ extension SpringBoneComputeSystem {
 
             // NaN guard: skip if rotation is invalid
             if newRotation.real.isNaN || newRotation.imag.x.isNaN || newRotation.imag.y.isNaN
-                || newRotation.imag.z.isNaN
-            {
+                || newRotation.imag.z.isNaN {
                 continue
             }
 
@@ -214,8 +209,7 @@ extension SpringBoneComputeSystem {
             if newRotation.real.isNaN || newRotation.real.isInfinite || newRotation.imag.x.isNaN
                 || newRotation.imag.x.isInfinite || newRotation.imag.y.isNaN
                 || newRotation.imag.y.isInfinite || newRotation.imag.z.isNaN
-                || newRotation.imag.z.isInfinite
-            {
+                || newRotation.imag.z.isInfinite {
                 currentNode.localRotation = currentNode.initialRotation
                 currentNode.updateLocalMatrix()
                 currentNode.updateWorldTransform()
@@ -245,8 +239,7 @@ extension SpringBoneComputeSystem {
         let fromLen = simd_length(from)
         let toLen = simd_length(to)
         if fromLen < 0.0001 || toLen < 0.0001 || fromLen.isNaN || fromLen.isInfinite || toLen.isNaN
-            || toLen.isInfinite
-        {
+            || toLen.isInfinite {
             return simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
         }
 

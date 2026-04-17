@@ -39,8 +39,7 @@ extension VRMExtensionParser {
 
                     if let mesh = bind["mesh"] as? Int,
                         let index = bind["index"] as? Int,
-                        let weight = weightValue
-                    {
+                        let weight = weightValue {
                         expression.morphTargetBinds.append(
                             VRMMorphTargetBind(
                                 node: mesh,

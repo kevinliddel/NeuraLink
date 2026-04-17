@@ -188,7 +188,7 @@ extension VRMModel {
                 return [
                     "node": bind.node,
                     "index": bind.index,
-                    "weight": bind.weight,
+                    "weight": bind.weight
                 ]
             }
         }
@@ -200,8 +200,8 @@ extension VRMModel {
                     "type": bind.type.rawValue,
                     "targetValue": [
                         bind.targetValue.x, bind.targetValue.y, bind.targetValue.z,
-                        bind.targetValue.w,
-                    ],
+                        bind.targetValue.w
+                    ]
                 ]
             }
         }
@@ -224,8 +224,8 @@ extension VRMModel {
             "type": lookAt.type.rawValue,
             "offsetFromHeadBone": [
                 lookAt.offsetFromHeadBone.x, lookAt.offsetFromHeadBone.y,
-                lookAt.offsetFromHeadBone.z,
-            ],
+                lookAt.offsetFromHeadBone.z
+            ]
         ]
     }
 
@@ -236,7 +236,7 @@ extension VRMModel {
             dict["meshAnnotations"] = firstPerson.meshAnnotations.map { annotation in
                 return [
                     "node": annotation.node,
-                    "type": annotation.type.rawValue,
+                    "type": annotation.type.rawValue
                 ]
             }
         }

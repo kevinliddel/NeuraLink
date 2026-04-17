@@ -50,7 +50,7 @@ public struct DepthBiasCalculator {
 
         // Highlights on top
         "Highlight": 0.04,
-        "EyeHighlight": 0.04,
+        "EyeHighlight": 0.04
     ]
 
     /// Default bias for unknown materials
@@ -122,8 +122,7 @@ public struct DepthBiasCalculator {
         // Hip/skirt boundary needs clear clothing identification
         if lowercased.contains("cloth") || lowercased.contains("clothing")
             || lowercased.contains("skirt") || lowercased.contains("bottoms")
-            || lowercased.contains("pants")
-        {
+            || lowercased.contains("pants") {
             return baseBiasValues["Cloth"] ?? 0.015
         }
 

@@ -214,7 +214,7 @@ private struct MinimalGLTFDocument {
             "animations": animations as Any,
             "extensions": extensions as Any,
             "extensionsUsed": extensionsUsed as Any,
-            "extensionsRequired": extensionsRequired as Any,
+            "extensionsRequired": extensionsRequired as Any
         ].compactMapValues { $0 }
 
         let jsonData = try! JSONSerialization.data(withJSONObject: dict)

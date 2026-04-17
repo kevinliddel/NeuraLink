@@ -158,8 +158,7 @@ public class VRMModel: @unchecked Sendable {
 
     /// Loads a VRM model from raw data.
     public static func load(from data: Data, filePath: String? = nil, device: MTLDevice? = nil)
-        async throws -> VRMModel
-    {
+        async throws -> VRMModel {
         try await load(from: data, filePath: filePath, device: device, context: nil)
     }
 

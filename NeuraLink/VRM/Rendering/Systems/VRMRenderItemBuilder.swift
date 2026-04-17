@@ -141,15 +141,13 @@ final class VRMRenderItemBuilder {
                 }
                 // PRIORITY 2: Name-based body material detection
                 else if materialLower.contains("body_skin")
-                    || (materialLower.contains("body") && !materialLower.contains("face"))
-                {
+                    || (materialLower.contains("body") && !materialLower.contains("face")) {
                     faceCategory = "body"
                     renderOrder = 0  // Render first
                 }
                 // PRIORITY 3: Name-based face material detection
                 else if materialLower.contains("face_skin") || materialLower.contains("facebase")
-                    || (materialLower.contains("face") && materialLower.contains("skin"))
-                {
+                    || (materialLower.contains("face") && materialLower.contains("skin")) {
                     faceCategory = "skin"
                     renderOrder = 1
                     faceSkinCount += 1
@@ -166,8 +164,7 @@ final class VRMRenderItemBuilder {
                     renderOrder = 3  // Same as eyeline, render after eyebrows
                     faceEyelineCount += 1  // Reuse counter
                 } else if materialLower.contains("highlight")
-                    || materialLower.contains("catchlight")
-                {
+                    || materialLower.contains("catchlight") {
                     faceCategory = "highlight"
                     renderOrder = 6
                     faceHighlightCount += 1
@@ -190,8 +187,7 @@ final class VRMRenderItemBuilder {
                 // PRIORITY 4: Name-based clothing detection (fallback)
                 else if materialLower.contains("cloth") || materialLower.contains("tops")
                     || materialLower.contains("bottoms") || materialLower.contains("skirt")
-                    || materialLower.contains("shorts") || materialLower.contains("pants")
-                {
+                    || materialLower.contains("shorts") || materialLower.contains("pants") {
                     faceCategory = "clothing"
                     renderOrder = 8
                 }
@@ -228,8 +224,7 @@ final class VRMRenderItemBuilder {
                         idx < model.materials.count ? model.materials[idx].alphaCutoff : nil
                     } ?? 0.5
                 if effectiveAlphaMode == "opaque"
-                    && (faceCategory == "eyebrow" || faceCategory == "eyelash")
-                {
+                    && (faceCategory == "eyebrow" || faceCategory == "eyelash") {
                     vrmLog(
                         "[FACE FIX] Forcing \(faceCategory!) material '\(materialName)' to MASK mode"
                     )

@@ -26,10 +26,10 @@ public final class ConstraintSolver: @unchecked Sendable {
                     weight: weight
                 )
 
-            case .aim(_, _, _):
+            case .aim:
                 break
 
-            case .rotation(_, _):
+            case .rotation:
                 break
             }
         }

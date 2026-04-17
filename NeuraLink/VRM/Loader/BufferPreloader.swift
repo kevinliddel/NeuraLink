@@ -80,8 +80,7 @@ public final class BufferPreloader: @unchecked Sendable {
         return preloadedData[index]
     }
 
-    private func loadBuffer(bufferURI: String?, index: Int, binaryData: Data?) async throws -> Data?
-    {
+    private func loadBuffer(bufferURI: String?, index: Int, binaryData: Data?) async throws -> Data? {
         // If we have binary data (GLB) and this is buffer 0, use it directly
         if index == 0, let binaryData = binaryData {
             return binaryData

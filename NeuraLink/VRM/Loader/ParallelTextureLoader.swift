@@ -182,8 +182,7 @@ public final class ParallelTextureLoader: @unchecked Sendable {
     }
 
     private func createTexture(from imageData: Data, textureIndex: Int, sRGB: Bool) async throws
-        -> MTLTexture?
-    {
+        -> MTLTexture? {
         guard let imageSource = CGImageSourceCreateWithData(imageData as CFData, nil),
             let cgImage = CGImageSourceCreateImageAtIndex(imageSource, 0, nil)
         else {

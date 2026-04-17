@@ -95,7 +95,7 @@ enum VRMModelRegistry {
     private static func namedEntries() -> [Entry] {
         [
             ("Sonya", "vrm"), ("Ekaterina", "vrm"),
-            ("Sonya", "glb"), ("Ekaterina", "glb"),
+            ("Sonya", "glb"), ("Ekaterina", "glb")
         ]
         .compactMap { name, ext -> Entry? in
             guard let url = Bundle.main.url(forResource: name, withExtension: ext) else {

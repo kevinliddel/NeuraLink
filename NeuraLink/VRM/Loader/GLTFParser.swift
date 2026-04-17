@@ -8,7 +8,6 @@
 import Foundation
 
 // MARK: - GLTF Document Structure
-
 public struct GLTFDocument: Codable {
     public let asset: GLTFAsset
     public let scene: Int?
@@ -28,7 +27,6 @@ public struct GLTFDocument: Codable {
     public let extensionsUsed: [String]?
     public let extensionsRequired: [String]?
 
-    // Binary buffer data (not part of JSON, used for GLB serialization)
     public var binaryBufferData: Data?
 
     enum CodingKeys: String, CodingKey {
@@ -58,9 +56,7 @@ public struct GLTFDocument: Codable {
         extensionsRequired = try container.decodeIfPresent(
             [String].self, forKey: .extensionsRequired)
 
-        // Decode extensions as generic dictionary
         if container.contains(.extensions) {
-            // Use AnyCodable to handle arbitrary extension data
             let extensionsDict = try container.decodeIfPresent(
                 [String: AnyCodable].self, forKey: .extensions)
             extensions = extensionsDict?.mapValues { $0.value }
@@ -91,19 +87,16 @@ public struct GLTFDocument: Codable {
 }
 
 // MARK: - GLTF Components
-
 public struct GLTFAsset: Codable {
     public let version: String
     public let generator: String?
     public let copyright: String?
     public let minVersion: String?
 }
-
 public struct GLTFScene: Codable {
     public let name: String?
     public let nodes: [Int]?
 }
-
 public struct GLTFNode: Codable {
     public let name: String?
     public let children: [Int]?
@@ -116,18 +109,15 @@ public struct GLTFNode: Codable {
     public let weights: [Float]?
     public let extensions: [String: AnyCodable]?
 }
-
 public struct GLTFMesh: Codable {
     public let name: String?
     public let primitives: [GLTFPrimitive]
     public let weights: [Float]?
     public let extras: GLTFMeshExtras?
 }
-
 public struct GLTFMeshExtras: Codable {
     public let targetNames: [String]?
 }
-
 public struct GLTFPrimitive: Codable {
     public let attributes: [String: Int]
     public let indices: Int?
@@ -149,7 +139,6 @@ public struct GLTFMorphTarget: Codable {
         case extra
     }
 }
-
 public struct AnyCodable: Codable {
     public let value: Any
 
@@ -178,7 +167,6 @@ public struct AnyCodable: Codable {
         } else if let arrayValue = try? container.decode([AnyCodable].self) {
             value = arrayValue.map { $0.value }
         } else {
-            // If all else fails, store as NSNull
             value = NSNull()
         }
     }
@@ -206,12 +194,10 @@ public struct AnyCodable: Codable {
             let encodableArray = arrayValue.map { AnyCodable($0) }
             try container.encode(encodableArray)
         default:
-            // For unknown types, encode as nil
             try container.encodeNil()
         }
     }
 }
-
 public struct GLTFMaterial: Codable {
     public let name: String?
     public let pbrMetallicRoughness: GLTFPBRMetallicRoughness?
@@ -245,12 +231,9 @@ public struct GLTFMaterial: Codable {
         alphaMode = try container.decodeIfPresent(String.self, forKey: .alphaMode)
         alphaCutoff = try container.decodeIfPresent(Float.self, forKey: .alphaCutoff)
         doubleSided = try container.decodeIfPresent(Bool.self, forKey: .doubleSided)
-        // Decode extensions as [String: Any] using AnyCodable wrapper
-        // This enables VRM 1.0 per-material VRMC_materials_mtoon extension parsing
         if container.contains(.extensions) {
             if let extWrapper = try? container.decode(
-                [String: AnyCodable].self, forKey: .extensions)
-            {
+                [String: AnyCodable].self, forKey: .extensions) {
                 extensions = extWrapper.mapValues { $0.value }
             } else {
                 extensions = nil
@@ -273,7 +256,6 @@ public struct GLTFMaterial: Codable {
         try container.encodeIfPresent(doubleSided, forKey: .doubleSided)
     }
 }
-
 public struct GLTFPBRMetallicRoughness: Codable {
     public let baseColorFactor: [Float]?
     public let baseColorTexture: GLTFTextureInfo?
@@ -281,50 +263,42 @@ public struct GLTFPBRMetallicRoughness: Codable {
     public let roughnessFactor: Float?
     public let metallicRoughnessTexture: GLTFTextureInfo?
 }
-
 public struct GLTFTextureInfo: Codable {
     public let index: Int
     public let texCoord: Int?
 }
-
 public struct GLTFNormalTextureInfo: Codable {
     public let index: Int
     public let texCoord: Int?
     public let scale: Float?
 }
-
 public struct GLTFOcclusionTextureInfo: Codable {
     public let index: Int
     public let texCoord: Int?
     public let strength: Float?
 }
-
 public struct GLTFTexture: Codable {
     public let sampler: Int?
     public let source: Int?
     public let name: String?
 }
-
 public struct GLTFImage: Codable {
     public let uri: String?
     public let mimeType: String?
     public let bufferView: Int?
     public let name: String?
 }
-
 public struct GLTFSampler: Codable {
     public let magFilter: Int?
     public let minFilter: Int?
     public let wrapS: Int?
     public let wrapT: Int?
 }
-
 public struct GLTFBuffer: Codable {
     public let byteLength: Int
     public let uri: String?
     public let name: String?
 }
-
 public struct GLTFBufferView: Codable {
     public let buffer: Int
     public let byteOffset: Int?
@@ -333,7 +307,6 @@ public struct GLTFBufferView: Codable {
     public let target: Int?
     public let name: String?
 }
-
 public struct GLTFAccessor: Codable {
     public let bufferView: Int?
     public let byteOffset: Int?
@@ -346,47 +319,39 @@ public struct GLTFAccessor: Codable {
     public let sparse: GLTFSparse?
     public let name: String?
 }
-
 public struct GLTFSparse: Codable {
     public let count: Int
     public let indices: GLTFSparseIndices
     public let values: GLTFSparseValues
 }
-
 public struct GLTFSparseIndices: Codable {
     public let bufferView: Int
     public let byteOffset: Int?
     public let componentType: Int
 }
-
 public struct GLTFSparseValues: Codable {
     public let bufferView: Int
     public let byteOffset: Int?
 }
-
 public struct GLTFSkin: Codable {
     public let inverseBindMatrices: Int?
     public let skeleton: Int?
     public let joints: [Int]
     public let name: String?
 }
-
 public struct GLTFAnimation: Codable {
     public let channels: [GLTFAnimationChannel]
     public let samplers: [GLTFAnimationSampler]
     public let name: String?
 }
-
 public struct GLTFAnimationChannel: Codable {
     public let sampler: Int
     public let target: GLTFAnimationTarget
 }
-
 public struct GLTFAnimationTarget: Codable {
     public let node: Int?
     public let path: String
 }
-
 public struct GLTFAnimationSampler: Codable {
     public let input: Int
     public let interpolation: String?
@@ -394,7 +359,6 @@ public struct GLTFAnimationSampler: Codable {
 }
 
 // MARK: - GLB Parser
-
 public class GLTFParser {
     public private(set) var binaryChunk: Data?
 
@@ -491,11 +455,9 @@ public class GLTFParser {
 }
 
 // MARK: - JSON+Any Extension
-
 extension JSONDecoder {
     func decode(_ type: [String: Any].Type, from data: Data, filePath: String? = nil) throws
-        -> [String: Any]
-    {
+        -> [String: Any] {
         let json = try JSONSerialization.jsonObject(with: data, options: [])
         guard let dict = json as? [String: Any] else {
             let jsonTypeName = String(describing: Swift.type(of: json))

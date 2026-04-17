@@ -138,8 +138,7 @@ public class VRMNode {
             || localMatrix[1][2].isNaN || localMatrix[1][3].isNaN || localMatrix[2][0].isNaN
             || localMatrix[2][1].isNaN || localMatrix[2][2].isNaN || localMatrix[2][3].isNaN
             || localMatrix[3][0].isNaN || localMatrix[3][1].isNaN || localMatrix[3][2].isNaN
-            || localMatrix[3][3].isNaN
-        {
+            || localMatrix[3][3].isNaN {
             // Reset localMatrix to identity to prevent crash
             localMatrix = matrix_identity_float4x4
         }

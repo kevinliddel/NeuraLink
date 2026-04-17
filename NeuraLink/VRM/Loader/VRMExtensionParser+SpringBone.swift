@@ -54,8 +54,7 @@ extension VRMExtensionParser {
                         joint.gravityPower = rawGravityPower > 0 ? rawGravityPower : 1.0
                         joint.dragForce = jointDict["dragForce"] as? Float ?? 0.4
                         if let gravityDir = jointDict["gravityDir"] as? [Float],
-                            gravityDir.count == 3
-                        {
+                            gravityDir.count == 3 {
                             joint.gravityDir = SIMD3<Float>(
                                 gravityDir[0], gravityDir[1], gravityDir[2])
                         }

@@ -42,8 +42,7 @@ public class VRMExtensionParser {
     public init() {}
 
     public func parseVRMExtension(_ extension: Any, document: GLTFDocument, filePath: String? = nil)
-        throws -> VRMModel
-    {
+        throws -> VRMModel {
         guard let vrmDict = `extension` as? [String: Any] else {
             throw VRMError.missingVRMExtension(
                 filePath: filePath,

@@ -172,7 +172,7 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
         request.httpBody = offer.sdp.data(using: .utf8)
         
         print("AI: Sending SDP offer to OpenAI...")
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+        URLSession.shared.dataTask(with: request) { [weak self] data, _, error in
             guard let self = self else { return }
             
             if let error = error {

@@ -120,8 +120,7 @@ extension VRMRenderer {
             let skinnedOutlineFragmentFunction = library.makeFunction(
                 name: "mtoon_outline_fragment")
             if let skinnedOutlineVertexFunc = skinnedOutlineVertexFunction,
-                let skinnedOutlineFragmentFunc = skinnedOutlineFragmentFunction
-            {
+                let skinnedOutlineFragmentFunc = skinnedOutlineFragmentFunction {
                 let skinnedOutlineDescriptor = MTLRenderPipelineDescriptor()
                 skinnedOutlineDescriptor.label = "mtoon_skinned_outline"
                 skinnedOutlineDescriptor.vertexFunction = skinnedOutlineVertexFunc

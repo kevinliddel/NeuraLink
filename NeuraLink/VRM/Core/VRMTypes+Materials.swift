@@ -70,8 +70,7 @@ public struct VRM0MaterialProperty {
         // Skip when same as main texture - prevents blue padding artifacts
         if let shadeTexIndex = textureProperties["_ShadeTexture"],
             let mainTexIndex = textureProperties["_MainTex"],
-            shadeTexIndex != mainTexIndex
-        {
+            shadeTexIndex != mainTexIndex {
             mtoon.shadeMultiplyTexture = shadeTexIndex
         }
 

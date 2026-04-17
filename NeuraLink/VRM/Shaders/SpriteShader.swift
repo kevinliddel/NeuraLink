@@ -237,13 +237,13 @@ public struct SpriteQuadMesh {
             Vertex(position: SIMD2<Float>(-halfWidth, -halfHeight), texCoord: SIMD2<Float>(0, 1)),  // Bottom-left
             Vertex(position: SIMD2<Float>(halfWidth, -halfHeight), texCoord: SIMD2<Float>(1, 1)),  // Bottom-right
             Vertex(position: SIMD2<Float>(halfWidth, halfHeight), texCoord: SIMD2<Float>(1, 0)),  // Top-right
-            Vertex(position: SIMD2<Float>(-halfWidth, halfHeight), texCoord: SIMD2<Float>(0, 0)),  // Top-left
+            Vertex(position: SIMD2<Float>(-halfWidth, halfHeight), texCoord: SIMD2<Float>(0, 0))  // Top-left
         ]
 
         // Indices (two triangles)
         let indices: [UInt16] = [
             0, 1, 2,  // First triangle
-            0, 2, 3,  // Second triangle
+            0, 2, 3  // Second triangle
         ]
 
         return (vertices, indices)

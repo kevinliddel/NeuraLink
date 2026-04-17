@@ -319,7 +319,7 @@ extension VRMRenderer {
         }
 
         // Add command buffer completion handler for error checking and semaphore signaling
-        commandBuffer.addCompletedHandler { [weak self] buffer in
+        commandBuffer.addCompletedHandler { [weak self] _ in
             // Signal that this frame's uniform buffer is available again
             self?.inflightSemaphore.signal()
 

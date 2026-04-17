@@ -22,15 +22,13 @@ extension SpringBoneComputeSystem {
         targetRootPositions = []
         for spring in springBone.springs {
             if let firstJoint = spring.joints.first,
-                let node = model.nodes[safe: firstJoint.node]
-            {
+                let node = model.nodes[safe: firstJoint.node] {
                 targetRootPositions.append(node.worldPosition)
             }
         }
 
         // First frame initialization
-        if previousRootPositions.isEmpty || previousRootPositions.count != targetRootPositions.count
-        {
+        if previousRootPositions.isEmpty || previousRootPositions.count != targetRootPositions.count {
             previousRootPositions = targetRootPositions
         }
 
@@ -76,8 +74,7 @@ extension SpringBoneComputeSystem {
 
         // First frame initialization
         if previousWorldBindDirections.isEmpty
-            || previousWorldBindDirections.count != targetWorldBindDirections.count
-        {
+            || previousWorldBindDirections.count != targetWorldBindDirections.count {
             previousWorldBindDirections = targetWorldBindDirections
         }
     }
@@ -147,18 +144,15 @@ extension SpringBoneComputeSystem {
 
         // First frame initialization
         if previousSphereColliders.isEmpty
-            || previousSphereColliders.count != targetSphereColliders.count
-        {
+            || previousSphereColliders.count != targetSphereColliders.count {
             previousSphereColliders = targetSphereColliders
         }
         if previousCapsuleColliders.isEmpty
-            || previousCapsuleColliders.count != targetCapsuleColliders.count
-        {
+            || previousCapsuleColliders.count != targetCapsuleColliders.count {
             previousCapsuleColliders = targetCapsuleColliders
         }
         if previousPlaneColliders.isEmpty
-            || previousPlaneColliders.count != targetPlaneColliders.count
-        {
+            || previousPlaneColliders.count != targetPlaneColliders.count {
             previousPlaneColliders = targetPlaneColliders
         }
     }
@@ -231,8 +225,7 @@ extension SpringBoneComputeSystem {
         // Interpolate sphere colliders
         if previousSphereColliders.count == targetSphereColliders.count,
             let sphereBuffer = buffers.sphereColliders,
-            !previousSphereColliders.isEmpty
-        {
+            !previousSphereColliders.isEmpty {
             let ptr = sphereBuffer.contents().bindMemory(
                 to: SphereCollider.self, capacity: previousSphereColliders.count)
             for i in 0..<previousSphereColliders.count {
@@ -249,8 +242,7 @@ extension SpringBoneComputeSystem {
         // Interpolate capsule colliders
         if previousCapsuleColliders.count == targetCapsuleColliders.count,
             let capsuleBuffer = buffers.capsuleColliders,
-            !previousCapsuleColliders.isEmpty
-        {
+            !previousCapsuleColliders.isEmpty {
             let ptr = capsuleBuffer.contents().bindMemory(
                 to: CapsuleCollider.self, capacity: previousCapsuleColliders.count)
             for i in 0..<previousCapsuleColliders.count {
@@ -268,8 +260,7 @@ extension SpringBoneComputeSystem {
         // Interpolate plane colliders
         if previousPlaneColliders.count == targetPlaneColliders.count,
             let planeBuffer = buffers.planeColliders,
-            !previousPlaneColliders.isEmpty
-        {
+            !previousPlaneColliders.isEmpty {
             let ptr = planeBuffer.contents().bindMemory(
                 to: PlaneCollider.self, capacity: previousPlaneColliders.count)
             for i in 0..<previousPlaneColliders.count {

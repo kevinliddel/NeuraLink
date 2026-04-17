@@ -27,20 +27,6 @@ struct RendererBootstrapContext {
     let device: MTLDevice
     let config: RendererConfig
     let strictValidator: StrictValidator?
-    // FIXME: VRMPipelineManager type doesn't exist yet - WIP refactoring
-    // let pipelineManager: VRMPipelineManager
-
-    init(
-        device: MTLDevice,
-        config: RendererConfig,
-        strictValidator: StrictValidator?
-            // pipelineManager: VRMPipelineManager
-    ) {
-        self.device = device
-        self.config = config
-        self.strictValidator = strictValidator
-        // self.pipelineManager = pipelineManager
-    }
 }
 
 /// Per-frame data shared across systems before encoding command buffers.
@@ -81,18 +67,4 @@ struct RenderPassContext {
     let commandBuffer: MTLCommandBuffer
     let encoder: MTLRenderCommandEncoder
     let uniformsBuffer: MTLBuffer
-    // FIXME: VRMPipelineManager type doesn't exist yet - WIP refactoring
-    // let pipelineManager: VRMPipelineManager
-
-    init(
-        commandBuffer: MTLCommandBuffer,
-        encoder: MTLRenderCommandEncoder,
-        uniformsBuffer: MTLBuffer
-            // pipelineManager: VRMPipelineManager
-    ) {
-        self.commandBuffer = commandBuffer
-        self.encoder = encoder
-        self.uniformsBuffer = uniformsBuffer
-        // self.pipelineManager = pipelineManager
-    }
 }

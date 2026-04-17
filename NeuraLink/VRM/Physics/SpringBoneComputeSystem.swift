@@ -119,8 +119,7 @@ final class SpringBoneComputeSystem: @unchecked Sendable {
         // Attempt 2: Load from main bundle if needed (fallback)
         if library == nil {
             if let url = Bundle.main.url(
-                forResource: "VRMMetalKitShaders", withExtension: "metallib")
-            {
+                forResource: "VRMMetalKitShaders", withExtension: "metallib") {
                 do {
                     library = try device.makeLibrary(URL: url)
                 } catch {

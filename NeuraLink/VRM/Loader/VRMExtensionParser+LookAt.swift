@@ -56,8 +56,7 @@ extension VRMExtensionParser {
         let lookAt = VRMLookAt()
 
         if let typeStr = dict["type"] as? String,
-            let type = VRMLookAtType(rawValue: typeStr)
-        {
+            let type = VRMLookAtType(rawValue: typeStr) {
             lookAt.type = type
         }
 

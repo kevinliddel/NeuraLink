@@ -20,7 +20,7 @@ struct RealtimeChatOverlay: View {
     // Old content floats up and fades; new content rises from slightly below
     private static let fadeUp = AnyTransition.asymmetric(
         insertion: .offset(y: 20).combined(with: .opacity),
-        removal:   .offset(y: -28).combined(with: .opacity)
+        removal: .offset(y: -28).combined(with: .opacity)
     )
 
     var body: some View {

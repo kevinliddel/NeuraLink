@@ -143,8 +143,7 @@ extension SpringBoneComputeSystem {
         if !rootBoneIndices.isEmpty,
             let animatedRootPositionsBuffer = animatedRootPositionsBuffer,
             let rootBoneIndicesBuffer = rootBoneIndicesBuffer,
-            let numRootBonesBuffer = numRootBonesBuffer
-        {
+            let numRootBonesBuffer = numRootBonesBuffer {
             computeEncoder.setComputePipelineState(kinematicPipeline)
             computeEncoder.setBuffer(animatedRootPositionsBuffer, offset: 0, index: 8)
             computeEncoder.setBuffer(rootBoneIndicesBuffer, offset: 0, index: 9)
@@ -222,8 +221,7 @@ extension SpringBoneComputeSystem {
         var animatedPositions: [SIMD3<Float>] = []
         for spring in springBone.springs {
             if let firstJoint = spring.joints.first,
-                let node = model.nodes[safe: firstJoint.node]
-            {
+                let node = model.nodes[safe: firstJoint.node] {
                 animatedPositions.append(node.worldPosition)
             }
         }
@@ -263,8 +261,7 @@ extension SpringBoneComputeSystem {
         // Step 5: Final reset to zero velocity at settled positions
         // Read back the settled positions and use them as the new "rest" state
         if let bonePosCurr = buffers.bonePosCurr,
-            let bonePosPrev = buffers.bonePosPrev
-        {
+            let bonePosPrev = buffers.bonePosPrev {
             let currPtr = bonePosCurr.contents().bindMemory(
                 to: SIMD3<Float>.self, capacity: buffers.numBones)
             let prevPtr = bonePosPrev.contents().bindMemory(

@@ -48,8 +48,7 @@ extension VRMExtensionParser {
 
             // Parse roll constraint
             if let rollDict = constraintDict["roll"] as? [String: Any],
-                let sourceNode = rollDict["source"] as? Int
-            {
+                let sourceNode = rollDict["source"] as? Int {
                 let rollAxis = parseRollAxis(rollDict["rollAxis"] as? String)
                 let weight = parseFloatValue(rollDict["weight"]) ?? 0.5
 
@@ -62,8 +61,7 @@ extension VRMExtensionParser {
 
             // Parse aim constraint
             if let aimDict = constraintDict["aim"] as? [String: Any],
-                let sourceNode = aimDict["source"] as? Int
-            {
+                let sourceNode = aimDict["source"] as? Int {
                 let aimAxis = parseAimAxis(aimDict["aimAxis"] as? String)
                 let weight = parseFloatValue(aimDict["weight"]) ?? 1.0
 
@@ -76,8 +74,7 @@ extension VRMExtensionParser {
 
             // Parse rotation constraint
             if let rotationDict = constraintDict["rotation"] as? [String: Any],
-                let sourceNode = rotationDict["source"] as? Int
-            {
+                let sourceNode = rotationDict["source"] as? Int {
                 let weight = parseFloatValue(rotationDict["weight"]) ?? 1.0
 
                 let constraint = VRMNodeConstraint(
@@ -133,13 +130,12 @@ extension VRMExtensionParser {
             (.rightUpperLeg, .rightUpperLegTwist, SIMD3<Float>(0, 1, 0)),
             // Lower leg twist bones
             (.leftLowerLeg, .leftLowerLegTwist, SIMD3<Float>(0, 1, 0)),
-            (.rightLowerLeg, .rightLowerLegTwist, SIMD3<Float>(0, 1, 0)),
+            (.rightLowerLeg, .rightLowerLegTwist, SIMD3<Float>(0, 1, 0))
         ]
 
         for (parentBone, twistBone, axis) in twistPairs {
             if let parentNode = humanoid.getBoneNode(parentBone),
-                let twistNode = humanoid.getBoneNode(twistBone)
-            {
+                let twistNode = humanoid.getBoneNode(twistBone) {
                 let constraint = VRMNodeConstraint(
                     targetNode: twistNode,
                     constraint: .roll(sourceNode: parentNode, axis: axis, weight: 0.5)

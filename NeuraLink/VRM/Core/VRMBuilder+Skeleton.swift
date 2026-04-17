@@ -82,7 +82,7 @@ public struct SkeletonDefinition {
             // 18: rightLowerArm
             BoneData(bone: .rightLowerArm, translation: [-0.25, 0, 0], children: [19]),
             // 19: rightHand
-            BoneData(bone: .rightHand, translation: [-0.25, 0, 0], children: nil),
+            BoneData(bone: .rightHand, translation: [-0.25, 0, 0], children: nil)
         ]
 
         return SkeletonDefinition(bones: bones)
