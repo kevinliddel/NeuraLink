@@ -46,15 +46,24 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
         rtcSession.lockForConfiguration()
         do {
             try rtcSession.setCategory(.playAndRecord, with: [.allowBluetooth, .defaultToSpeaker])
-            try rtcSession.setMode(.voiceChat)
+            try rtcSession.setMode(.videoChat)
             try rtcSession.setActive(true)
-            print("AI: RTCAudioSession configured and activated")
+            rtcSession.isAudioEnabled = true
+            print("AI: RTCAudioSession configured for speaker output")
         } catch {
             print("AI: Failed to configure RTCAudioSession: \(error)")
         }
         rtcSession.unlockForConfiguration()
     }
     
+    private func forceAudioToSpeaker() {
+        do {
+            try AVAudioSession.sharedInstance().overrideOutputAudioPort(.speaker)
+        } catch {
+            print("AI: Failed to override output port: \(error)")
+        }
+    }
+
     /// Starts the Realtime session
     func connect() {
         guard settings.hasValidKey else {
@@ -63,6 +72,7 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
         }
         
         state.status = .connecting
+        setupAudioSession()
         print("AI: Connecting to OpenAI Realtime...")
         setupPeerConnection()
         createAndSendOffer()
@@ -189,6 +199,7 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
                     } else {
                         print("AI: Connection established and ready")
                         self.state.status = .ready
+                        self.forceAudioToSpeaker()
                         self.startStatsPolling()
                     }
                 }
@@ -207,6 +218,9 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
                         if stats.type == "inbound-rtp",
                            let audioLevelValue = stats.values["audioLevel"] {
                             let level = (audioLevelValue as? NSNumber)?.floatValue ?? 0.0
+                            if level > 0.01 {
+                                print("AI: Incoming audio level detected: \(level)")
+                            }
                             Task { @MainActor in
                                 RealtimeChatState.shared.audioLevel = level
                             }
@@ -305,7 +319,17 @@ extension OpenAIRealtimeManager: RTCPeerConnectionDelegate {
     }
     
     func peerConnection(_ peerConnection: RTCPeerConnection, didStartReceiver receiver: RTCRtpReceiver, streams: [RTCMediaStream]) {
-        print("AI: Started receiver for \(receiver.track?.kind ?? "unknown") track")
+        let kind = receiver.track?.kind ?? "unknown"
+        print("AI: Started receiver for \(kind) track")
+        if let audioTrack = receiver.track as? RTCAudioTrack {
+            audioTrack.isEnabled = true
+            print("AI: Remote audio track enabled: \(audioTrack.trackId)")
+            let rtcSession = RTCAudioSession.sharedInstance()
+            rtcSession.lockForConfiguration()
+            try? rtcSession.setActive(true)
+            rtcSession.isAudioEnabled = true
+            rtcSession.unlockForConfiguration()
+        }
     }
 }
 
