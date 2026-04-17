@@ -8,111 +8,119 @@
 import SwiftUI
 
 struct RealtimeChatOverlay: View {
-    let aiState = RealtimeChatState.shared
-    let aiManager = OpenAIRealtimeManager.shared
-    
+    private let aiState = RealtimeChatState.shared
+
+    private enum Phase: Equatable {
+        case idle, aiResponding
+    }
+
+    @State private var phase: Phase = .idle
+    @State private var dismissTask: Task<Void, Never>?
+
+    // Old content floats up and fades; new content rises from slightly below
+    private static let fadeUp = AnyTransition.asymmetric(
+        insertion: .offset(y: 20).combined(with: .opacity),
+        removal:   .offset(y: -28).combined(with: .opacity)
+    )
+
     var body: some View {
         VStack {
             Spacer()
-            
-            // Transcription area
-            if !aiState.aiTranscript.isEmpty || !aiState.userTranscript.isEmpty {
-                VStack(alignment: .leading, spacing: 10) {
-                    if !aiState.userTranscript.isEmpty {
-                        Text("You: ")
-                            .font(.caption.bold())
-                            .foregroundStyle(.blue)
-                        + Text(aiState.userTranscript)
-                            .font(.body)
-                    }
-                    
-                    if !aiState.aiTranscript.isEmpty {
-                        Text("AI: ")
-                            .font(.caption.bold())
-                            .foregroundStyle(.purple)
-                        + Text(aiState.aiTranscript)
-                            .font(.body)
-                    }
-                }
-                .padding()
-                .background(.ultraThinMaterial)
-                .clipShape(RoundedRectangle(cornerRadius: 16))
-                .padding(.horizontal)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-            
-            // Mic and Status Controls
-            HStack(spacing: 20) {
-                // Connection/Status Indicator
-                VStack(alignment: .leading) {
-                    Text(aiState.status.label)
-                        .font(.caption2.bold())
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(statusColor.opacity(0.2))
-                        .foregroundStyle(statusColor)
-                        .clipShape(Capsule())
-                }
-                
-                Spacer()
-                
-                // Main Interaction Button
-                Button {
-                    if aiState.status == .disconnected {
-                        aiManager.connect()
-                    } else {
-                        aiManager.disconnect()
-                    }
-                } label: {
-                    ZStack {
-                        Circle()
-                            .fill(statusColor)
-                            .frame(width: 60, height: 60)
-                            .shadow(color: statusColor.opacity(0.3), radius: 10)
-                        
-                        Image(systemName: aiState.status == .disconnected ? "mic.fill" : "stop.fill")
-                            .font(.title2)
-                            .foregroundStyle(.white)
-                        
-                        // Pulse animation for audio
-                        if aiState.status == .speaking || aiState.status == .listening {
-                            Circle()
-                                .stroke(statusColor, lineWidth: 2)
-                                .scaleEffect(1.0 + CGFloat(aiState.audioLevel * 1.5))
-                                .opacity(Double(1.0 - aiState.audioLevel))
-                        }
-                    }
-                }
-                .animation(.spring(), value: aiState.audioLevel)
-                
-                Spacer()
-                
-                // Clear History Button
-                Button {
-                    aiState.reset()
-                } label: {
-                    Image(systemName: "trash")
-                        .font(.title3)
-                        .foregroundStyle(.secondary)
+            ZStack(alignment: .bottom) {
+                if phase == .idle {
+                    idleHint.transition(Self.fadeUp)
+                } else if phase == .aiResponding {
+                    aiText.transition(Self.fadeUp)
                 }
             }
-            .padding(24)
-            .background(.ultraThinMaterial)
-            .clipShape(UnevenRoundedRectangle(topLeadingRadius: 32, topTrailingRadius: 32))
+            .padding(.horizontal, 28)
+            .padding(.bottom, 60)
         }
         .ignoresSafeArea(edges: .bottom)
-        .animation(.default, value: aiState.status.label)
+        .animation(.easeInOut(duration: 0.45), value: phase)
+        .onChange(of: aiState.status) { updatePhase() }
     }
-    
-    private var statusColor: Color {
-        switch aiState.status {
-        case .disconnected: return .gray
-        case .connecting: return .yellow
-        case .ready: return .green
-        case .listening: return .blue
-        case .thinking: return .orange
-        case .speaking: return .purple
-        case .error: return .red
+
+    // MARK: - Phase Views
+
+    @ViewBuilder
+    private var idleHint: some View {
+        if case .error = aiState.status {
+            hint("Connection error", icon: "exclamationmark.circle")
+        } else if aiState.status == .connecting {
+            hint("Connecting…", progress: true)
+        } else if !OpenAISettings.shared.hasValidKey {
+            hint("Tap to configure API key", icon: "key.fill")
+                .onTapGesture { aiState.showSettings = true }
+        } else {
+            hint("Start talking", icon: "waveform")
         }
+    }
+
+    private var aiText: some View {
+        Text(aiState.aiTranscript.isEmpty ? "…" : aiState.aiTranscript)
+            .font(.subheadline.weight(.medium))
+            .foregroundStyle(.white.opacity(0.88))
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 9)
+            .background(.black.opacity(0.32), in: RoundedRectangle(cornerRadius: 20))
+            .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(.white.opacity(0.18), lineWidth: 1))
+    }
+
+    // MARK: - Reusable Atoms
+
+    private func hint(_ text: String, icon: String? = nil, progress: Bool = false) -> some View {
+        HStack(spacing: 6) {
+            if progress {
+                ProgressView().tint(.white).scaleEffect(0.65)
+            } else if let icon {
+                Image(systemName: icon).font(.caption.weight(.semibold))
+            }
+            Text(text).font(.subheadline.weight(.medium))
+        }
+        .foregroundStyle(.white.opacity(0.88))
+        .padding(.horizontal, 18)
+        .padding(.vertical, 9)
+        .background(.black.opacity(0.32), in: Capsule())
+        .overlay(Capsule().strokeBorder(.white.opacity(0.18), lineWidth: 1))
+    }
+
+    // MARK: - Phase Transitions
+
+    private func updatePhase() {
+        switch aiState.status {
+        case .listening, .thinking:
+            break
+        case .speaking:
+            transition(to: .aiResponding)
+        case .ready:
+            scheduleDismissToIdle()
+        case .connecting, .disconnected, .error:
+            transition(to: .idle)
+        }
+    }
+
+    private func transition(to newPhase: Phase) {
+        cancelDismiss()
+        guard newPhase != phase else { return }
+        withAnimation(.easeInOut(duration: 0.45)) { phase = newPhase }
+    }
+
+    // Keep AI text visible while the WebRTC buffer drains, then return to idle
+    private func scheduleDismissToIdle() {
+        cancelDismiss()
+        dismissTask = Task {
+            try? await Task.sleep(nanoseconds: 3_500_000_000)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                withAnimation(.easeInOut(duration: 0.45)) { phase = .idle }
+            }
+        }
+    }
+
+    private func cancelDismiss() {
+        dismissTask?.cancel()
+        dismissTask = nil
     }
 }

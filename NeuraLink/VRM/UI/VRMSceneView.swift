@@ -111,13 +111,20 @@ public struct VRMSceneView: View {
         guard state.isMetalAvailable, let url = modelURL else { return }
         state.clear()
         do {
-            guard let device = state.mtkView.device else {
-                return
-            }
+            guard let device = state.mtkView.device else { return }
             let model = try await VRMModel.load(from: url, device: device)
             state.display(model)
+            autoConnectAI()
         } catch {
             state.errorMessage = error.localizedDescription
         }
+    }
+
+    private func autoConnectAI() {
+        let ai = OpenAIRealtimeManager.shared
+        let chatState = RealtimeChatState.shared
+        guard OpenAISettings.shared.hasValidKey,
+              chatState.status == .disconnected else { return }
+        ai.connect()
     }
 }

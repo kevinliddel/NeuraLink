@@ -12,22 +12,16 @@ struct ContentView: View {
 
     @State private var selectedModelURL: URL? = VRMModelRegistry.defaultModel?.url
     @State private var aiState = RealtimeChatState.shared
-    @State private var settings = OpenAISettings.shared
 
     var body: some View {
         NavigationStack {
             ZStack {
                 VRMSceneView(modelURL: selectedModelURL)
-                
-                if aiState.isOverlayVisible {
-                    RealtimeChatOverlay()
-                        .transition(.move(edge: .bottom))
-                }
+                RealtimeChatOverlay()
             }
             .navigationTitle("NeuraLink")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                aiToggle
                 settingsButton
                 modelPickerMenu
             }
@@ -39,21 +33,6 @@ struct ContentView: View {
     }
 
     // MARK: - Toolbar
-
-    @ToolbarContentBuilder
-    private var aiToggle: some ToolbarContent {
-        ToolbarItem(placement: .topBarLeading) {
-            Button {
-                withAnimation(.spring()) {
-                    aiState.isOverlayVisible.toggle()
-                }
-            } label: {
-                Image(systemName: "sparkles")
-                    .foregroundStyle(aiState.isOverlayVisible ? .purple : .primary)
-            }
-            .disabled(!settings.hasValidKey)
-        }
-    }
 
     @ToolbarContentBuilder
     private var settingsButton: some ToolbarContent {

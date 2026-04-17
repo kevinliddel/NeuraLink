@@ -42,14 +42,12 @@ final class RealtimeChatState {
     var audioLevel: Float = 0.0 // 0.0 to 1.0
     
     // UI Controls
-    var isOverlayVisible: Bool = false
     var showSettings: Bool = false
-    
-    func reset() {
+
+    func clearTranscripts() {
         userTranscript = ""
         aiTranscript = ""
         audioLevel = 0.0
-        status = .disconnected
     }
     
     func setError(_ message: String) {

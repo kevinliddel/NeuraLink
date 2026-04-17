@@ -258,6 +258,7 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
                     state.userTranscript = transcript
                 }
             case "response.output_item.added":
+                state.aiTranscript = ""
                 state.status = .speaking
             case "response.done":
                 state.status = .ready
