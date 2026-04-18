@@ -18,16 +18,16 @@ struct SkyUniformsData {
     /// Sun direction xyz (world-space, pointing toward sun) + intensity w.
     var sunDirectionAndIntensity: SIMD4<Float> // 16 bytes, offset  64
 
-    /// Sun disc colour rgb + angular disc half-size w (cosine of angle).
+    /// Sun disc colour rgb + disc exponent w (higher = tighter disc).
     var sunColorAndSize: SIMD4<Float>          // 16 bytes, offset  80
 
-    /// Cloud tint rgb + coverage fraction w [0, 1].
-    var cloudColorAndCoverage: SIMD4<Float>    // 16 bytes, offset  96
+    /// Sky gradient bottom colour rgb, w unused.
+    var skyColorLow: SIMD4<Float>              // 16 bytes, offset  96
 
-    /// Cloud animation: x=elapsed time, y=scroll speed, z=noise density, w=star visibility.
-    var cloudParams: SIMD4<Float>              // 16 bytes, offset 112
+    /// Sky gradient top colour rgb, w unused.
+    var skyColorHigh: SIMD4<Float>             // 16 bytes, offset 112
 
-    /// Atmospheric turbidity x [2–10], yzw unused.
-    var turbidityAndFlags: SIMD4<Float>        // 16 bytes, offset 128
+    /// Cloud animation: x=elapsed time, y=scroll speed, z=coverage [0,1], w=star visibility.
+    var cloudParams: SIMD4<Float>              // 16 bytes, offset 128
     // Total: 144 bytes
 }

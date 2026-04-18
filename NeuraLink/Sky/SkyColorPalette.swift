@@ -27,6 +27,12 @@ struct SkyEnvironment {
     /// Normalised star field brightness [0,1]: 0 = day, 1 = full night sky.
     let starVisibility: Float
 
+    /// Sky gradient bottom colour (horizon level).
+    let skyColorLow: SIMD3<Float>
+
+    /// Sky gradient top colour (zenith level).
+    let skyColorHigh: SIMD3<Float>
+
     // MARK: - VRM Lighting
 
     /// Direction from scene toward the key light source — set `setLight(0, direction: -keyLightDirection)`.
@@ -96,6 +102,22 @@ extension SkyEnvironment {
         let rimColor    = SIMD3<Float>(0.85, 0.90, 1.00)
         let rimIntensity: Float = 0.12 + dayFactor * 0.12
 
+        // Sky gradient colours — simple palette keyed on sun elevation.
+        let tDawn = skySmooth(-0.12, -0.02, sunDir.y)   // 0=deep night → 1=just below horizon
+        let tDay  = skySmooth(-0.02, 0.20, sunDir.y)   // 0=near horizon → 1=full daytime
+
+        let nightLow    = SIMD3<Float>(0.051, 0.075, 0.129)  // 0x0d1321 dark sky
+        let nightHigh   = SIMD3<Float>(0.110, 0.137, 0.192)  // 0x1c2331 night sky
+        let horizonLow  = SIMD3<Float>(1.000, 0.784, 0.196)  // warm golden yellow at sunrise
+        let horizonHigh = SIMD3<Float>(0.600, 0.400, 0.647)  // soft rose / purple
+        let dayLow      = SIMD3<Float>(0.529, 0.808, 0.922)  // 0x87ceeb sky blue
+        let dayHigh     = SIMD3<Float>(0.149, 0.302, 0.600)  // deep blue zenith
+
+        var gradLow  = skyLerp(nightLow, horizonLow, tDawn)
+        gradLow  = skyLerp(gradLow, dayLow, tDay)
+        var gradHigh = skyLerp(nightHigh, horizonHigh, tDawn)
+        gradHigh = skyLerp(gradHigh, dayHigh, tDay)
+
         // Scene ambient — never drops below a moonlit floor so the model stays readable.
         let nightAmbient = SIMD3<Float>(0.13, 0.13, 0.20)
         let dawnAmbient  = SIMD3<Float>(0.10, 0.08, 0.11)
@@ -105,10 +127,12 @@ extension SkyEnvironment {
 
         return SkyEnvironment(
             sunDirection: sunDir,
-            cloudCoverage: 0.20 + sunsetFactor * 0.28,
+            cloudCoverage: 0.50 + sunsetFactor * 0.10,
             cloudSpeed: 0.008 + dayFactor * 0.018,
             turbidity: 2.0 + sunsetFactor * 5.0,
             starVisibility: min(1.0, max(0.0, -sunDir.y * 2.8)),
+            skyColorLow: gradLow,
+            skyColorHigh: gradHigh,
             keyLightDirection: sunDir,
             keyLightColor: keyColor,
             keyLightIntensity: keyIntensity,

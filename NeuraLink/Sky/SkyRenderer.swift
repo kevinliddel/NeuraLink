@@ -61,29 +61,20 @@ final class SkyRenderer {
         let env = currentEnvironment
         let sd  = env.sunDirection
 
-        // Cloud colour is a brightened version of the ambient sky colour.
-        let cloudTint = env.ambientColor * 3.5 + SIMD3<Float>(0.5, 0.5, 0.5)
-        let cloudTintClamped = SIMD3<Float>(
-            min(1.0, cloudTint.x),
-            min(1.0, cloudTint.y),
-            min(1.0, cloudTint.z)
-        )
-
         var data = SkyUniformsData(
             invViewProjection: invViewProjection,
             sunDirectionAndIntensity: SIMD4<Float>(sd.x, sd.y, sd.z, env.keyLightIntensity),
             sunColorAndSize: SIMD4<Float>(
                 env.keyLightColor.x, env.keyLightColor.y, env.keyLightColor.z,
-                0.9975            // cos(4°) — sun angular diameter
+                300.0  // disc exponent — tight sun disc
             ),
-            cloudColorAndCoverage: SIMD4<Float>(
-                cloudTintClamped.x, cloudTintClamped.y, cloudTintClamped.z,
-                env.cloudCoverage
+            skyColorLow: SIMD4<Float>(
+                env.skyColorLow.x, env.skyColorLow.y, env.skyColorLow.z, 0
             ),
-            cloudParams: SIMD4<Float>(
-                cloudTime, env.cloudSpeed, 2.2, env.starVisibility
+            skyColorHigh: SIMD4<Float>(
+                env.skyColorHigh.x, env.skyColorHigh.y, env.skyColorHigh.z, 0
             ),
-            turbidityAndFlags: SIMD4<Float>(env.turbidity, 0, 0, 0)
+            cloudParams: SIMD4<Float>(cloudTime, env.cloudSpeed, env.cloudCoverage, env.starVisibility)
         )
         uniformBuffer?.contents().copyMemory(
             from: &data, byteCount: MemoryLayout<SkyUniformsData>.stride)
