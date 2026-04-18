@@ -204,6 +204,9 @@ final class VRMMetalState {
         renderer?.updateSky(deltaTime: dt)
         renderer?.applySkyLighting()
 
+        // Sync terrain with current sky environment + elapsed time
+        renderer?.updateTerrain(deltaTime: dt)
+
         // Update look-at tracking (eyes, head, neck)
         if let lookAt = renderer?.lookAtController {
             lookAt.cameraPosition = lastCameraPosition

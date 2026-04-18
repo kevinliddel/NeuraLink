@@ -74,6 +74,9 @@ extension VRMRenderer {
         // Run compute pass for morphs BEFORE render encoder
         let morphedBuffers = applyMorphTargetsCompute(commandBuffer: commandBuffer)
 
+        // Shadow map depth pass — must happen before the main render encoder opens
+        drawShadowPass(commandBuffer: commandBuffer)
+
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor)
         else {
             if config.strict != .off {
@@ -85,8 +88,11 @@ extension VRMRenderer {
             return
         }
 
-        // Draw sky background first so it renders behind the VRM model
+        // 1. Sky (depth test = always, no depth write — always behind everything)
         drawSky(encoder: encoder)
+
+        // 2. Snow terrain (depth write = true — VRM renders on top)
+        drawTerrain(encoder: encoder)
 
         // Update LookAt controller
         if let lookAtController = lookAtController, lookAtController.enabled {

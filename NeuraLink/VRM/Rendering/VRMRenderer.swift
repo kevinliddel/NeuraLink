@@ -151,6 +151,9 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
     // Sky background renderer
     var skyRenderer: SkyRenderer?
 
+    // Snow terrain + shadow map renderer
+    var terrainRenderer: TerrainRenderer?
+
     // Sprite rendering pipeline
     var spritePipelineState: MTLRenderPipelineState?
     var spriteVertexBuffer: MTLBuffer?
@@ -319,6 +322,7 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
         setupCachedStates()
         setupTripleBuffering()
         setupSkyRenderer()
+        setupTerrain()
     }
 
     /// Loads a VRM model into the renderer and initializes all subsystems.
@@ -337,16 +341,21 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
         if let expressions = model.expressions {
             // VRM 1.x morphTargetBind.node is a glTF NODE index; the renderer
             // keys weights by MESH index. Build the map once and remap before registering.
-            let nodeToMesh: [Int: Int] = model.specVersion == .v0_0
+            let nodeToMesh: [Int: Int] =
+                model.specVersion == .v0_0
                 ? [:]
                 : buildNodeToMeshMap(from: model.gltf)
 
             for (preset, expression) in expressions.preset {
-                let expr = nodeToMesh.isEmpty ? expression : remapExpressionNodes(expression, map: nodeToMesh)
+                let expr =
+                    nodeToMesh.isEmpty
+                    ? expression : remapExpressionNodes(expression, map: nodeToMesh)
                 expressionController?.registerExpression(expr, for: preset)
             }
             for (name, expression) in expressions.custom {
-                let expr = nodeToMesh.isEmpty ? expression : remapExpressionNodes(expression, map: nodeToMesh)
+                let expr =
+                    nodeToMesh.isEmpty
+                    ? expression : remapExpressionNodes(expression, map: nodeToMesh)
                 expressionController?.registerCustomExpression(expr, name: name)
             }
         }
@@ -406,7 +415,8 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
 
         // Initialize LookAt controller if model has lookAt data or eye bones
         if model.lookAt != nil || model.humanoid?.humanBones[.leftEye] != nil
-            || model.humanoid?.humanBones[.rightEye] != nil {
+            || model.humanoid?.humanBones[.rightEye] != nil
+        {
             lookAtController?.setup(model: model, expressionController: expressionController)
             // Default to DISABLED to avoid misaligned eyes; can be enabled explicitly by apps
             lookAtController?.enabled = false
@@ -425,7 +435,8 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
         return map
     }
 
-    private func remapExpressionNodes(_ expression: VRMExpression, map: [Int: Int]) -> VRMExpression {
+    private func remapExpressionNodes(_ expression: VRMExpression, map: [Int: Int]) -> VRMExpression
+    {
         var resolved = expression
         resolved.morphTargetBinds = expression.morphTargetBinds.compactMap { bind in
             guard let meshIndex = map[bind.node] else { return nil }
