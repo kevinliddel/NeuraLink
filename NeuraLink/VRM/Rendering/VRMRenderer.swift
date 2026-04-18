@@ -415,8 +415,7 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
 
         // Initialize LookAt controller if model has lookAt data or eye bones
         if model.lookAt != nil || model.humanoid?.humanBones[.leftEye] != nil
-            || model.humanoid?.humanBones[.rightEye] != nil
-        {
+            || model.humanoid?.humanBones[.rightEye] != nil {
             lookAtController?.setup(model: model, expressionController: expressionController)
             // Default to DISABLED to avoid misaligned eyes; can be enabled explicitly by apps
             lookAtController?.enabled = false
@@ -435,8 +434,7 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
         return map
     }
 
-    private func remapExpressionNodes(_ expression: VRMExpression, map: [Int: Int]) -> VRMExpression
-    {
+    private func remapExpressionNodes(_ expression: VRMExpression, map: [Int: Int]) -> VRMExpression {
         var resolved = expression
         resolved.morphTargetBinds = expression.morphTargetBinds.compactMap { bind in
             guard let meshIndex = map[bind.node] else { return nil }

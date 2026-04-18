@@ -218,8 +218,7 @@ final class TerrainRenderer: @unchecked Sendable {
 
         if let skinIdx = node.skin,
             skinIdx < model.skins.count,
-            let jointBuf = skinningSystem?.getJointMatricesBuffer()
-        {
+            let jointBuf = skinningSystem?.getJointMatricesBuffer() {
             let skin = model.skins[skinIdx]
             let offset = skinningSystem?.getBufferOffset(for: skin) ?? 0
             encoder.setVertexBuffer(jointBuf, offset: offset, index: 4)
