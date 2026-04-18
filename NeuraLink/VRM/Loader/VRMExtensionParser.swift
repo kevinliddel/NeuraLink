@@ -122,7 +122,7 @@ public class VRMExtensionParser {
         }
         // VRM 0.0 uses secondaryAnimation in the main VRM extension
         else if let secondaryAnimation = vrmDict["secondaryAnimation"] as? [String: Any] {
-            model.springBone = parseSecondaryAnimation(secondaryAnimation)
+            model.springBone = parseSecondaryAnimation(secondaryAnimation, document: document)
         }
 
         // Parse VRM 0.x materialProperties (MToon data at document level)

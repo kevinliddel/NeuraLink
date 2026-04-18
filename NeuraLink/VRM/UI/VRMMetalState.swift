@@ -88,6 +88,9 @@ final class VRMMetalState {
         currentModel = model
         renderer?.loadModel(model)
 
+        // Enable spring bone physics (hair only — chest/breast filtered in writeBonesToNodes)
+        renderer?.enableSpringBone = model.springBone != nil
+
         // Enable gaze tracking
         renderer?.lookAtController?.enabled = true
         renderer?.lookAtController?.target = .camera

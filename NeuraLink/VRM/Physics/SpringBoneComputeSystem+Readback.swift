@@ -10,7 +10,7 @@ import Metal
 import simd
 
 extension SpringBoneComputeSystem {
-    /// Read back GPU-computed bone positions and update VRMNode transforms
+    /// Read back GPU-computed bone positions and update VRMNode transforms for all chains.
     func writeBonesToNodes(model: VRMModel) {
         guard let springBone = model.springBone,
             let buffers = model.springBoneBuffers
@@ -33,10 +33,19 @@ extension SpringBoneComputeSystem {
             return
         }
 
+        // Chest/breast chains get physics (gravity + sway) but with a swing angle cap
+        // to prevent extreme mesh deformation. Hair chains get unclamped physics.
+        // NOTE: We check only the DIRECT parent, NOT all ancestors — upperChest is an ancestor
+        // of every node above the hips, so an ancestor walk would incorrectly catch hair chains.
+        let chestAnchorNodes = resolveChestAnchorNodes(model: model)
+
         // Map bone index to spring/joint for node updates
         var globalBoneIndex = 0
         for spring in springBone.springs {
             guard globalBoneIndex < positions.count else { break }
+
+            let isBreast = isBreastChain(
+                spring: spring, model: model, chestAnchorNodes: chestAnchorNodes)
 
             // Build array of (node, position, globalIndex) tuples for this chain
             var nodePositions: [(VRMNode, SIMD3<Float>, Int)] = []
@@ -49,11 +58,41 @@ extension SpringBoneComputeSystem {
                 globalBoneIndex += 1
             }
 
-            // Update node transforms based on GPU-computed positions
             if nodePositions.count >= 2 {
-                updateNodeTransformsForChain(nodePositions: nodePositions)
+                // Breast chains: cap swing at 25° so mesh never deforms past skin surface
+                let maxSwing: Float? = isBreast ? (Float.pi * 25.0 / 180.0) : nil
+                updateNodeTransformsForChain(nodePositions: nodePositions, maxSwingAngle: maxSwing)
             }
         }
+    }
+
+    /// Returns VRMNode objects for chest and upperChest humanoid bones (whichever are mapped).
+    private func resolveChestAnchorNodes(model: VRMModel) -> [VRMNode] {
+        let anchors: [VRMHumanoidBone] = [.chest, .upperChest]
+        return anchors.compactMap { bone -> VRMNode? in
+            guard let nodeIndex = model.humanoid?.humanBones[bone]?.node else { return nil }
+            return model.nodes[safe: nodeIndex]
+        }
+    }
+
+    /// Returns true when the spring root's DIRECT parent is chest/upperChest,
+    /// or when the root node name contains common breast-bone keywords.
+    private func isBreastChain(
+        spring: VRMSpring, model: VRMModel, chestAnchorNodes: [VRMNode]
+    ) -> Bool {
+        guard let firstJoint = spring.joints.first,
+            let rootNode = model.nodes[safe: firstJoint.node]
+        else { return false }
+
+        // Direct-parent check only — ancestor walk is intentionally avoided.
+        if let parent = rootNode.parent,
+            chestAnchorNodes.contains(where: { $0 === parent }) {
+            return true
+        }
+
+        // Name-based fallback for models that don't map chest in humanoid
+        let name = (rootNode.name ?? "").lowercased()
+        return ["bust", "breast", "boob", "boin", "mune"].contains { name.contains($0) }
     }
 
     func captureCompletedPositions(from buffers: SpringBoneBuffers, frameID: UInt64) {
@@ -93,7 +132,10 @@ extension SpringBoneComputeSystem {
         snapshotLock.unlock()
     }
 
-    private func updateNodeTransformsForChain(nodePositions: [(VRMNode, SIMD3<Float>, Int)]) {
+    private func updateNodeTransformsForChain(
+        nodePositions: [(VRMNode, SIMD3<Float>, Int)],
+        maxSwingAngle: Float? = nil
+    ) {
         // Update bone rotations to point toward physics-simulated positions
         for i in 0..<nodePositions.count - 1 {
             let (currentNode, currentPos, globalIndex) = nodePositions[i]
@@ -214,6 +256,16 @@ extension SpringBoneComputeSystem {
                 currentNode.updateLocalMatrix()
                 currentNode.updateWorldTransform()
                 continue
+            }
+
+            // Clamp swing magnitude for breast chains — prevents mesh deformation artifact
+            if let maxAngle = maxSwingAngle, maxAngle > 0 {
+                let delta = simd_mul(simd_conjugate(currentNode.initialRotation), newRotation)
+                let halfAngle = acos(min(abs(delta.real), 1.0))
+                if halfAngle > maxAngle * 0.5 {
+                    let t = (maxAngle * 0.5) / halfAngle
+                    newRotation = simd_slerp(currentNode.initialRotation, newRotation, t)
+                }
             }
 
             currentNode.localRotation = newRotation

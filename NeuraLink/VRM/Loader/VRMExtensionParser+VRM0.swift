@@ -10,107 +10,21 @@ import simd
 
 extension VRMExtensionParser {
 
-    // MARK: - VRM 0.0 Secondary Animation Support
+    // MARK: - VRM 0.x Secondary Animation
 
-    func parseSecondaryAnimation(_ dict: [String: Any]) -> VRMSpringBone {
+    func parseSecondaryAnimation(
+        _ dict: [String: Any], document: GLTFDocument
+    ) -> VRMSpringBone {
         var springBone = VRMSpringBone()
-        springBone.specVersion = "0.0"  // Mark as VRM 0.0 format
+        springBone.specVersion = "0.0"
 
-        // VRM 0.0 uses boneGroups for spring chains
-        if let boneGroups = dict["boneGroups"] as? [[String: Any]] {
-            for groupDict in boneGroups {
-                var spring = VRMSpring(name: groupDict["comment"] as? String)
-
-                // Center bone
-                if let center = groupDict["center"] as? Int {
-                    spring.center = center
-                }
-
-                // Bones array becomes joints
-                if let bones = groupDict["bones"] as? [Int] {
-                    for boneIndex in bones {
-                        var joint = VRMSpringJoint(node: boneIndex)
-
-                        // VRM 0.0 physics parameters - handle both correct and typo versions
-                        // JSON numbers may come as Double or NSNumber, so try multiple casts
-                        if let stiffFloat = groupDict["stiffness"] as? Float {
-                            joint.stiffness = stiffFloat
-                        } else if let stiffDouble = groupDict["stiffness"] as? Double {
-                            joint.stiffness = Float(stiffDouble)
-                        } else if let stiffNum = groupDict["stiffness"] as? NSNumber {
-                            joint.stiffness = stiffNum.floatValue
-                        } else if let stiffFloat = groupDict["stiffiness"] as? Float {  // Legacy typo
-                            joint.stiffness = stiffFloat
-                        } else if let stiffDouble = groupDict["stiffiness"] as? Double {
-                            joint.stiffness = Float(stiffDouble)
-                        } else {
-                            joint.stiffness = 1.0  // Default only if not found at all
-                        }
-
-                        // Apply minimum gravityPower of 1.0 when model specifies 0
-                        // Many VRM 0.x models have gravityPower=0 but expect gravity to work
-                        let rawGravityPower: Float
-                        if let gpFloat = groupDict["gravityPower"] as? Float {
-                            rawGravityPower = gpFloat
-                        } else if let gpDouble = groupDict["gravityPower"] as? Double {
-                            rawGravityPower = Float(gpDouble)
-                        } else if let gpNum = groupDict["gravityPower"] as? NSNumber {
-                            rawGravityPower = gpNum.floatValue
-                        } else {
-                            rawGravityPower = 0.0
-                        }
-                        joint.gravityPower = rawGravityPower > 0 ? rawGravityPower : 1.0
-
-                        if let dragFloat = groupDict["dragForce"] as? Float {
-                            joint.dragForce = dragFloat
-                        } else if let dragDouble = groupDict["dragForce"] as? Double {
-                            joint.dragForce = Float(dragDouble)
-                        } else if let dragNum = groupDict["dragForce"] as? NSNumber {
-                            joint.dragForce = dragNum.floatValue
-                        } else {
-                            joint.dragForce = 0.4
-                        }
-
-                        if let hitFloat = groupDict["hitRadius"] as? Float {
-                            joint.hitRadius = hitFloat
-                        } else if let hitDouble = groupDict["hitRadius"] as? Double {
-                            joint.hitRadius = Float(hitDouble)
-                        } else if let hitNum = groupDict["hitRadius"] as? NSNumber {
-                            joint.hitRadius = hitNum.floatValue
-                        } else {
-                            joint.hitRadius = 0.0
-                        }
-
-                        // Gravity direction
-                        if let gravityDir = groupDict["gravityDir"] as? [String: Any] {
-                            let x = gravityDir["x"] as? Float ?? 0
-                            let y = gravityDir["y"] as? Float ?? -1
-                            let z = gravityDir["z"] as? Float ?? 0
-                            joint.gravityDir = SIMD3<Float>(x, y, z)
-                        }
-
-                        spring.joints.append(joint)
-                    }
-                }
-
-                // Collider groups (VRM 0.0 uses indices directly)
-                if let colliderGroups = groupDict["colliderGroups"] as? [Int] {
-                    spring.colliderGroups = colliderGroups
-                }
-
-                springBone.springs.append(spring)
-            }
-        }
-
-        // VRM 0.0 collider groups
+        // Parse collider groups first (referenced by boneGroups)
         if let colliderGroups = dict["colliderGroups"] as? [[String: Any]] {
             for (index, groupDict) in colliderGroups.enumerated() {
                 var group = VRMColliderGroup(name: "colliderGroup_\(index)")
 
-                // VRM 0.0 stores colliders inline in each group
                 if let colliders = groupDict["colliders"] as? [[String: Any]] {
                     for colliderDict in colliders {
-                        // Note: VRM 0.0 stores node at group level, not collider level
                         let node: Int
                         if let groupNode = groupDict["node"] as? Int {
                             node = groupNode
@@ -120,16 +34,11 @@ extension VRMExtensionParser {
                             continue
                         }
 
-                        // VRM 0.0 collider format
-                        let offset =
-                            parseVRM0Vector3(colliderDict["offset"]) ?? SIMD3<Float>(0, 0, 0)
+                        let offset = parseVRM0Vector3(colliderDict["offset"]) ?? .zero
                         let radius = parseFloatValue(colliderDict["radius"]) ?? 0.0
-
-                        // VRM 0.0 only supports spheres in most implementations
-                        let shape = VRMColliderShape.sphere(offset: offset, radius: radius)
-                        let collider = VRMCollider(node: node, shape: shape)
-
-                        // Add to global colliders list
+                        let collider = VRMCollider(
+                            node: node,
+                            shape: .sphere(offset: offset, radius: radius))
                         let colliderIndex = springBone.colliders.count
                         springBone.colliders.append(collider)
                         group.colliders.append(colliderIndex)
@@ -140,16 +49,118 @@ extension VRMExtensionParser {
             }
         }
 
+        // Parse boneGroups — each entry in `bones` is a separate chain root.
+        // Per VRM 0.x spec: "bones" contains root node indices; the chain extends
+        // down through single-child descendants from each root.
+        if let boneGroups = dict["boneGroups"] as? [[String: Any]] {
+            let gltfNodes = document.nodes ?? []
+
+            for groupDict in boneGroups {
+                let sharedParams = parseBoneGroupParams(groupDict)
+
+                if let roots = groupDict["bones"] as? [Int] {
+                    for rootIndex in roots {
+                        var spring = VRMSpring(name: groupDict["comment"] as? String)
+
+                        if let center = groupDict["center"] as? Int {
+                            spring.center = center
+                        }
+
+                        if let groups = groupDict["colliderGroups"] as? [Int] {
+                            spring.colliderGroups = groups
+                        }
+
+                        // Build joint chain from root down through single-child descendants
+                        let chainIndices = buildChain(from: rootIndex, nodes: gltfNodes)
+                        for nodeIndex in chainIndices {
+                            spring.joints.append(makeJoint(node: nodeIndex, params: sharedParams))
+                        }
+
+                        if spring.joints.count >= 1 {
+                            springBone.springs.append(spring)
+                        }
+                    }
+                }
+            }
+        }
+
         return springBone
     }
 
-    func parseVRM0Vector3(_ value: Any?) -> SIMD3<Float>? {
-        if let dict = value as? [String: Any] {
-            let x = dict["x"] as? Float ?? 0
-            let y = dict["y"] as? Float ?? 0
-            let z = dict["z"] as? Float ?? 0
-            return SIMD3<Float>(x, y, z)
+    // MARK: - Helpers
+
+    /// Physics params shared by all joints in a VRM 0.x bone group.
+    private struct BoneGroupParams {
+        var stiffness: Float
+        var gravityPower: Float
+        var gravityDir: SIMD3<Float>
+        var dragForce: Float
+        var hitRadius: Float
+    }
+
+    private func parseBoneGroupParams(_ dict: [String: Any]) -> BoneGroupParams {
+        let stiffness: Float
+        if let v = dict["stiffness"] as? Float { stiffness = v } else if let v = dict["stiffness"] as? Double { stiffness = Float(v) } else if let v = dict["stiffness"] as? NSNumber { stiffness = v.floatValue }
+        // Legacy typo variant
+        else if let v = dict["stiffiness"] as? Float { stiffness = v } else if let v = dict["stiffiness"] as? Double { stiffness = Float(v) } else { stiffness = 1.0 }
+
+        // Respect gravityPower = 0 — it means no gravity (e.g. chest/breast groups).
+        // Do NOT override with 1.0; that forces gravity onto bones that opted out.
+        let gravityPower: Float
+        if let v = dict["gravityPower"] as? Float { gravityPower = v } else if let v = dict["gravityPower"] as? Double { gravityPower = Float(v) } else if let v = dict["gravityPower"] as? NSNumber { gravityPower = v.floatValue } else { gravityPower = 0.0 }
+
+        let gravityDir: SIMD3<Float>
+        if let gd = dict["gravityDir"] as? [String: Any] {
+            let x = gd["x"] as? Float ?? 0
+            let y = gd["y"] as? Float ?? -1
+            let z = gd["z"] as? Float ?? 0
+            gravityDir = SIMD3<Float>(x, y, z)
+        } else {
+            gravityDir = SIMD3<Float>(0, -1, 0)
         }
-        return nil
+
+        let dragForce: Float
+        if let v = dict["dragForce"] as? Float { dragForce = v } else if let v = dict["dragForce"] as? Double { dragForce = Float(v) } else if let v = dict["dragForce"] as? NSNumber { dragForce = v.floatValue } else { dragForce = 0.4 }
+
+        let hitRadius: Float
+        if let v = dict["hitRadius"] as? Float { hitRadius = v } else if let v = dict["hitRadius"] as? Double { hitRadius = Float(v) } else if let v = dict["hitRadius"] as? NSNumber { hitRadius = v.floatValue } else { hitRadius = 0.0 }
+
+        return BoneGroupParams(
+            stiffness: stiffness,
+            gravityPower: gravityPower,
+            gravityDir: gravityDir,
+            dragForce: dragForce,
+            hitRadius: hitRadius
+        )
+    }
+
+    private func makeJoint(node: Int, params: BoneGroupParams) -> VRMSpringJoint {
+        var joint = VRMSpringJoint(node: node)
+        joint.stiffness = params.stiffness
+        joint.gravityPower = params.gravityPower
+        joint.gravityDir = params.gravityDir
+        joint.dragForce = params.dragForce
+        joint.hitRadius = params.hitRadius
+        return joint
+    }
+
+    /// Traverses single-child descendants to build the full joint chain from a root.
+    /// Stops when a leaf or a branching node (multiple children) is reached.
+    private func buildChain(from root: Int, nodes: [GLTFNode]) -> [Int] {
+        var chain = [root]
+        var current = root
+        while let children = nodes[safe: current]?.children, children.count == 1 {
+            current = children[0]
+            chain.append(current)
+        }
+        return chain
+    }
+
+    func parseVRM0Vector3(_ value: Any?) -> SIMD3<Float>? {
+        guard let dict = value as? [String: Any] else { return nil }
+        let x = dict["x"] as? Float ?? 0
+        let y = dict["y"] as? Float ?? 0
+        let z = dict["z"] as? Float ?? 0
+        return SIMD3<Float>(x, y, z)
     }
 }
