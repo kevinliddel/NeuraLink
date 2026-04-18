@@ -89,7 +89,7 @@ enum VRMModelRegistry {
     }()
 
     static var defaultModel: Entry? {
-        all.first { $0.name.lowercased() == "sonya" } ?? all.first
+        all.first { $0.name.lowercased() == "ekaterina" } ?? all.first
     }
 
     private static func namedEntries() -> [Entry] {

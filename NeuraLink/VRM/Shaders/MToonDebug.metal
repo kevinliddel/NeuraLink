@@ -23,7 +23,7 @@ fragment float4 mtoon_debug_ramp(VertexOut in [[stage_in]],
     float shadingShift = material.shadingShiftFactor;
     if (material.hasShadingShiftTexture > 0) {
         float shiftTexValue = shadingShiftTexture.sample(textureSampler, in.texCoord).r;
-        shadingShift += (shiftTexValue - 0.5) * material.shadingShiftTextureScale;
+        shadingShift += (shiftTexValue * 2.0 - 1.0) * material.shadingShiftTextureScale;
     }
 
     float shading = nl + shadingShift;
@@ -50,7 +50,9 @@ fragment float4 mtoon_debug_rim(VertexOut in [[stage_in]],
 }
 
 fragment float4 mtoon_debug_matcap_uv(VertexOut in [[stage_in]]) {
-    float2 matcapUV = calculateMatCapUV(in.viewNormal);
+    float3 normal  = normalize(in.worldNormal);
+    float3 viewDir = normalize(in.viewDirection);
+    float2 matcapUV = calculateMatCapUV(normal, viewDir);
     return float4(matcapUV.x, matcapUV.y, 0.0, 1.0);
 }
 

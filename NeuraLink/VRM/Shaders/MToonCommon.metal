@@ -112,9 +112,13 @@ static inline float2 animateUV(float2 uv, constant MToonMaterial& material) {
     return result;
 }
 
-// MatCap coordinate calculation
-static inline float2 calculateMatCapUV(float3 viewNormal) {
-    return viewNormal.xy * 0.5 + 0.5;
+// VRMC_materials_mtoon-1.0 spec matcap UV.
+// Uses a world-view tangent basis so the matcap stays stable as the camera rotates.
+// The 0.495 scale avoids sampling at the exact texture border.
+static inline float2 calculateMatCapUV(float3 normal, float3 viewDir) {
+    float3 worldViewX = normalize(float3(viewDir.z, 0.0f, -viewDir.x));
+    float3 worldViewY = cross(viewDir, worldViewX);
+    return float2(dot(worldViewX, normal), dot(worldViewY, normal)) * 0.495f + 0.5f;
 }
 
 // VRM MToon spec uses linearstep

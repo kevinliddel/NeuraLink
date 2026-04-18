@@ -54,14 +54,22 @@ vertex VertexOut mtoon_outline_vertex(VertexIn in [[stage_in]],
     return out;
 }
 
-// Advanced outline fragment shader
+// Outline fragment shader.
+// spec: outlineColor_final = outlineColor × lerp(1, lighting, outlineLightingMixFactor)
+// 0 = pure outline colour (unaffected by light), 1 = outline tinted by lighting.
 fragment float4 mtoon_outline_fragment(VertexOut in [[stage_in]],
                                 constant MToonMaterial& material [[buffer(8)]],
                                 constant Uniforms& uniforms [[buffer(1)]]) {
-    float3 outlineColor = float3(material.outlineColorR, material.outlineColorG, material.outlineColorB);
-    if (material.outlineLightingMixFactor < 1.0) {
-        float3 lightInfluence = uniforms.lightColor.xyz * uniforms.ambientColor.xyz;
-        outlineColor = mix(outlineColor * lightInfluence, outlineColor, material.outlineLightingMixFactor);
-    }
+    float3 outlineMaterial = float3(material.outlineColorR,
+                                    material.outlineColorG,
+                                    material.outlineColorB);
+
+    // Directional lighting contribution at this surface
+    float3 normal  = normalize(in.worldNormal);
+    float  ndotl   = max(dot(normal, -uniforms.lightDirection.xyz), 0.0);
+    float3 lighting = uniforms.lightColor.xyz * ndotl * uniforms.lightNormalizationFactor;
+
+    // spec: lerp(1, lighting, factor) — 0=pure, 1=lit
+    float3 outlineColor = outlineMaterial * mix(float3(1.0), lighting, material.outlineLightingMixFactor);
     return float4(outlineColor, 1.0);
 }

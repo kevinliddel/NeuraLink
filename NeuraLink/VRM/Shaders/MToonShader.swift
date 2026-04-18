@@ -31,7 +31,7 @@ public struct MToonMaterialUniforms {
     // Block 3: 16 bytes - PBR factors
     public var metallicFactor: Float = 0.0
     public var roughnessFactor: Float = 1.0
-    public var giIntensityFactor: Float = 0.05
+    public var giIntensityFactor: Float = 1.0  // spec default is 1.0
     public var shadingShiftTextureScale: Float = 1.0
 
     // Block 4: 16 bytes - MatCap properties (packed float3 + int)
