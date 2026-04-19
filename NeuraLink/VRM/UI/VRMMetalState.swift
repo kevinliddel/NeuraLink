@@ -30,7 +30,12 @@ final class VRMMetalState {
     private var lastTickTimestamp: CFTimeInterval = 0
     private var isPlayingAppear = false
     private var pendingDefaultClip: AnimationClip?
+    private var defaultClip: AnimationClip?
     private var firstFrameApplied = false
+
+    // Look-back behavior
+    private var lookBackController = VRMLookBackController()
+    private var isPlayingLookBack = false
 
     // Drives fade-in of the Metal view so T-pose is never visible
     var modelAlpha: Double = 0
@@ -80,8 +85,11 @@ final class VRMMetalState {
         currentModel = nil
         isPlayingAppear = false
         pendingDefaultClip = nil
+        defaultClip = nil
         firstFrameApplied = false
         modelAlpha = 0
+        lookBackController.reset()
+        isPlayingLookBack = false
     }
 
     func display(_ model: VRMModel) {
@@ -132,9 +140,10 @@ final class VRMMetalState {
                     // Load both concurrently so there is no extra delay
                     async let a = VRMAnimationLoader.loadVRMA(from: appearURL, model: model)
                     async let d = VRMAnimationLoader.loadVRMA(from: defaultURL, model: model)
-                    let (appearClip, defaultClip) = try await (a, d)
+                    let (appearClip, loadedDefault) = try await (a, d)
                     await MainActor.run {
-                        self.pendingDefaultClip = defaultClip
+                        self.defaultClip = loadedDefault
+                        self.pendingDefaultClip = loadedDefault
                         self.isPlayingAppear = true
                         self.animationPlayer.isLooping = false
                         self.animationPlayer.load(appearClip)
@@ -143,6 +152,7 @@ final class VRMMetalState {
                 } else {
                     let clip = try await VRMAnimationLoader.loadVRMA(from: defaultURL, model: model)
                     await MainActor.run {
+                        self.defaultClip = clip
                         self.animationPlayer.isLooping = true
                         self.animationPlayer.load(clip)
                         self.startAnimationTicker()
@@ -198,6 +208,25 @@ final class VRMMetalState {
                 pendingDefaultClip = nil
                 animationPlayer.crossfade(to: clip, duration: 0.5, from: model)
             }
+        }
+
+        // Look-back: always tick state machine (advances cooldown even while animating)
+        let lookBackTrigger = lookBackController.update(orbitYaw: orbitYaw, deltaTime: dt)
+
+        // Look-back: return to idle loop when one-shot animation finishes
+        if isPlayingLookBack && animationPlayer.isFinished {
+            isPlayingLookBack = false
+            if let clip = defaultClip {
+                animationPlayer.crossfade(to: clip, duration: 0.5, from: model)
+            }
+        }
+
+        // Look-back: trigger the gesture (not during appear or while already animating)
+        if let side = lookBackTrigger, !isPlayingLookBack, !isPlayingAppear {
+            let lookBackClip = VRMLookBackAnimationBuilder.makeClip(side: side)
+            animationPlayer.crossfade(to: lookBackClip, duration: 0.3, from: model)
+            animationPlayer.isLooping = false
+            isPlayingLookBack = true
         }
 
         animationPlayer.update(deltaTime: dt, model: model)

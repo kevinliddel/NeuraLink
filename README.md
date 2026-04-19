@@ -17,6 +17,8 @@ A high-performance, native iOS VRM character viewer and AI companion built from 
 - **Neural Lip-Sync**: Real-time audio amplitude analysis mapped to VRM blend shapes.
 - **Advanced Camera**: Orbit controls with look-at behavior following the viewing angle.
 - **Universal Support**: Handles both VRM 0.x and 1.0 specifications.
+- **Arknight inspired turn back at the camera**: When you rotate the camera to look behind the character, the character will turn her head to look at you after 5 seconds.
+
 
 ---
 
