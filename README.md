@@ -1,9 +1,17 @@
-# 🌌 NeuraLink
+# NeuraLink
+
+<p align="center">
+    <img src="./docs/Ekaterina.jpeg" alt="NeuraLink Model" width="200" />
+</p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/iOS-17.0%2B-blue?style=flat&logo=apple" alt="iOS" />
   <img src="https://img.shields.io/badge/Swift-6.0-orange?style=flat&logo=swift" alt="Swift" />
   <img src="https://img.shields.io/badge/Graphics-Metal-brightgreen?style=flat&logo=metal" alt="Metal" />
+  <img src="https://custom-icon-badges.demolab.com/badge/ChatGPT-74aa9c?logo=openai&logoColor=white" alt="OpenAI" />
+  <img src="https://img.shields.io/badge/WebRTC-gray?style=flat&logo=webrtc" alt="WebRTC" />
+  <img src="https://img.shields.io/badge/Silero-VAD-red?style=flat&logo=silero" alt="Silero VAD" />
+  
 </p>
 
 A high-performance, native iOS VRM character viewer and AI companion built from the ground up using **Metal** and **SwiftUI**. NeuraLink integrates state-of-the-art WebRTC audio streaming for real-time AI interaction with synchronized visual feedback.
@@ -17,7 +25,8 @@ A high-performance, native iOS VRM character viewer and AI companion built from 
 - **Neural Lip-Sync**: Real-time audio amplitude analysis mapped to VRM blend shapes.
 - **Advanced Camera**: Orbit controls with look-at behavior following the viewing angle.
 - **Universal Support**: Handles both VRM 0.x and 1.0 specifications.
-- **Arknight inspired turn back at the camera**: When you rotate the camera to look behind the character, the character will turn her head to look at you after 5 seconds.
+- **Realtime sky system**: Real-time sky with realistic lighting with dynamic sun and moon positioning.
+- **Arknight inspired camera feature**: When you rotate the camera to look behind the character, the character will turn her head to look at you after 5 seconds.
 - **Dual-Layer VAD**: Client-side Silero VAD (v5 model) runs alongside OpenAI's server VAD for instant local voice detection and immediate UI feedback.
 - **Per-Character Personas**: Each character carries her own system prompt and voice model, hot-swapped on model selection.
 
@@ -53,17 +62,17 @@ graph TD
         WebRTC --> ServerVAD[OpenAI Server VAD\nCloud · Turn-taking]
     end
 
-    Silero -- voiceStarted / voiceEnded --> UIState[UI State\nlistening ↔ ready]
-    ServerVAD -- commit --> API
+    Silero -- "  voiceStarted / voiceEnded  " --> UIState[UI State\nlistening ↔ ready]
+    ServerVAD -- "  commit  " --> API
 
-    WebRTC --> API[OpenAI Realtime API\ngpt-4o-realtime]
-    API -- WebRTC --> RTC(RTCAudioSession)
+    WebRTC --> API[OpenAI Realtime API\ngpt-realtime]
+    API -- "  WebRTC  " --> RTC(RTCAudioSession)
     RTC --> Buffer[PCM Audio Buffer]
-    Buffer --> Output[🔊 Speakers]
+    Buffer --> Output[Speakers]
     Buffer --> Analyzer[Amplitude Analyzer]
-    Analyzer -- RMS Energy --> Controller[LipSync Controller]
-    Controller -- Morph Targets --> Metal[Metal Render System]
-    Metal --> Screen(📱 Display)
+    Analyzer -- "  RMS Energy  " --> Controller[LipSync Controller]
+    Controller -- "  Morph Targets  " --> Metal[Metal Render System]
+    Metal --> Screen(Display)
 
     style Silero fill:#7c3aed,stroke:#fff,color:#fff
     style ServerVAD fill:#10a37f,stroke:#fff,color:#fff

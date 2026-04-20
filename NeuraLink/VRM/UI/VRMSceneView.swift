@@ -87,6 +87,7 @@ public struct VRMSceneView: View {
 
     @MainActor
     private func loadModel() async {
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
         guard state.isMetalAvailable, let url = modelURL else { return }
         state.clear()
         let characterName = url.deletingPathExtension().lastPathComponent
