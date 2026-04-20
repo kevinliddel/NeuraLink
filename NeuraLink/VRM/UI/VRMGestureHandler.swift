@@ -22,6 +22,20 @@ final class VRMAnimationTicker: NSObject {
     }
 }
 
+// MARK: - Sky Ticker (always running — keeps sky/terrain animated during model switches)
+
+final class VRMSkyTicker: NSObject {
+    weak var state: VRMMetalState?
+    init(state: VRMMetalState) { self.state = state }
+
+    @objc func tick(_ link: CADisplayLink) {
+        guard let state else { return }
+        Task { @MainActor [state] in
+            state.skyTick(link)
+        }
+    }
+}
+
 // MARK: - Gesture Handler (avoids retaining VRMMetalState strongly in gesture target-action)
 
 final class VRMGestureHandler: NSObject {

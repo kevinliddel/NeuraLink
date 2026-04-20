@@ -1,8 +1,10 @@
 # NeuraLink
 
 <p align="center">
-    <img src="./docs/Ekaterina.jpeg" alt="NeuraLink Model" width="200" />
+    <img src="./docs/Ekaterina.jpeg" alt="NeuraLink Model" width="400" />
 </p>
+
+[![committers.top](https://user-badge.committers.top/madagascar/kevinliddel.svg)](https://user-badge.committers.top/madagascar/kevinliddel)
 
 <p align="center">
   <img src="https://img.shields.io/badge/iOS-17.0%2B-blue?style=flat&logo=apple" alt="iOS" />
@@ -62,16 +64,21 @@ graph TD
         WebRTC --> ServerVAD[OpenAI Server VAD\nCloud · Turn-taking]
     end
 
-    Silero -- "  voiceStarted / voiceEnded  " --> UIState[UI State\nlistening ↔ ready]
-    ServerVAD -- "  commit  " --> API
+    Silero --> VoiceEvent[voiceStarted / voiceEnded]
+    VoiceEvent --> UIState[UI State\nlistening ↔ ready]
+    ServerVAD --> Commit[commit]
+    Commit --> API
 
     WebRTC --> API[OpenAI Realtime API\ngpt-realtime]
-    API -- "  WebRTC  " --> RTC(RTCAudioSession)
+    API --> WebRTCLink[WebRTC]
+    WebRTCLink --> RTC(RTCAudioSession)
     RTC --> Buffer[PCM Audio Buffer]
     Buffer --> Output[Speakers]
     Buffer --> Analyzer[Amplitude Analyzer]
-    Analyzer -- "  RMS Energy  " --> Controller[LipSync Controller]
-    Controller -- "  Morph Targets  " --> Metal[Metal Render System]
+    Analyzer --> RMSEnergy[RMS Energy]
+    RMSEnergy --> Controller[LipSync Controller]
+    Controller --> MorphTargets[Morph Targets]
+    MorphTargets --> Metal[Metal Render System]
     Metal --> Screen(Display)
 
     style Silero fill:#7c3aed,stroke:#fff,color:#fff
@@ -79,6 +86,11 @@ graph TD
     style API fill:#10a37f,stroke:#fff,color:#fff
     style Metal fill:#00e676,stroke:#fff,color:#000
     style RTC fill:#2979ff,stroke:#fff,color:#fff
+    style VoiceEvent fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
+    style Commit fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
+    style WebRTCLink fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
+    style RMSEnergy fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
+    style MorphTargets fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
 ```
 
 ### AI Voice & Persona System

@@ -23,6 +23,10 @@ final class VRMMetalState {
     var currentModel: VRMModel?
     let isMetalAvailable: Bool
 
+    // Sky ticker — independent of model lifecycle so clouds never freeze
+    private var skyDisplayLink: CADisplayLink?
+    private var lastSkyTimestamp: CFTimeInterval = 0
+
     // Animation
     private let animationPlayer = AnimationPlayer()
     private let lipSyncController = VRMLipSyncController()
@@ -70,10 +74,13 @@ final class VRMMetalState {
         mtkView.depthStencilPixelFormat = .depth32Float
         mtkView.clearColor = MTLClearColor(red: 0.15, green: 0.15, blue: 0.15, alpha: 1.0)
 
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+
         let config = RendererConfig(strict: .off)
         renderer = VRMRenderer(device: device, config: config)
         mtkView.delegate = renderer
         mtkView.preferredFramesPerSecond = 60
+        startSkyTicker()
     }
 
     func clear() {
@@ -165,6 +172,26 @@ final class VRMMetalState {
         }
     }
 
+    // MARK: - Sky Ticker
+
+    private func startSkyTicker() {
+        let link = CADisplayLink(
+            target: VRMSkyTicker(state: self),
+            selector: #selector(VRMSkyTicker.tick(_:)))
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
+        link.add(to: .main, forMode: .common)
+        skyDisplayLink = link
+    }
+
+    func skyTick(_ link: CADisplayLink) {
+        let now = link.timestamp
+        let dt: Float = lastSkyTimestamp == 0 ? 0 : Float(min(now - lastSkyTimestamp, 1.0 / 30.0))
+        lastSkyTimestamp = now
+        renderer?.updateSky(deltaTime: dt)
+        renderer?.applySkyLighting()
+        renderer?.updateTerrain(deltaTime: dt)
+    }
+
     // MARK: - CADisplayLink Ticker
 
     private func startAnimationTicker() {
@@ -231,13 +258,6 @@ final class VRMMetalState {
 
         animationPlayer.update(deltaTime: dt, model: model)
         animationPlayer.applyMorphWeights(to: renderer?.expressionController)
-
-        // Advance sky and re-derive lighting from current local time
-        renderer?.updateSky(deltaTime: dt)
-        renderer?.applySkyLighting()
-
-        // Sync terrain with current sky environment + elapsed time
-        renderer?.updateTerrain(deltaTime: dt)
 
         // Update look-at tracking (eyes, head, neck)
         if let lookAt = renderer?.lookAtController {

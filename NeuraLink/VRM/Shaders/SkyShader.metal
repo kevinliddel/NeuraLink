@@ -56,7 +56,7 @@ static float skyValueNoise(float2 p) {
 
 static float skyFbm(float2 p) {
     float val = 0.0f, amp = 0.5f;
-    for (int i = 0; i < 5; i++) { val += amp * skyValueNoise(p); p *= 2.1f; amp *= 0.5f; }
+    for (int i = 0; i < 6; i++) { val += amp * skyValueNoise(p); p *= 2.0f; amp *= 0.5f; }
     return val;
 }
 
@@ -76,13 +76,25 @@ static float starField(float3 viewDir, float time) {
 
 // MARK: - Dome-projected clouds
 
+// Lower-sky layer: dome projection, visible from near-horizon to zenith.
 static float cloudLayer(float3 viewDir, float time, float speed, float density, float coverage) {
     if (viewDir.y < 0.02f || coverage < 0.001f) return 0.0f;
-    float2 cloudUV = viewDir.xz / (viewDir.y + 0.05f);
+    float2 cloudUV = viewDir.xz / max(viewDir.y, 0.20f);  // clamp to reduce horizon stretch
     cloudUV = cloudUV * 0.14f + float2(time * speed, time * speed * 0.3f);
     float noise = skyFbm(cloudUV * density);
-    float mask  = smoothstep(1.0f - coverage, 1.0f, noise);
-    mask *= smoothstep(0.01f, 0.09f, viewDir.y);
+    float mask  = smoothstep(1.0f - coverage - 0.12f, 1.0f, noise);  // wider soft edge
+    mask *= smoothstep(0.01f, 0.12f, viewDir.y);
+    return mask;
+}
+
+// Upper-sky layer: flatter projection that stays dense near zenith.
+static float cloudLayerHigh(float3 viewDir, float time, float speed, float density, float coverage) {
+    if (viewDir.y < 0.30f || coverage < 0.001f) return 0.0f;
+    float2 cloudUV = viewDir.xz / (viewDir.y + 0.45f);  // near-uniform scale near zenith
+    cloudUV = cloudUV * 0.22f + float2(time * speed * 0.55f, -time * speed * 0.35f);
+    float noise = skyFbm(cloudUV * density * 0.75f);
+    float mask  = smoothstep(1.0f - coverage - 0.08f, 1.0f, noise);
+    mask *= smoothstep(0.25f, 0.55f, viewDir.y) * 0.75f;  // fade in, cap at 75% opacity
     return mask;
 }
 
@@ -120,7 +132,9 @@ fragment float4 sky_fragment(
 
     // ── Clouds ────────────────────────────────────────────────────────
     if (coverage > 0.001f) {
-        float  clouds    = cloudLayer(viewDir, sky.cloudParams.x, sky.cloudParams.y, 2.2f, coverage);
+        float cloudsLow  = cloudLayer(viewDir, sky.cloudParams.x, sky.cloudParams.y, 2.0f, coverage);
+        float cloudsHigh = cloudLayerHigh(viewDir, sky.cloudParams.x, sky.cloudParams.y, 2.0f, coverage * 0.90f);
+        float clouds     = clamp(cloudsLow + cloudsHigh * (1.0f - cloudsLow), 0.0f, 1.0f);
         float3 cloudTint = clamp(sky.skyColorLow.rgb * 1.8f + 0.12f, 0.0f, 1.0f);
         colour = mix(colour, cloudTint, clouds * 0.88f);
     }

@@ -19,6 +19,7 @@ struct ExpandableFABMenu: View {
             if isExpanded {
                 FABChildButton(
                     icon: "gear",
+                    label: "Settings",
                     action: {
                         collapse()
                         onSettings()
@@ -28,6 +29,7 @@ struct ExpandableFABMenu: View {
 
                 FABChildButton(
                     icon: "figure.stand.dress.line.vertical.figure",
+                    label: "Characters",
                     action: {
                         collapse()
                         onModelSelection()
@@ -59,6 +61,7 @@ struct ExpandableFABMenu: View {
 
 private struct FABChildButton: View {
     let icon: String
+    let label: String
     let action: () -> Void
 
     var body: some View {
@@ -72,5 +75,6 @@ private struct FABChildButton: View {
                     .background(.black.opacity(0.5))
                     .clipShape(Circle())
             })
+        .accessibilityLabel(label)
     }
 }
