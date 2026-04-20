@@ -50,8 +50,7 @@ extension VRMExtensionParser {
                         var joint = VRMSpringJoint(node: node)
                         joint.hitRadius = jointDict["hitRadius"] as? Float ?? 0.0
                         joint.stiffness = jointDict["stiffness"] as? Float ?? 1.0
-                        let rawGravityPower = jointDict["gravityPower"] as? Float ?? 0.0
-                        joint.gravityPower = rawGravityPower > 0 ? rawGravityPower : 1.0
+                        joint.gravityPower = jointDict["gravityPower"] as? Float ?? 0.0
                         joint.dragForce = jointDict["dragForce"] as? Float ?? 0.4
                         if let gravityDir = jointDict["gravityDir"] as? [Float],
                             gravityDir.count == 3 {

@@ -50,8 +50,6 @@ struct ContentView: View {
                     onModelSelection: { withAnimation { showModelSelection.toggle() } }
                 )
             }
-            .navigationTitle("NeuraLink")
-            .navigationBarTitleDisplayMode(.inline)
             .toolbar { menuToggleButton }
             .allowsHitTesting(!aiState.showSettings)
             .sheet(isPresented: $aiState.showSettings) {

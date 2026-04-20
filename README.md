@@ -1,10 +1,8 @@
 # NeuraLink
 
 <p align="center">
-    <img src="./docs/Ekaterina.jpeg" alt="NeuraLink Model" width="400" />
+    <img src="./docs/Ekaterina.jpeg" alt="NeuraLink Model" width="400" style="border-radius: 20px;" />
 </p>
-
-[![committers.top](https://user-badge.committers.top/madagascar/kevinliddel.svg)](https://user-badge.committers.top/madagascar/kevinliddel)
 
 <p align="center">
   <img src="https://img.shields.io/badge/iOS-17.0%2B-blue?style=flat&logo=apple" alt="iOS" />

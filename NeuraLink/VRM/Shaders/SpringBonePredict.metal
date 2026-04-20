@@ -100,8 +100,10 @@ kernel void springBonePredict(
 
     // --- PBD stiffness target -------------------------------------------------
     // Position-mixing (not force): guarantees dt-independent, consistent correction.
-    // K=0.02 → ~2 % correction/substep at stiffness=1.0. Hair flows and trails;
-    // chest bones barely move (gravityPower is low for them in the VRM file).
+    // blend = 1 − exp(−s · dtSub · 2.4) — exponential approach to rest pose, properly
+    // frame-rate-independent. At 120 Hz and s=1.0 this is ≈ 2 % per substep (matches
+    // the original K=0.02 constant), but higher-stiffness bones (s=3–5) now spring back
+    // proportionally faster instead of being linearly under-damped.
     float3 parentPos = bonePosCurr[parentIndex];
     float3 bindDir   = bindDirections[parentIndex];
     float  bindLen   = length(bindDir);
@@ -114,7 +116,9 @@ kernel void springBonePredict(
     if (stiffnessValid) {
         stiffnessTarget = parentPos + (bindDir / bindLen) * restLength;
         float s = boneParams[id].stiffness;
-        if (s > 0.001) stiffnessBlend = s * 0.02;
+        if (s > 0.001) {
+            stiffnessBlend = clamp(1.0 - exp(-s * globalParams.dtSub * 2.4), 0.0, 0.95);
+        }
     }
 
     // --- Drag + gravity -------------------------------------------------------
