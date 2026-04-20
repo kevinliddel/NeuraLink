@@ -26,9 +26,6 @@ public struct VRMSceneView: View {
     public var body: some View {
         ZStack(alignment: .bottomLeading) {
             primaryContent
-            if state.isModelLoaded {
-                infoOverlay
-            }
         }
         .task(id: modelURL) { await loadModel() }
     }
@@ -78,26 +75,6 @@ public struct VRMSceneView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.background)
-    }
-
-    private var infoOverlay: some View {
-        Group {
-            if let model = state.currentModel {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(model.meta.name ?? "Unknown Model")
-                        .font(.headline)
-                    Text(model.meta.version ?? "v1.0")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(model.meta.authors.first ?? "Unknown Author")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
-                .padding(12)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
-                .padding()
-            }
-        }
     }
 
     private func errorView(message: String) -> some View {

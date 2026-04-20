@@ -49,6 +49,9 @@ public struct VRM0MaterialProperty {
                 sRGBToLinear(shadeColor[1]),
                 sRGBToLinear(shadeColor[2])
             )
+        } else {
+            // VRM 1.0 spec defaults shadeColorFactor to white if unspecified
+            mtoon.shadeColorFactor = SIMD3<Float>(1.0, 1.0, 1.0)
         }
 
         // VRM 0.x -> VRM 1.0 shading transformation (from three-vrm)
@@ -67,11 +70,12 @@ public struct VRM0MaterialProperty {
         mtoon.shadingShiftFactor = shadingShiftFactor
 
         // Shade texture from texture properties
-        // Skip when same as main texture - prevents blue padding artifacts
-        if let shadeTexIndex = textureProperties["_ShadeTexture"],
-            let mainTexIndex = textureProperties["_MainTex"],
-            shadeTexIndex != mainTexIndex {
+        // In VRM 0.0, if _ShadeTexture is not defined, _MainTex is implicitly used for shadows.
+        // We must bind it so the shader can multiply the shade color with the texture.
+        if let shadeTexIndex = textureProperties["_ShadeTexture"] {
             mtoon.shadeMultiplyTexture = shadeTexIndex
+        } else if let mainTexIndex = textureProperties["_MainTex"] {
+            mtoon.shadeMultiplyTexture = mainTexIndex
         }
 
         // Global illumination: giEqualizationFactor = 1.0 - giIntensityFactor
@@ -157,7 +161,7 @@ public struct VRM0MaterialProperty {
 // MARK: - MToon Material
 
 public struct VRMMToonMaterial {
-    public var shadeColorFactor: SIMD3<Float> = [0.0, 0.0, 0.0]
+    public var shadeColorFactor: SIMD3<Float> = [1.0, 1.0, 1.0]
     public var shadeMultiplyTexture: Int?
     public var shadingShiftFactor: Float = 0.0
     public var shadingShiftTexture: VRMShadingShiftTexture?

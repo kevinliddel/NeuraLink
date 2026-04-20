@@ -12,18 +12,62 @@ struct ContentView: View {
 
     @State private var selectedModelURL: URL? = VRMModelRegistry.defaultModel?.url
     @State private var aiState = RealtimeChatState.shared
+    @State private var showModelSelection = false
 
     var body: some View {
         NavigationStack {
             ZStack {
                 VRMSceneView(modelURL: selectedModelURL)
                 RealtimeChatOverlay()
+
+                if showModelSelection {
+                    VStack {
+                        Spacer()
+                        ModelSelectionOverlay(
+                            selectedModelURL: $selectedModelURL,
+                            models: VRMModelRegistry.all,
+                            onSelection: {
+                                withAnimation { showModelSelection = false }
+                            }
+                        )
+                        .padding(.horizontal, 16)
+                        Spacer()
+                    }
+                    .background(Color.black.opacity(0.6).ignoresSafeArea())
+                    .onTapGesture {
+                        withAnimation {
+                            showModelSelection = false
+                        }
+                    }
+                    .transition(.opacity)
+                    .zIndex(100)
+                }
+
+                VStack {
+                    HStack {
+                        Spacer()
+                        Button {
+                            withAnimation {
+                                showModelSelection.toggle()
+                            }
+                        } label: {
+                            Image(systemName: "person.2.fill")
+                                .font(.system(size: 20))
+                                .foregroundColor(.white)
+                                .padding(12)
+                                .background(Color.black.opacity(0.5))
+                                .clipShape(Circle())
+                        }
+                        .padding(.trailing, 16)
+                        .padding(.top, 6)
+                    }
+                    Spacer()
+                }
             }
             .navigationTitle("NeuraLink")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 settingsButton
-                modelPickerMenu
             }
             .allowsHitTesting(!aiState.showSettings)
             .sheet(isPresented: $aiState.showSettings) {
@@ -45,25 +89,6 @@ struct ContentView: View {
         }
     }
 
-    @ToolbarContentBuilder
-    private var modelPickerMenu: some ToolbarContent {
-        ToolbarItem(placement: .automatic) {
-            Menu {
-                ForEach(VRMModelRegistry.all, id: \.url) { entry in
-                    Button {
-                        selectedModelURL = entry.url
-                    } label: {
-                        Label(entry.name, systemImage: "cube.fill")
-                    }
-                }
-                if VRMModelRegistry.all.isEmpty {
-                    Text("No models found in bundle")
-                }
-            } label: {
-                Image(systemName: "chevron.up.chevron.down")
-            }
-        }
-    }
 }
 
 // MARK: VRM Model Registry

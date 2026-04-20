@@ -261,7 +261,7 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
             switch type {
             case "response.audio_transcript.delta":
                 if let delta = json["delta"] as? String {
-                    print("AI Text Delta: \(delta)")
+                    print("[AI Text Delta]: \(delta)")
                     state.aiTranscript += delta
                 }
             case "conversation.item.input_audio_transcription.completed":
