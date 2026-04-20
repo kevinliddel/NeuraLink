@@ -81,7 +81,7 @@ public class VRMMorphTargetSystem {
 
     private func setupComputePipeline() throws {
         var library: MTLLibrary?
-        if let url = Bundle.main.url(forResource: "VRMMetalKitShaders", withExtension: "metallib"),
+        if let url = Bundle.main.url(forResource: "NeuraLinkShaders", withExtension: "metallib"),
             let lib = try? device.makeLibrary(URL: url) {
             library = lib
         } else {

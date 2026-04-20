@@ -247,7 +247,7 @@ public class VRMPrimitive {
                     let rebasedMax = indices.max()!
                     if rebasedMax >= primitive.vertexCount {
                         fputs(
-                            "⚠️ [VRMMetalKit] Index out of bounds after rebasing: maxIndex=\(rebasedMax) >= vertexCount=\(primitive.vertexCount)\n",
+                            "⚠️ [NeuraLink] Index out of bounds after rebasing: maxIndex=\(rebasedMax) >= vertexCount=\(primitive.vertexCount)\n",
                             stderr)
                     }
                 }

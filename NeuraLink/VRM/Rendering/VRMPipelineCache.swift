@@ -20,13 +20,13 @@ public final class VRMPipelineCache: @unchecked Sendable {
     private var pipelineStates: [String: MTLRenderPipelineState] = [:]
 
     private init() {
-        lock.name = "com.arkavo.VRMMetalKit.PipelineCache"
+        lock.name = "com.arkavo.NeuraLink.PipelineCache"
     }
 
     /// Load or retrieve cached shader library
     public func getLibrary(device: MTLDevice) throws -> MTLLibrary {
         return try lock.withLock {
-            let key = "VRMMetalKitShaders"
+            let key = "NeuraLinkShaders"
 
             // Return cached library if available
             if let cached = libraries[key] {
@@ -42,14 +42,14 @@ public final class VRMPipelineCache: @unchecked Sendable {
 
             // Fallback: look for packaged metallib if needed
             if let url = Bundle.main.url(
-                forResource: "VRMMetalKitShaders", withExtension: "metallib") {
+                forResource: "NeuraLinkShaders", withExtension: "metallib") {
                 do {
                     let library = try device.makeLibrary(URL: url)
                     libraries[key] = library
                     return library
                 } catch {
                     vrmLog(
-                        "[VRMPipelineCache] ❌ Failed to load VRMMetalKitShaders.metallib: \(error)")
+                        "[VRMPipelineCache] ❌ Failed to load NeuraLinkShaders.metallib: \(error)")
                 }
             }
 
@@ -133,9 +133,9 @@ public enum PipelineCacheError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .shaderLibraryNotFound:
-            return "VRMMetalKitShaders.metallib not found in package resources"
+            return "NeuraLinkShaders.metallib not found in package resources"
         case .shaderLibraryLoadFailed(let error):
-            return "Failed to load VRMMetalKitShaders.metallib: \(error.localizedDescription)"
+            return "Failed to load NeuraLinkShaders.metallib: \(error.localizedDescription)"
         }
     }
 }

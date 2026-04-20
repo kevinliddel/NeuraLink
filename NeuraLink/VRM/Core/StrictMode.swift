@@ -35,11 +35,19 @@ public struct RendererConfig {
     /// Color attachment pixel format for render pipelines (defaults to match MTKView default)
     public var colorPixelFormat: MTLPixelFormat = .bgra8Unorm
 
+    #if DEBUG
     /// Enable Metal validation layers (debug builds only)
     public var enableMetalValidation: Bool = true
 
     /// Enable command buffer error checking
     public var checkCommandBufferErrors: Bool = true
+    #else
+    /// Enable Metal validation layers (disabled in Release for performance)
+    public var enableMetalValidation: Bool = false
+
+    /// Enable command buffer error checking (disabled in Release for performance)
+    public var checkCommandBufferErrors: Bool = false
+    #endif
 
     /// Minimum draw calls per frame (0 = disabled)
     public var minDrawCallsPerFrame: Int = 0

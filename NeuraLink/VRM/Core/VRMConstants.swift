@@ -8,7 +8,7 @@
 import Foundation
 import simd
 
-/// Centralized constants for VRMMetalKit configuration and default values.
+/// Centralized constants for NeuraLink configuration and default values.
 /// This provides a single source of truth for magic numbers used throughout the codebase.
 public enum VRMConstants {
 

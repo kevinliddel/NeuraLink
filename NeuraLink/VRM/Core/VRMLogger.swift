@@ -12,7 +12,7 @@ import Foundation
 #if DEBUG && !VRM_METALKIT_ENABLE_LOGS && !VRM_METALKIT_ENABLE_DEBUG_ANIMATION && !VRM_METALKIT_ENABLE_DEBUG_PHYSICS && !VRM_METALKIT_ENABLE_DEBUG_LOADER
     private let __vrmLoggerDebugNotice: Void = {
         fputs(
-            "⚠️ VRMMetalKit: Debug build without logging. Define VRM_METALKIT_ENABLE_LOGS to re-enable debug output.\n",
+            "⚠️ NeuraLink: Debug build without logging. Define VRM_METALKIT_ENABLE_LOGS to re-enable debug output.\n",
             stderr)
     }()
 #endif
@@ -20,7 +20,7 @@ import Foundation
 #if !DEBUG && (VRM_METALKIT_ENABLE_LOGS || VRM_METALKIT_ENABLE_DEBUG_ANIMATION || VRM_METALKIT_ENABLE_DEBUG_PHYSICS || VRM_METALKIT_ENABLE_DEBUG_LOADER)
     private let __vrmLoggerReleaseNotice: Void = {
         fputs(
-            "⚠️ VRMMetalKit: Release build with debug logging enabled. Disable VRM_METALKIT_ENABLE_* flags for best performance.\n",
+            "⚠️ NeuraLink: Release build with debug logging enabled. Disable VRM_METALKIT_ENABLE_* flags for best performance.\n",
             stderr)
     }()
 #endif
@@ -45,11 +45,11 @@ func vrmLog(
     function: StaticString = #function,
     line: UInt = #line
 ) {
-    #if true  // FORCE LOGGING ALWAYS for debugging
+    #if DEBUG  // Only log in Debug builds by default
         let categoryDescription = String(describing: category)
         let functionDescription = String(describing: function)
         let prefix =
-            "[VRMMetalKit][\(level.rawValue)][\(categoryDescription).\(functionDescription)#\(line)]"
+            "[NeuraLink][\(level.rawValue)][\(categoryDescription).\(functionDescription)#\(line)]"
         Swift.print("\(prefix) \(message())")
     #else
         _ = message
@@ -72,7 +72,7 @@ func vrmLogAnimation(
         let categoryDescription = String(describing: category)
         let functionDescription = String(describing: function)
         let prefix =
-            "[VRMMetalKit][ANIMATION][\(categoryDescription).\(functionDescription)#\(line)]"
+            "[NeuraLink][ANIMATION][\(categoryDescription).\(functionDescription)#\(line)]"
         Swift.print("\(prefix) \(message())")
     #else
         _ = message
@@ -93,7 +93,7 @@ func vrmLogPhysics(
     #if VRM_METALKIT_ENABLE_DEBUG_PHYSICS
         let categoryDescription = String(describing: category)
         let functionDescription = String(describing: function)
-        let prefix = "[VRMMetalKit][PHYSICS][\(categoryDescription).\(functionDescription)#\(line)]"
+        let prefix = "[NeuraLink][PHYSICS][\(categoryDescription).\(functionDescription)#\(line)]"
         Swift.print("\(prefix) \(message())")
     #else
         _ = message
@@ -114,7 +114,7 @@ func vrmLogLoader(
     #if VRM_METALKIT_ENABLE_DEBUG_LOADER
         let categoryDescription = String(describing: category)
         let functionDescription = String(describing: function)
-        let prefix = "[VRMMetalKit][LOADER][\(categoryDescription).\(functionDescription)#\(line)]"
+        let prefix = "[NeuraLink][LOADER][\(categoryDescription).\(functionDescription)#\(line)]"
         Swift.print("\(prefix) \(message())")
     #else
         _ = message
