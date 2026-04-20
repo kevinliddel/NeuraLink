@@ -7,6 +7,7 @@
 
 import AVFoundation
 import Foundation
+import RealTimeCutVADLibrary
 import SwiftUI
 import WebRTC
 
@@ -27,6 +28,7 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
     private var statsTimer: Timer?
     private var pendingOffer: RTCSessionDescription?
     private var iceGatheringTimeout: Task<Void, Never>?
+    private let sileroVAD = SileroVADProcessor()
 
     // Dependencies
     private let settings = OpenAISettings.shared
@@ -83,6 +85,7 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
 
     /// Stops the Realtime session
     func disconnect() {
+        sileroVAD.stop()
         remoteDataChannel?.close()
         peerConnection?.close()
         peerConnection = nil
@@ -170,7 +173,7 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
 
     private func sendOfferToOpenAI(_ offer: RTCSessionDescription) {
         let url = URL(
-            string: "https://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17")!
+            string: "https://api.openai.com/v1/realtime?model=gpt-realtime")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("Bearer \(settings.apiKey)", forHTTPHeaderField: "Authorization")
@@ -212,6 +215,7 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
                         self.state.status = .ready
                         self.forceAudioToSpeaker()
                         self.startStatsPolling()
+                        self.startSileroVADIfEnabled()
                     }
                 }
             }
@@ -370,11 +374,13 @@ extension OpenAIRealtimeManager: RTCDataChannelDelegate {
     }
 
     private func sendInitialSessionUpdate() {
+        let persona = CharacterPersona.forCharacter(named: state.selectedCharacterName)
         let update: [String: Any] = [
             "type": "session.update",
             "session": [
                 "modalities": ["text", "audio"],
-                "instructions": "You are a helpful AI assistant. Respond briefly and concisely.",
+                "voice": persona.voice,
+                "instructions": persona.instructions,
                 "input_audio_transcription": [
                     "model": "whisper-1"
                 ],
@@ -402,5 +408,29 @@ extension OpenAIRealtimeManager: RTCDataChannelDelegate {
         }
 
         handleIncomingJSON(json)
+    }
+}
+
+// MARK: - Silero VAD
+
+extension OpenAIRealtimeManager {
+    private func startSileroVADIfEnabled() {
+        guard settings.isVADEnabled else { return }
+        sileroVAD.delegate = self
+        sileroVAD.start()
+    }
+}
+
+extension OpenAIRealtimeManager: SileroVADDelegate {
+    func sileroVADDidDetectVoiceStart() {
+        guard state.status == .ready else { return }
+        state.status = .listening
+        print("[SileroVAD]: Voice detected → listening")
+    }
+
+    func sileroVADDidDetectVoiceEnd() {
+        guard state.status == .listening else { return }
+        state.status = .ready
+        print("[SileroVAD]: Voice ended → ready")
     }
 }

@@ -40,7 +40,8 @@ final class RealtimeChatState {
     var userTranscript: String = ""
     var aiTranscript: String = ""
     var audioLevel: Float = 0.0 // 0.0 to 1.0
-    
+    var selectedCharacterName: String = ""
+
     // UI Controls
     var showSettings: Bool = false
 

@@ -13,6 +13,7 @@ struct ContentView: View {
     @State private var selectedModelURL: URL? = VRMModelRegistry.defaultModel?.url
     @State private var aiState = RealtimeChatState.shared
     @State private var showModelSelection = false
+    @State private var isMenuExpanded = false
 
     var body: some View {
         NavigationStack {
@@ -35,40 +36,22 @@ struct ContentView: View {
                     }
                     .background(Color.black.opacity(0.6).ignoresSafeArea())
                     .onTapGesture {
-                        withAnimation {
-                            showModelSelection = false
-                        }
+                        withAnimation { showModelSelection = false }
                     }
                     .transition(.opacity)
                     .zIndex(100)
                 }
 
-                VStack {
-                    HStack {
-                        Spacer()
-                        Button {
-                            withAnimation {
-                                showModelSelection.toggle()
-                            }
-                        } label: {
-                            Image(systemName: "person.2.fill")
-                                .font(.system(size: 20))
-                                .foregroundColor(.white)
-                                .padding(12)
-                                .background(Color.black.opacity(0.5))
-                                .clipShape(Circle())
-                        }
-                        .padding(.trailing, 16)
-                        .padding(.top, 6)
-                    }
-                    Spacer()
-                }
             }
-            .navigationTitle("NeuraLink")
+            .overlay(alignment: .topTrailing) {
+                ExpandableFABMenu(
+                    isExpanded: $isMenuExpanded,
+                    onSettings: { aiState.showSettings = true },
+                    onModelSelection: { withAnimation { showModelSelection.toggle() } }
+                )
+            }
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                settingsButton
-            }
+            .toolbar { menuToggleButton }
             .allowsHitTesting(!aiState.showSettings)
             .sheet(isPresented: $aiState.showSettings) {
                 AISettingsView()
@@ -79,12 +62,15 @@ struct ContentView: View {
     // MARK: - Toolbar
 
     @ToolbarContentBuilder
-    private var settingsButton: some ToolbarContent {
+    private var menuToggleButton: some ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
             Button {
-                aiState.showSettings = true
+                withAnimation(.spring(response: 0.38, dampingFraction: 0.72)) {
+                    isMenuExpanded.toggle()
+                }
             } label: {
-                Image(systemName: "gearshape")
+                Image(systemName: isMenuExpanded ? "xmark" : "square.grid.2x2")
+                    .contentTransition(.symbolEffect(.replace))
             }
         }
     }

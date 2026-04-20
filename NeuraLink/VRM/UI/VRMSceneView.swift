@@ -89,7 +89,8 @@ public struct VRMSceneView: View {
     private func loadModel() async {
         guard state.isMetalAvailable, let url = modelURL else { return }
         state.clear()
-        autoConnectAI()
+        let characterName = url.deletingPathExtension().lastPathComponent
+        connectAI(characterName: characterName)
         do {
             guard let device = state.mtkView.device else { return }
             let model = try await VRMModel.load(from: url, device: device)
@@ -99,11 +100,12 @@ public struct VRMSceneView: View {
         }
     }
 
-    private func autoConnectAI() {
-        let ai = OpenAIRealtimeManager.shared
+    private func connectAI(characterName: String) {
+        guard OpenAISettings.shared.hasValidKey else { return }
         let chatState = RealtimeChatState.shared
-        guard OpenAISettings.shared.hasValidKey,
-              chatState.status == .disconnected else { return }
+        chatState.selectedCharacterName = characterName
+        let ai = OpenAIRealtimeManager.shared
+        ai.disconnect()
         ai.connect()
     }
 }

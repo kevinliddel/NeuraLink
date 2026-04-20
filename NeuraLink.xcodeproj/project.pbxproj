@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		041E13972F913CD900D2D110 /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = 041E13962F913CD900D2D110 /* WebRTC */; };
 		041E139A2F913E1500D2D110 /* Starscream in Frameworks */ = {isa = PBXBuildFile; productRef = 041E13992F913E1500D2D110 /* Starscream */; };
+		04F3BD6F2F9630CD00D2DDF2 /* RealTimeCutVADLibrary in Frameworks */ = {isa = PBXBuildFile; productRef = 04F3BD6E2F9630CD00D2DDF2 /* RealTimeCutVADLibrary */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -70,6 +71,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				04F3BD6F2F9630CD00D2DDF2 /* RealTimeCutVADLibrary in Frameworks */,
 				041E13972F913CD900D2D110 /* WebRTC in Frameworks */,
 				041E139A2F913E1500D2D110 /* Starscream in Frameworks */,
 			);
@@ -134,6 +136,7 @@
 			packageProductDependencies = (
 				041E13962F913CD900D2D110 /* WebRTC */,
 				041E13992F913E1500D2D110 /* Starscream */,
+				04F3BD6E2F9630CD00D2DDF2 /* RealTimeCutVADLibrary */,
 			);
 			productName = NeuraLink;
 			productReference = 041E11DE2F8E782300D2D110 /* NeuraLink.app */;
@@ -220,6 +223,7 @@
 			packageReferences = (
 				041E13952F913CD900D2D110 /* XCRemoteSwiftPackageReference "WebRTC" */,
 				041E13982F913E1500D2D110 /* XCRemoteSwiftPackageReference "Starscream" */,
+				04F3BD6D2F9630CD00D2DDF2 /* XCRemoteSwiftPackageReference "RealTimeCutVADLibrary" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 041E11DF2F8E782300D2D110 /* Products */;
@@ -624,6 +628,14 @@
 				minimumVersion = 4.0.8;
 			};
 		};
+		04F3BD6D2F9630CD00D2DDF2 /* XCRemoteSwiftPackageReference "RealTimeCutVADLibrary" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/helloooideeeeea/RealTimeCutVADLibrary";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.0.14;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -636,6 +648,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 041E13982F913E1500D2D110 /* XCRemoteSwiftPackageReference "Starscream" */;
 			productName = Starscream;
+		};
+		04F3BD6E2F9630CD00D2DDF2 /* RealTimeCutVADLibrary */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 04F3BD6D2F9630CD00D2DDF2 /* XCRemoteSwiftPackageReference "RealTimeCutVADLibrary" */;
+			productName = RealTimeCutVADLibrary;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

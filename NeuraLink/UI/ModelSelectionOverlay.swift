@@ -80,22 +80,6 @@ private struct ModelCard: View {
             )
             .frame(width: 160, height: 220)
 
-            // 18+ Badge
-            VStack {
-                HStack {
-                    Text("18+")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 2)
-                        .background(Color.white.opacity(0.2))
-                        .cornerRadius(4)
-                    Spacer()
-                }
-                .padding(8)
-                Spacer()
-            }
-
             // Text and Icons
             VStack(spacing: 4) {
                 Text(entry.name)

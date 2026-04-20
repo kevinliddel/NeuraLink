@@ -18,6 +18,8 @@ A high-performance, native iOS VRM character viewer and AI companion built from 
 - **Advanced Camera**: Orbit controls with look-at behavior following the viewing angle.
 - **Universal Support**: Handles both VRM 0.x and 1.0 specifications.
 - **Arknight inspired turn back at the camera**: When you rotate the camera to look behind the character, the character will turn her head to look at you after 5 seconds.
+- **Dual-Layer VAD**: Client-side Silero VAD (v5 model) runs alongside OpenAI's server VAD for instant local voice detection and immediate UI feedback.
+- **Per-Character Personas**: Each character carries her own system prompt and voice model, hot-swapped on model selection.
 
 
 ---
@@ -37,21 +39,67 @@ NeuraLink follows the official **VRM ecosystem standards** to ensure compatibili
 
 ### Real-time Audio & LipSync Pipeline
 
-NeuraLink uses a high-efficiency pipeline to ensure zero-latency synchronization between the AI's voice and the character's mouth movements.
+NeuraLink uses a high-efficiency dual-VAD pipeline to minimise latency between the user's voice and the AI's response.
 
 ```mermaid
 graph TD
-    API[OpenAI Realtime API] -- WebRTC --> RTC(RTCAudioSession)
+    MIC[Microphone]
+
+    MIC --> WebRTC[WebRTC Audio Track]
+    MIC --> Tap[AVAudioEngine Tap]
+
+    subgraph VAD [Dual VAD Layer]
+        Tap --> Silero[Silero VAD v5\nClient-side · Local]
+        WebRTC --> ServerVAD[OpenAI Server VAD\nCloud · Turn-taking]
+    end
+
+    Silero -- voiceStarted / voiceEnded --> UIState[UI State\nlistening ↔ ready]
+    ServerVAD -- commit --> API
+
+    WebRTC --> API[OpenAI Realtime API\ngpt-4o-realtime]
+    API -- WebRTC --> RTC(RTCAudioSession)
     RTC --> Buffer[PCM Audio Buffer]
-    Buffer --> Output[Device Speakers]
+    Buffer --> Output[🔊 Speakers]
     Buffer --> Analyzer[Amplitude Analyzer]
     Analyzer -- RMS Energy --> Controller[LipSync Controller]
     Controller -- Morph Targets --> Metal[Metal Render System]
-    Metal --> Screen(iOS Display)
-    
+    Metal --> Screen(📱 Display)
+
+    style Silero fill:#7c3aed,stroke:#fff,color:#fff
+    style ServerVAD fill:#10a37f,stroke:#fff,color:#fff
     style API fill:#10a37f,stroke:#fff,color:#fff
     style Metal fill:#00e676,stroke:#fff,color:#000
     style RTC fill:#2979ff,stroke:#fff,color:#fff
+```
+
+### AI Voice & Persona System
+
+Each character model carries her own system prompt and OpenAI voice model, applied automatically on selection.
+
+```mermaid
+graph TD
+    Select[Character Selection]
+
+    Select --> Ekaterina[Ekaterina]
+    Select --> Sonya[Sonya]
+
+    Ekaterina --> EV[Voice: shimmer]
+    Ekaterina --> EP[Persona: Onee-san\nGentle · Caring · Japanese]
+
+    Sonya --> SV[Voice: marin]
+    Sonya --> SP[Persona: Dedicatus\nTsundere Queen · Sharp · Flustered]
+
+    EV --> Session[session.update]
+    EP --> Session
+    SV --> Session
+    SP --> Session
+
+    Session --> OpenAI[OpenAI Realtime API]
+
+    style Ekaterina fill:#f472b6,stroke:#fff,color:#fff
+    style Sonya fill:#7c3aed,stroke:#fff,color:#fff
+    style OpenAI fill:#10a37f,stroke:#fff,color:#fff
+    style Session fill:#1e293b,stroke:#fff,color:#fff
 ```
 
 ### Model Loading & Rendering
