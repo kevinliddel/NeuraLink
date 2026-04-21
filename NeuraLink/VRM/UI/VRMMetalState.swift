@@ -14,10 +14,10 @@ import simd
 final class VRMMetalState {
     let mtkView: MTKView
     var renderer: VRMRenderer?
-    
+
     // AI Integration
     private let aiState = RealtimeChatState.shared
-    
+
     var isModelLoaded: Bool = false
     var errorMessage: String?
     var currentModel: VRMModel?
@@ -74,7 +74,9 @@ final class VRMMetalState {
         mtkView.depthStencilPixelFormat = .depth32Float
         mtkView.clearColor = MTLClearColor(red: 0.15, green: 0.15, blue: 0.15, alpha: 1.0)
 
-        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else {
+            return
+        }
 
         let config = RendererConfig(strict: .off)
         renderer = VRMRenderer(device: device, config: config)
@@ -122,16 +124,17 @@ final class VRMMetalState {
     private static func findVRMA(named name: String) -> URL? {
         if let url = Bundle.main.url(forResource: name, withExtension: "vrma") { return url }
         guard let dir = Bundle.main.url(forResource: "Models", withExtension: nil),
-              let all = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
+            let all = try? FileManager.default.contentsOfDirectory(
+                at: dir, includingPropertiesForKeys: nil)
         else { return nil }
         return all.first {
-            $0.pathExtension.lowercased() == "vrma" &&
-            $0.deletingPathExtension().lastPathComponent.lowercased() == name.lowercased()
+            $0.pathExtension.lowercased() == "vrma"
+                && $0.deletingPathExtension().lastPathComponent.lowercased() == name.lowercased()
         }
     }
 
     private func loadAnimationSequence(for model: VRMModel) {
-        let appearURL  = Self.findVRMA(named: "appear")
+        let appearURL = Self.findVRMA(named: "appear")
         let defaultURL = Self.findVRMA(named: "default_state")
 
         guard let defaultURL else {
@@ -167,7 +170,7 @@ final class VRMMetalState {
                 }
             } catch {
                 await MainActor.run { self.modelAlpha = 1.0 }
-                vrmLog("[VRMMetalState] ⚠️ Failed to load animation: \(error)")
+                await vrmLog("[VRMMetalState] ⚠️ Failed to load animation: \(error)")
             }
         }
     }
@@ -264,7 +267,7 @@ final class VRMMetalState {
             lookAt.cameraPosition = lastCameraPosition
             lookAt.update(deltaTime: dt)
         }
-        
+
         // AI Lip-Sync — driven by inbound-rtp audioLevel (OpenAI audio only),
         // not by status, so mouth stays in sync through the WebRTC jitter buffer drain.
         lipSyncController.update(audioLevel: aiState.audioLevel, deltaTime: dt)

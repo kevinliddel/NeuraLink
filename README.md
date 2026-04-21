@@ -1,7 +1,7 @@
 # NeuraLink
 
 <p align="center">
-    <img src="./docs/Ekaterina.jpeg" alt="NeuraLink Model" width="400" style="border-radius: 20px;" />
+    <img src="./docs/Ekaterina.jpeg" alt="NeuraLink Model" width="400" />
 </p>
 
 <p align="center">
@@ -9,12 +9,12 @@
   <img src="https://img.shields.io/badge/Swift-6.0-orange?style=flat&logo=swift" alt="Swift" />
   <img src="https://img.shields.io/badge/Graphics-Metal-brightgreen?style=flat&logo=metal" alt="Metal" />
   <img src="https://custom-icon-badges.demolab.com/badge/ChatGPT-74aa9c?logo=openai&logoColor=white" alt="OpenAI" />
-  <img src="https://img.shields.io/badge/WebRTC-gray?style=flat&logo=webrtc" alt="WebRTC" />
+  <img src="https://img.shields.io/badge/AVAudioEngine-gray?style=flat&logo=apple" alt="AVAudioEngine" />
   <img src="https://img.shields.io/badge/Silero-VAD-red?style=flat&logo=silero" alt="Silero VAD" />
   
 </p>
 
-A high-performance, native iOS VRM character viewer and AI companion built from the ground up using **Metal** and **SwiftUI**. NeuraLink integrates state-of-the-art WebRTC audio streaming for real-time AI interaction with synchronized visual feedback.
+A high-performance, native iOS VRM character viewer and AI companion built from the ground up using **Metal** and **SwiftUI**. NeuraLink connects to the OpenAI Realtime API via **WebSocket** with **AVAudioEngine** for mic capture and AI audio playback — fully screen-recordable and integrated with synchronized visual feedback.
 
 ---
 
@@ -26,10 +26,32 @@ A high-performance, native iOS VRM character viewer and AI companion built from 
 - **Advanced Camera**: Orbit controls with look-at behavior following the viewing angle.
 - **Universal Support**: Handles both VRM 0.x and 1.0 specifications.
 - **Realtime sky system**: Real-time sky with realistic lighting with dynamic sun and moon positioning.
-- **Arknight inspired camera feature**: When you rotate the camera to look behind the character, the character will turn her head to look at you after 5 seconds.
+- **"Eyes on You" System**: Features an Arknights: Endfield-inspired camera system, where characters will maintain eye contact by turning their heads toward the camera if it remains behind them for more than 5 seconds.
 - **Dual-Layer VAD**: Client-side Silero VAD (v5 model) runs alongside OpenAI's server VAD for instant local voice detection and immediate UI feedback.
 - **Per-Character Personas**: Each character carries her own system prompt and voice model, hot-swapped on model selection.
 
+
+---
+
+## 🌤️ Realtime Sky System
+
+NeuraLink renders a fully procedural, physically-inspired sky backdrop that **automatically mirrors the user's local time of day** — from the cool darkness of midnight to the warm golden glow of an afternoon sun.
+
+<p align="center">
+  <img src="./docs/sunrise.jpeg" alt="Sunrise" width="180" style="margin:4px;" />
+  <img src="./docs/afternoon-sun.jpeg" alt="Afternoon sun" width="180" style="margin:4px;" />
+  <img src="./docs/sunset.jpeg" alt="Sunset" width="180" style="margin:4px;" />
+  <img src="./docs/night.jpeg" alt="Night" width="180" style="margin:4px;" />
+</p>
+
+Key highlights:
+
+- **Clock-driven** — `SkyTimeProvider` reads the device's local calendar every frame; no manual configuration required.
+- **Procedural GPU shader** — a single fullscreen-triangle Metal draw call renders the gradient, star field, dual-layer dome clouds, sun disc with bloom, and a moon disc opposite the sun.
+- **Unified lighting** — the resolved `SkyEnvironment` drives a three-point key / fill / rim light rig that keeps the VRM character consistently lit against the sky at every hour.
+- **Zero textures** — all visual elements (clouds, stars, sun, moon) are generated procedurally via FBM noise and analytic functions.
+
+**[Full Sky System documentation](./docs/Sky-System.md)**
 
 ---
 
@@ -54,26 +76,22 @@ NeuraLink uses a high-efficiency dual-VAD pipeline to minimise latency between t
 graph TD
     MIC[Microphone]
 
-    MIC --> WebRTC[WebRTC Audio Track]
-    MIC --> Tap[AVAudioEngine Tap]
+    MIC --> EngineIn[AVAudioEngine\nInput Tap]
 
     subgraph VAD [Dual VAD Layer]
-        Tap --> Silero[Silero VAD v5\nClient-side · Local]
-        WebRTC --> ServerVAD[OpenAI Server VAD\nCloud · Turn-taking]
+        EngineIn --> Silero[Silero VAD v5\nClient-side · Local]
+        EngineIn --> ServerVAD[OpenAI Server VAD\nCloud · Turn-taking]
     end
 
     Silero --> VoiceEvent[voiceStarted / voiceEnded]
     VoiceEvent --> UIState[UI State\nlistening ↔ ready]
-    ServerVAD --> Commit[commit]
-    Commit --> API
 
-    WebRTC --> API[OpenAI Realtime API\ngpt-realtime]
-    API --> WebRTCLink[WebRTC]
-    WebRTCLink --> RTC(RTCAudioSession)
-    RTC --> Buffer[PCM Audio Buffer]
-    Buffer --> Output[Speakers]
-    Buffer --> Analyzer[Amplitude Analyzer]
-    Analyzer --> RMSEnergy[RMS Energy]
+    EngineIn --> PCM16[PCM16 24 kHz\nBase64 encode]
+    PCM16 --> WS[WebSocket\nOpenAI Realtime API]
+    WS --> Delta[response.audio.delta\nPCM16 chunks]
+    Delta --> RMSEnergy[RMS Energy\nper chunk]
+    Delta --> Player[AVAudioPlayerNode\n24 kHz playback]
+    Player --> Output[Speakers\nSystem Audio Graph]
     RMSEnergy --> Controller[LipSync Controller]
     Controller --> MorphTargets[Morph Targets]
     MorphTargets --> Metal[Metal Render System]
@@ -81,14 +99,14 @@ graph TD
 
     style Silero fill:#7c3aed,stroke:#fff,color:#fff
     style ServerVAD fill:#10a37f,stroke:#fff,color:#fff
-    style API fill:#10a37f,stroke:#fff,color:#fff
+    style WS fill:#10a37f,stroke:#fff,color:#fff
     style Metal fill:#00e676,stroke:#fff,color:#000
-    style RTC fill:#2979ff,stroke:#fff,color:#fff
+    style Player fill:#2979ff,stroke:#fff,color:#fff
     style VoiceEvent fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
-    style Commit fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
-    style WebRTCLink fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
     style RMSEnergy fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
     style MorphTargets fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
+    style PCM16 fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
+    style Delta fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
 ```
 
 ### AI Voice & Persona System

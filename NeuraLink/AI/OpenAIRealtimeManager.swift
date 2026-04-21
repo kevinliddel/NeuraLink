@@ -9,7 +9,6 @@ import AVFoundation
 import Foundation
 import RealTimeCutVADLibrary
 import SwiftUI
-import WebRTC
 
 /// Signature for handling incoming events from OpenAI
 protocol OpenAIRealtimeDelegate: AnyObject {
@@ -18,396 +17,275 @@ protocol OpenAIRealtimeDelegate: AnyObject {
     func openaiDidUpdateAudioLevel(_ level: Float)
 }
 
-/// Core manager for OpenAI Realtime API via WebRTC.
+/// Core manager for OpenAI Realtime API via WebSocket + AVAudioEngine.
+/// AVAudioEngine routes audio through the system audio graph — fully capturable
+/// by iOS screen recording (unlike WebRTC VPIO which bypasses it).
 final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
     static let shared = OpenAIRealtimeManager()
 
-    private var peerConnection: RTCPeerConnection?
-    private var remoteDataChannel: RTCDataChannel?
-    private let factory: RTCPeerConnectionFactory
-    private var statsTimer: Timer?
-    private var pendingOffer: RTCSessionDescription?
-    private var iceGatheringTimeout: Task<Void, Never>?
+    private var webSocketTask: URLSessionWebSocketTask?
+    private let urlSession: URLSession
     private let sileroVAD = SileroVADProcessor()
+
+    // AVAudioEngine for mic capture and AI playback
+    private let engine = AVAudioEngine()
+    private let playerNode = AVAudioPlayerNode()
+    private let levelMixer = AVAudioMixerNode()
+    private var micConverter: AVAudioConverter?
+    private let aiSampleRate: Double = 24000
+    private var audioLevelResetTask: Task<Void, Never>?
 
     // Dependencies
     private let settings = OpenAISettings.shared
     private let state = RealtimeChatState.shared
 
     override init() {
-        RTCInitializeSSL()
-        let videoEncoderFactory = RTCDefaultVideoEncoderFactory()
-        let videoDecoderFactory = RTCDefaultVideoDecoderFactory()
-        self.factory = RTCPeerConnectionFactory(
-            encoderFactory: videoEncoderFactory, decoderFactory: videoDecoderFactory)
+        urlSession = URLSession(configuration: .default)
         super.init()
         setupAudioSession()
+        setupAudioEngine()
     }
 
     private func setupAudioSession() {
-        let rtcSession = RTCAudioSession.sharedInstance()
-        rtcSession.lockForConfiguration()
         do {
-            try rtcSession.setCategory(.playAndRecord, with: [.allowBluetoothHFP, .defaultToSpeaker])
-            try rtcSession.setMode(.videoChat)
-            try rtcSession.setActive(true)
-            rtcSession.isAudioEnabled = true
-            print("[AI]: RTCAudioSession configured for speaker output")
+            let s = AVAudioSession.sharedInstance()
+            try s.setCategory(
+                .playAndRecord, mode: .default,
+                options: [.defaultToSpeaker, .allowBluetoothHFP, .mixWithOthers])
+            try s.setActive(true)
+            print("[AI]: AVAudioSession configured (.default mode, mixWithOthers)")
         } catch {
-            print("[AI]: Failed to configure RTCAudioSession: \(error)")
-        }
-        rtcSession.unlockForConfiguration()
-    }
-
-    private func forceAudioToSpeaker() {
-        do {
-            try AVAudioSession.sharedInstance().overrideOutputAudioPort(.speaker)
-        } catch {
-            print("[AI]: Failed to override output port: \(error)")
+            print("[AI]: Failed to configure audio session: \(error)")
         }
     }
 
-    /// Starts the Realtime session
+    private func setupAudioEngine() {
+        let playFmt = AVAudioFormat(standardFormatWithSampleRate: aiSampleRate, channels: 1)!
+        engine.attach(playerNode)
+        engine.attach(levelMixer)
+        // playerNode → levelMixer → mainMixerNode so the tap measures actual playback
+        engine.connect(playerNode, to: levelMixer, format: playFmt)
+        engine.connect(levelMixer, to: engine.mainMixerNode, format: playFmt)
+    }
+
+    // MARK: - Connection
+
     func connect() {
         guard settings.hasValidKey else {
             state.setError("Invalid API Key")
             return
         }
-
         state.status = .connecting
-        print("[AI]: Connecting to OpenAI Realtime...")
-        Task.detached(priority: .userInitiated) { [weak self] in
-            self?.setupAudioSession()
-            self?.setupPeerConnection()
-            self?.createAndSendOffer()
-        }
+        print("[AI]: Connecting to OpenAI Realtime (WebSocket)...")
+
+        var req = URLRequest(
+            url: URL(string: "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview")!)
+        req.setValue("Bearer \(settings.apiKey)", forHTTPHeaderField: "Authorization")
+        req.setValue("realtime=v1", forHTTPHeaderField: "OpenAI-Beta")
+
+        webSocketTask = urlSession.webSocketTask(with: req)
+        webSocketTask?.resume()
+        receiveMessages()
+        startAudioEngine()
     }
 
-    /// Stops the Realtime session
     func disconnect() {
         sileroVAD.stop()
-        remoteDataChannel?.close()
-        peerConnection?.close()
-        peerConnection = nil
-        stopStatsPolling()
+        audioLevelResetTask?.cancel()
+        engine.inputNode.removeTap(onBus: 0)
+        levelMixer.removeTap(onBus: 0)
+        playerNode.stop()
+        if engine.isRunning { engine.stop() }
+        webSocketTask?.cancel(with: .goingAway, reason: nil)
+        webSocketTask = nil
+        Task { @MainActor in RealtimeChatState.shared.audioLevel = 0 }
         state.status = .disconnected
     }
 
-    // MARK: - WebRTC Signaling
+    // MARK: - WebSocket
 
-    private func setupPeerConnection() {
-        let config = RTCConfiguration()
-        config.sdpSemantics = .unifiedPlan
-        config.bundlePolicy = .maxBundle
-        config.iceCandidatePoolSize = 10
-
-        // Add STUN servers to help with NAT traversal
-        config.iceServers = [
-            RTCIceServer(urlStrings: ["stun:stun.l.google.com:19302"]),
-            RTCIceServer(urlStrings: ["stun:stun1.l.google.com:19302"]),
-            RTCIceServer(urlStrings: ["stun:stun2.l.google.com:19302"]),
-            RTCIceServer(urlStrings: ["stun:stun3.l.google.com:19302"]),
-            RTCIceServer(urlStrings: ["stun:stun4.l.google.com:19302"])
-        ]
-
-        let constraints = RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)
-
-        self.peerConnection = factory.peerConnection(
-            with: config, constraints: constraints, delegate: self)
-
-        // Add Audio track
-        let audioSource = factory.audioSource(with: nil)
-        let audioTrack = factory.audioTrack(with: audioSource, trackId: "audio0")
-        peerConnection?.add(audioTrack, streamIds: ["stream0"])
-
-        // Setup Data Channel
-        let dataChannelConfig = RTCDataChannelConfiguration()
-        self.remoteDataChannel = peerConnection?.dataChannel(
-            forLabel: "oai-events", configuration: dataChannelConfig)
-        self.remoteDataChannel?.delegate = self
-    }
-
-    private func createAndSendOffer() {
-        let constraints = RTCMediaConstraints(
-            mandatoryConstraints: [
-                kRTCMediaConstraintsOfferToReceiveAudio: kRTCMediaConstraintsValueTrue
-            ], optionalConstraints: nil)
-
-        peerConnection?.offer(for: constraints) { [weak self] offer, error in
-            print("[AI]: Creating SDP offer...")
-            guard let self = self, let offer = offer else {
-                self?.state.setError(
-                    "Failed to create offer: \(error?.localizedDescription ?? "unknown")")
-                return
-            }
-
-            self.peerConnection?.setLocalDescription(offer) { [weak self] error in
-                guard let self = self else { return }
-                if let error = error {
-                    self.state.setError("Failed to set local desc: \(error.localizedDescription)")
-                    return
+    private func receiveMessages() {
+        webSocketTask?.receive { [weak self] result in
+            guard let self else { return }
+            switch result {
+            case .success(let msg):
+                let text: String? = switch msg {
+                case .string(let s): s
+                case .data(let d): String(data: d, encoding: .utf8)
+                @unknown default: nil
                 }
-                print("[AI]: SDP offer set, gathering ICE candidates (timeout in 1.5s)...")
-                self.pendingOffer = offer
-
-                // Fallback timeout: Send what we have if gathering takes too long
-                self.iceGatheringTimeout?.cancel()
-                self.iceGatheringTimeout = Task {
-                    try? await Task.sleep(nanoseconds: 1_500_000_000)
-                    if !Task.isCancelled {
-                        print("[AI]: ICE gathering timeout reached, sending available candidates")
-                        self.sendOfferIfPossible()
-                    }
-                }
-            }
-        }
-    }
-
-    private func sendOfferIfPossible() {
-        guard let offer = peerConnection?.localDescription, pendingOffer != nil else { return }
-        iceGatheringTimeout?.cancel()
-        iceGatheringTimeout = nil
-        pendingOffer = nil  // Mark as sent
-        sendOfferToOpenAI(offer)
-    }
-
-    private func sendOfferToOpenAI(_ offer: RTCSessionDescription) {
-        let url = URL(
-            string: "https://api.openai.com/v1/realtime?model=gpt-realtime")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(settings.apiKey)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/sdp", forHTTPHeaderField: "Content-Type")
-        request.httpBody = offer.sdp.data(using: .utf8)
-
-        print("[AI]: Sending SDP offer to OpenAI...")
-        URLSession.shared.dataTask(with: request) { [weak self] data, _, error in
-            guard let self = self else { return }
-
-            if let error = error {
+                if let t = text { self.handleEvent(t) }
+                self.receiveMessages()
+            case .failure(let error):
+                print("[AI]: WebSocket error: \(error)")
                 Task { @MainActor in
-                    self.state.setError("Signaling error: \(error.localizedDescription)")
-                }
-                return
-            }
-
-            guard let data = data, let sdpAnswer = String(data: data, encoding: .utf8) else {
-                Task { @MainActor in self.state.setError("Invalid SDP answer") }
-                return
-            }
-
-            print("[AI]: Received answer length: \(sdpAnswer.count)")
-            if sdpAnswer.contains("m=audio") {
-                print("[AI]: Answer contains audio track")
-            } else {
-                print("[AI]: WARNING - Answer does NOT contain audio track")
-            }
-
-            let answer = RTCSessionDescription(type: .answer, sdp: sdpAnswer)
-            print("[AI]: Received SDP answer from OpenAI")
-            self.peerConnection?.setRemoteDescription(answer) { error in
-                Task { @MainActor in
-                    if let error = error {
-                        self.state.setError(
-                            "Failed to set remote desc: \(error.localizedDescription)")
-                    } else {
-                        print("[AI]: Connection established and ready")
-                        self.state.status = .ready
-                        self.forceAudioToSpeaker()
-                        self.startStatsPolling()
-                        self.startSileroVADIfEnabled()
-                    }
-                }
-            }
-        }.resume()
-    }
-
-    /// Polling stats to extract audio levels for lip-sync
-    private func startStatsPolling() {
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            self.statsTimer?.invalidate()
-            self.statsTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) {
-                [weak self] _ in
-                self?.peerConnection?.statistics { report in
-                    for (_, stats) in report.statistics {
-                        if stats.type == "inbound-rtp",
-                            let audioLevelValue = stats.values["audioLevel"] {
-                            let level = (audioLevelValue as? NSNumber)?.floatValue ?? 0.0
-                            if level > 0.01 {
-                                print("[AI]: Incoming audio level detected: \(level)")
-                            }
-                            Task { @MainActor in
-                                RealtimeChatState.shared.audioLevel = level
-                            }
-                        }
-                    }
+                    self.state.setError("Connection error: \(error.localizedDescription)")
                 }
             }
         }
     }
 
-    /// Stops polling
-    private func stopStatsPolling() {
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            self.statsTimer?.invalidate()
-            self.statsTimer = nil
-        }
+    private func sendJSON(_ dict: [String: Any]) {
+        guard let data = try? JSONSerialization.data(withJSONObject: dict),
+              let text = String(data: data, encoding: .utf8) else { return }
+        webSocketTask?.send(.string(text)) { _ in }
     }
 
-    // MARK: - Message Handling
-
-    private func handleIncomingJSON(_ json: [String: Any]) {
-        guard let type = json["type"] as? String else { return }
-
-        Task { @MainActor in
-            switch type {
-            case "response.audio_transcript.delta":
-                if let delta = json["delta"] as? String {
-                    print("[AI Text Delta]: \(delta)")
-                    state.aiTranscript += delta
-                }
-            case "conversation.item.input_audio_transcription.completed":
-                if let transcript = json["transcript"] as? String {
-                    print("[User Transcript]: \(transcript)")
-                    state.userTranscript = transcript
-                }
-            case "response.output_item.added":
-                state.aiTranscript = ""
-                state.status = .speaking
-            case "response.done":
-                state.status = .ready
-            default:
-                break
-            }
-        }
-    }
-}
-
-// MARK: - RTCPeerConnectionDelegate
-extension OpenAIRealtimeManager: RTCPeerConnectionDelegate {
-    func peerConnection(
-        _ peerConnection: RTCPeerConnection, didChange stateChanged: RTCSignalingState
-    ) {
-        print("[AI]: Signaling state changed: \(stateChanged.rawValue)")
-    }
-
-    func peerConnection(_ peerConnection: RTCPeerConnection, didAdd stream: RTCMediaStream) {
-        print("[AI]: Stream added with \(stream.audioTracks.count) audio tracks")
-        for track in stream.audioTracks {
-            track.isEnabled = true
-            print("[AI]: Audio track \(track.trackId) enabled")
-        }
-    }
-
-    func peerConnection(_ peerConnection: RTCPeerConnection, didRemove stream: RTCMediaStream) {
-        print("[AI]: Stream removed")
-    }
-
-    func peerConnectionShouldNegotiate(_ peerConnection: RTCPeerConnection) {
-        print("[AI]: PeerConnection should negotiate")
-    }
-
-    func peerConnection(
-        _ peerConnection: RTCPeerConnection, didChange newState: RTCIceConnectionState
-    ) {
-        print("[AI]: ICE connection state changed: \(newState.rawValue)")
-    }
-
-    func peerConnection(
-        _ peerConnection: RTCPeerConnection, didChange newState: RTCIceGatheringState
-    ) {
-        print("[AI]: ICE gathering state changed: \(newState.rawValue)")
-        if newState == .complete {
-            print("[AI]: ICE gathering complete via delegate")
-            sendOfferIfPossible()
-        }
-    }
-
-    func peerConnection(_ peerConnection: RTCPeerConnection, didGenerate candidate: RTCIceCandidate) {
-        print("[AI]: Generated ICE candidate: \(candidate.sdpMid ?? "none")")
-    }
-
-    func peerConnection(
-        _ peerConnection: RTCPeerConnection, didRemove candidates: [RTCIceCandidate]
-    ) {
-        print("[AI]: Removed ICE candidates")
-    }
-
-    func peerConnection(_ peerConnection: RTCPeerConnection, didOpen dataChannel: RTCDataChannel) {
-        print("[AI]: Data channel opened")
-    }
-
-    func peerConnection(
-        _ peerConnection: RTCPeerConnection, didChange newState: RTCPeerConnectionState
-    ) {
-        print("[AI]: PeerConnection state changed: \(newState.rawValue)")
-    }
-
-    func peerConnection(
-        _ peerConnection: RTCPeerConnection, didStartReceiver receiver: RTCRtpReceiver,
-        streams: [RTCMediaStream]
-    ) {
-        let kind = receiver.track?.kind ?? "unknown"
-        print("[AI]: Started receiver for \(kind) track")
-        if let audioTrack = receiver.track as? RTCAudioTrack {
-            audioTrack.isEnabled = true
-            print("[AI]: Remote audio track enabled: \(audioTrack.trackId)")
-            let rtcSession = RTCAudioSession.sharedInstance()
-            rtcSession.lockForConfiguration()
-            try? rtcSession.setActive(true)
-            rtcSession.isAudioEnabled = true
-            rtcSession.unlockForConfiguration()
-        }
-    }
-}
-
-// MARK: - RTCDataChannelDelegate
-extension OpenAIRealtimeManager: RTCDataChannelDelegate {
-    func dataChannelDidChangeState(_ dataChannel: RTCDataChannel) {
-        print("[AI]: Data channel state changed: \(dataChannel.readyState.rawValue)")
-        if dataChannel.readyState == .open {
-            print("[AI]: Data channel is officially OPEN")
-            sendInitialSessionUpdate()
-        }
-    }
-
-    private func sendInitialSessionUpdate() {
+    private func sendSessionUpdate() {
         let persona = CharacterPersona.forCharacter(named: state.selectedCharacterName)
-        let update: [String: Any] = [
+        sendJSON([
             "type": "session.update",
             "session": [
                 "modalities": ["text", "audio"],
                 "voice": persona.voice,
                 "instructions": persona.instructions,
-                "input_audio_transcription": [
-                    "model": "whisper-1"
-                ],
-                "turn_detection": [
-                    "type": "server_vad"
-                ]
+                "input_audio_format": "pcm16",
+                "output_audio_format": "pcm16",
+                "input_audio_transcription": ["model": "whisper-1"],
+                "turn_detection": ["type": "server_vad"]
             ]
-        ]
-
-        guard let data = try? JSONSerialization.data(withJSONObject: update),
-            let jsonString = String(data: data, encoding: .utf8)
-        else { return }
-
-        let buffer = RTCDataBuffer(data: data, isBinary: false)
-        remoteDataChannel?.sendData(buffer)
-        print("[AI]: Sent initial session.update")
+        ])
+        print("[AI]: Sent session.update")
     }
-    func dataChannel(_ dataChannel: RTCDataChannel, didReceiveMessageWith buffer: RTCDataBuffer) {
-        guard let data = String(data: buffer.data, encoding: .utf8)?.data(using: .utf8),
-            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else { return }
 
-        if let type = json["type"] as? String {
-            print("[AI Event Received]: \(type)")
+    // MARK: - Audio Engine
+
+    private func startAudioEngine() {
+        let inputNode = engine.inputNode
+        let inputFmt = inputNode.outputFormat(forBus: 0)
+
+        // Converter: device mic format → PCM16 24 kHz mono for OpenAI
+        let targetFmt = AVAudioFormat(
+            commonFormat: .pcmFormatInt16,
+            sampleRate: aiSampleRate, channels: 1, interleaved: true)!
+        micConverter = AVAudioConverter(from: inputFmt, to: targetFmt)
+
+        let outCapacity = AVAudioFrameCount(
+            ceil(aiSampleRate / inputFmt.sampleRate * 4096))
+
+        inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFmt) { [weak self] buf, _ in
+            self?.forwardMicAudio(buf, targetFmt: targetFmt, capacity: outCapacity)
         }
 
-        handleIncomingJSON(json)
+        do {
+            try engine.start()
+            playerNode.play()
+            // Tap the mixer AFTER start so outputFormat(forBus:) reflects the live format.
+            // ~23ms fire rate (1024 frames @ 44.1kHz) mirrors WebRTC's 50ms stats poll cadence.
+            let tapFmt = levelMixer.outputFormat(forBus: 0)
+            levelMixer.installTap(onBus: 0, bufferSize: 1024, format: tapFmt) { [weak self] buf, _ in
+                self?.reportLevel(buf)
+            }
+            print("[AI]: AVAudioEngine started")
+        } catch {
+            print("[AI]: Failed to start audio engine: \(error)")
+        }
+    }
+
+    private func reportLevel(_ buffer: AVAudioPCMBuffer) {
+        guard let data = buffer.floatChannelData?[0] else { return }
+        let frameCount = Int(buffer.frameLength)
+        guard frameCount > 0 else { return }
+        var sumSq: Float = 0
+        for i in 0..<frameCount { sumSq += data[i] * data[i] }
+        let rms = min(sqrt(sumSq / Float(frameCount)) * 3.5, 1.0)
+        Task { @MainActor in RealtimeChatState.shared.audioLevel = rms }
+    }
+
+    private func forwardMicAudio(
+        _ buffer: AVAudioPCMBuffer, targetFmt: AVAudioFormat, capacity: AVAudioFrameCount
+    ) {
+        guard let conv = micConverter,
+              let out = AVAudioPCMBuffer(pcmFormat: targetFmt, frameCapacity: capacity)
+        else { return }
+
+        var done = false
+        var err: NSError?
+        conv.convert(to: out, error: &err) { _, status in
+            if !done { done = true; status.pointee = .haveData; return buffer }
+            status.pointee = .noDataNow; return nil
+        }
+        guard err == nil, out.frameLength > 0, let raw = out.int16ChannelData else { return }
+
+        let bytes = Data(bytes: raw[0], count: Int(out.frameLength) * 2)
+        sendJSON(["type": "input_audio_buffer.append", "audio": bytes.base64EncodedString()])
+    }
+
+    private func scheduleAIAudio(_ base64PCM: String) {
+        guard let pcm = Data(base64Encoded: base64PCM) else { return }
+        let frameCount = pcm.count / 2
+        guard frameCount > 0 else { return }
+
+        let fmt = AVAudioFormat(standardFormatWithSampleRate: aiSampleRate, channels: 1)!
+        guard let buf = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: AVAudioFrameCount(frameCount)) else { return }
+        buf.frameLength = AVAudioFrameCount(frameCount)
+
+        pcm.withUnsafeBytes { raw in
+            let src = raw.bindMemory(to: Int16.self)
+            guard let dst = buf.floatChannelData?[0] else { return }
+            for i in 0..<frameCount { dst[i] = Float(src[i]) / 32768.0 }
+        }
+
+        if !engine.isRunning { try? engine.start() }
+        playerNode.scheduleBuffer(buf)
+        if !playerNode.isPlaying { playerNode.play() }
+    }
+
+    // MARK: - Event Handling
+
+    private func handleEvent(_ text: String) {
+        guard let data = text.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let type = json["type"] as? String else { return }
+
+        print("[AI Event]: \(type)")
+
+        Task { @MainActor in
+            switch type {
+            case "session.created":
+                self.sendSessionUpdate()
+                self.state.status = .ready
+                self.startSileroVADIfEnabled()
+
+            case "response.audio.delta":
+                if let delta = json["delta"] as? String {
+                    self.scheduleAIAudio(delta)
+                }
+
+            case "response.audio_transcript.delta":
+                if let delta = json["delta"] as? String {
+                    self.state.aiTranscript += delta
+                }
+
+            case "conversation.item.input_audio_transcription.completed":
+                if let t = json["transcript"] as? String {
+                    self.state.userTranscript = t
+                }
+
+            case "input_audio_buffer.speech_started":
+                if self.state.status == .ready { self.state.status = .listening }
+
+            case "input_audio_buffer.speech_stopped":
+                if self.state.status == .listening { self.state.status = .ready }
+
+            case "response.output_item.added":
+                self.state.aiTranscript = ""
+                self.state.status = .speaking
+
+            case "response.done":
+                self.state.status = .ready
+                // Fallback: force level to 0 once audio buffer drains after the response ends.
+                // The mixer tap naturally reads 0 when silent, but this handles edge cases.
+                self.audioLevelResetTask?.cancel()
+                self.audioLevelResetTask = Task {
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    guard !Task.isCancelled else { return }
+                    await MainActor.run { RealtimeChatState.shared.audioLevel = 0 }
+                }
+
+            default: break
+            }
+        }
     }
 }
 
