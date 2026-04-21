@@ -196,6 +196,7 @@ final class VRMMetalState {
         renderer?.updateSky(deltaTime: dt)
         renderer?.applySkyLighting()
         renderer?.updateTerrain(deltaTime: dt)
+        renderer?.updateBirds(deltaTime: dt)
     }
 
     // MARK: - CADisplayLink Ticker

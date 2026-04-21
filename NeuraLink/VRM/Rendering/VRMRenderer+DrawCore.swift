@@ -101,6 +101,9 @@ extension VRMRenderer {
         // 2. Snow terrain (depth write = true — VRM renders on top)
         drawTerrain(encoder: encoder)
 
+        // 3. Birds (above terrain, behind the VRM character)
+        drawBirds(encoder: encoder)
+
         // Update LookAt controller
         if let lookAtController = lookAtController, lookAtController.enabled {
             // Extract camera position from view matrix
@@ -359,6 +362,7 @@ extension VRMRenderer {
         }
         drawSky(encoder: encoder)
         drawTerrain(encoder: encoder)
+        drawBirds(encoder: encoder)
         encoder.endEncoding()
         commandBuffer.addCompletedHandler { [weak self] _ in
             self?.inflightSemaphore.signal()

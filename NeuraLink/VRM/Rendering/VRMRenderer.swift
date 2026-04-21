@@ -157,6 +157,9 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
     // Snow terrain + shadow map renderer
     var terrainRenderer: TerrainRenderer?
 
+    // Bird flock renderer
+    var birdRenderer: BirdRenderer?
+
     // Sprite rendering pipeline
     var spritePipelineState: MTLRenderPipelineState?
     var spriteVertexBuffer: MTLBuffer?
@@ -326,6 +329,7 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
         setupTripleBuffering()
         setupSkyRenderer()
         setupTerrain()
+        setupBirdRenderer()
     }
 
     /// Removes the current model from the renderer so only sky and terrain are drawn.
