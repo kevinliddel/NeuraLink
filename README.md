@@ -1,7 +1,7 @@
 # NeuraLink
 
 <p align="center">
-    <img src="./docs/Ekaterina.jpeg" alt="NeuraLink Model" width="400" />
+    <img src="./docs/Models/Ekaterina.jpeg" alt="NeuraLink Model" width="400" />
 </p>
 
 <p align="center">
@@ -38,10 +38,10 @@ A high-performance, native iOS VRM character viewer and AI companion built from 
 NeuraLink renders a fully procedural, physically-inspired sky backdrop that **automatically mirrors the user's local time of day** — from the cool darkness of midnight to the warm golden glow of an afternoon sun.
 
 <p align="center">
-  <img src="./docs/sunrise.jpeg" alt="Sunrise" width="180" style="margin:4px;" />
-  <img src="./docs/afternoon-sun.jpeg" alt="Afternoon sun" width="180" style="margin:4px;" />
-  <img src="./docs/sunset.jpeg" alt="Sunset" width="180" style="margin:4px;" />
-  <img src="./docs/night.jpeg" alt="Night" width="180" style="margin:4px;" />
+  <img src="./docs/Environments/sunrise.jpeg" alt="Sunrise" width="180" style="margin:4px;" />
+  <img src="./docs/Environments/afternoon-sun.jpeg" alt="Afternoon sun" width="180" style="margin:4px;" />
+  <img src="./docs/Environments/sunset.jpeg" alt="Sunset" width="180" style="margin:4px;" />
+  <img src="./docs/Environments/night.jpeg" alt="Night" width="180" style="margin:4px;" />
 </p>
 
 Key highlights:
@@ -181,3 +181,10 @@ git clone https://github.com/kevinliddel/NeuraLink.git
 open NeuraLink/NeuraLink.xcodeproj
 ```
 
+---
+
+## 🧩 Proof of Concept
+
+Here is a video of the proof of concept:
+
+[Proof-of-Concept](https://github.com/user-attachments/assets/2dc35314-fa8e-4b78-8507-b88d96d8c420)

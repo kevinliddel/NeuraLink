@@ -25,13 +25,20 @@ extension VRMRenderer {
         strictValidator?.beginFrame()
 
         guard let model = model else {
-            inflightSemaphore.signal()
+            // No model loaded: render sky and terrain so the environment stays alive.
+            drawEnvironmentFrame(commandBuffer: commandBuffer, renderPassDescriptor: renderPassDescriptor)
             return
         }
 
         // LOCK THE MODEL: Prevent animation updates while we encode draw commands
         model.lock.lock()
         defer { model.lock.unlock() }
+
+        guard isModelVisible else {
+            // Model loaded but T-pose not yet hidden: keep environment rendering without the model.
+            drawEnvironmentFrame(commandBuffer: commandBuffer, renderPassDescriptor: renderPassDescriptor)
+            return
+        }
 
         // CRITICAL: Update world transforms for all nodes
         // This must be done before rendering to calculate proper positions
@@ -333,6 +340,28 @@ extension VRMRenderer {
             self?.inflightSemaphore.signal()
 
             // (command buffer error checking handled by caller if needed)
+        }
+    }
+
+    // MARK: - Environment-Only Frame
+
+    /// Renders sky and terrain without a VRM model. Used while no model is loaded or while
+    /// the model is still hidden (T-pose phase). Signals the inflight semaphore on completion.
+    private func drawEnvironmentFrame(
+        commandBuffer: MTLCommandBuffer,
+        renderPassDescriptor: MTLRenderPassDescriptor
+    ) {
+        terrainRenderer?.clearShadowMapIfNeeded(commandBuffer: commandBuffer)
+        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor)
+        else {
+            inflightSemaphore.signal()
+            return
+        }
+        drawSky(encoder: encoder)
+        drawTerrain(encoder: encoder)
+        encoder.endEncoding()
+        commandBuffer.addCompletedHandler { [weak self] _ in
+            self?.inflightSemaphore.signal()
         }
     }
 }

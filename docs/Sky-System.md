@@ -7,17 +7,17 @@ NeuraLink features a fully procedural, physically-inspired sky rendered entirely
 ## Gallery
 
 <p align="center">
-  <img src="./sunrise.jpeg" alt="Sunrise sky" width="280" style="margin:6px;" />
-  <img src="./early-morning.jpeg" alt="Early morning sky" width="280" style="margin:6px;" />
-  <img src="./morning.jpeg" alt="Morning sky" width="280" style="margin:6px;" />
-  <img src="./afternoon-sun.jpeg" alt="Afternoon sun sky" width="280" style="margin:6px;" />
-  <img src="./evening-sun-1.jpeg" alt="Evening sky (phase 1)" width="280" style="margin:6px;" />
-  <img src="./evening-sun-2.jpeg" alt="Evening sky (phase 2)" width="280" style="margin:6px;" />
+  <img src="./Environments/sunrise.jpeg" alt="Sunrise sky" width="280" style="margin:6px;" />
+  <img src="./Environments/early-morning.jpeg" alt="Early morning sky" width="280" style="margin:6px;" />
+  <img src="./Environments/morning.jpeg" alt="Morning sky" width="280" style="margin:6px;" />
+  <img src="./Environments/afternoon-sun.jpeg" alt="Afternoon sun sky" width="280" style="margin:6px;" />
+  <img src="./Environments/evening-sun-1.jpeg" alt="Evening sky (phase 1)" width="280" style="margin:6px;" />
+  <img src="./Environments/evening-sun-2.jpeg" alt="Evening sky (phase 2)" width="280" style="margin:6px;" />
 </p>
 <p align="center">
-  <img src="./sunset.jpeg" alt="Sunset sky" width="280" style="margin:6px;" />
-  <img src="./early-night.jpeg" alt="Early night sky" width="280" style="margin:6px;" />
-  <img src="./night.jpeg" alt="Night sky" width="280" style="margin:6px;" />
+  <img src="./Environments/sunset.jpeg" alt="Sunset sky" width="280" style="margin:6px;" />
+  <img src="./Environments/early-night.jpeg" alt="Early night sky" width="280" style="margin:6px;" />
+  <img src="./Environments/night.jpeg" alt="Night sky" width="280" style="margin:6px;" />
 </p>
 
 *From left to right: sunrise · early morning · afternoon · evening (phase 1) · evening (phase 2) · sunset · early night · night*
@@ -41,12 +41,23 @@ NeuraLink/VRM/Shaders/
 
 ```mermaid
 graph TD
-    Clock[Device Clock\nSkyTimeProvider]
-    Clock -->|currentHour| Palette[SkyColorPalette\nSkyEnvironment.resolve]
-    Palette -->|SkyEnvironment| Renderer[SkyRenderer\nper-frame update]
-    Renderer -->|SkyUniformsData| GPU[Metal GPU\nSkyShader.metal]
-    GPU -->|fragment output| Display[Display]
-    Camera[Camera Matrices\ninvViewProjection] --> GPU
+    Clock["Device Clock\nSkyTimeProvider"]
+    Palette["SkyColorPalette\nSkyEnvironment.resolve"]
+    Renderer["SkyRenderer\nper-frame update"]
+    GPU["Metal GPU\nSkyShader.metal"]
+    Display["Display"]
+    Camera["Camera Matrices\ninvViewProjection"]
+
+    E1["currentHour"]
+    E2["SkyEnvironment"]
+    E3["SkyUniformsData"]
+    E4["fragment output"]
+
+    Clock --> E1 --> Palette
+    Palette --> E2 --> Renderer
+    Renderer --> E3 --> GPU
+    GPU --> E4 --> Display
+    Camera --> GPU
 
     style Clock fill:#1e293b,stroke:#334155,color:#94a3b8
     style Palette fill:#0f172a,stroke:#7c3aed,color:#a78bfa
@@ -54,6 +65,11 @@ graph TD
     style GPU fill:#0f172a,stroke:#00e676,color:#69f0ae
     style Camera fill:#1e293b,stroke:#334155,color:#94a3b8
     style Display fill:#1e293b,stroke:#334155,color:#94a3b8
+
+    style E1 fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
+    style E2 fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
+    style E3 fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
+    style E4 fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
 ```
 
 ---
@@ -180,12 +196,12 @@ The fragment shader reconstructs a **world-space view ray** from the screen UV u
 
 ```
 ┌─────────────────────────────────────────────┐
-│  1. Vertical Gradient       (always)         │
-│  2. Below-Horizon Darkening (always)         │
-│  3. Star Field              (night only)     │
+│  1. Vertical Gradient       (always)        │
+│  2. Below-Horizon Darkening (always)        │
+│  3. Star Field              (night only)    │
 │  4. Dome Clouds — two layers                │
-│  5. Sun Disc + Bloom        (above horizon)  │
-│  6. Moon Disc + Glow        (opposite sun)   │
+│  5. Sun Disc + Bloom        (above horizon) │
+│  6. Moon Disc + Glow        (opposite sun)  │
 └─────────────────────────────────────────────┘
 ```
 
@@ -206,9 +222,9 @@ Stars are generated procedurally from a 250×250 cell hash grid mapped to spheri
 Two independent FBM (fractal Brownian motion) noise layers are dome-projected and animated by `cloudTime × cloudSpeed`:
 
 | Layer | Projection | Density | Alpha cap |
-|-------|-----------|---------|-----------|
-| Low | `xz / max(y, 0.20)` — near-horizon | 2.0 | ~88 % |
-| High | `xz / (y + 0.45)` — near-zenith flat | 1.5 | ~75 % |
+|-------|------------|---------|-----------|
+| Low   | `xz / max(y, 0.20)` — near-horizon | 2.0 | ~88 % |
+| High  | `xz / (y + 0.45)` — near-zenith flat | 1.5 | ~75 % |
 
 The two masks are composited with `low + high × (1 − low)` to avoid double-counting. Cloud coverage increases slightly at sunset (`0.50 + sunsetFactor × 0.10`), and the horizontal scroll speed peaks at noon (`0.008 + dayFactor × 0.018`).
 
@@ -227,18 +243,18 @@ The moon is positioned exactly opposite the sun (`moonDir = −sunDir`). A `smoo
 
 ## Time-of-Day Reference
 
-| Time | Sky appearance | Star field | Clouds |
-|------|---------------|-----------|--------|
-| 00:00 | Deep navy — full night | Fully visible | Slow drift |
-| 05:30 | Dark → warming golden horizon | Fading | Thickening slightly |
-| 06:00 | Golden sunrise — rose zenith | Gone | Peak sunset coverage |
-| 08:00 | Bright blue, low sun disc | Off | Normal |
-| 12:00 | Sky blue horizon → deep blue zenith | Off | Fastest scroll |
-| 16:00 | Afternoon blue, sun moving west | Off | Normal |
-| 18:30 | Orange-gold horizon, purple zenith | Emerging | Thickening |
-| 19:00 | Deep sunset orange | Fading in | Peak coverage |
-| 20:00 | Dark transition | Brightening | Slowing |
-| 22:00 | Full night sky | Fully visible | Slow drift |
+| Time   | Sky appearance              | Star field    | Clouds          |
+|--------|-----------------------------|---------------|-----------------|
+| 00:00  | Deep navy — full night      | Fully visible | Slow drift      |
+| 05:30  | Dark → warming golden horizon | Fading        | Thickening slightly |
+| 06:00  | Golden sunrise — rose zenith  | Gone          | Peak sunset coverage |
+| 08:00  | Bright blue, low sun disc   | Off           | Normal          |
+| 12:00  | Sky blue horizon → deep blue zenith | Off | Fastest scroll |
+| 16:00  | Afternoon blue, sun moving west | Off | Normal |
+| 18:30  | Orange-gold horizon, purple zenith | Emerging | Thickening |
+| 19:00  | Deep sunset orange | Fading in | Peak coverage |
+| 20:00  | Dark transition | Brightening | Slowing |
+| 22:00  | Full night sky | Fully visible | Slow drift |
 
 ---
 

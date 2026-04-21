@@ -64,6 +64,9 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
     /// The VRM model to render. Set via `loadModel(_:)`.
     public var model: VRMModel?
 
+    /// Controls whether model geometry is drawn. False hides T-pose until first animation frame.
+    var isModelVisible: Bool = false
+
     // MARK: - Debug Options
 
     /// Debug UV visualization mode.
@@ -325,9 +328,19 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
         setupTerrain()
     }
 
+    /// Removes the current model from the renderer so only sky and terrain are drawn.
+    func clearModel() {
+        model = nil
+        isModelVisible = false
+        cacheNeedsRebuild = true
+        cachedRenderItems = nil
+        terrainRenderer?.scheduleShadowMapClear()
+    }
+
     /// Loads a VRM model into the renderer and initializes all subsystems.
     public func loadModel(_ model: VRMModel) {
         self.model = model
+        isModelVisible = false
 
         // PERFORMANCE: Invalidate cached render items when model changes
         cacheNeedsRebuild = true

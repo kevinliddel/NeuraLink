@@ -110,7 +110,7 @@ vertex TerrainOut terrain_vertex(
     return out;
 }
 
-// MARK: - Shadow PCF (5-tap, manual comparison)
+// MARK: - Shadow PCF (9-tap, manual comparison)
 
 static float sampleShadow(
     texture2d<float> shadowMap,
@@ -126,16 +126,21 @@ static float sampleShadow(
 
     // Metal textures: (0,0) = top-left; NDC y+ = up → flip y.
     float2 uv   = float2(ndc.x * 0.5f + 0.5f, -ndc.y * 0.5f + 0.5f);
-    float  recv = ndc.z - 0.003f;
+    float  recv = ndc.z - 0.001f;
     float2 ts   = softness / float2(shadowMap.get_width(), shadowMap.get_height());
 
+    // 3×3 grid — 9 taps for smoother penumbra vs the original 5-tap cross.
     float s = 0.0f;
-    s += (recv > shadowMap.sample(smp, uv).r)                     ? 1.0f : 0.0f;
-    s += (recv > shadowMap.sample(smp, uv + float2(-1, 0) * ts).r) ? 1.0f : 0.0f;
-    s += (recv > shadowMap.sample(smp, uv + float2( 1, 0) * ts).r) ? 1.0f : 0.0f;
+    s += (recv > shadowMap.sample(smp, uv + float2(-1,-1) * ts).r) ? 1.0f : 0.0f;
     s += (recv > shadowMap.sample(smp, uv + float2( 0,-1) * ts).r) ? 1.0f : 0.0f;
+    s += (recv > shadowMap.sample(smp, uv + float2( 1,-1) * ts).r) ? 1.0f : 0.0f;
+    s += (recv > shadowMap.sample(smp, uv + float2(-1, 0) * ts).r) ? 1.0f : 0.0f;
+    s += (recv > shadowMap.sample(smp, uv                       ).r) ? 1.0f : 0.0f;
+    s += (recv > shadowMap.sample(smp, uv + float2( 1, 0) * ts).r) ? 1.0f : 0.0f;
+    s += (recv > shadowMap.sample(smp, uv + float2(-1, 1) * ts).r) ? 1.0f : 0.0f;
     s += (recv > shadowMap.sample(smp, uv + float2( 0, 1) * ts).r) ? 1.0f : 0.0f;
-    return s * 0.2f;
+    s += (recv > shadowMap.sample(smp, uv + float2( 1, 1) * ts).r) ? 1.0f : 0.0f;
+    return s * (1.0f / 9.0f);
 }
 
 // MARK: - Fragment

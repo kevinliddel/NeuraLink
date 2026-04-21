@@ -38,13 +38,16 @@ public struct VRMSceneView: View {
             noModelView
         } else if let error = state.errorMessage {
             errorView(message: error)
-        } else if !state.isModelLoaded {
-            loadingView
-        } else {
+        } else if state.isEnvironmentReady {
             MetalKitView(mtkView: state.mtkView)
                 .ignoresSafeArea()
-                .opacity(state.modelAlpha)
-                .animation(.easeIn(duration: 0.4), value: state.modelAlpha)
+                .overlay {
+                    if !state.isModelLoaded {
+                        modelSwitchingOverlay
+                    }
+                }
+        } else {
+            loadingView
         }
     }
 
@@ -69,12 +72,25 @@ public struct VRMSceneView: View {
             ProgressView()
                 .scaleEffect(1.4)
                 .tint(.purple)
-            Text("Loading model…")
+            Text("Loading…")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.background)
+    }
+
+    private var modelSwitchingOverlay: some View {
+        HStack(spacing: 10) {
+            ProgressView()
+                .tint(.white)
+            Text("Loading model…")
+                .font(.subheadline)
+                .foregroundStyle(.white)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
+        .background(.ultraThinMaterial, in: Capsule())
     }
 
     private func errorView(message: String) -> some View {

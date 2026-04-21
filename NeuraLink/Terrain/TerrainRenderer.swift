@@ -20,7 +20,7 @@ final class TerrainRenderer: @unchecked Sendable {
 
     // MARK: - Constants
 
-    static let shadowMapSize = 1024
+    static let shadowMapSize = 2048
     /// Must match `kGridSize` in TerrainShader.metal (64 × 64 quads × 6 vertices).
     static let terrainVertices = 64 * 64 * 6
 
@@ -39,6 +39,7 @@ final class TerrainRenderer: @unchecked Sendable {
     private var lightViewProjection: simd_float4x4 = matrix_identity_float4x4
     private var elapsedTime: Float = 0
     private var currentEnvironment: SkyEnvironment = SkyEnvironment.resolve(hour: 12.0)
+    private var clearShadowMapPending = false
 
     // MARK: - Init
 
@@ -57,6 +58,29 @@ final class TerrainRenderer: @unchecked Sendable {
         // Moon is the mirror of the sun; flip below horizon so shadows always render.
         let effectiveDir = sunDir.y >= 0 ? sunDir : sunDir * -1.0
         lightViewProjection = Self.makeLightMatrix(sunDir: effectiveDir)
+    }
+
+    // MARK: - Shadow map clearing
+
+    /// Schedules a shadow map clear on the next environment-only frame (called when the model is removed).
+    func scheduleShadowMapClear() {
+        clearShadowMapPending = true
+    }
+
+    /// Clears the shadow map to full-depth so no stale shadow appears while no model is loaded.
+    func clearShadowMapIfNeeded(commandBuffer: MTLCommandBuffer) {
+        guard clearShadowMapPending, let shadowMap = shadowMapTexture else { return }
+        clearShadowMapPending = false
+        let passDesc = MTLRenderPassDescriptor()
+        passDesc.depthAttachment.texture = shadowMap
+        passDesc.depthAttachment.loadAction = .clear
+        passDesc.depthAttachment.storeAction = .store
+        passDesc.depthAttachment.clearDepth = 1.0
+        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: passDesc) else {
+            return
+        }
+        encoder.label = "ClearShadowMap"
+        encoder.endEncoding()
     }
 
     // MARK: - Shadow pass (before main encoder)
@@ -86,6 +110,9 @@ final class TerrainRenderer: @unchecked Sendable {
         encoder.setDepthStencilState(depthState)
         encoder.setCullMode(.back)
         encoder.setFrontFacing(.counterClockwise)
+        // Slope-scale bias: grows automatically when the sun is oblique so acne is avoided
+        // at any angle without inflating the constant bias and creating a gap under the feet.
+        encoder.setDepthBias(0.0, slopeScale: 2.0, clamp: 0.005)
 
         for node in model.nodes {
             guard let meshIdx = node.mesh, meshIdx < model.meshes.count else { continue }
@@ -136,7 +163,7 @@ final class TerrainRenderer: @unchecked Sendable {
         else { return }
 
         let env = currentEnvironment
-        let sd  = env.sunDirection
+        let sd = env.sunDirection
         // At night pass the moon direction (already in lightViewProjection) for shading.
         let lightDir = sd.y >= 0 ? sd : sd * -1.0
         // Moon shadows are slightly softer than sun shadows.
@@ -148,8 +175,8 @@ final class TerrainRenderer: @unchecked Sendable {
             sunDirection: SIMD4<Float>(lightDir.x, lightDir.y, lightDir.z, 0),
             snowColor: SIMD4<Float>(0.93, 0.95, 0.97, 1.0),
             terrainParams: SIMD4<Float>(
-                0.0,       // unused
-                0.22,      // duneAmp: max ~22 cm height
+                0.0,  // unused
+                0.22,  // duneAmp: max ~22 cm height
                 shadowSoft,
                 elapsedTime
             )
@@ -282,7 +309,6 @@ extension TerrainRenderer {
         desc.magFilter = .linear
         desc.sAddressMode = .clampToEdge
         desc.tAddressMode = .clampToEdge
-        // No compareFunction — shader does manual PCF comparison via sample().r
         shadowSamplerState = device.makeSamplerState(descriptor: desc)
         return shadowSamplerState != nil
     }

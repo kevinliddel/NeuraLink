@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		041E13972F913CD900D2D110 /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = 041E13962F913CD900D2D110 /* WebRTC */; };
 		041E139A2F913E1500D2D110 /* Starscream in Frameworks */ = {isa = PBXBuildFile; productRef = 041E13992F913E1500D2D110 /* Starscream */; };
 		04F3BD6F2F9630CD00D2DDF2 /* RealTimeCutVADLibrary in Frameworks */ = {isa = PBXBuildFile; productRef = 04F3BD6E2F9630CD00D2DDF2 /* RealTimeCutVADLibrary */; };
 /* End PBXBuildFile section */
@@ -72,7 +71,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				04F3BD6F2F9630CD00D2DDF2 /* RealTimeCutVADLibrary in Frameworks */,
-				041E13972F913CD900D2D110 /* WebRTC in Frameworks */,
 				041E139A2F913E1500D2D110 /* Starscream in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -134,7 +132,6 @@
 			);
 			name = NeuraLink;
 			packageProductDependencies = (
-				041E13962F913CD900D2D110 /* WebRTC */,
 				041E13992F913E1500D2D110 /* Starscream */,
 				04F3BD6E2F9630CD00D2DDF2 /* RealTimeCutVADLibrary */,
 			);
@@ -221,7 +218,6 @@
 			mainGroup = 041E11D52F8E782300D2D110;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				041E13952F913CD900D2D110 /* XCRemoteSwiftPackageReference "WebRTC" */,
 				041E13982F913E1500D2D110 /* XCRemoteSwiftPackageReference "Starscream" */,
 				04F3BD6D2F9630CD00D2DDF2 /* XCRemoteSwiftPackageReference "RealTimeCutVADLibrary" */,
 			);
@@ -612,14 +608,6 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		041E13952F913CD900D2D110 /* XCRemoteSwiftPackageReference "WebRTC" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/stasel/WebRTC.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 147.0.0;
-			};
-		};
 		041E13982F913E1500D2D110 /* XCRemoteSwiftPackageReference "Starscream" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/daltoniam/Starscream.git";
@@ -639,11 +627,6 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		041E13962F913CD900D2D110 /* WebRTC */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 041E13952F913CD900D2D110 /* XCRemoteSwiftPackageReference "WebRTC" */;
-			productName = WebRTC;
-		};
 		041E13992F913E1500D2D110 /* Starscream */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 041E13982F913E1500D2D110 /* XCRemoteSwiftPackageReference "Starscream" */;

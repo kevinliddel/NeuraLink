@@ -19,6 +19,7 @@ final class VRMMetalState {
     private let aiState = RealtimeChatState.shared
 
     var isModelLoaded: Bool = false
+    var isEnvironmentReady: Bool = false
     var errorMessage: String?
     var currentModel: VRMModel?
     let isMetalAvailable: Bool
@@ -92,6 +93,7 @@ final class VRMMetalState {
         isModelLoaded = false
         errorMessage = nil
         currentModel = nil
+        renderer?.clearModel()
         isPlayingAppear = false
         pendingDefaultClip = nil
         defaultClip = nil
@@ -117,6 +119,7 @@ final class VRMMetalState {
         renderer?.setup3PointLighting()
         loadAnimationSequence(for: model)
         isModelLoaded = true
+        isEnvironmentReady = true
     }
 
     // MARK: - Animation Sequence
@@ -139,7 +142,7 @@ final class VRMMetalState {
 
         guard let defaultURL else {
             vrmLog("[VRMMetalState] No default_state.vrma found — showing bind pose")
-            modelAlpha = 1.0
+            renderer?.isModelVisible = true
             return
         }
 
@@ -169,7 +172,7 @@ final class VRMMetalState {
                     }
                 }
             } catch {
-                await MainActor.run { self.modelAlpha = 1.0 }
+                await MainActor.run { self.renderer?.isModelVisible = true }
                 await vrmLog("[VRMMetalState] ⚠️ Failed to load animation: \(error)")
             }
         }
@@ -225,10 +228,10 @@ final class VRMMetalState {
         }
         lastTickTimestamp = now
 
-        // Fade in on first rendered frame — hides T-pose
+        // Reveal model on first rendered frame — hides T-pose until animation is live
         if !firstFrameApplied && dt > 0 {
             firstFrameApplied = true
-            withAnimation(.easeIn(duration: 0.4)) { modelAlpha = 1.0 }
+            renderer?.isModelVisible = true
         }
 
         // Seamless appear → default_state transition
