@@ -188,3 +188,9 @@ open NeuraLink/NeuraLink.xcodeproj
 Here is a video of the proof of concept:
 
 [Proof-of-Concept](https://github.com/user-attachments/assets/2dc35314-fa8e-4b78-8507-b88d96d8c420)
+
+---
+
+## ⚖️ License
+
+NeuraLink is released under the **MIT License** — you are free to use, modify, and distribute this software for any purpose. See [LICENSE](./LICENSE) for the full text.
