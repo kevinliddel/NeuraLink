@@ -12,14 +12,34 @@ import simd
 
 extension VRMRenderer {
 
-    /// Instantiates the SkyRenderer subsystem. Called once from `VRMRenderer.init`.
+    /// Instantiates the SkyRenderer and RainRenderer subsystems. Called once from `VRMRenderer.init`.
     func setupSkyRenderer() {
-        skyRenderer = SkyRenderer(device: device, config: config)
+        skyRenderer   = SkyRenderer(device: device, config: config)
+        rainRenderer  = RainRenderer(device: device, config: config)
     }
 
     /// Advances cloud time and re-derives the sky environment from the current local clock.
     func updateSky(deltaTime: Float) {
         skyRenderer?.update(deltaTime: deltaTime)
+    }
+
+    /// Advances the rain simulation and feeds intensity into the sky.
+    func updateRain(deltaTime: Float) {
+        guard let rain = rainRenderer else { return }
+        rain.update(deltaTime: deltaTime)
+        skyRenderer?.rainIntensity = rain.intensity
+    }
+
+    /// Runs the rain compute + overlay passes after the main scene encoder has ended.
+    func drawRainOverlay(commandBuffer: MTLCommandBuffer,
+                         renderPassDescriptor: MTLRenderPassDescriptor) {
+        guard let rain = rainRenderer, !rain.isIdle else { return }
+        // Target the resolved (non-MSAA) drawable texture.
+        let target = renderPassDescriptor.colorAttachments[0].resolveTexture
+                  ?? renderPassDescriptor.colorAttachments[0].texture
+        guard let target else { return }
+        rain.encodeWaterMap(commandBuffer: commandBuffer)
+        rain.encodeOverlay(commandBuffer: commandBuffer, targetTexture: target)
     }
 
     /// Encodes the sky background into the current render pass.

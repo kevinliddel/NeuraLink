@@ -21,6 +21,10 @@ final class SkyRenderer {
     private(set) var currentEnvironment: SkyEnvironment =
         SkyEnvironment.resolve(hour: 12.0)
 
+    /// Rain intensity [0,1] set by RainRenderer each frame.
+    /// Boosts cloud coverage, suppresses stars, and darkens the sky palette.
+    var rainIntensity: Float = 0
+
     // MARK: - Private
 
     private let device: MTLDevice
@@ -60,21 +64,26 @@ final class SkyRenderer {
     func prepareForEncoding(invViewProjection: simd_float4x4) {
         let env = currentEnvironment
         let sd  = env.sunDirection
+        let ri  = rainIntensity
+
+        // Rain overrides: denser clouds, no stars, slightly darker sky.
+        let cloudCoverage  = env.cloudCoverage  + (0.92 - env.cloudCoverage)  * ri
+        let starVisibility = env.starVisibility * max(0, 1.0 - ri * 0.95)
+        let darkFactor     = 1.0 - ri * 0.28
+        let rainTint       = SIMD3<Float>(0.62, 0.67, 0.72)  // cool overcast grey
+        let skyLow  = (env.skyColorLow  * (1 - ri * 0.55) + rainTint * (ri * 0.55)) * darkFactor
+        let skyHigh = (env.skyColorHigh * (1 - ri * 0.65) + rainTint * (ri * 0.65)) * darkFactor
 
         var data = SkyUniformsData(
             invViewProjection: invViewProjection,
-            sunDirectionAndIntensity: SIMD4<Float>(sd.x, sd.y, sd.z, env.keyLightIntensity),
+            sunDirectionAndIntensity: SIMD4<Float>(sd.x, sd.y, sd.z, env.keyLightIntensity * darkFactor),
             sunColorAndSize: SIMD4<Float>(
                 env.keyLightColor.x, env.keyLightColor.y, env.keyLightColor.z,
                 300.0  // disc exponent — tight sun disc
             ),
-            skyColorLow: SIMD4<Float>(
-                env.skyColorLow.x, env.skyColorLow.y, env.skyColorLow.z, 0
-            ),
-            skyColorHigh: SIMD4<Float>(
-                env.skyColorHigh.x, env.skyColorHigh.y, env.skyColorHigh.z, 0
-            ),
-            cloudParams: SIMD4<Float>(cloudTime, env.cloudSpeed, env.cloudCoverage, env.starVisibility)
+            skyColorLow:  SIMD4<Float>(skyLow.x,  skyLow.y,  skyLow.z,  0),
+            skyColorHigh: SIMD4<Float>(skyHigh.x, skyHigh.y, skyHigh.z, 0),
+            cloudParams: SIMD4<Float>(cloudTime, env.cloudSpeed, cloudCoverage, starVisibility)
         )
         uniformBuffer?.contents().copyMemory(
             from: &data, byteCount: MemoryLayout<SkyUniformsData>.stride)

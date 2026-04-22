@@ -1,5 +1,5 @@
 {
-  "originHash" : "0fe76268e89dfccbce74c98ba42892db2f95ea64b54f7a1478b5b3ae12d2bb0e",
+  "originHash" : "c80d5452adf1341c5ae89de8c2f44f9dd4459f6b410fdda07c8436e849438791",
   "pins" : [
     {
       "identity" : "realtimecutvadlibrary",
@@ -17,6 +17,15 @@
       "state" : {
         "revision" : "c6bfd1af48efcc9a9ad203665db12375ba6b145a",
         "version" : "4.0.8"
+      }
+    },
+    {
+      "identity" : "webrtc",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/stasel/WebRTC.git",
+      "state" : {
+        "revision" : "e8b5efb9d921a7d3044d3928ae235b8846436e41",
+        "version" : "147.0.0"
       }
     }
   ],

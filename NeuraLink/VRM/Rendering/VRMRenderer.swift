@@ -154,6 +154,9 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
     // Sky background renderer
     var skyRenderer: SkyRenderer?
 
+    // Rain-on-glass overlay
+    var rainRenderer: RainRenderer?
+
     // Snow terrain + shadow map renderer
     var terrainRenderer: TerrainRenderer?
 

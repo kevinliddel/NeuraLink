@@ -70,8 +70,9 @@ static float starField(float3 viewDir, float time) {
     float rnd   = skyHash(cell + floor(time * 0.01f));
     float bright = step(0.96f, rnd);
     float2 local = fract(uv * 250.0f) - 0.5f;
-    float dist   = length(local);
-    return bright * smoothstep(0.22f, 0.0f, dist);
+    // Diamond shape: L1 norm gives a rotated-square (♦) instead of a circle
+    float dist = abs(local.x) + abs(local.y);
+    return bright * smoothstep(0.18f, 0.02f, dist);
 }
 
 // MARK: - Dome-projected clouds
@@ -116,6 +117,16 @@ fragment float4 sky_fragment(
     float  starVis = sky.cloudParams.w;
     float  coverage = sky.cloudParams.z;
 
+    // Pre-compute moon occlusion so stars can be masked before they are added.
+    float moonVis = clamp(-sunDir.y * 2.0f, 0.0f, 1.0f);
+    float3 moonDir = -sunDir;
+    float  cosM    = dot(viewDir, moonDir);
+    // moonOcclude is NOT scaled by moonVis: the moon body is always opaque regardless
+    // of how bright it appears — otherwise partial-night stars bleed through the disc.
+    // The suppression zone starts wider than the disc edge so the anti-aliased rim is
+    // also clean.
+    float  moonOcclude = smoothstep(0.9978f, 0.9990f, cosM);
+
     // ── Simple vertical gradient ──────────────────────────────────────
     float  gradT  = clamp(viewDir.y * 0.5f + 0.5f, 0.0f, 1.0f);
     float3 colour = mix(sky.skyColorLow.rgb, sky.skyColorHigh.rgb, gradT);
@@ -124,10 +135,10 @@ fragment float4 sky_fragment(
     float belowT = smoothstep(0.0f, -0.18f, viewDir.y);
     colour = mix(colour, sky.skyColorLow.rgb * 0.22f, belowT);
 
-    // ── Stars ─────────────────────────────────────────────────────────
+    // ── Stars — suppressed inside the moon disc ───────────────────────
     if (starVis > 0.001f) {
         float star = starField(viewDir, sky.cloudParams.x);
-        colour += float3(star * starVis * 0.9f);
+        colour += float3(star * starVis * 0.9f * (1.0f - moonOcclude));
     }
 
     // ── Clouds ────────────────────────────────────────────────────────
@@ -148,10 +159,7 @@ fragment float4 sky_fragment(
     }
 
     // ── Moon ──────────────────────────────────────────────────────────
-    float moonVis = clamp(-sunDir.y * 2.0f, 0.0f, 1.0f);
     if (moonVis > 0.01f) {
-        float3 moonDir = -sunDir;
-        float  cosM    = dot(viewDir, moonDir);
         float  mDisc   = smoothstep(0.9988f, 0.9992f, cosM);
         float  mGlow   = pow(max(cosM, 0.0f), 32.0f) * 0.12f * moonVis;
         colour += float3(0.80f, 0.85f, 0.95f) * mGlow;

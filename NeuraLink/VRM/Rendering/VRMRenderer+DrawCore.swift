@@ -325,6 +325,9 @@ extension VRMRenderer {
 
         encoder.endEncoding()
 
+        // Rain-on-glass overlay (compute water map → transparent fragment pass)
+        drawRainOverlay(commandBuffer: commandBuffer, renderPassDescriptor: renderPassDescriptor)
+
         // End frame validation
         if config.strict != .off {
             do {
@@ -360,6 +363,7 @@ extension VRMRenderer {
         drawSky(encoder: encoder)
         drawTerrain(encoder: encoder)
         encoder.endEncoding()
+        drawRainOverlay(commandBuffer: commandBuffer, renderPassDescriptor: renderPassDescriptor)
         commandBuffer.addCompletedHandler { [weak self] _ in
             self?.inflightSemaphore.signal()
         }
