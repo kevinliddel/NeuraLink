@@ -14,12 +14,11 @@ import simd
 final class VRMMetalState {
     let mtkView: MTKView
     var renderer: VRMRenderer?
-
+    
     // AI Integration
     private let aiState = RealtimeChatState.shared
-
+    
     var isModelLoaded: Bool = false
-    var isEnvironmentReady: Bool = false
     var errorMessage: String?
     var currentModel: VRMModel?
     let isMetalAvailable: Bool
@@ -75,9 +74,7 @@ final class VRMMetalState {
         mtkView.depthStencilPixelFormat = .depth32Float
         mtkView.clearColor = MTLClearColor(red: 0.15, green: 0.15, blue: 0.15, alpha: 1.0)
 
-        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else {
-            return
-        }
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
 
         let config = RendererConfig(strict: .off)
         renderer = VRMRenderer(device: device, config: config)
@@ -93,7 +90,6 @@ final class VRMMetalState {
         isModelLoaded = false
         errorMessage = nil
         currentModel = nil
-        renderer?.clearModel()
         isPlayingAppear = false
         pendingDefaultClip = nil
         defaultClip = nil
@@ -119,7 +115,6 @@ final class VRMMetalState {
         renderer?.setup3PointLighting()
         loadAnimationSequence(for: model)
         isModelLoaded = true
-        isEnvironmentReady = true
     }
 
     // MARK: - Animation Sequence
@@ -127,22 +122,21 @@ final class VRMMetalState {
     private static func findVRMA(named name: String) -> URL? {
         if let url = Bundle.main.url(forResource: name, withExtension: "vrma") { return url }
         guard let dir = Bundle.main.url(forResource: "Models", withExtension: nil),
-            let all = try? FileManager.default.contentsOfDirectory(
-                at: dir, includingPropertiesForKeys: nil)
+              let all = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
         else { return nil }
         return all.first {
-            $0.pathExtension.lowercased() == "vrma"
-                && $0.deletingPathExtension().lastPathComponent.lowercased() == name.lowercased()
+            $0.pathExtension.lowercased() == "vrma" &&
+            $0.deletingPathExtension().lastPathComponent.lowercased() == name.lowercased()
         }
     }
 
     private func loadAnimationSequence(for model: VRMModel) {
-        let appearURL = Self.findVRMA(named: "appear")
+        let appearURL  = Self.findVRMA(named: "appear")
         let defaultURL = Self.findVRMA(named: "default_state")
 
         guard let defaultURL else {
             vrmLog("[VRMMetalState] No default_state.vrma found — showing bind pose")
-            renderer?.isModelVisible = true
+            modelAlpha = 1.0
             return
         }
 
@@ -172,8 +166,8 @@ final class VRMMetalState {
                     }
                 }
             } catch {
-                await MainActor.run { self.renderer?.isModelVisible = true }
-                await vrmLog("[VRMMetalState] ⚠️ Failed to load animation: \(error)")
+                await MainActor.run { self.modelAlpha = 1.0 }
+                vrmLog("[VRMMetalState] ⚠️ Failed to load animation: \(error)")
             }
         }
     }
@@ -228,10 +222,10 @@ final class VRMMetalState {
         }
         lastTickTimestamp = now
 
-        // Reveal model on first rendered frame — hides T-pose until animation is live
+        // Fade in on first rendered frame — hides T-pose
         if !firstFrameApplied && dt > 0 {
             firstFrameApplied = true
-            renderer?.isModelVisible = true
+            withAnimation(.easeIn(duration: 0.4)) { modelAlpha = 1.0 }
         }
 
         // Seamless appear → default_state transition
@@ -270,7 +264,7 @@ final class VRMMetalState {
             lookAt.cameraPosition = lastCameraPosition
             lookAt.update(deltaTime: dt)
         }
-
+        
         // AI Lip-Sync — driven by inbound-rtp audioLevel (OpenAI audio only),
         // not by status, so mouth stays in sync through the WebRTC jitter buffer drain.
         lipSyncController.update(audioLevel: aiState.audioLevel, deltaTime: dt)
