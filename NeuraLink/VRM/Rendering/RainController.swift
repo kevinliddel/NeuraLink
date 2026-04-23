@@ -9,14 +9,14 @@ import Foundation
 final class RainController {
     enum State: Equatable, Sendable { case idle, fadingIn, active, fadingOut }
 
-    private(set) var state:     State = .idle
+    private(set) var state: State = .idle
     private(set) var intensity: Float = 0.0
 
-    private var stateTimer:     Float = 0
-    private var idleCountdown:  Float
+    private var stateTimer: Float = 0
+    private var idleCountdown: Float
     private var activeDuration: Float = 0
 
-    let fadeInDuration:  Float = 20.0
+    let fadeInDuration: Float = 20.0
     let fadeOutDuration: Float = 30.0
 
     init(idleCountdown: Float = Float.random(in: 30...120)) {

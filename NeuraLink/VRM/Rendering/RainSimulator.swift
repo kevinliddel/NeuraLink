@@ -7,17 +7,17 @@
 import Foundation
 
 struct RainDrop {
-    var x, y, r:   Float
-    var spreadX:   Float = 0
-    var spreadY:   Float = 0
-    var alpha:     Float = 1.0
-    var momentum:  Float = 0
+    var x, y, r: Float
+    var spreadX: Float = 0
+    var spreadY: Float = 0
+    var alpha: Float = 1.0
+    var momentum: Float = 0
     var momentumX: Float = 0
     var lastSpawn: Float = 0
     var nextSpawn: Float = 0
-    var shrink:    Float = 0
-    var isNew:     Bool  = true
-    var killed:    Bool  = false
+    var shrink: Float = 0
+    var isNew: Bool  = true
+    var killed: Bool  = false
 }
 
 final class RainSimulator {
@@ -26,24 +26,24 @@ final class RainSimulator {
     let minR: Float = 0.013
     let maxR: Float = 0.048
 
-    let maxDrops:                Int   = 180
-    private let rainChance:      Float = 0.08
-    private let rainLimit:       Int   = 2
-    private let trailRate:       Float = 1.0
-    private let trailScaleMin:   Float = 0.20
-    private let trailScaleMax:   Float = 0.45
+    let maxDrops: Int   = 180
+    private let rainChance: Float = 0.08
+    private let rainLimit: Int   = 2
+    private let trailRate: Float = 1.0
+    private let trailScaleMin: Float = 0.20
+    private let trailScaleMax: Float = 0.45
     private let collisionRadius: Float = 0.45
-    private let momentumScale:   Float = 0.0012
-    private let spawnYMin:       Float = -0.05
-    private let spawnYMax:       Float =  0.90
+    private let momentumScale: Float = 0.0012
+    private let spawnYMin: Float = -0.05
+    private let spawnYMax: Float =  0.90
 
-    private let dropletsRate:      Float = 15.0   // spawns per second
-    private let dropletMinR:       Float = 0.001
-    private let dropletMaxR:       Float = 0.003
+    private let dropletsRate: Float = 15.0   // spawns per second
+    private let dropletMinR: Float = 0.001
+    private let dropletMaxR: Float = 0.003
     private let dropletAlphaDecay: Float = 0.05
-    let maxDroplets:               Int   = 80
+    let maxDroplets: Int   = 80
 
-    private(set) var drops:    [RainDrop] = []
+    private(set) var drops: [RainDrop] = []
     private(set) var droplets: [RainDrop] = []
     private var dropletsCounter: Float = 0
 
@@ -127,9 +127,9 @@ final class RainSimulator {
                 if drop.lastSpawn > drop.nextSpawn, next.count + 1 <= maxDrops {
                     let trailR = drop.r * lerp(trailScaleMin, trailScaleMax, Float.random(in: 0...1))
                     next.append(RainDrop(
-                        x:       drop.x + Float.random(in: -drop.r...drop.r) * 0.1,
-                        y:       drop.y - drop.r * 0.01,
-                        r:       trailR,
+                        x: drop.x + Float.random(in: -drop.r...drop.r) * 0.1,
+                        y: drop.y - drop.r * 0.01,
+                        r: trailR,
                         spreadY: drop.momentum * 0.1
                     ))
                     drop.r *= pow(0.97, ts)

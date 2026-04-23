@@ -128,9 +128,9 @@ struct RainSystemTests {
         let sim = RainSimulator()
         for _ in 0..<100 { sim.update(ts: 1.0, intensity: 1.0) }
         for drop in sim.drops {
-            #expect(drop.x >= 0 && drop.x <= 1,   "x out of range: \(drop.x)")
-            #expect(drop.r >= 0,                   "negative radius: \(drop.r)")
-            #expect(drop.r <= sim.maxR * 1.1,      "radius too large: \(drop.r)")
+            #expect(drop.x >= 0 && drop.x <= 1, "x out of range: \(drop.x)")
+            #expect(drop.r >= 0, "negative radius: \(drop.r)")
+            #expect(drop.r <= sim.maxR * 1.1, "radius too large: \(drop.r)")
         }
     }
 

@@ -12,11 +12,11 @@ import simd
 
 struct RainDropGPU {
     var position: SIMD2<Float>  //  8 bytes
-    var radius:   Float         //  4 bytes
-    var alpha:    Float         //  4 bytes
-    var spreadX:  Float         //  4 bytes
-    var spreadY:  Float         //  4 bytes
-    var _pad:     SIMD2<Float>  //  8 bytes  (total: 32 bytes)
+    var radius: Float         //  4 bytes
+    var alpha: Float         //  4 bytes
+    var spreadX: Float         //  4 bytes
+    var spreadY: Float         //  4 bytes
+    var _pad: SIMD2<Float>  //  8 bytes  (total: 32 bytes)
 
     init(x: Float, y: Float, r: Float, alpha: Float, spreadX: Float, spreadY: Float) {
         position = SIMD2(x, y); radius = r; self.alpha = alpha
@@ -25,11 +25,11 @@ struct RainDropGPU {
 }
 
 struct RainUniformsGPU {
-    var alphaMultiply:  Float  // 4
-    var alphaSubtract:  Float  // 4
-    var brightness:     Float  // 4
-    var intensity:      Float  // 4
-    var waterMapWidth:  Float  // 4
+    var alphaMultiply: Float  // 4
+    var alphaSubtract: Float  // 4
+    var brightness: Float  // 4
+    var intensity: Float  // 4
+    var waterMapWidth: Float  // 4
     var waterMapHeight: Float  // 4
     // total: 24 bytes
 }
@@ -38,7 +38,7 @@ struct RainUniformsGPU {
 
 final class RainRenderer {
 
-    static let waterMapWidth:  Int = 256
+    static let waterMapWidth: Int = 256
     static let waterMapHeight: Int = 512
 
     private static let maxDropsBuffer = 260   // main drops (≤180) + droplets (≤80)
@@ -46,16 +46,16 @@ final class RainRenderer {
     private let device: MTLDevice
 
     private var computePipeline: MTLComputePipelineState?
-    private var renderPipeline:  MTLRenderPipelineState?
+    private var renderPipeline: MTLRenderPipelineState?
     private var waterMapTexture: MTLTexture?
-    private var dropsBuffer:     MTLBuffer?
-    private var uniformsBuffer:  MTLBuffer?
+    private var dropsBuffer: MTLBuffer?
+    private var uniformsBuffer: MTLBuffer?
 
     private let simulator  = RainSimulator()
     let controller         = RainController()
 
     var intensity: Float { controller.intensity }
-    var isIdle:    Bool  { controller.isIdle }
+    var isIdle: Bool { controller.isIdle }
 
     init(device: MTLDevice, config: RendererConfig) {
         self.device = device
@@ -93,9 +93,9 @@ final class RainRenderer {
 
         let tg = MTLSize(width: 16, height: 16, depth: 1)
         let groups = MTLSize(
-            width:  (Self.waterMapWidth  + 15) / 16,
+            width: (Self.waterMapWidth  + 15) / 16,
             height: (Self.waterMapHeight + 15) / 16,
-            depth:  1
+            depth: 1
         )
         enc.dispatchThreadgroups(groups, threadsPerThreadgroup: tg)
         enc.popDebugGroup()
@@ -119,8 +119,8 @@ final class RainRenderer {
         enc.pushDebugGroup("RainOverlay")
         enc.setRenderPipelineState(pipeline)
         enc.setCullMode(.none)
-        enc.setFragmentTexture(tex,  index: 0)
-        enc.setFragmentBuffer(uBuf,  offset: 0, index: 0)
+        enc.setFragmentTexture(tex, index: 0)
+        enc.setFragmentBuffer(uBuf, offset: 0, index: 0)
         enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         enc.popDebugGroup()
         enc.endEncoding()
@@ -131,7 +131,7 @@ final class RainRenderer {
     private func setupTexture() {
         let desc = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: .rgba8Unorm,
-            width:  Self.waterMapWidth,
+            width: Self.waterMapWidth,
             height: Self.waterMapHeight,
             mipmapped: false
         )
@@ -221,12 +221,12 @@ final class RainRenderer {
     private func updateUniforms() {
         guard let buf = uniformsBuffer else { return }
         var u = RainUniformsGPU(
-            alphaMultiply:  16.0,
-            alphaSubtract:   4.0,
-            brightness:      1.04,
-            intensity:       controller.intensity,
-            waterMapWidth:   Float(Self.waterMapWidth),
-            waterMapHeight:  Float(Self.waterMapHeight)
+            alphaMultiply: 16.0,
+            alphaSubtract: 4.0,
+            brightness: 1.04,
+            intensity: controller.intensity,
+            waterMapWidth: Float(Self.waterMapWidth),
+            waterMapHeight: Float(Self.waterMapHeight)
         )
         buf.contents().copyMemory(from: &u, byteCount: MemoryLayout<RainUniformsGPU>.stride)
     }

@@ -81,7 +81,7 @@ final class SkyRenderer {
                 env.keyLightColor.x, env.keyLightColor.y, env.keyLightColor.z,
                 300.0  // disc exponent — tight sun disc
             ),
-            skyColorLow:  SIMD4<Float>(skyLow.x,  skyLow.y,  skyLow.z,  0),
+            skyColorLow: SIMD4<Float>(skyLow.x, skyLow.y, skyLow.z, 0),
             skyColorHigh: SIMD4<Float>(skyHigh.x, skyHigh.y, skyHigh.z, 0),
             cloudParams: SIMD4<Float>(cloudTime, env.cloudSpeed, cloudCoverage, starVisibility)
         )

@@ -9,9 +9,8 @@
   <img src="https://img.shields.io/badge/Swift-6.0-orange?style=flat&logo=swift" alt="Swift" />
   <img src="https://img.shields.io/badge/Graphics-Metal-brightgreen?style=flat&logo=metal" alt="Metal" />
   <img src="https://custom-icon-badges.demolab.com/badge/ChatGPT-74aa9c?logo=openai&logoColor=white" alt="OpenAI" />
-  <img src="https://img.shields.io/badge/AVAudioEngine-gray?style=flat&logo=apple" alt="AVAudioEngine" />
+  <img src="https://img.shields.io/badge/WebRTC-gray?style=flat&logo=webrtc" alt="WebRTC" />
   <img src="https://img.shields.io/badge/Silero-VAD-red?style=flat&logo=silero" alt="Silero VAD" />
-  
 </p>
 
 A high-performance, native iOS VRM character viewer and AI companion built from the ground up using **Metal** and **SwiftUI**. NeuraLink connects to the OpenAI Realtime API via **WebSocket** with **AVAudioEngine** for mic capture and AI audio playback — fully screen-recordable and integrated with synchronized visual feedback.
@@ -76,22 +75,26 @@ NeuraLink uses a high-efficiency dual-VAD pipeline to minimise latency between t
 graph TD
     MIC[Microphone]
 
-    MIC --> EngineIn[AVAudioEngine\nInput Tap]
+    MIC --> WebRTC[WebRTC Audio Track]
+    MIC --> Tap[AVAudioEngine Tap]
 
     subgraph VAD [Dual VAD Layer]
-        EngineIn --> Silero[Silero VAD v5\nClient-side · Local]
-        EngineIn --> ServerVAD[OpenAI Server VAD\nCloud · Turn-taking]
+        Tap --> Silero[Silero VAD v5\nClient-side · Local]
+        WebRTC --> ServerVAD[OpenAI Server VAD\nCloud · Turn-taking]
     end
 
     Silero --> VoiceEvent[voiceStarted / voiceEnded]
     VoiceEvent --> UIState[UI State\nlistening ↔ ready]
+    ServerVAD --> Commit[commit]
+    Commit --> API
 
-    EngineIn --> PCM16[PCM16 24 kHz\nBase64 encode]
-    PCM16 --> WS[WebSocket\nOpenAI Realtime API]
-    WS --> Delta[response.audio.delta\nPCM16 chunks]
-    Delta --> RMSEnergy[RMS Energy\nper chunk]
-    Delta --> Player[AVAudioPlayerNode\n24 kHz playback]
-    Player --> Output[Speakers\nSystem Audio Graph]
+    WebRTC --> API[OpenAI Realtime API\ngpt-realtime]
+    API --> WebRTCLink[WebRTC]
+    WebRTCLink --> RTC(RTCAudioSession)
+    RTC --> Buffer[PCM Audio Buffer]
+    Buffer --> Output[Speakers]
+    Buffer --> Analyzer[Amplitude Analyzer]
+    Analyzer --> RMSEnergy[RMS Energy]
     RMSEnergy --> Controller[LipSync Controller]
     Controller --> MorphTargets[Morph Targets]
     MorphTargets --> Metal[Metal Render System]
@@ -99,14 +102,14 @@ graph TD
 
     style Silero fill:#7c3aed,stroke:#fff,color:#fff
     style ServerVAD fill:#10a37f,stroke:#fff,color:#fff
-    style WS fill:#10a37f,stroke:#fff,color:#fff
+    style API fill:#10a37f,stroke:#fff,color:#fff
     style Metal fill:#00e676,stroke:#fff,color:#000
-    style Player fill:#2979ff,stroke:#fff,color:#fff
+    style RTC fill:#2979ff,stroke:#fff,color:#fff
     style VoiceEvent fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
+    style Commit fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
+    style WebRTCLink fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
     style RMSEnergy fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
     style MorphTargets fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
-    style PCM16 fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
-    style Delta fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
 ```
 
 ### AI Voice & Persona System
