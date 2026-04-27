@@ -125,8 +125,8 @@ extension OpenAIRealtimeManager {
         audioPlaybackMonitorTask = Task { @MainActor in
             if let start = startTime {
                 let estimatedDuration = max(Double(charCount) / 15.0, 1.0)
-                let targetA = start.addingTimeInterval(estimatedDuration + 0.5)
-                let targetB = doneTime?.addingTimeInterval(0.5) ?? .distantPast
+                let targetA = start.addingTimeInterval(estimatedDuration + 1.5)
+                let targetB = doneTime?.addingTimeInterval(1.5) ?? .distantPast
                 let target = max(targetA, targetB)
                 let remaining = target.timeIntervalSinceNow
                 if remaining > 0 {

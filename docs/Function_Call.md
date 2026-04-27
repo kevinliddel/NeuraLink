@@ -135,8 +135,6 @@ Opens a built-in iOS app by name using URL schemes.
 | Photos | `photos-redirect://` |
 | Calendar | `calshow://` |
 | Settings | `UIApplication.openSettingsURLString` |
-| Camera | `camera://` |
-| Clock | `clock-alarm://` |
 | Health | `x-apple-health://` |
 | FaceTime | `facetime://` |
 
