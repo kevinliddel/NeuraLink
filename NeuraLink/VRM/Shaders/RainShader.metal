@@ -32,6 +32,20 @@ struct RainUniforms {
     float waterMapHeight;
 };  // 24 bytes
 
+/// Uniforms for 3D world rain. Must match RainWorldUniforms in Swift.
+struct RainWorldUniforms {
+    float4x4 viewProjection; // 0..64
+    float3   cameraPos;      // 64..76 (16-byte aligned)
+    float    time;           // 80..84
+    float    intensity;      // 84..88
+    float2   wind;           // 88..96 (windX, windZ)
+}; // 96 bytes
+
+struct Rain3DParticleGPU {
+    float4 spawnXZ_phase_speed; // x,z = spawn, y = phase, w = speed
+    float4 color;               // rgba
+}; // 32 bytes
+
 // MARK: - Compute: generate water map
 
 /// Writes a per-pixel water map (RGBA8Unorm):
@@ -178,3 +192,87 @@ fragment float4 rain_fragment(
     const float alpha = clamp(a * (0.7f + iri.r * 0.5f + spec1 * 0.5f), 0.0f, 0.92f) * u.intensity;
     return float4(col * u.brightness, alpha);
 }
+
+// MARK: - 3D World Rain
+
+struct RainWorldVOut {
+    float4 position [[position]];
+    float2 uv;
+    float4 color;
+};
+
+vertex RainWorldVOut rain_world_vertex(
+    uint                    vid       [[vertex_id]],
+    device const Rain3DParticleGPU* particles [[buffer(0)]],
+    constant RainWorldUniforms&     u         [[buffer(1)]]
+) {
+    uint particleIdx = vid / 6;
+    uint vertexIdx   = vid % 6;
+    const device Rain3DParticleGPU& p = particles[particleIdx];
+
+    // Procedural Fall Logic
+    float phase = p.spawnXZ_phase_speed.y;
+    float speed = p.spawnXZ_phase_speed.w;
+    float t = fract(u.time * speed + phase); // [0, 1] fall progress
+
+    // World Space Fall Segment
+    float spawnY = 16.0;
+    float groundY = 0.0;
+    float worldY = mix(spawnY, groundY, t);
+    
+    // Wrap rain around camera position so it follows the user
+    float range = 22.0; 
+    float worldX = fmod(p.spawnXZ_phase_speed.x - u.cameraPos.x + range, range * 2.0f);
+    if (worldX < 0) worldX += range * 2.0f;
+    worldX = worldX - range + u.cameraPos.x;
+    
+    float worldZ = fmod(p.spawnXZ_phase_speed.z - u.cameraPos.z + range, range * 2.0f);
+    if (worldZ < 0) worldZ += range * 2.0f;
+    worldZ = worldZ - range + u.cameraPos.z;
+    
+    // Add wind drift
+    worldX += u.wind.x * t * 4.0;
+    worldZ += u.wind.y * t * 4.0;
+    
+    float3 headPos = float3(worldX, worldY, worldZ);
+    float3 fallDir = normalize(float3(u.wind.x * 0.3, -1.0, u.wind.y * 0.3));
+    
+    // Quad creation
+    float length = 0.4 + speed * 0.2;
+    float width = 0.015;
+    
+    float3 right = normalize(cross(fallDir, float3(0, 0, 1)));
+    if (abs(dot(fallDir, float3(0, 0, 1))) > 0.9f) {
+        right = normalize(cross(fallDir, float3(1, 0, 0)));
+    }
+
+    float2 uvs[6] = {
+        float2(0, 0), float2(1, 0), float2(1, 1),
+        float2(0, 0), float2(1, 1), float2(0, 1)
+    };
+    float2 uv = uvs[vertexIdx];
+
+    float3 vpos = headPos + (uv.x - 0.5f) * right * width + (uv.y - 1.0f) * fallDir * length;
+
+    // Fading
+    float groundFade = smoothstep(groundY, groundY + 1.5, worldY);
+    float spawnFade  = smoothstep(0.0, 0.1, t) * smoothstep(1.0, 0.9, t);
+    
+    RainWorldVOut out;
+    out.position = u.viewProjection * float4(vpos, 1.0f);
+    out.uv = uv;
+    out.color = p.color;
+    out.color.a *= uv.y * groundFade * spawnFade * u.intensity;
+    return out;
+}
+
+fragment float4 rain_world_fragment(RainWorldVOut in [[stage_in]]) {
+    // Simple glowing streak
+    float distToCenter = abs(in.uv.x - 0.5f) * 2.0f;
+    float glow = exp(-distToCenter * 4.0f);
+    return float4(in.color.rgb, in.color.a * glow);
+}
+
+// MARK: - 3D Ground Ripples
+
+// Ripple logic removed
