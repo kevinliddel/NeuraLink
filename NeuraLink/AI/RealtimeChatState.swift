@@ -11,17 +11,19 @@ import SwiftUI
 /// Represents the current status of the AI Voice connection.
 enum AIConnectionStatus: Equatable {
     case disconnected
-    case connecting
+    case connecting   // OpenAI WebRTC handshake
+    case preparing    // Local SLM model warm-up
     case ready
     case listening
     case thinking
     case speaking
     case error(String)
-    
+
     var label: String {
         switch self {
         case .disconnected: return "Disconnected"
         case .connecting: return "Connecting..."
+        case .preparing: return "Preparing local SLMs..."
         case .ready: return "Ready"
         case .listening: return "Listening"
         case .thinking: return "Thinking..."

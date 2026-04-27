@@ -47,10 +47,12 @@ struct RealtimeChatOverlay: View {
     private var idleHint: some View {
         if case .error = aiState.status {
             hint("Connection error", icon: "exclamationmark.circle")
+        } else if aiState.status == .preparing {
+            hint("Preparing local SLMs…", progress: true)
         } else if aiState.status == .connecting {
             hint("Connecting…", progress: true)
         } else if !OpenAISettings.shared.hasValidKey {
-            hint("Tap to configure API key", icon: "key.fill")
+            hint("Tap to configure LLMs", icon: "key.fill")
                 .onTapGesture { aiState.showSettings = true }
         } else {
             hint("Start talking", icon: "waveform")
@@ -65,7 +67,8 @@ struct RealtimeChatOverlay: View {
             .padding(.horizontal, 18)
             .padding(.vertical, 9)
             .background(.black.opacity(0.32), in: RoundedRectangle(cornerRadius: 20))
-            .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(.white.opacity(0.18), lineWidth: 1))
+            .overlay(
+                RoundedRectangle(cornerRadius: 20).strokeBorder(.white.opacity(0.18), lineWidth: 1))
     }
 
     // MARK: - Reusable Atoms
@@ -96,7 +99,7 @@ struct RealtimeChatOverlay: View {
             transition(to: .aiResponding)
         case .ready:
             scheduleDismissToIdle()
-        case .connecting, .disconnected, .error:
+        case .preparing, .connecting, .disconnected, .error:
             transition(to: .idle)
         }
     }

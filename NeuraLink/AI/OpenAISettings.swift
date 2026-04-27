@@ -16,6 +16,7 @@ final class OpenAISettings {
     // UserDefaults Keys
     private let apiKeyPrefix = "com.neuralink.openai.apiKey"
     private let enabledKey = "com.neuralink.openai.enabled"
+    private let localLLMEnabledKey = "com.neuralink.localllm.enabled"
     private let vadEnabledKey = "com.neuralink.openai.vadEnabled"
 
     var apiKey: String {
@@ -24,8 +25,23 @@ final class OpenAISettings {
     }
     
     var isEnabled: Bool {
-        get { UserDefaults.standard.bool(forKey: enabledKey) }
-        set { UserDefaults.standard.set(newValue, forKey: enabledKey) }
+        get { UserDefaults.standard.object(forKey: enabledKey) as? Bool ?? false }
+        set { 
+            UserDefaults.standard.set(newValue, forKey: enabledKey)
+            if newValue {
+                isLocalLLMEnabled = false
+            }
+        }
+    }
+    
+    var isLocalLLMEnabled: Bool {
+        get { UserDefaults.standard.object(forKey: localLLMEnabledKey) as? Bool ?? true }
+        set { 
+            UserDefaults.standard.set(newValue, forKey: localLLMEnabledKey)
+            if newValue {
+                isEnabled = false
+            }
+        }
     }
     
     var isVADEnabled: Bool {
