@@ -42,6 +42,10 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
 
     // Post-audio execution: function waits until the AI's spoken audio finishes
     var audioPlaybackMonitorTask: Task<Void, Never>?
+    // Set when the audio output item starts; anchors the speaking-duration estimate
+    var speakingStartTime: Date?
+    // Set when response.audio_transcript.done fires (real-time streaming signal)
+    var transcriptDoneTime: Date?
 
     override init() {
         RTCInitializeSSL()
@@ -96,6 +100,9 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
     func disconnect() {
         audioPlaybackMonitorTask?.cancel()
         audioPlaybackMonitorTask = nil
+        speakingStartTime = nil
+        transcriptDoneTime = nil
+        AppFunctionExecutor.shared.pendingUIAction = nil
         sileroVAD.stop()
         remoteDataChannel?.close()
         peerConnection?.close()

@@ -134,7 +134,7 @@ Opens a built-in iOS app by name using URL schemes.
 | Maps | `maps://` |
 | Photos | `photos-redirect://` |
 | Calendar | `calshow://` |
-| Settings | `App-Prefs:Root=General` |
+| Settings | `UIApplication.openSettingsURLString` |
 | Camera | `camera://` |
 | Clock | `clock-alarm://` |
 | Health | `x-apple-health://` |
@@ -167,7 +167,7 @@ OpenAIRealtimeManager.swift    — Event loop: streams args, dispatches executor
 ```swift
 static let myTool = "my_tool"
 
-private static var myTool: [String: Any] {
+private static var myToolDefinition: [String: Any] {
     [
         "type": "function",
         "name": myTool,
@@ -186,7 +186,7 @@ private static var myTool: [String: Any] {
 2. **Add it to `all`**:
 ```swift
 static var all: [[String: Any]] {
-    [weatherTool, searchTool, musicTool, reminderTool, noteTool, openAppTool, myTool]
+    [weatherTool, searchTool, musicTool, reminderTool, noteTool, openAppTool, myToolDefinition]
 }
 ```
 

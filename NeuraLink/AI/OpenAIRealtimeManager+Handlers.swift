@@ -44,7 +44,15 @@ extension OpenAIRealtimeManager {
                 } else {
                     state.aiTranscript = ""
                     state.status = .speaking
+                    speakingStartTime = Date()
+                    transcriptDoneTime = nil
                 }
+
+            // Fired when all transcript text for this response has been received.
+            // In real-time streaming this timestamp closely tracks actual audio completion.
+            case "response.audio_transcript.done":
+                transcriptDoneTime = Date()
+                print("[AI Tools]: transcript done at \(Date())")
 
             // Function call argument streaming
             case "response.function_call_arguments.delta":
@@ -71,11 +79,22 @@ extension OpenAIRealtimeManager {
             case "response.done":
                 state.status = .ready
                 if let deferred = deferredFunctionCall {
+                    // Execute the function immediately — for UI-opening functions
+                    // (playMusic, searchWeb, openApp, openNotes) AppFunctionExecutor stores
+                    // the open() call in pendingUIAction instead of firing it here.
+                    // That action will be triggered after the AI finishes speaking the result.
                     deferredFunctionCall = nil
-                    print(
-                        "[AI Tools]: response.done — waiting for audio to finish before executing \(deferred.name)"
-                    )
-                    schedulePostAudioExecution(deferred)
+                    let args =
+                        (try? JSONSerialization.jsonObject(
+                            with: Data(deferred.args.utf8)) as? [String: Any]) ?? [:]
+                    let result = await AppFunctionExecutor.shared.execute(
+                        name: deferred.name, arguments: args)
+                    print("[AI Tools]: result → \(result)")
+                    sendFunctionResult(callId: deferred.id, result: result)
+                } else if AppFunctionExecutor.shared.pendingUIAction != nil {
+                    // The AI just finished speaking the result of a previous function call.
+                    // Wait for this audio to finish, then fire the deferred app-open.
+                    schedulePendingUIAction()
                 }
 
             default:
@@ -84,41 +103,45 @@ extension OpenAIRealtimeManager {
         }
     }
 
-    /// Waits for the AI's spoken audio to finish, then executes the function call.
-    /// Polls audioLevel every 50 ms; adds a 400 ms drain delay once silence is detected.
-    func schedulePostAudioExecution(_ call: (id: String, name: String, args: String)) {
+    /// Waits for the AI's spoken audio to finish, then fires `AppFunctionExecutor.pendingUIAction`.
+    ///
+    /// Called at `response.done` when there is no function call but a UI action is pending —
+    /// meaning the AI just finished speaking the result of a previous function call.
+    ///
+    /// Two signals combined, taking the later:
+    ///   A) speakingStartTime + (chars / 15) + 0.5 s  — duration estimate anchored to when
+    ///      the AI started speaking (works whether audio was burst-sent or streamed in real-time)
+    ///   B) transcriptDoneTime + 0.5 s  — closely tracks audio completion in real-time streaming
+    func schedulePendingUIAction() {
         audioPlaybackMonitorTask?.cancel()
+
+        let startTime = speakingStartTime
+        let doneTime = transcriptDoneTime
+        let charCount = state.aiTranscript.count
+
+        speakingStartTime = nil
+        transcriptDoneTime = nil
+
         audioPlaybackMonitorTask = Task { @MainActor in
-            // Allow up to 500 ms for audio to start (the AI may begin speaking slightly after response.done)
-            var audioSeen = state.audioLevel > 0.01
-            if !audioSeen {
-                for _ in 0..<10 {
-                    try? await Task.sleep(nanoseconds: 50_000_000)
+            if let start = startTime {
+                let estimatedDuration = max(Double(charCount) / 15.0, 1.0)
+                let targetA = start.addingTimeInterval(estimatedDuration + 0.5)
+                let targetB = doneTime?.addingTimeInterval(0.5) ?? .distantPast
+                let target = max(targetA, targetB)
+                let remaining = target.timeIntervalSinceNow
+                if remaining > 0 {
+                    print(
+                        "[AI Tools]: Waiting \(String(format: "%.2f", remaining))s for audio before opening app"
+                    )
+                    try? await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000))
                     if Task.isCancelled { return }
-                    if state.audioLevel > 0.01 {
-                        audioSeen = true
-                        break
-                    }
                 }
             }
 
-            // Wait for the audio to drop back to silence
-            if audioSeen {
-                while state.audioLevel > 0.01 {
-                    try? await Task.sleep(nanoseconds: 50_000_000)
-                    if Task.isCancelled { return }
-                }
-                // Extra delay to let the WebRTC playout buffer fully drain
-                try? await Task.sleep(nanoseconds: 400_000_000)
-                if Task.isCancelled { return }
-            }
-
-            print("[AI Tools]: Audio finished. Executing \(call.name)")
-            let args =
-                (try? JSONSerialization.jsonObject(with: Data(call.args.utf8)) as? [String: Any]) ?? [:]
-            let result = await AppFunctionExecutor.shared.execute(name: call.name, arguments: args)
-            print("[AI Tools]: result → \(result)")
-            sendFunctionResult(callId: call.id, result: result)
+            let action = AppFunctionExecutor.shared.pendingUIAction
+            AppFunctionExecutor.shared.pendingUIAction = nil
+            action?()
+            print("[AI Tools]: App opened after audio finished")
         }
     }
 
