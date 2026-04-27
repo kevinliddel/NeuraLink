@@ -58,9 +58,11 @@ struct AISettingsView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Qwen3-VL 2B")
                         .font(.headline)
-                    Text("~\(String(format: "%.1f", LocalModelDownloadManager.estimatedSizeGB)) GB · Apple Neural Engine")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    Text(
+                        "~\(String(format: "%.1f", LocalModelDownloadManager.estimatedSizeGB)) GB · Apple Neural Engine"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 }
                 Spacer()
                 stateBadge
@@ -113,7 +115,7 @@ struct AISettingsView: View {
     }
 
     private var interactionSection: some View {
-        EmptyView() // VAD is now inline in the OpenAI section
+        EmptyView()  // VAD is now inline in the OpenAI section
     }
 
     // MARK: - Sub-views
@@ -151,7 +153,7 @@ struct AISettingsView: View {
             Button {
                 downloader.startDownload()
             } label: {
-                Label("Download Model", systemImage: "arrow.down.to.line")
+                Label("Download Model", systemImage: "arrow.down.circle")
             }
         case .downloading:
             Button(role: .cancel) {
