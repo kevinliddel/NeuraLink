@@ -3,6 +3,9 @@
 //  NeuraLink
 //
 //  Rain-on-glass / camera-lens effect — Metal compute + overlay render passes.
+//
+//  Created by Dedicatus on 27/04/2026.
+//
 
 import Foundation
 import Metal
@@ -12,15 +15,19 @@ import simd
 
 struct RainDropGPU {
     var position: SIMD2<Float>  //  8 bytes
-    var radius: Float         //  4 bytes
-    var alpha: Float         //  4 bytes
-    var spreadX: Float         //  4 bytes
-    var spreadY: Float         //  4 bytes
+    var radius: Float  //  4 bytes
+    var alpha: Float  //  4 bytes
+    var spreadX: Float  //  4 bytes
+    var spreadY: Float  //  4 bytes
     var _pad: SIMD2<Float>  //  8 bytes  (total: 32 bytes)
 
     init(x: Float, y: Float, r: Float, alpha: Float, spreadX: Float, spreadY: Float) {
-        position = SIMD2(x, y); radius = r; self.alpha = alpha
-        self.spreadX = spreadX; self.spreadY = spreadY; _pad = .zero
+        position = SIMD2(x, y)
+        radius = r
+        self.alpha = alpha
+        self.spreadX = spreadX
+        self.spreadY = spreadY
+        _pad = .zero
     }
 }
 
@@ -41,7 +48,7 @@ final class RainRenderer {
     static let waterMapWidth: Int = 256
     static let waterMapHeight: Int = 512
 
-    private static let maxDropsBuffer = 260   // main drops (≤180) + droplets (≤80)
+    private static let maxDropsBuffer = 260  // main drops (≤180) + droplets (≤80)
 
     private let device: MTLDevice
 
@@ -51,8 +58,8 @@ final class RainRenderer {
     private var dropsBuffer: MTLBuffer?
     private var uniformsBuffer: MTLBuffer?
 
-    private let simulator  = RainSimulator()
-    let controller         = RainController()
+    private let simulator = RainSimulator()
+    let controller = RainController()
 
     var intensity: Float { controller.intensity }
     var isIdle: Bool { controller.isIdle }
@@ -78,22 +85,24 @@ final class RainRenderer {
 
     func encodeWaterMap(commandBuffer: MTLCommandBuffer) {
         guard !controller.isIdle,
-              let pipeline = computePipeline,
-              let tex = waterMapTexture else { return }
+            let pipeline = computePipeline,
+            let tex = waterMapTexture
+        else { return }
 
         guard let enc = commandBuffer.makeComputeCommandEncoder() else { return }
         enc.pushDebugGroup("RainWaterMap")
         enc.setComputePipelineState(pipeline)
         enc.setTexture(tex, index: 0)
         enc.setBuffer(dropsBuffer, offset: 0, index: 0)
-        let totalDrops = min(simulator.drops.count, simulator.maxDrops)
+        let totalDrops =
+            min(simulator.drops.count, simulator.maxDrops)
             + min(simulator.droplets.count, simulator.maxDroplets)
         var count = UInt32(min(totalDrops, Self.maxDropsBuffer))
         enc.setBytes(&count, length: MemoryLayout<UInt32>.size, index: 1)
 
         let tg = MTLSize(width: 16, height: 16, depth: 1)
         let groups = MTLSize(
-            width: (Self.waterMapWidth  + 15) / 16,
+            width: (Self.waterMapWidth + 15) / 16,
             height: (Self.waterMapHeight + 15) / 16,
             depth: 1
         )
@@ -106,13 +115,14 @@ final class RainRenderer {
 
     func encodeOverlay(commandBuffer: MTLCommandBuffer, targetTexture: MTLTexture) {
         guard !controller.isIdle,
-              let pipeline = renderPipeline,
-              let tex = waterMapTexture,
-              let uBuf = uniformsBuffer else { return }
+            let pipeline = renderPipeline,
+            let tex = waterMapTexture,
+            let uBuf = uniformsBuffer
+        else { return }
 
         let passDesc = MTLRenderPassDescriptor()
-        passDesc.colorAttachments[0].texture     = targetTexture
-        passDesc.colorAttachments[0].loadAction  = .load
+        passDesc.colorAttachments[0].texture = targetTexture
+        passDesc.colorAttachments[0].loadAction = .load
         passDesc.colorAttachments[0].storeAction = .store
 
         guard let enc = commandBuffer.makeRenderCommandEncoder(descriptor: passDesc) else { return }
@@ -160,28 +170,31 @@ final class RainRenderer {
             let lib = try VRMPipelineCache.shared.getLibrary(device: device)
 
             guard let computeFn = lib.makeFunction(name: "rain_watermap") else {
-                vrmLog("[RainRenderer] rain_watermap not found"); return
+                vrmLog("[RainRenderer] rain_watermap not found")
+                return
             }
             computePipeline = try device.makeComputePipelineState(function: computeFn)
 
             guard let vertFn = lib.makeFunction(name: "rain_vertex"),
-                  let fragFn = lib.makeFunction(name: "rain_fragment") else {
-                vrmLog("[RainRenderer] rain_vertex / rain_fragment not found"); return
+                let fragFn = lib.makeFunction(name: "rain_fragment")
+            else {
+                vrmLog("[RainRenderer] rain_vertex / rain_fragment not found")
+                return
             }
             let desc = MTLRenderPipelineDescriptor()
-            desc.label             = "rain_overlay"
-            desc.vertexFunction    = vertFn
-            desc.fragmentFunction  = fragFn
+            desc.label = "rain_overlay"
+            desc.vertexFunction = vertFn
+            desc.fragmentFunction = fragFn
             desc.rasterSampleCount = 1
             let ca = desc.colorAttachments[0]!
-            ca.pixelFormat                  = .bgra8Unorm
-            ca.isBlendingEnabled            = true
-            ca.rgbBlendOperation            = .add
-            ca.alphaBlendOperation          = .add
-            ca.sourceRGBBlendFactor         = .sourceAlpha
-            ca.destinationRGBBlendFactor    = .oneMinusSourceAlpha
-            ca.sourceAlphaBlendFactor       = .one
-            ca.destinationAlphaBlendFactor  = .oneMinusSourceAlpha
+            ca.pixelFormat = .bgra8Unorm
+            ca.isBlendingEnabled = true
+            ca.rgbBlendOperation = .add
+            ca.alphaBlendOperation = .add
+            ca.sourceRGBBlendFactor = .sourceAlpha
+            ca.destinationRGBBlendFactor = .oneMinusSourceAlpha
+            ca.sourceAlphaBlendFactor = .one
+            ca.destinationAlphaBlendFactor = .oneMinusSourceAlpha
 
             renderPipeline = try VRMPipelineCache.shared.getPipelineState(
                 device: device, descriptor: desc, key: "rain_overlay")
@@ -196,7 +209,7 @@ final class RainRenderer {
 
         let mainDrops = simulator.drops.prefix(simulator.maxDrops)
         let remaining = Self.maxDropsBuffer - mainDrops.count
-        let droplets  = simulator.droplets.prefix(remaining)
+        let droplets = simulator.droplets.prefix(remaining)
 
         var idx = 0
         for d in mainDrops {
