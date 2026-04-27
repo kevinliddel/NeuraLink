@@ -22,22 +22,26 @@ protocol OpenAIRealtimeDelegate: AnyObject {
 final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
     static let shared = OpenAIRealtimeManager()
 
-    private var peerConnection: RTCPeerConnection?
-    private var remoteDataChannel: RTCDataChannel?
-    private let factory: RTCPeerConnectionFactory
+    var peerConnection: RTCPeerConnection?
+    var remoteDataChannel: RTCDataChannel?
+    let factory: RTCPeerConnectionFactory
     private var statsTimer: Timer?
-    private var pendingOffer: RTCSessionDescription?
-    private var iceGatheringTimeout: Task<Void, Never>?
-    private let sileroVAD = SileroVADProcessor()
+    var pendingOffer: RTCSessionDescription?
+    var iceGatheringTimeout: Task<Void, Never>?
+    let sileroVAD = SileroVADProcessor()
 
     // Dependencies
-    private let settings = OpenAISettings.shared
-    private let state = RealtimeChatState.shared
+    let settings = OpenAISettings.shared
+    let state = RealtimeChatState.shared
 
     // Function-call state (one active call at a time)
-    private var pendingFunctionCallId: String = ""
-    private var pendingFunctionName: String = ""
-    private var pendingFunctionArgsJSON: String = ""
+    var pendingFunctionCallId: String = ""
+    var pendingFunctionName: String = ""
+    var pendingFunctionArgsJSON: String = ""
+    var deferredFunctionCall: (id: String, name: String, args: String)?
+
+    // Post-audio execution: function waits until the AI's spoken audio finishes
+    var audioPlaybackMonitorTask: Task<Void, Never>?
 
     override init() {
         RTCInitializeSSL()
@@ -64,7 +68,7 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
         rtcSession.unlockForConfiguration()
     }
 
-    private func forceAudioToSpeaker() {
+    func forceAudioToSpeaker() {
         do {
             try AVAudioSession.sharedInstance().overrideOutputAudioPort(.speaker)
         } catch {
@@ -90,6 +94,8 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
 
     /// Stops the Realtime session
     func disconnect() {
+        audioPlaybackMonitorTask?.cancel()
+        audioPlaybackMonitorTask = nil
         sileroVAD.stop()
         remoteDataChannel?.close()
         peerConnection?.close()
@@ -100,7 +106,7 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
 
     // MARK: - WebRTC Signaling
 
-    private func setupPeerConnection() {
+    func setupPeerConnection() {
         let config = RTCConfiguration()
         config.sdpSemantics = .unifiedPlan
         config.bundlePolicy = .maxBundle
@@ -132,7 +138,7 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
         self.remoteDataChannel?.delegate = self
     }
 
-    private func createAndSendOffer() {
+    func createAndSendOffer() {
         let constraints = RTCMediaConstraints(
             mandatoryConstraints: [
                 kRTCMediaConstraintsOfferToReceiveAudio: kRTCMediaConstraintsValueTrue
@@ -168,7 +174,7 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
         }
     }
 
-    private func sendOfferIfPossible() {
+    func sendOfferIfPossible() {
         guard let offer = peerConnection?.localDescription, pendingOffer != nil else { return }
         iceGatheringTimeout?.cancel()
         iceGatheringTimeout = nil
@@ -228,7 +234,7 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
     }
 
     /// Polling stats to extract audio levels for lip-sync
-    private func startStatsPolling() {
+    func startStatsPolling() {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             self.statsTimer?.invalidate()
@@ -253,7 +259,7 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
     }
 
     /// Stops polling
-    private func stopStatsPolling() {
+    func stopStatsPolling() {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             self.statsTimer?.invalidate()
@@ -261,244 +267,11 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
         }
     }
 
-    // MARK: - Message Handling
+    // MARK: - Silero VAD
 
-    private func handleIncomingJSON(_ json: [String: Any]) {
-        guard let type = json["type"] as? String else { return }
-
-        Task { @MainActor in
-            switch type {
-
-            // ── Text streaming ────────────────────────────────────────────
-            case "response.audio_transcript.delta":
-                if let delta = json["delta"] as? String {
-                    print("[AI Text Delta]: \(delta)")
-                    state.aiTranscript += delta
-                }
-
-            case "conversation.item.input_audio_transcription.completed":
-                if let transcript = json["transcript"] as? String {
-                    print("[User Transcript]: \(transcript)")
-                    state.userTranscript = transcript
-                }
-
-            case "response.output_item.added":
-                if let item = json["item"] as? [String: Any],
-                   let itemType = item["type"] as? String,
-                   itemType == "function_call" {
-                    // Begin accumulating a function call
-                    pendingFunctionCallId   = item["call_id"] as? String ?? ""
-                    pendingFunctionName     = item["name"]    as? String ?? ""
-                    pendingFunctionArgsJSON = ""
-                    print("[AI Tools]: function_call started — \(pendingFunctionName)")
-                } else {
-                    state.aiTranscript = ""
-                    state.status = .speaking
-                }
-
-            // ── Function call argument streaming ─────────────────────────
-            case "response.function_call_arguments.delta":
-                if let delta = json["delta"] as? String {
-                    pendingFunctionArgsJSON += delta
-                }
-
-            case "response.function_call_arguments.done":
-                let callId   = pendingFunctionCallId
-                let funcName = pendingFunctionName
-                let argsJSON = pendingFunctionArgsJSON
-                pendingFunctionCallId   = ""
-                pendingFunctionName     = ""
-                pendingFunctionArgsJSON = ""
-
-                guard !funcName.isEmpty else { break }
-                print("[AI Tools]: executing \(funcName) args=\(argsJSON)")
-
-                // Parse args and execute
-                let args = (try? JSONSerialization.jsonObject(
-                    with: Data(argsJSON.utf8)) as? [String: Any]) ?? [:]
-                let result = await AppFunctionExecutor.shared.execute(
-                    name: funcName, arguments: args)
-
-                print("[AI Tools]: result → \(result)")
-                sendFunctionResult(callId: callId, result: result)
-
-            // ── Response lifecycle ────────────────────────────────────────
-            case "response.done":
-                state.status = .ready
-
-            default:
-                break
-            }
-        }
-    }
-
-    /// Sends a function_call_output item back to the AI and triggers a new response.
-    private func sendFunctionResult(callId: String, result: String) {
-        let output: [String: Any] = [
-            "type": "conversation.item.create",
-            "item": [
-                "type": "function_call_output",
-                "call_id": callId,
-                "output": result
-            ]
-        ]
-        let trigger: [String: Any] = ["type": "response.create"]
-
-        for payload in [output, trigger] {
-            guard let data = try? JSONSerialization.data(withJSONObject: payload) else { continue }
-            let buffer = RTCDataBuffer(data: data, isBinary: false)
-            remoteDataChannel?.sendData(buffer)
-        }
-        print("[AI Tools]: sent function_call_output for call_id=\(callId)")
-    }
-}
-
-// MARK: - RTCPeerConnectionDelegate
-extension OpenAIRealtimeManager: RTCPeerConnectionDelegate {
-    func peerConnection(
-        _ peerConnection: RTCPeerConnection, didChange stateChanged: RTCSignalingState
-    ) {
-        print("[AI]: Signaling state changed: \(stateChanged.rawValue)")
-    }
-
-    func peerConnection(_ peerConnection: RTCPeerConnection, didAdd stream: RTCMediaStream) {
-        print("[AI]: Stream added with \(stream.audioTracks.count) audio tracks")
-        for track in stream.audioTracks {
-            track.isEnabled = true
-            print("[AI]: Audio track \(track.trackId) enabled")
-        }
-    }
-
-    func peerConnection(_ peerConnection: RTCPeerConnection, didRemove stream: RTCMediaStream) {
-        print("[AI]: Stream removed")
-    }
-
-    func peerConnectionShouldNegotiate(_ peerConnection: RTCPeerConnection) {
-        print("[AI]: PeerConnection should negotiate")
-    }
-
-    func peerConnection(
-        _ peerConnection: RTCPeerConnection, didChange newState: RTCIceConnectionState
-    ) {
-        print("[AI]: ICE connection state changed: \(newState.rawValue)")
-    }
-
-    func peerConnection(
-        _ peerConnection: RTCPeerConnection, didChange newState: RTCIceGatheringState
-    ) {
-        print("[AI]: ICE gathering state changed: \(newState.rawValue)")
-        if newState == .complete {
-            print("[AI]: ICE gathering complete via delegate")
-            sendOfferIfPossible()
-        }
-    }
-
-    func peerConnection(_ peerConnection: RTCPeerConnection, didGenerate candidate: RTCIceCandidate) {
-        print("[AI]: Generated ICE candidate: \(candidate.sdpMid ?? "none")")
-    }
-
-    func peerConnection(
-        _ peerConnection: RTCPeerConnection, didRemove candidates: [RTCIceCandidate]
-    ) {
-        print("[AI]: Removed ICE candidates")
-    }
-
-    func peerConnection(_ peerConnection: RTCPeerConnection, didOpen dataChannel: RTCDataChannel) {
-        print("[AI]: Data channel opened")
-    }
-
-    func peerConnection(
-        _ peerConnection: RTCPeerConnection, didChange newState: RTCPeerConnectionState
-    ) {
-        print("[AI]: PeerConnection state changed: \(newState.rawValue)")
-    }
-
-    func peerConnection(
-        _ peerConnection: RTCPeerConnection, didStartReceiver receiver: RTCRtpReceiver,
-        streams: [RTCMediaStream]
-    ) {
-        let kind = receiver.track?.kind ?? "unknown"
-        print("[AI]: Started receiver for \(kind) track")
-        if let audioTrack = receiver.track as? RTCAudioTrack {
-            audioTrack.isEnabled = true
-            print("[AI]: Remote audio track enabled: \(audioTrack.trackId)")
-            let rtcSession = RTCAudioSession.sharedInstance()
-            rtcSession.lockForConfiguration()
-            try? rtcSession.setActive(true)
-            rtcSession.isAudioEnabled = true
-            rtcSession.unlockForConfiguration()
-        }
-    }
-}
-
-// MARK: - RTCDataChannelDelegate
-extension OpenAIRealtimeManager: RTCDataChannelDelegate {
-    func dataChannelDidChangeState(_ dataChannel: RTCDataChannel) {
-        print("[AI]: Data channel state changed: \(dataChannel.readyState.rawValue)")
-        if dataChannel.readyState == .open {
-            print("[AI]: Data channel is officially OPEN")
-            sendInitialSessionUpdate()
-        }
-    }
-
-    private func sendInitialSessionUpdate() {
-        let persona = CharacterPersona.forCharacter(named: state.selectedCharacterName)
-        let update: [String: Any] = [
-            "type": "session.update",
-            "session": [
-                "modalities": ["text", "audio"],
-                "voice": persona.voice,
-                "instructions": persona.instructions,
-                "tools": AppFunctionTool.all,
-                "tool_choice": "auto",
-                "input_audio_transcription": [
-                    "model": "whisper-1"
-                ],
-                "turn_detection": [
-                    "type": "server_vad"
-                ]
-            ]
-        ]
-
-        guard let data = try? JSONSerialization.data(withJSONObject: update) else { return }
-
-        let buffer = RTCDataBuffer(data: data, isBinary: false)
-        remoteDataChannel?.sendData(buffer)
-        print("[AI]: Sent initial session.update with \(AppFunctionTool.all.count) tools")
-    }
-    func dataChannel(_ dataChannel: RTCDataChannel, didReceiveMessageWith buffer: RTCDataBuffer) {
-        guard let data = String(data: buffer.data, encoding: .utf8)?.data(using: .utf8),
-            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else { return }
-
-        if let type = json["type"] as? String {
-            print("[AI Event Received]: \(type)")
-        }
-
-        handleIncomingJSON(json)
-    }
-}
-
-// MARK: - Silero VAD
-
-extension OpenAIRealtimeManager {
-    private func startSileroVADIfEnabled() {
+    func startSileroVADIfEnabled() {
         guard settings.isVADEnabled else { return }
         sileroVAD.delegate = self
         sileroVAD.start()
-    }
-}
-
-extension OpenAIRealtimeManager: SileroVADDelegate {
-    func sileroVADDidDetectVoiceStart() {
-        guard state.status == .ready else { return }
-        state.status = .listening
-        print("[SileroVAD]: Voice detected → listening")
-    }
-
-    func sileroVADDidDetectVoiceEnd() {
-        guard state.status == .listening else { return }
-        state.status = .ready
-        print("[SileroVAD]: Voice ended → ready")
     }
 }
