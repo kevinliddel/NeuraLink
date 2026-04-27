@@ -34,6 +34,11 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
     private let settings = OpenAISettings.shared
     private let state = RealtimeChatState.shared
 
+    // Function-call state (one active call at a time)
+    private var pendingFunctionCallId: String = ""
+    private var pendingFunctionName: String = ""
+    private var pendingFunctionArgsJSON: String = ""
+
     override init() {
         RTCInitializeSSL()
         let videoEncoderFactory = RTCDefaultVideoEncoderFactory()
@@ -263,25 +268,88 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
 
         Task { @MainActor in
             switch type {
+
+            // ── Text streaming ────────────────────────────────────────────
             case "response.audio_transcript.delta":
                 if let delta = json["delta"] as? String {
                     print("[AI Text Delta]: \(delta)")
                     state.aiTranscript += delta
                 }
+
             case "conversation.item.input_audio_transcription.completed":
                 if let transcript = json["transcript"] as? String {
                     print("[User Transcript]: \(transcript)")
                     state.userTranscript = transcript
                 }
+
             case "response.output_item.added":
-                state.aiTranscript = ""
-                state.status = .speaking
+                if let item = json["item"] as? [String: Any],
+                   let itemType = item["type"] as? String,
+                   itemType == "function_call" {
+                    // Begin accumulating a function call
+                    pendingFunctionCallId   = item["call_id"] as? String ?? ""
+                    pendingFunctionName     = item["name"]    as? String ?? ""
+                    pendingFunctionArgsJSON = ""
+                    print("[AI Tools]: function_call started — \(pendingFunctionName)")
+                } else {
+                    state.aiTranscript = ""
+                    state.status = .speaking
+                }
+
+            // ── Function call argument streaming ─────────────────────────
+            case "response.function_call_arguments.delta":
+                if let delta = json["delta"] as? String {
+                    pendingFunctionArgsJSON += delta
+                }
+
+            case "response.function_call_arguments.done":
+                let callId   = pendingFunctionCallId
+                let funcName = pendingFunctionName
+                let argsJSON = pendingFunctionArgsJSON
+                pendingFunctionCallId   = ""
+                pendingFunctionName     = ""
+                pendingFunctionArgsJSON = ""
+
+                guard !funcName.isEmpty else { break }
+                print("[AI Tools]: executing \(funcName) args=\(argsJSON)")
+
+                // Parse args and execute
+                let args = (try? JSONSerialization.jsonObject(
+                    with: Data(argsJSON.utf8)) as? [String: Any]) ?? [:]
+                let result = await AppFunctionExecutor.shared.execute(
+                    name: funcName, arguments: args)
+
+                print("[AI Tools]: result → \(result)")
+                sendFunctionResult(callId: callId, result: result)
+
+            // ── Response lifecycle ────────────────────────────────────────
             case "response.done":
                 state.status = .ready
+
             default:
                 break
             }
         }
+    }
+
+    /// Sends a function_call_output item back to the AI and triggers a new response.
+    private func sendFunctionResult(callId: String, result: String) {
+        let output: [String: Any] = [
+            "type": "conversation.item.create",
+            "item": [
+                "type": "function_call_output",
+                "call_id": callId,
+                "output": result
+            ]
+        ]
+        let trigger: [String: Any] = ["type": "response.create"]
+
+        for payload in [output, trigger] {
+            guard let data = try? JSONSerialization.data(withJSONObject: payload) else { continue }
+            let buffer = RTCDataBuffer(data: data, isBinary: false)
+            remoteDataChannel?.sendData(buffer)
+        }
+        print("[AI Tools]: sent function_call_output for call_id=\(callId)")
     }
 }
 
@@ -381,6 +449,8 @@ extension OpenAIRealtimeManager: RTCDataChannelDelegate {
                 "modalities": ["text", "audio"],
                 "voice": persona.voice,
                 "instructions": persona.instructions,
+                "tools": AppFunctionTool.all,
+                "tool_choice": "auto",
                 "input_audio_transcription": [
                     "model": "whisper-1"
                 ],
@@ -390,13 +460,11 @@ extension OpenAIRealtimeManager: RTCDataChannelDelegate {
             ]
         ]
 
-        guard let data = try? JSONSerialization.data(withJSONObject: update),
-            let jsonString = String(data: data, encoding: .utf8)
-        else { return }
+        guard let data = try? JSONSerialization.data(withJSONObject: update) else { return }
 
         let buffer = RTCDataBuffer(data: data, isBinary: false)
         remoteDataChannel?.sendData(buffer)
-        print("[AI]: Sent initial session.update")
+        print("[AI]: Sent initial session.update with \(AppFunctionTool.all.count) tools")
     }
     func dataChannel(_ dataChannel: RTCDataChannel, didReceiveMessageWith buffer: RTCDataBuffer) {
         guard let data = String(data: buffer.data, encoding: .utf8)?.data(using: .utf8),
