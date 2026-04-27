@@ -18,7 +18,7 @@ struct AppFunctionTests {
     @Test("All tools are correctly defined in schemas")
     func testToolSchemas() {
         let tools = AppFunctionTool.all
-        #expect(tools.count == 6)
+        #expect(tools.count == 7)
 
         let names = tools.compactMap { $0["name"] as? String }
         #expect(names.contains(AppFunctionTool.getWeather))
@@ -27,6 +27,7 @@ struct AppFunctionTests {
         #expect(names.contains(AppFunctionTool.createReminder))
         #expect(names.contains(AppFunctionTool.createNote))
         #expect(names.contains(AppFunctionTool.openApp))
+        #expect(names.contains(AppFunctionTool.analyzeCamera))
     }
 
     @Test("Weather tool has required parameters")
