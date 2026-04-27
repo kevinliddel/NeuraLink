@@ -20,6 +20,10 @@ final class AppFunctionExecutor {
     static let shared = AppFunctionExecutor()
     private let eventStore = EKEventStore()
 
+    /// UI action (app open) stored here instead of firing immediately.
+    /// Executed by OpenAIRealtimeManager after the AI finishes speaking the result.
+    var pendingUIAction: (() -> Void)?
+
     private init() {}
 
     // MARK: - Dispatch
@@ -157,7 +161,7 @@ final class AppFunctionExecutor {
         guard let url = URL(string: urlString) else {
             return "Could not open Safari for: \(query)"
         }
-        UIApplication.shared.open(url)
+        pendingUIAction = { UIApplication.shared.open(url) }
         return "Opened Safari to search for \"\(query)\"."
     }
 
@@ -172,13 +176,13 @@ final class AppFunctionExecutor {
         ]
         for scheme in schemes {
             if let url = URL(string: scheme), UIApplication.shared.canOpenURL(url) {
-                UIApplication.shared.open(url)
+                pendingUIAction = { UIApplication.shared.open(url) }
                 return "Searching Apple Music for \"\(query)\"."
             }
         }
         // Fallback: open Music app root
         if let url = URL(string: "music://"), UIApplication.shared.canOpenURL(url) {
-            UIApplication.shared.open(url)
+            pendingUIAction = { UIApplication.shared.open(url) }
             return "Opened Apple Music. You can search for \"\(query)\" there."
         }
         return "Apple Music doesn't appear to be available on this device."
@@ -215,41 +219,40 @@ final class AppFunctionExecutor {
     // MARK: - Notes
 
     private func openNotes(title: String, body: String) -> String {
-        // Encode title and body into a Bear/GoodNotes-style URL if available,
-        // otherwise open the stock Notes app with a pre-filled x-callback-url.
         let combined = "\(title)\n\n\(body)"
-        let encoded = combined.urlEncoded
 
         // Try Bear first (popular rich-text notes app)
         if let bearURL = URL(
             string: "bear://x-callback-url/create?title=\(title.urlEncoded)&text=\(body.urlEncoded)"
         ),
             UIApplication.shared.canOpenURL(bearURL) {
-            UIApplication.shared.open(bearURL)
+            pendingUIAction = { UIApplication.shared.open(bearURL) }
             return "Created a new note titled \"\(title)\" in Bear."
         }
 
-        // Apple Notes doesn't have a public create URL scheme with body pre-fill,
-        // so paste via UIPasteboard and open the app.
         UIPasteboard.general.string = combined
         if let notesURL = URL(string: "mobilenotes://"),
             UIApplication.shared.canOpenURL(notesURL) {
-            UIApplication.shared.open(notesURL)
+            pendingUIAction = { UIApplication.shared.open(notesURL) }
             return "Opened Notes. I've copied your note to the clipboard — paste it in a new note!"
         }
 
-        // Last resort: share sheet
         return "I've copied the note content to your clipboard. Open Notes and paste to create it."
     }
 
     // MARK: - Open App
 
     private func openApp(named app: String) -> String {
+        // Settings uses the public API — App-Prefs: is private and triggers App Store rejection
+        if app == "Settings" {
+            pendingUIAction = { UIApplication.shared.open(URL(string: UIApplication.openSettingsURLString)!) }
+            return "Opening Settings for you."
+        }
+
         let schemeMap: [String: String] = [
             "Maps": "maps://",
             "Photos": "photos-redirect://",
             "Calendar": "calshow://",
-            "Settings": "App-Prefs:Root=General",
             "Camera": "camera://",
             "Clock": "clock-alarm://",
             "Health": "x-apple-health://",
@@ -259,10 +262,9 @@ final class AppFunctionExecutor {
             let url = URL(string: scheme),
             UIApplication.shared.canOpenURL(url)
         else {
-            // Fallback: open Settings to allow user to find the app
             return "I wasn't able to open \(app) directly. Please launch it from your home screen."
         }
-        UIApplication.shared.open(url)
+        pendingUIAction = { UIApplication.shared.open(url) }
         return "Opening \(app) for you."
     }
 }
@@ -271,6 +273,8 @@ final class AppFunctionExecutor {
 
 extension String {
     fileprivate var urlEncoded: String {
-        addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? self
+        var allowed = CharacterSet.alphanumerics
+        allowed.insert(charactersIn: "-._~")
+        return addingPercentEncoding(withAllowedCharacters: allowed) ?? self
     }
 }
