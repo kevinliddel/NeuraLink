@@ -13,6 +13,7 @@ struct ExpandableFABMenu: View {
     @Binding var isExpanded: Bool
     let onSettings: () -> Void
     let onModelSelection: () -> Void
+    let onCameraToggle: () -> Void
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 12) {
@@ -25,7 +26,7 @@ struct ExpandableFABMenu: View {
                         onSettings()
                     }
                 )
-                .transition(childTransition(delay: 0.06))
+                .transition(childTransition(delay: 0.09))
 
                 FABChildButton(
                     icon: "figure.stand.dress.line.vertical.figure",
@@ -33,6 +34,16 @@ struct ExpandableFABMenu: View {
                     action: {
                         collapse()
                         onModelSelection()
+                    }
+                )
+                .transition(childTransition(delay: 0.045))
+
+                FABChildButton(
+                    icon: "camera.fill",
+                    label: "Toggle camera",
+                    action: {
+                        collapse()
+                        onCameraToggle()
                     }
                 )
                 .transition(childTransition(delay: 0.0))
