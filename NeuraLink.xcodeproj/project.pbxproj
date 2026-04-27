@@ -7,6 +7,14 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		041885AB2F99F0B200609CCE /* Hub in Frameworks */ = {isa = PBXBuildFile; productRef = 041885AA2F99F0B200609CCE /* Hub */; };
+		041885AD2F99F0B200609CCE /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = 041885AC2F99F0B200609CCE /* Tokenizers */; };
+		041885AF2F99F0B200609CCE /* Transformers in Frameworks */ = {isa = PBXBuildFile; productRef = 041885AE2F99F0B200609CCE /* Transformers */; };
+		041885C52F99F90100609CCE /* ArgmaxOSS in Frameworks */ = {isa = PBXBuildFile; productRef = 041885C42F99F90100609CCE /* ArgmaxOSS */; };
+		041885C72F99F90100609CCE /* SpeakerKit in Frameworks */ = {isa = PBXBuildFile; productRef = 041885C62F99F90100609CCE /* SpeakerKit */; };
+		041885C92F99F90100609CCE /* TTSKit in Frameworks */ = {isa = PBXBuildFile; productRef = 041885C82F99F90100609CCE /* TTSKit */; };
+		041885CB2F99F90100609CCE /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = 041885CA2F99F90100609CCE /* WhisperKit */; };
+		041885CD2F99F90100609CCE /* argmax-cli in Frameworks */ = {isa = PBXBuildFile; productRef = 041885CC2F99F90100609CCE /* argmax-cli */; };
 		041E139A2F913E1500D2D110 /* Starscream in Frameworks */ = {isa = PBXBuildFile; productRef = 041E13992F913E1500D2D110 /* Starscream */; };
 		04332ACD2F9913B00035B9D0 /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = 04332ACC2F9913B00035B9D0 /* WebRTC */; };
 		04F3BD6F2F9630CD00D2DDF2 /* RealTimeCutVADLibrary in Frameworks */ = {isa = PBXBuildFile; productRef = 04F3BD6E2F9630CD00D2DDF2 /* RealTimeCutVADLibrary */; };
@@ -71,9 +79,17 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				041885AF2F99F0B200609CCE /* Transformers in Frameworks */,
 				04F3BD6F2F9630CD00D2DDF2 /* RealTimeCutVADLibrary in Frameworks */,
+				041885CB2F99F90100609CCE /* WhisperKit in Frameworks */,
+				041885C52F99F90100609CCE /* ArgmaxOSS in Frameworks */,
 				04332ACD2F9913B00035B9D0 /* WebRTC in Frameworks */,
+				041885AB2F99F0B200609CCE /* Hub in Frameworks */,
+				041885C72F99F90100609CCE /* SpeakerKit in Frameworks */,
+				041885C92F99F90100609CCE /* TTSKit in Frameworks */,
 				041E139A2F913E1500D2D110 /* Starscream in Frameworks */,
+				041885AD2F99F0B200609CCE /* Tokenizers in Frameworks */,
+				041885CD2F99F90100609CCE /* argmax-cli in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -137,6 +153,14 @@
 				041E13992F913E1500D2D110 /* Starscream */,
 				04F3BD6E2F9630CD00D2DDF2 /* RealTimeCutVADLibrary */,
 				04332ACC2F9913B00035B9D0 /* WebRTC */,
+				041885AA2F99F0B200609CCE /* Hub */,
+				041885AC2F99F0B200609CCE /* Tokenizers */,
+				041885AE2F99F0B200609CCE /* Transformers */,
+				041885C42F99F90100609CCE /* ArgmaxOSS */,
+				041885C62F99F90100609CCE /* SpeakerKit */,
+				041885C82F99F90100609CCE /* TTSKit */,
+				041885CA2F99F90100609CCE /* WhisperKit */,
+				041885CC2F99F90100609CCE /* argmax-cli */,
 			);
 			productName = NeuraLink;
 			productReference = 041E11DE2F8E782300D2D110 /* NeuraLink.app */;
@@ -224,6 +248,8 @@
 				041E13982F913E1500D2D110 /* XCRemoteSwiftPackageReference "Starscream" */,
 				04F3BD6D2F9630CD00D2DDF2 /* XCRemoteSwiftPackageReference "RealTimeCutVADLibrary" */,
 				04332ACB2F9913B00035B9D0 /* XCRemoteSwiftPackageReference "WebRTC" */,
+				041885A92F99F0B200609CCE /* XCRemoteSwiftPackageReference "swift-transformers" */,
+				041885C32F99F90100609CCE /* XCRemoteSwiftPackageReference "argmax-oss-swift" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 041E11DF2F8E782300D2D110 /* Products */;
@@ -612,6 +638,22 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		041885A92F99F0B200609CCE /* XCRemoteSwiftPackageReference "swift-transformers" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/huggingface/swift-transformers";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.3.0;
+			};
+		};
+		041885C32F99F90100609CCE /* XCRemoteSwiftPackageReference "argmax-oss-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/argmaxinc/argmax-oss-swift";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
 		041E13982F913E1500D2D110 /* XCRemoteSwiftPackageReference "Starscream" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/daltoniam/Starscream.git";
@@ -639,6 +681,46 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		041885AA2F99F0B200609CCE /* Hub */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 041885A92F99F0B200609CCE /* XCRemoteSwiftPackageReference "swift-transformers" */;
+			productName = Hub;
+		};
+		041885AC2F99F0B200609CCE /* Tokenizers */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 041885A92F99F0B200609CCE /* XCRemoteSwiftPackageReference "swift-transformers" */;
+			productName = Tokenizers;
+		};
+		041885AE2F99F0B200609CCE /* Transformers */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 041885A92F99F0B200609CCE /* XCRemoteSwiftPackageReference "swift-transformers" */;
+			productName = Transformers;
+		};
+		041885C42F99F90100609CCE /* ArgmaxOSS */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 041885C32F99F90100609CCE /* XCRemoteSwiftPackageReference "argmax-oss-swift" */;
+			productName = ArgmaxOSS;
+		};
+		041885C62F99F90100609CCE /* SpeakerKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 041885C32F99F90100609CCE /* XCRemoteSwiftPackageReference "argmax-oss-swift" */;
+			productName = SpeakerKit;
+		};
+		041885C82F99F90100609CCE /* TTSKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 041885C32F99F90100609CCE /* XCRemoteSwiftPackageReference "argmax-oss-swift" */;
+			productName = TTSKit;
+		};
+		041885CA2F99F90100609CCE /* WhisperKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 041885C32F99F90100609CCE /* XCRemoteSwiftPackageReference "argmax-oss-swift" */;
+			productName = WhisperKit;
+		};
+		041885CC2F99F90100609CCE /* argmax-cli */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 041885C32F99F90100609CCE /* XCRemoteSwiftPackageReference "argmax-oss-swift" */;
+			productName = "argmax-cli";
+		};
 		041E13992F913E1500D2D110 /* Starscream */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 041E13982F913E1500D2D110 /* XCRemoteSwiftPackageReference "Starscream" */;

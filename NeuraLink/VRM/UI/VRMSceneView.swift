@@ -118,11 +118,18 @@ public struct VRMSceneView: View {
     }
 
     private func connectAI(characterName: String) {
-        guard OpenAISettings.shared.hasValidKey else { return }
+        let settings = OpenAISettings.shared
         let chatState = RealtimeChatState.shared
         chatState.selectedCharacterName = characterName
-        let ai = OpenAIRealtimeManager.shared
-        ai.disconnect()
-        ai.connect()
+        
+        // Stop any existing connections
+        OpenAIRealtimeManager.shared.disconnect()
+        LocalLLMManager.shared.stop()
+        
+        if settings.isLocalLLMEnabled {
+            LocalLLMManager.shared.startListening()
+        } else if settings.isEnabled && settings.hasValidKey {
+            OpenAIRealtimeManager.shared.connect()
+        }
     }
 }

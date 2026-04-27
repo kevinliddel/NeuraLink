@@ -19,7 +19,7 @@ struct ExpandableFABMenu: View {
         VStack(alignment: .trailing, spacing: 12) {
             if isExpanded {
                 FABChildButton(
-                    icon: "gear",
+                    icon: Image(systemName: "gear"),
                     label: "Settings",
                     action: {
                         collapse()
@@ -29,7 +29,7 @@ struct ExpandableFABMenu: View {
                 .transition(childTransition(delay: 0.09))
 
                 FABChildButton(
-                    icon: "figure.stand.dress.line.vertical.figure",
+                    icon: Image("neuralink").renderingMode(.template),
                     label: "Characters",
                     action: {
                         collapse()
@@ -39,7 +39,7 @@ struct ExpandableFABMenu: View {
                 .transition(childTransition(delay: 0.045))
 
                 FABChildButton(
-                    icon: "camera.fill",
+                    icon: Image(systemName: "video.doorbell.fill"),
                     label: "Toggle camera",
                     action: {
                         collapse()
@@ -71,7 +71,7 @@ struct ExpandableFABMenu: View {
 }
 
 private struct FABChildButton: View {
-    let icon: String
+    let icon: Image
     let label: String
     let action: () -> Void
 
@@ -79,13 +79,16 @@ private struct FABChildButton: View {
         Button(
             action: action,
             label: {
-                Image(systemName: icon)
+                icon
+                    .symbolRenderingMode(.monochrome)
                     .font(.system(size: 17, weight: .regular))
+                    .imageScale(.large)
                     .foregroundStyle(.white)
                     .frame(width: 44, height: 44)
                     .background(.black.opacity(0.5))
                     .clipShape(Circle())
-            })
+            }
+        )
         .accessibilityLabel(label)
     }
 }

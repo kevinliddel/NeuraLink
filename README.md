@@ -9,6 +9,9 @@
   <img src="https://img.shields.io/badge/Swift-6.0-orange?style=flat&logo=swift" alt="Swift" />
   <img src="https://img.shields.io/badge/Graphics-Metal-brightgreen?style=flat&logo=metal" alt="Metal" />
   <img src="https://custom-icon-badges.demolab.com/badge/ChatGPT-74aa9c?logo=openai&logoColor=white" alt="OpenAI" />
+  <img src="https://img.shields.io/badge/Hugging%20Face-FFD21E?logo=huggingface&logoColor=fff" alt="Hugging Face" />
+  <img src="https://img.shields.io/badge/Ollama-fff?logo=ollama&logoColor=000" alt="Ollama" />
+  <img src="https://img.shields.io/badge/WhisperKit-gray?logo=swift" alt="WhisperKit" />
   <img src="https://img.shields.io/badge/WebRTC-gray?style=flat&logo=webrtc" alt="WebRTC" />
   <img src="https://img.shields.io/badge/Silero-VAD-red?style=flat&logo=silero" alt="Silero VAD" />
 </p>
@@ -30,6 +33,7 @@ A high-performance, native iOS VRM character viewer and AI companion built from 
 - **"Eyes on You" System**: Features an Arknights: Endfield-inspired camera system, where characters will maintain eye contact by turning their heads toward the camera if it remains behind them for more than 5 seconds.
 - **Dual-Layer VAD**: Client-side Silero VAD (v5 model) runs alongside OpenAI's server VAD for instant local voice detection and immediate UI feedback.
 - **Per-Character Personas**: Each character carries her own system prompt and voice model, hot-swapped on model selection.
+- **NPU Ready**: Architecture planned for [Apple Neural Engine integration](./docs/npu.md) via Core ML and MLX to enable local VAD, offline speech-to-text, and local LLMs.
 
 
 ---

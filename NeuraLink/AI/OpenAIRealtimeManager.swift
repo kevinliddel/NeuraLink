@@ -61,7 +61,8 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
         let rtcSession = RTCAudioSession.sharedInstance()
         rtcSession.lockForConfiguration()
         do {
-            try rtcSession.setCategory(.playAndRecord, with: [.allowBluetoothHFP, .defaultToSpeaker])
+            try rtcSession.setCategory(
+                .playAndRecord, with: [.allowBluetoothHFP, .defaultToSpeaker])
             try rtcSession.setMode(.videoChat)
             try rtcSession.setActive(true)
             rtcSession.isAudioEnabled = true

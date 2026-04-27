@@ -304,7 +304,7 @@ extension OpenAIRealtimeManager: SileroVADDelegate {
         print("[SileroVAD]: Voice detected → listening")
     }
 
-    func sileroVADDidDetectVoiceEnd() {
+    func sileroVADDidDetectVoiceEnd(wavData: Data?) {
         guard state.status == .listening else { return }
         state.status = .ready
         print("[SileroVAD]: Voice ended → ready")

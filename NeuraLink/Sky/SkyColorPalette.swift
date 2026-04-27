@@ -126,6 +126,11 @@ extension SkyEnvironment {
         let dayAmbient = skyLerp(dawnAmbient, noonAmbient, dayFactor * (1.0 - sunsetFactor * 0.5))
         let ambient = skyLerp(nightAmbient, dayAmbient, dayFactor)
 
+        // At night the key light is the moon, which is opposite the underground sun.
+        // keyLightDirection must point FROM scene TOWARD the light source so that
+        // applySkyLighting() can pass -keyLightDirection to setLight() correctly.
+        let keyLightDir = sunDir.y >= 0 ? sunDir : -sunDir
+
         return SkyEnvironment(
             sunDirection: sunDir,
             cloudCoverage: 0.50 + sunsetFactor * 0.10,
@@ -134,7 +139,7 @@ extension SkyEnvironment {
             starVisibility: min(1.0, max(0.0, -sunDir.y * 2.8)),
             skyColorLow: gradLow,
             skyColorHigh: gradHigh,
-            keyLightDirection: sunDir,
+            keyLightDirection: keyLightDir,
             keyLightColor: keyColor,
             keyLightIntensity: keyIntensity,
             fillLightDirection: fillDir,
