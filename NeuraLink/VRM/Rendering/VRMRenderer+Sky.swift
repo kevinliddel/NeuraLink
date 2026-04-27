@@ -24,31 +24,38 @@ extension VRMRenderer {
         skyRenderer?.update(deltaTime: deltaTime)
     }
 
-    /// Advances the 2D rain simulation (still used for sky intensity). 3D world rain runs independently.
+    /// Advances rain simulation. Both 2D screen overlay and 3D world rain share the same RainController.
     func updateRain(deltaTime: Float) {
-        // Update sky rain intensity for lighting purposes
         rainRenderer?.update(deltaTime: deltaTime)
-        skyRenderer?.rainIntensity = rainRenderer?.intensity ?? 0
+        let intensity = rainRenderer?.intensity ?? 0
+        skyRenderer?.rainIntensity = intensity
 
-        // Update 3D world rain — always active, independent of 2D overlay
+        // 3D world rain is driven by the same intensity — synced with the 2D overlay
         let viewInv = viewMatrix.inverse
         let cameraPos = SIMD3<Float>(viewInv[3][0], viewInv[3][1], viewInv[3][2])
         rainWorldRenderer?.update(
             deltaTime: deltaTime,
-            intensity: 0.85, // Fixed full intensity — decoupled from 2D rain
+            intensity: intensity,
             cameraPos: cameraPos,
             viewProjection: projectionMatrix * viewMatrix
         )
     }
 
-    /// Rain-on-glass overlay removed per user request.
+    /// Runs the rain-on-lens compute + overlay passes after the main scene encoder has ended.
+    /// Works alongside the 3D world rain — both effects are active when intensity > 0.
     func drawRainOverlay(commandBuffer: MTLCommandBuffer,
                          renderPassDescriptor: MTLRenderPassDescriptor) {
-        // No-op: 2D water lens effect removed
+        guard let rain = rainRenderer, !rain.isIdle else { return }
+        let target = renderPassDescriptor.colorAttachments[0].resolveTexture
+                  ?? renderPassDescriptor.colorAttachments[0].texture
+        guard let target else { return }
+        rain.encodeWaterMap(commandBuffer: commandBuffer)
+        rain.encodeOverlay(commandBuffer: commandBuffer, targetTexture: target)
     }
 
-    /// Renders 3D world rain droplets — always active, not gated on 2D rain.
+    /// Renders 3D world rain droplets. Only draws when rain is active (intensity > 0).
     func drawWorldRain(encoder: MTLRenderCommandEncoder) {
+        guard let intensity = rainRenderer?.intensity, intensity > 0.001 else { return }
         rainWorldRenderer?.draw(encoder: encoder)
     }
 
