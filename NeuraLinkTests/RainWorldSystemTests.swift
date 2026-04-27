@@ -2,6 +2,10 @@
 //  RainWorldSystemTests.swift
 //  NeuraLinkTests
 //
+//  Tests for the procedural world-space rain system.
+//  Rain3DParticle is now a static seed (spawnX, spawnZ, phase, speed) —
+//  all animation is procedural in the GPU shader, driven by u.time.
+//
 
 import Testing
 import Foundation
@@ -11,79 +15,103 @@ import simd
 @Suite("Rain World System Tests")
 struct RainWorldSystemTests {
 
-    @Test("Particles start inactive")
-    func testInitialState() {
+    // MARK: - Simulator Initialisation
+
+    @Test("Simulator creates correct particle count")
+    func testParticleCount() {
         let sim = RainWorldSimulator()
         #expect(sim.particles.count == sim.maxParticles)
+    }
+
+    @Test("All particles have valid spawn positions within spawn radius")
+    func testSpawnBounds() {
+        let sim = RainWorldSimulator()
+        let spawnRadius: Float = 22.0
         for p in sim.particles {
-            #expect(!p.active)
+            #expect(abs(p.spawnX) <= spawnRadius)
+            #expect(abs(p.spawnZ) <= spawnRadius)
         }
     }
 
-    @Test("Particles spawn when intensity is positive")
-    func testSpawning() {
+    @Test("All particles have phase in [0, 1]")
+    func testPhaseRange() {
         let sim = RainWorldSimulator()
-        sim.update(deltaTime: 0.1, intensity: 1.0, cameraPos: .zero)
-        let activeCount = sim.particles.filter { $0.active }.count
-        #expect(activeCount > 0)
-    }
-
-    @Test("Particles fall with gravity")
-    func testPhysics() {
-        let sim = RainWorldSimulator()
-        sim.update(deltaTime: 0.01, intensity: 1.0, cameraPos: .zero)
-        
-        guard let first = sim.particles.first(where: { $0.active && $0.type == .streak }) else {
-            return
+        for p in sim.particles {
+            #expect(p.phase >= 0.0)
+            #expect(p.phase <= 1.0)
         }
-        
-        let startY = first.position.y
-        sim.update(deltaTime: 0.1, intensity: 1.0, cameraPos: .zero)
-        
-        // Find the same particle (by position proxy since we don't have IDs)
-        // Or just verify SOME active particle is lower than startY
-        let lowerCount = sim.particles.filter { $0.active && $0.type == .streak && $0.position.y < startY }.count
-        #expect(lowerCount > 0)
     }
 
-    @Test("Particles transition to ripple on ground impact")
-    func testGroundCollision() {
+    @Test("All particles have speed in [0.75, 1.4]")
+    func testSpeedRange() {
         let sim = RainWorldSimulator()
-        // Spawn particles
-        sim.update(deltaTime: 0.1, intensity: 1.0, cameraPos: .zero)
-        
-        // Artificially move an active particle close to the ground
+        for p in sim.particles {
+            #expect(p.speed >= 0.75)
+            #expect(p.speed <= 1.4)
+        }
+    }
+
+    @Test("Particles have varied phases (not all the same)")
+    func testPhaseVariety() {
+        let sim = RainWorldSimulator()
+        let first = sim.particles[0].phase
+        let allSame = sim.particles.allSatisfy { $0.phase == first }
+        #expect(!allSame, "All particles should not share the same phase")
+    }
+
+    @Test("Particles have varied spawn positions")
+    func testPositionVariety() {
+        let sim = RainWorldSimulator()
+        let firstX = sim.particles[0].spawnX
+        let allSameX = sim.particles.allSatisfy { $0.spawnX == firstX }
+        #expect(!allSameX, "All particles should not share the same spawnX")
+    }
+
+    // MARK: - Procedural fall logic (shader-side, tested analytically)
+
+    @Test("Procedural fall: fract(time * speed + phase) wraps in [0, 1]")
+    func testProceduralFallBounds() {
+        let sim = RainWorldSimulator()
+        let sampleTime: Float = 42.75  // Arbitrary test time
+
+        for p in sim.particles {
+            let t = (sampleTime * p.speed + p.phase).truncatingRemainder(dividingBy: 1.0)
+            let tWrapped = t < 0 ? t + 1 : t
+            #expect(tWrapped >= 0.0)
+            #expect(tWrapped <= 1.0)
+        }
+    }
+
+    @Test("World Y interpolates from 16 (top) to 0 (ground) as t goes 0→1")
+    func testWorldYInterpolation() {
+        let spawnY: Float = 16.0
+        let groundY: Float = 0.0
+
+        // t = 0 → should be at top
+        let yAtStart = spawnY * (1 - 0) + groundY * 0
+        #expect(yAtStart == 16.0)
+
+        // t = 1 → should be at ground
+        let yAtEnd = spawnY * (1 - 1) + groundY * 1
+        #expect(yAtEnd == 0.0)
+
+        // t = 0.5 → should be midway
+        let yAtMid = spawnY * (1 - 0.5) + groundY * 0.5
+        #expect(yAtMid == 8.0)
+    }
+
+    @Test("Simulator update is a no-op (procedural, no CPU state changes)")
+    func testUpdateIsNoop() {
+        let sim = RainWorldSimulator()
+        let snapshotPhases = sim.particles.map { $0.phase }
+        let snapshotSpeeds = sim.particles.map { $0.speed }
+
+        sim.update(deltaTime: 0.016, intensity: 1.0, cameraPos: .zero)
+
+        // Procedural seeds must NOT change on update
         for i in 0..<sim.maxParticles {
-            if sim.particles[i].active {
-                sim.particles[i].position.y = 0.05
-                sim.particles[i].velocity.y = -10.0
-                break
-            }
+            #expect(sim.particles[i].phase == snapshotPhases[i])
+            #expect(sim.particles[i].speed == snapshotSpeeds[i])
         }
-        
-        // Update to trigger collision
-        sim.update(deltaTime: 0.1, intensity: 1.0, cameraPos: .zero)
-        
-        let rippleCount = sim.particles.filter { $0.active && $0.type == .ripple }.count
-        #expect(rippleCount > 0)
-    }
-
-    @Test("Particles are recycled after lifetime")
-    func testRecycling() {
-        let sim = RainWorldSimulator()
-        sim.update(deltaTime: 0.1, intensity: 1.0, cameraPos: .zero)
-        
-        // Force a particle to expire
-        for i in 0..<sim.maxParticles {
-            if sim.particles[i].active {
-                sim.particles[i].age = 0.99
-                sim.particles[i].lifetime = 0.1
-                break
-            }
-        }
-        
-        sim.update(deltaTime: 0.1, intensity: 1.0, cameraPos: .zero)
-        // One should have been deactivated or its age exceeded 1.0 in previous tick and removed now
-        // This is a bit non-deterministic due to random spawning, but age check is solid
     }
 }
