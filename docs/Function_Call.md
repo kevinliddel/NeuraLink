@@ -156,10 +156,12 @@ OpenAIRealtimeManager.swift    — Event loop: streams args, dispatches executor
 |---|---|
 | `response.output_item.added` (type: `function_call`) | Start accumulating — capture `call_id` and `name` |
 | `response.function_call_arguments.delta` | Append JSON argument fragment |
-| `response.function_call_arguments.done` | Parse JSON → `AppFunctionExecutor.execute()` → send result |
+| `response.function_call_arguments.done` | Finalize arguments and **defer execution** |
+| `response.done` | **Execute deferred call** → send result back to AI |
 | `conversation.item.create` + `response.create` | AI receives result and continues speaking |
 
-### Adding a New Tool
+> [!TIP]
+> Execution is intentionally deferred until `response.done`. This ensures that if the AI provides a verbal confirmation (e.g., "Sure, let me check that for you..."), the audio finishes playing before the app triggers the system tool or web search.
 
 1. **Declare the schema** in `AppFunctionTool.swift`:
 ```swift
