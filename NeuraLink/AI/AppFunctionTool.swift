@@ -21,12 +21,13 @@ enum AppFunctionTool {
     static let createReminder = "create_reminder"
     static let createNote = "create_note"
     static let openApp = "open_app"
+    static let analyzeCamera = "analyze_camera"
 
     // MARK: - OpenAI tool schema array
 
     /// Returns the full `tools` array ready to embed in a session.update payload.
     static var all: [[String: Any]] {
-        [weatherTool, searchTool, musicTool, reminderTool, noteTool, openAppTool]
+        [weatherTool, searchTool, musicTool, reminderTool, noteTool, openAppTool, cameraTool]
     }
 
     // MARK: - Individual schemas
@@ -130,6 +131,28 @@ enum AppFunctionTool {
                     ]
                 ],
                 "required": ["title", "body"]
+            ]
+        ]
+    }
+
+    private static var cameraTool: [String: Any] {
+        [
+            "type": "function",
+            "name": analyzeCamera,
+            "description": "Look through the device camera and describe what you see. "
+                + "Use this whenever the user asks you to look, see, observe, or describe "
+                + "something in front of the camera.",
+            "parameters": [
+                "type": "object",
+                "properties": [
+                    "prompt": [
+                        "type": "string",
+                        "description":
+                            "Optional focus for the description, e.g. 'describe the person' "
+                            + "or 'what objects are visible'"
+                    ]
+                ],
+                "required": []
             ]
         ]
     }

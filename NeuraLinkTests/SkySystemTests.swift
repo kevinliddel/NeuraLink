@@ -18,21 +18,21 @@ struct SkySystemTests {
     @Test("Day fraction for midnight is 0")
     func testDayFractionMidnight() {
         var provider = SkyTimeProvider()
-        provider.now = { makeUTCDate(hour: 0, minute: 0, second: 0) }
+        provider.now = { makeLocalDate(hour: 0, minute: 0, second: 0) }
         #expect(provider.dayFraction() == 0.0)
     }
 
     @Test("Day fraction for noon is 0.5")
     func testDayFractionNoon() {
         var provider = SkyTimeProvider()
-        provider.now = { makeUTCDate(hour: 12, minute: 0, second: 0) }
+        provider.now = { makeLocalDate(hour: 12, minute: 0, second: 0) }
         #expect(abs(provider.dayFraction() - 0.5) < 1e-4)
     }
 
     @Test("Current hour stays in [0, 24)")
     func testCurrentHourRange() {
         var provider = SkyTimeProvider()
-        provider.now = { makeUTCDate(hour: 23, minute: 59, second: 59) }
+        provider.now = { makeLocalDate(hour: 23, minute: 59, second: 59) }
         let h = provider.currentHour()
         #expect(h >= 0 && h < 24)
     }
@@ -126,10 +126,11 @@ struct SkySystemTests {
 
 // MARK: - Helpers
 
-private func makeUTCDate(hour: Int, minute: Int, second: Int) -> Date {
+// Builds a Date in the device's local timezone so Calendar.current decomposes it
+// back to the same hour — timezone-independent.
+private func makeLocalDate(hour: Int, minute: Int, second: Int) -> Date {
     var comps = DateComponents()
     comps.year = 2026; comps.month = 4; comps.day = 17
     comps.hour = hour; comps.minute = minute; comps.second = second
-    comps.timeZone = TimeZone(identifier: "UTC")
     return Calendar.current.date(from: comps) ?? Date()
 }
