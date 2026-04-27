@@ -272,7 +272,7 @@ final class AppFunctionExecutor {
 // MARK: - String helper
 
 extension String {
-    fileprivate var urlEncoded: String {
+    var urlEncoded: String {
         var allowed = CharacterSet.alphanumerics
         allowed.insert(charactersIn: "-._~")
         return addingPercentEncoding(withAllowedCharacters: allowed) ?? self
