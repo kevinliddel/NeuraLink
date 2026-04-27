@@ -105,7 +105,7 @@ struct AISettingsView: View {
             }
 
         } header: {
-            Text("Local Edge AI")
+            Text("Local Edge SLMs")
         } footer: {
             if case .failed(let msg) = downloader.state {
                 Text("Download failed: \(msg)")

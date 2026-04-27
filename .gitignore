@@ -36,11 +36,3 @@ DerivedData/
 # MD file
 rule.md
 
-# CoreML file
-NeuraLink/chunk_0_vision.mlpackage
-NeuraLink/chunk_0.mlpackage
-NeuraLink/chunk_1.mlpackage
-NeuraLink/chunk_2.mlpackage
-NeuraLink/chunk_3.mlpackage
-NeuraLink/chunk_head.mlpackage
-

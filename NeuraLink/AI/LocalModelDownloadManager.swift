@@ -43,11 +43,14 @@ final class LocalModelDownloadManager: @unchecked Sendable {
     // HuggingFace repo hosting the chunked Qwen3-VL 2B CoreML weights.
     static let repoID = "mlboydaisuke/qwen3-vl-2b-stateful-coreml"
 
+    // Subdirectory inside the repo that contains the model files.
+    static let repoSubdir = "qwen3_vl_2b_stateful_chunks"
+
     // Logical chunk names (excludes extension — callers append .mlmodelc / .mlpackage).
     static let chunkNames: [String] = (0..<4).map { "chunk_\($0)" } + ["chunk_head"]
 
     // Estimated total download size shown in the UI (mlpackages + embed).
-    static let estimatedSizeGB: Double = 4.2
+    static let estimatedSizeGB: Double = 2.7
 
     /// Where compiled .mlmodelc and embed_weight.bin live after download.
     var compiledDir: URL {
@@ -133,6 +136,20 @@ final class LocalModelDownloadManager: @unchecked Sendable {
 
     // MARK: - Download + compile
 
+    private enum DownloadError: LocalizedError {
+        case repositoryNotFound
+        case chunkMissing(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .repositoryNotFound:
+                return "Repository '\(LocalModelDownloadManager.repoID)' was not found on Hugging Face. Make sure the repo is public and the ID in LocalModelDownloadManager.swift is correct."
+            case .chunkMissing(let name):
+                return "'\(name)' not found in the repository (neither .mlpackage nor .mlmodelc). The repo structure may differ from expected."
+            }
+        }
+    }
+
     private func performDownload() async {
         let appSupport = FileManager.default.urls(
             for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -141,14 +158,17 @@ final class LocalModelDownloadManager: @unchecked Sendable {
         let destDir = compiledDir
 
         do {
-            try FileManager.default.createDirectory(
-                at: destDir, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: destDir, withIntermediateDirectories: true)
 
-            // Phase 1 (0 → 0.5): download all files via Hub snapshot
+            // Phase 1 (0 → 0.5): Hub snapshot — files live inside repoSubdir/.
             await MainActor.run { state = .downloading(progress: 0.0) }
 
-            var globs = Self.chunkNames.map { "\($0).mlpackage/**" }
-            globs.append("embed_weight.bin")
+            let sub = Self.repoSubdir
+            var globs: [String] = ["\(sub)/embed_weight.bin"]
+            for name in Self.chunkNames {
+                globs.append("\(sub)/\(name).mlpackage/**")
+                globs.append("\(sub)/\(name).mlmodelc/**")
+            }
 
             let snapshotDir = try await api.snapshot(from: repo, matching: globs) { progress in
                 Task { @MainActor in
@@ -159,45 +179,63 @@ final class LocalModelDownloadManager: @unchecked Sendable {
 
             guard !Task.isCancelled else { return }
 
-            // Phase 2 (0.5 → 1.0): compile each .mlpackage → .mlmodelc
-            let totalChunks = Double(Self.chunkNames.count)
-
-            for (index, chunkName) in Self.chunkNames.enumerated() {
-                guard !Task.isCancelled else { return }
-
-                let compiledDest = destDir.appendingPathComponent("\(chunkName).mlmodelc")
-                if !FileManager.default.fileExists(atPath: compiledDest.path) {
-                    let phaseProgress = 0.5 + 0.5 * Double(index) / totalChunks
-                    await MainActor.run { state = .downloading(progress: phaseProgress) }
-
-                    let packageURL = snapshotDir.appendingPathComponent("\(chunkName).mlpackage")
-                    let compiledURL = try await withCheckedThrowingContinuation { continuation in
-                        DispatchQueue.global(qos: .userInitiated).async {
-                            do {
-                                continuation.resume(returning: try MLModel.compileModel(at: packageURL))
-                            } catch {
-                                continuation.resume(throwing: error)
-                            }
-                        }
-                    }
-
-                    try? FileManager.default.removeItem(at: compiledDest)
-                    try FileManager.default.moveItem(at: compiledURL, to: compiledDest)
-                }
+            // Sanity check: Hub silently returns an empty dir when the repo doesn't exist.
+            // embed_weight.bin presence confirms the download actually succeeded.
+            let repoRoot = snapshotDir.appendingPathComponent(sub)
+            let embedSrc = repoRoot.appendingPathComponent("embed_weight.bin")
+            guard FileManager.default.fileExists(atPath: embedSrc.path) else {
+                throw DownloadError.repositoryNotFound
             }
 
-            // Copy embed_weight.bin (no compilation needed)
-            let embedSrc = snapshotDir.appendingPathComponent("embed_weight.bin")
+            // Copy embed_weight.bin
             let embedDest = destDir.appendingPathComponent("embed_weight.bin")
             if !FileManager.default.fileExists(atPath: embedDest.path) {
                 try FileManager.default.copyItem(at: embedSrc, to: embedDest)
             }
 
+            // Phase 2 (0.5 → 1.0): process chunks — repo ships .mlpackage only.
+            let totalChunks = Double(Self.chunkNames.count)
+
+            for (index, chunkName) in Self.chunkNames.enumerated() {
+                guard !Task.isCancelled else { return }
+
+                let phaseProgress = 0.5 + 0.5 * Double(index) / totalChunks
+                await MainActor.run { state = .downloading(progress: phaseProgress) }
+
+                let compiledDest = destDir.appendingPathComponent("\(chunkName).mlmodelc")
+                guard !FileManager.default.fileExists(atPath: compiledDest.path) else { continue }
+
+                // Prefer pre-compiled .mlmodelc if present (no compilation step needed)
+                let mlcSrc = repoRoot.appendingPathComponent("\(chunkName).mlmodelc")
+                if FileManager.default.fileExists(atPath: mlcSrc.path) {
+                    try FileManager.default.copyItem(at: mlcSrc, to: compiledDest)
+                    continue
+                }
+
+                // Compile the .mlpackage on-device
+                let pkgSrc = repoRoot.appendingPathComponent("\(chunkName).mlpackage")
+                guard FileManager.default.fileExists(atPath: pkgSrc.path) else {
+                    throw DownloadError.chunkMissing(chunkName)
+                }
+
+                let compiledURL = try await withCheckedThrowingContinuation { continuation in
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        do {
+                            continuation.resume(returning: try MLModel.compileModel(at: pkgSrc))
+                        } catch {
+                            continuation.resume(throwing: error)
+                        }
+                    }
+                }
+                try? FileManager.default.removeItem(at: compiledDest)
+                try FileManager.default.moveItem(at: compiledURL, to: compiledDest)
+            }
+
             await MainActor.run { state = .ready }
-            print("[ModelDownload] All chunks compiled and ready.")
+            print("[ModelDownload] All chunks ready.")
 
         } catch {
-            guard !Task.isCancelled else {
+            if Task.isCancelled {
                 await MainActor.run { state = .notDownloaded }
                 return
             }
