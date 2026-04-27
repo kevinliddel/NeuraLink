@@ -5,6 +5,8 @@
 //  FaceTime-style picture-in-picture overlay shown in the top-left corner.
 //  Includes a dismiss button and a front/back camera flip button.
 //
+//  Created by Dedicatus on 27/04/2026.
+//
 
 import SwiftUI
 

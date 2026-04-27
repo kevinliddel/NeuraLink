@@ -6,6 +6,8 @@
 //  AVCaptureVideoPreviewLayer, using the UIView layerClass override
 //  so the layer exactly fills the view without an extra sub-layer.
 //
+//  Created by Dedicatus on 27/04/2026.
+//
 
 import AVFoundation
 import SwiftUI
