@@ -235,6 +235,15 @@ final class LocalLLMEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
         isGenerating = false
     }
 
+    func unloadModel() {
+        isGenerating = false
+        loadLock.withLock { loadTask = nil }
+        model = nil
+        tokenizer = nil
+        if #available(iOS 17.0, *) { mlState = nil }
+        print("[LocalLLM] Model unloaded.")
+    }
+
     // MARK: - Tokenization/Sampling
 
     private func tokenize(text: String) -> [Int32] {

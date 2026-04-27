@@ -9,10 +9,6 @@ import SwiftUI
 
 @main
 struct NeuraLinkApp: App {
-    init() {
-        LocalLLMManager.shared.preload()
-    }
-    
     var body: some Scene {
         WindowGroup {
             ContentView()

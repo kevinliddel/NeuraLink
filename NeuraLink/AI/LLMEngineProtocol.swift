@@ -13,4 +13,5 @@ protocol LLMEngineProtocol: AnyObject {
     func loadModel() async throws
     func generate(prompt: String, maxTokens: Int) async
     func stop()
+    func unloadModel()
 }

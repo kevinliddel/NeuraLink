@@ -12,12 +12,23 @@ import SwiftUI
 @Observable
 final class OpenAISettings {
     static let shared = OpenAISettings()
-    
+
     // UserDefaults Keys
     private let apiKeyPrefix = "com.neuralink.openai.apiKey"
     private let enabledKey = "com.neuralink.openai.enabled"
     private let localLLMEnabledKey = "com.neuralink.localllm.enabled"
     private let vadEnabledKey = "com.neuralink.openai.vadEnabled"
+    private static let migrationV2Key = "com.neuralink.migration.onDemandLLM.v1"
+
+    init() {
+        // One-time migration: previous builds defaulted isLocalLLMEnabled to true and
+        // called preload() at launch. Reset it so the model is never loaded until the
+        // user explicitly enables it in Settings after the on-demand update.
+        if !UserDefaults.standard.bool(forKey: Self.migrationV2Key) {
+            UserDefaults.standard.set(false, forKey: localLLMEnabledKey)
+            UserDefaults.standard.set(true, forKey: Self.migrationV2Key)
+        }
+    }
 
     var apiKey: String {
         get { UserDefaults.standard.string(forKey: apiKeyPrefix) ?? "" }
@@ -35,11 +46,13 @@ final class OpenAISettings {
     }
     
     var isLocalLLMEnabled: Bool {
-        get { UserDefaults.standard.object(forKey: localLLMEnabledKey) as? Bool ?? true }
-        set { 
+        get { UserDefaults.standard.object(forKey: localLLMEnabledKey) as? Bool ?? false }
+        set {
             UserDefaults.standard.set(newValue, forKey: localLLMEnabledKey)
             if newValue {
                 isEnabled = false
+            } else {
+                LocalLLMManager.shared.unload()
             }
         }
     }

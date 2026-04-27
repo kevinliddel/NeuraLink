@@ -85,23 +85,21 @@ final class StatefulQwenEngine: NSObject, @unchecked Sendable, LLMEngineProtocol
                 let cfg = MLModelConfiguration()
                 cfg.computeUnits = .cpuAndNeuralEngine
 
+                let downloader = LocalModelDownloadManager.shared
                 var loaded: [MLModel] = []
                 for i in 0..<self.numChunks {
-                    guard let url = Bundle.main.url(
-                        forResource: "chunk_\(i)", withExtension: "mlmodelc")
+                    guard let url = downloader.urlForChunk("chunk_\(i)")
                     else { throw LLMError.modelNotFound }
                     print("[QwenVL] Loading chunk_\(i)…")
                     loaded.append(try await MLModel.load(contentsOf: url, configuration: cfg))
                 }
 
-                guard let headURL = Bundle.main.url(
-                    forResource: "chunk_head", withExtension: "mlmodelc")
+                guard let headURL = downloader.urlForChunk("chunk_head")
                 else { throw LLMError.modelNotFound }
                 print("[QwenVL] Loading chunk_head…")
                 let head = try await MLModel.load(contentsOf: headURL, configuration: cfg)
 
-                guard let embedURL = Bundle.main.url(
-                    forResource: "embed_weight", withExtension: "bin")
+                guard let embedURL = downloader.urlForEmbed()
                 else { throw LLMError.modelNotFound }
 
                 let fd = open(embedURL.path, O_RDONLY)
@@ -221,6 +219,25 @@ final class StatefulQwenEngine: NSObject, @unchecked Sendable, LLMEngineProtocol
     }
 
     func stop() { isGenerating = false }
+
+    func unloadModel() {
+        isGenerating = false
+        loadLock.withLock { loadTask = nil }
+        bodyChunks = []
+        headModel = nil
+        states = []
+        tokenizer = nil
+        cosArr = nil
+        sinArr = nil
+        maskArr = nil
+        posArr = nil
+        if let ptr = embedPtr { munmap(ptr, embedMapSize) }
+        if embedFd >= 0 { close(embedFd) }
+        embedPtr = nil
+        embedFd = -1
+        embedMapSize = 0
+        print("[QwenVL] Model unloaded — GPU/ANE memory freed.")
+    }
 
     // MARK: - Inference core
 

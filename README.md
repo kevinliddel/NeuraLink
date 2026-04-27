@@ -24,6 +24,8 @@ A high-performance, native iOS VRM character viewer and AI companion built from 
 
 - **Native Metal Engine**: Custom MToon shaders and GPU-accelerated rendering.
 - **Spring-Bone Physics**: Real-time GPU compute for hair and clothing movement.
+- **Procedural Rain System**: Fully shader-driven 3D rain streaks with synchronized 2D lens splashing and realistic weather cycles.
+- **AI Function Calling**: Native integration with iOS apps (Weather, Music, Reminders, Safari, Notes) directly via conversation.
 - **Neural Lip-Sync**: Real-time audio amplitude analysis mapped to VRM blend shapes.
 - **Advanced Camera**: Orbit controls with look-at behavior following the viewing angle.
 - **Universal Support**: Handles both VRM 0.x and 1.0 specifications.
@@ -54,7 +56,30 @@ Key highlights:
 - **Unified lighting** — the resolved `SkyEnvironment` drives a three-point key / fill / rim light rig that keeps the VRM character consistently lit against the sky at every hour.
 - **Zero textures** — all visual elements (clouds, stars, sun, moon) are generated procedurally via FBM noise and analytic functions.
 
-**[Full Sky System documentation](./docs/Sky-System.md)**
+**[Full Sky System documentation](./docs/Sky_System.md)**
+
+---
+
+## 🌧️ Procedural Rain System
+
+NeuraLink features a high-performance 3D rain system that runs entirely on the GPU, providing atmospheric depth without sacrificing frame rate.
+
+- **Synced Effects**: Environment rain streaks (3D) and lens splashing (2D) are perfectly synchronized.
+- **Weather Cycles**: Rain doesn't just "turn on"—it fades in and out based on a state-machine driven `RainController` that mimics natural weather patterns.
+- **Zero CPU overhead**: Particle positions and falling animations are computed procedurally in the vertex shader using high-resolution timing.
+
+---
+
+## 🤖 AI Function Calling
+
+The AI companion isn't just for chat—she can help you manage your day by interacting with native iOS applications.
+
+- **Live Weather**: Get real-time weather reports powered by Open-Meteo.
+- **App Integration**: Open Maps, Camera, Photos, or Settings via voice command.
+- **Productivity**: Create reminders, take notes, and search the web without leaving the app.
+- **Entertainment**: Search and play music directly in Apple Music.
+
+**[Full Function Calling documentation](./docs/Function_Call.md)**
 
 ---
 

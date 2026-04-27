@@ -12,10 +12,17 @@ import Foundation
 final class LocalLLMManager: NSObject, @unchecked Sendable {
     static let shared = LocalLLMManager()
 
-    // On iOS 18+, use the stateful Qwen3-VL 2B engine (KV cache, fast decode).
-    // On iOS 17, fall back to the stateless Llama-3.2-1B engine.
+    // On iOS 18+ with ≥6 GB RAM: stateful Qwen3-VL 2B (KV cache, fast decode).
+    // On iOS 18+ with <6 GB RAM (e.g. iPhone 11 / 4 GB): Qwen3-VL 2B needs ~3 GB at
+    // runtime and will OOM — fall back to the stateless Llama-3.2-1B engine.
+    // On iOS 17: always use the Llama-3.2-1B engine.
     private static func makeEngine() -> any LLMEngineProtocol {
-        if #available(iOS 18.0, *) { return StatefulQwenEngine.shared as! LLMEngineProtocol }
+        if #available(iOS 18.0, *) {
+            let sixGB: UInt64 = 6 * 1024 * 1024 * 1024
+            if ProcessInfo.processInfo.physicalMemory >= sixGB {
+                return StatefulQwenEngine.shared as! LLMEngineProtocol
+            }
+        }
         return LocalLLMEngine.shared
     }
 
@@ -199,6 +206,24 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         Task { @MainActor in
             state.status = .ready
         }
+    }
+
+    /// Stops all activity and releases the LLM + Whisper models from memory.
+    /// Called when the user disables Local SLM in settings.
+    func unload() {
+        sileroVAD.stop()
+        llmEngine.stop()
+        llmEngine.unloadModel()
+        playerNode.stop()
+        ttsBuffer = ""
+        recordingLock.lock()
+        recordingBuffer.removeAll()
+        isRecordingVoice = false
+        recordingLock.unlock()
+        Task { @MainActor in
+            state.status = .disconnected
+        }
+        print("[LocalLLM] Manager unloaded — all models freed.")
     }
 
     // MARK: - Local TTS (AVSpeechSynthesizer + AVAudioEngine)
