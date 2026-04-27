@@ -19,6 +19,7 @@ final class AppFunctionExecutor {
 
     static let shared = AppFunctionExecutor()
     private let eventStore = EKEventStore()
+    private let settings = OpenAISettings.shared
 
     /// UI action (app open) stored here instead of firing immediately.
     /// Executed by OpenAIRealtimeManager after the AI finishes speaking the result.
@@ -56,6 +57,10 @@ final class AppFunctionExecutor {
         case AppFunctionTool.openApp:
             let app = arguments["app"] as? String ?? ""
             return openApp(named: app)
+
+        case AppFunctionTool.analyzeCamera:
+            let prompt = arguments["prompt"] as? String
+            return await analyzeCamera(prompt: prompt)
 
         default:
             return "Unknown function: \(name)"
@@ -238,6 +243,23 @@ final class AppFunctionExecutor {
         }
 
         return "I've copied the note content to your clipboard. Open Notes and paste to create it."
+    }
+
+    // MARK: - Camera Vision
+
+    private func analyzeCamera(prompt: String?) async -> String {
+        guard CameraManager.shared.isActive else {
+            return "The camera is not active. Ask the user to enable it first."
+        }
+        guard let image = CameraManager.shared.captureCurrentFrame() else {
+            return "Could not capture a frame from the camera right now."
+        }
+        let description = prompt ?? "Describe what you see in this image concisely and naturally."
+        return await VisionAnalyzer.analyze(
+            image: image,
+            prompt: description,
+            apiKey: settings.apiKey
+        )
     }
 
     // MARK: - Open App

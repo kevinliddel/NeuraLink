@@ -12,6 +12,7 @@ struct ContentView: View {
 
     @State private var selectedModelURL: URL? = VRMModelRegistry.defaultModel?.url
     @State private var aiState = RealtimeChatState.shared
+    @State private var camera = CameraManager.shared
     @State private var showModelSelection = false
     @State private var isMenuExpanded = false
 
@@ -20,6 +21,7 @@ struct ContentView: View {
             ZStack {
                 VRMSceneView(modelURL: selectedModelURL)
                 RealtimeChatOverlay()
+                CameraOverlayView()
 
                 if showModelSelection {
                     VStack {
@@ -47,7 +49,14 @@ struct ContentView: View {
                 ExpandableFABMenu(
                     isExpanded: $isMenuExpanded,
                     onSettings: { aiState.showSettings = true },
-                    onModelSelection: { withAnimation { showModelSelection.toggle() } }
+                    onModelSelection: { withAnimation { showModelSelection.toggle() } },
+                    onCameraToggle: {
+                        if camera.isActive {
+                            camera.stop()
+                        } else {
+                            Task { await camera.requestPermissionAndStart() }
+                        }
+                    }
                 )
             }
             .toolbar { menuToggleButton }

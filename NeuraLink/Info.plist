@@ -4,6 +4,8 @@
 <dict>
 	<key>CFBundleDocumentTypes</key>
 	<array/>
+	<key>NSCameraUsageDescription</key>
+	<string>NeuraLink uses the camera so the AI avatar can see and describe what you show it.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>NeuraLink requires microphone access to communicate with the AI avatar in real-time.</string>
 	<key>NSRemindersUsageDescription</key>
