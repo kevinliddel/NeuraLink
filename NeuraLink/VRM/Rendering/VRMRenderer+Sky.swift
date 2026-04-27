@@ -14,8 +14,9 @@ extension VRMRenderer {
 
     /// Instantiates the SkyRenderer and RainRenderer subsystems. Called once from `VRMRenderer.init`.
     func setupSkyRenderer() {
-        skyRenderer   = SkyRenderer(device: device, config: config)
-        rainRenderer  = RainRenderer(device: device, config: config)
+        skyRenderer       = SkyRenderer(device: device, config: config)
+        rainRenderer      = RainRenderer(device: device, config: config)
+        rainWorldRenderer = RainWorldRenderer(device: device, config: config)
     }
 
     /// Advances cloud time and re-derives the sky environment from the current local clock.
@@ -23,23 +24,39 @@ extension VRMRenderer {
         skyRenderer?.update(deltaTime: deltaTime)
     }
 
-    /// Advances the rain simulation and feeds intensity into the sky.
+    /// Advances rain simulation. Both 2D screen overlay and 3D world rain share the same RainController.
     func updateRain(deltaTime: Float) {
-        guard let rain = rainRenderer else { return }
-        rain.update(deltaTime: deltaTime)
-        skyRenderer?.rainIntensity = rain.intensity
+        rainRenderer?.update(deltaTime: deltaTime)
+        let intensity = rainRenderer?.intensity ?? 0
+        skyRenderer?.rainIntensity = intensity
+
+        // 3D world rain is driven by the same intensity — synced with the 2D overlay
+        let viewInv = viewMatrix.inverse
+        let cameraPos = SIMD3<Float>(viewInv[3][0], viewInv[3][1], viewInv[3][2])
+        rainWorldRenderer?.update(
+            deltaTime: deltaTime,
+            intensity: intensity,
+            cameraPos: cameraPos,
+            viewProjection: projectionMatrix * viewMatrix
+        )
     }
 
-    /// Runs the rain compute + overlay passes after the main scene encoder has ended.
+    /// Runs the rain-on-lens compute + overlay passes after the main scene encoder has ended.
+    /// Works alongside the 3D world rain — both effects are active when intensity > 0.
     func drawRainOverlay(commandBuffer: MTLCommandBuffer,
                          renderPassDescriptor: MTLRenderPassDescriptor) {
         guard let rain = rainRenderer, !rain.isIdle else { return }
-        // Target the resolved (non-MSAA) drawable texture.
         let target = renderPassDescriptor.colorAttachments[0].resolveTexture
                   ?? renderPassDescriptor.colorAttachments[0].texture
         guard let target else { return }
         rain.encodeWaterMap(commandBuffer: commandBuffer)
         rain.encodeOverlay(commandBuffer: commandBuffer, targetTexture: target)
+    }
+
+    /// Renders 3D world rain droplets. Only draws when rain is active (intensity > 0).
+    func drawWorldRain(encoder: MTLRenderCommandEncoder) {
+        guard let intensity = rainRenderer?.intensity, intensity > 0.001 else { return }
+        rainWorldRenderer?.draw(encoder: encoder)
     }
 
     /// Encodes the sky background into the current render pass.

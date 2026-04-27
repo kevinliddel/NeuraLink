@@ -323,6 +323,9 @@ extension VRMRenderer {
             model: model
         )
 
+        // 3D World rain (streaks and ripples)
+        drawWorldRain(encoder: encoder)
+
         encoder.endEncoding()
 
         // Rain-on-glass overlay (compute water map → transparent fragment pass)
@@ -362,6 +365,7 @@ extension VRMRenderer {
         }
         drawSky(encoder: encoder)
         drawTerrain(encoder: encoder)
+        drawWorldRain(encoder: encoder)
         encoder.endEncoding()
         drawRainOverlay(commandBuffer: commandBuffer, renderPassDescriptor: renderPassDescriptor)
         commandBuffer.addCompletedHandler { [weak self] _ in
