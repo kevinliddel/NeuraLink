@@ -6,5 +6,20 @@
 	<array/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>NeuraLink requires microphone access to communicate with the AI avatar in real-time.</string>
+	<key>NSRemindersUsageDescription</key>
+	<string>NeuraLink can create reminders for you when you ask the AI assistant.</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>music</string>
+		<string>bear</string>
+		<string>mobilenotes</string>
+		<string>maps</string>
+		<string>photos-redirect</string>
+		<string>calshow</string>
+		<string>camera</string>
+		<string>clock-alarm</string>
+		<string>x-apple-health</string>
+		<string>facetime</string>
+	</array>
 </dict>
 </plist>

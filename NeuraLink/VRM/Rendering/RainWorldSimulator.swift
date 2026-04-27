@@ -4,6 +4,8 @@
 //
 //  CPU-side 3D rain physics: falling streaks + ground ripples.
 //
+//  Created by Dedicatus on 27/04/2026.
+//
 
 import Foundation
 import simd
@@ -16,10 +18,10 @@ struct Rain3DParticle {
 }
 
 final class RainWorldSimulator {
-    
-    let maxParticles: Int = 1500 // Balanced count
+
+    let maxParticles: Int = 1500  // Balanced count
     var particles: [Rain3DParticle]
-    
+
     init() {
         self.particles = (0..<maxParticles).map { _ in
             Rain3DParticle(
@@ -30,7 +32,7 @@ final class RainWorldSimulator {
             )
         }
     }
-    
+
     func update(deltaTime dt: Float, intensity: Float, cameraPos: SIMD3<Float>) {
         // No per-frame work needed for procedural rain!
     }
