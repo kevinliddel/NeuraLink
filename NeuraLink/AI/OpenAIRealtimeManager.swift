@@ -126,7 +126,7 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
             RTCIceServer(urlStrings: ["stun:stun1.l.google.com:19302"]),
             RTCIceServer(urlStrings: ["stun:stun2.l.google.com:19302"]),
             RTCIceServer(urlStrings: ["stun:stun3.l.google.com:19302"]),
-            RTCIceServer(urlStrings: ["stun:stun4.l.google.com:19302"]),
+            RTCIceServer(urlStrings: ["stun:stun4.l.google.com:19302"])
         ]
 
         let constraints = RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)
@@ -251,8 +251,7 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
                 self?.peerConnection?.statistics { report in
                     for (_, stats) in report.statistics {
                         if stats.type == "inbound-rtp",
-                            let audioLevelValue = stats.values["audioLevel"]
-                        {
+                            let audioLevelValue = stats.values["audioLevel"] {
                             let level = (audioLevelValue as? NSNumber)?.floatValue ?? 0.0
                             if level > 0.01 {
                                 print("[AI]: Incoming audio level detected: \(level)")

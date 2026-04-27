@@ -328,8 +328,7 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
         // Buffer tokens. When we hit a punctuation mark, synthesize speech.
         ttsBuffer += token
         if token.contains(".") || token.contains("!") || token.contains("?")
-            || token.contains("。") || token.contains(",") || token.contains("\n")
-        {
+            || token.contains("。") || token.contains(",") || token.contains("\n") {
             let chunkToSpeak = ttsBuffer
             ttsBuffer = ""
             speakChunk(chunkToSpeak)

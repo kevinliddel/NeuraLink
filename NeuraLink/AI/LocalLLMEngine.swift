@@ -173,7 +173,7 @@ final class LocalLLMEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
 
                 let input = try MLDictionaryFeatureProvider(dictionary: [
                     "inputIds": inputArray,
-                    "causalMask": causalMask,
+                    "causalMask": causalMask
                 ])
 
                 let prediction: MLFeatureProvider

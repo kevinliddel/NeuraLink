@@ -266,11 +266,11 @@ final class StatefulQwenEngine: NSObject, @unchecked Sendable, LLMEngineProtocol
 
         for (i, chunk) in bodyChunks.enumerated() {
             let provider = try MLDictionaryFeatureProvider(dictionary: [
-                "hidden_in":   hiddenFV,
-                "cos":         MLFeatureValue(multiArray: cosArr!),
-                "sin":         MLFeatureValue(multiArray: sinArr!),
+                "hidden_in": hiddenFV,
+                "cos": MLFeatureValue(multiArray: cosArr!),
+                "sin": MLFeatureValue(multiArray: sinArr!),
                 "causal_mask": MLFeatureValue(multiArray: maskArr!),
-                "current_pos": MLFeatureValue(multiArray: posArr!),
+                "current_pos": MLFeatureValue(multiArray: posArr!)
             ])
             let out = try await chunk.prediction(from: provider, using: states[i])
             hiddenFV = out.featureValue(for: "hidden")!
