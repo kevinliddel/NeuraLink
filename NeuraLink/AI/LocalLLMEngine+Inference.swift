@@ -18,6 +18,8 @@ extension LocalLLMEngine {
             return
         }
 
+        let generationStartNs = DispatchTime.now().uptimeNanoseconds
+
         if #available(iOS 17.0, *) {
             states = bodyChunks.map { $0.makeState() }
         }
@@ -39,6 +41,8 @@ extension LocalLLMEngine {
 
         do {
             var pos = 0
+            let prefillStartNs = DispatchTime.now().uptimeNanoseconds
+            var prefillCount = 0
 
             // Prefill: all tokens except the last — update KV cache, skip logit head.
             let prefillTokens = Array(tokens.dropLast())
@@ -46,9 +50,17 @@ extension LocalLLMEngine {
                 guard isGenerating else { break }
                 try await throughBody(token: token, pos: pos)
                 pos += 1
+                prefillCount += 1
                 if (idx + 1) % 10 == 0 || idx == prefillTokens.count - 1 {
                     print("[LlamaEngine] Prefill \(idx + 1)/\(prefillTokens.count)…")
                 }
+            }
+
+            let prefillElapsedMs = Double(DispatchTime.now().uptimeNanoseconds - prefillStartNs) / 1_000_000.0
+            if prefillCount > 0 {
+                print(
+                    "[LlamaEngine] Prefill timing: \(String(format: "%.1f", prefillElapsedMs)) ms total, \(String(format: "%.1f", prefillElapsedMs / Double(prefillCount))) ms/token"
+                )
             }
 
             // Last prefill token → first generated token.
@@ -62,6 +74,12 @@ extension LocalLLMEngine {
 
             var nextToken = try await throughBodyAndHead(token: lastPrefill, pos: pos)
             pos += 1
+            var lastToken: Int32? = nil
+            var repeatedTokenStreak = 0
+            var emptyDecodeStreak = 0
+            let decodeStartNs = DispatchTime.now().uptimeNanoseconds
+            var decodeStepCount = 0
+            var emittedTokenCount = 0
 
             // Decode loop.
             for step in 0..<maxTokens {
@@ -70,14 +88,48 @@ extension LocalLLMEngine {
                     print("[LlamaEngine] EOS at step \(step)")
                     break
                 }
-                let decoded = decode(tokenID: nextToken)
-                currentText += decoded
-                await MainActor.run { [weak self] in
-                    self?.delegate?.localLLM(didGenerateToken: decoded)
+                decodeStepCount += 1
+
+                if nextToken == lastToken {
+                    repeatedTokenStreak += 1
+                } else {
+                    repeatedTokenStreak = 0
                 }
+                lastToken = nextToken
+
+                if repeatedTokenStreak >= 12 {
+                    print("[LlamaEngine] Stopping decode: repeated token \(nextToken) x\(repeatedTokenStreak + 1)")
+                    break
+                }
+
+                let decoded = decode(tokenID: nextToken)
+                if decoded.isEmpty {
+                    emptyDecodeStreak += 1
+                    if emptyDecodeStreak >= 16 {
+                        print("[LlamaEngine] Stopping decode: too many empty decoded tokens")
+                        break
+                    }
+                } else {
+                    emptyDecodeStreak = 0
+                    emittedTokenCount += 1
+                    currentText += decoded
+                    await MainActor.run { [weak self] in
+                        self?.delegate?.localLLM(didGenerateToken: decoded)
+                    }
+                }
+
                 nextToken = try await throughBodyAndHead(token: nextToken, pos: pos)
                 pos += 1
             }
+
+            let decodeElapsedMs = Double(DispatchTime.now().uptimeNanoseconds - decodeStartNs) / 1_000_000.0
+            if decodeStepCount > 0 {
+                print(
+                    "[LlamaEngine] Decode timing: \(String(format: "%.1f", decodeElapsedMs)) ms total, \(String(format: "%.1f", decodeElapsedMs / Double(decodeStepCount))) ms/step, emitted \(emittedTokenCount)"
+                )
+            }
+            let totalElapsedMs = Double(DispatchTime.now().uptimeNanoseconds - generationStartNs) / 1_000_000.0
+            print("[LlamaEngine] Total generation timing: \(String(format: "%.1f", totalElapsedMs)) ms")
 
             await MainActor.run { [weak self] in
                 self?.delegate?.localLLM(didFinishGeneration: currentText)
@@ -108,11 +160,11 @@ extension LocalLLMEngine {
     // MARK: - Inference core
 
     internal func throughBody(token: Int32, pos: Int) async throws {
-        _ = try await runBodyChunks(token: token, pos: pos, includeHead: false)
+        _ = try await runBodyChunks(token: token, pos: pos)
     }
 
     internal func throughBodyAndHead(token: Int32, pos: Int) async throws -> Int32 {
-        let accumulatedFeatures = try await runBodyChunks(token: token, pos: pos, includeHead: true)
+        let accumulatedFeatures = try await runBodyChunks(token: token, pos: pos)
 
         guard let logit = logitProcessor else { throw LLMError.inferenceFailed }
         let provider = try MLDictionaryFeatureProvider(dictionary: accumulatedFeatures)
@@ -121,9 +173,11 @@ extension LocalLLMEngine {
         // Try common output names for the next token.
         for key in [nextTokenOutputKey, "next_token", "next_token_id", "argmax_token", "argmax"] {
             if let arr = out.featureValue(for: key)?.multiArrayValue {
-                let token = arr.dataPointer.bindMemory(to: Int32.self, capacity: 1).pointee
-                print("[LlamaEngine] Next token candidate (\(key)): \(token)")
-                return token
+                if let token = scalarToken(from: arr) {
+                    print("[LlamaEngine] Next token candidate (\(key)): \(token)")
+                    return token
+                }
+                return argmax(logits: arr)
             }
         }
         // Fall back to argmax over logits if no direct token output is found.
@@ -136,13 +190,14 @@ extension LocalLLMEngine {
     }
 
     internal func runBodyChunks(
-        token: Int32, pos: Int, includeHead: Bool
+        token: Int32, pos: Int
     ) async throws -> [String: MLFeatureValue] {
         let posInputs = buildPositionInputs(from: pos)
         var accumulatedFeatures: [String: MLFeatureValue] = posInputs
 
-        // Skip chunk6 (logit head) during prefill — logits aren't needed until decode.
-        let activeChunks = includeHead ? bodyChunks : Array(bodyChunks.dropLast())
+        // All 6 chunks are transformer body layers; logit projection is a separate model.
+        // Prefill must run through every body chunk so KV caches stay aligned.
+        let activeChunks = bodyChunks
 
         for (i, chunk) in activeChunks.enumerated() {
             var dict: [String: MLFeatureValue] = accumulatedFeatures

@@ -94,16 +94,60 @@ extension LocalLLMEngine {
         tokenizer?.decode(tokens: [Int(tokenID)], skipSpecialTokens: true) ?? ""
     }
 
-    internal func argmax(logits: MLMultiArray) -> Int32 {
-        let ptr = logits.dataPointer.bindMemory(to: Float.self, capacity: logits.count)
-        var maxVal: Float = -.greatestFiniteMagnitude
-        var maxIdx: Int32 = 0
-        for i in 0..<logits.count {
-            if ptr[i] > maxVal {
-                maxVal = ptr[i]
-                maxIdx = Int32(i)
-            }
+    internal func scalarToken(from arr: MLMultiArray) -> Int32? {
+        guard arr.count == 1 else { return nil }
+        switch arr.dataType {
+        case .int32:
+            return arr.dataPointer.bindMemory(to: Int32.self, capacity: 1).pointee
+        case .float16:
+            let value = arr.dataPointer.bindMemory(to: Float16.self, capacity: 1).pointee
+            return Int32(value.rounded())
+        case .float32:
+            let value = arr.dataPointer.bindMemory(to: Float.self, capacity: 1).pointee
+            return Int32(value.rounded())
+        case .double:
+            let value = arr.dataPointer.bindMemory(to: Double.self, capacity: 1).pointee
+            return Int32(value.rounded())
+        default:
+            return nil
         }
+    }
+
+    internal func argmax(logits: MLMultiArray) -> Int32 {
+        var maxIdx: Int32 = 0
+
+        switch logits.dataType {
+        case .float16:
+            let ptr = logits.dataPointer.bindMemory(to: Float16.self, capacity: logits.count)
+            var maxVal = Float16(-Float.greatestFiniteMagnitude)
+            for i in 0..<logits.count {
+                if ptr[i] > maxVal {
+                    maxVal = ptr[i]
+                    maxIdx = Int32(i)
+                }
+            }
+        case .float32:
+            let ptr = logits.dataPointer.bindMemory(to: Float.self, capacity: logits.count)
+            var maxVal: Float = -.greatestFiniteMagnitude
+            for i in 0..<logits.count {
+                if ptr[i] > maxVal {
+                    maxVal = ptr[i]
+                    maxIdx = Int32(i)
+                }
+            }
+        case .double:
+            let ptr = logits.dataPointer.bindMemory(to: Double.self, capacity: logits.count)
+            var maxVal: Double = -.greatestFiniteMagnitude
+            for i in 0..<logits.count {
+                if ptr[i] > maxVal {
+                    maxVal = ptr[i]
+                    maxIdx = Int32(i)
+                }
+            }
+        default:
+            break
+        }
+
         return maxIdx
     }
 }

@@ -55,6 +55,11 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     var isRecordingVoice = false
     let recordingLock = NSLock()
 
+    // Lightweight turn-level latency metrics (user text → token/audio)
+    private var turnStartNs: UInt64?
+    private var firstTokenLatencyLogged = false
+    private var firstAudioLatencyLogged = false
+
     override init() {
         super.init()
         llmEngine.delegate = self
@@ -193,6 +198,10 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
 
     /// Receives transcribed text from the user, updates UI, and triggers the local LLM.
     func handleUserInput(_ text: String) {
+        turnStartNs = DispatchTime.now().uptimeNanoseconds
+        firstTokenLatencyLogged = false
+        firstAudioLatencyLogged = false
+
         Task { @MainActor in
             state.userTranscript = text
             state.aiTranscript = ""
@@ -219,10 +228,10 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         } else {
             // Llama-3 instruct template — keep system prompt short (~30 tokens) to fit
             // the 64-token context window without losing the user turn to front truncation.
-            let brief = String(persona.instructions.prefix(120))
+            let brief = String(persona.instructions.prefix(80))
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             prompt = "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n\(brief)<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n\(text)<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
-            maxTokens = 30
+            maxTokens = 24
         }
 
         Task {
@@ -261,6 +270,16 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     // MARK: - Local TTS (AVSpeechSynthesizer + AVAudioEngine)
 
     private func speakChunk(_ text: String) {
+        if !firstAudioLatencyLogged,
+            let start = turnStartNs,
+            !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            firstAudioLatencyLogged = true
+            let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000.0
+            print(
+                "[LocalLLM] First TTS chunk latency: \(String(format: "%.1f", elapsedMs)) ms"
+            )
+        }
+
         let utterance = AVSpeechUtterance(string: text)
 
         // Select an appropriate voice based on Persona
@@ -350,6 +369,16 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
 
 extension LocalLLMManager: LocalLLMEngineDelegate {
     func localLLM(didGenerateToken token: String) {
+        if !firstTokenLatencyLogged,
+            let start = turnStartNs,
+            !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            firstTokenLatencyLogged = true
+            let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000.0
+            print(
+                "[LocalLLM] First token latency: \(String(format: "%.1f", elapsedMs)) ms"
+            )
+        }
+
         Task { @MainActor in
             if state.status == .thinking {
                 state.status = .speaking
@@ -360,7 +389,8 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
         // Buffer tokens. When we hit a punctuation mark, synthesize speech.
         ttsBuffer += token
         if token.contains(".") || token.contains("!") || token.contains("?")
-            || token.contains("。") || token.contains(",") || token.contains("\n") {
+            || token.contains("。") || token.contains(",") || token.contains("\n")
+            || (ttsBuffer.count >= 32 && ttsBuffer.contains(" ")) {
             let chunkToSpeak = ttsBuffer
             ttsBuffer = ""
             speakChunk(chunkToSpeak)
@@ -368,6 +398,11 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
     }
 
     func localLLM(didFinishGeneration fullText: String) {
+        if let start = turnStartNs {
+            let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000.0
+            print("[LocalLLM] Turn total latency: \(String(format: "%.1f", elapsedMs)) ms")
+        }
+
         // Flush any remaining text in the buffer
         if !ttsBuffer.trimmingCharacters(in: .whitespaces).isEmpty {
             speakChunk(ttsBuffer)
