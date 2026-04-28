@@ -61,7 +61,8 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
         let rtcSession = RTCAudioSession.sharedInstance()
         rtcSession.lockForConfiguration()
         do {
-            try rtcSession.setCategory(.playAndRecord, with: [.allowBluetoothHFP, .defaultToSpeaker])
+            try rtcSession.setCategory(
+                .playAndRecord, with: [.allowBluetoothHFP, .defaultToSpeaker])
             try rtcSession.setMode(.videoChat)
             try rtcSession.setActive(true)
             rtcSession.isAudioEnabled = true
@@ -84,6 +85,12 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
     func connect() {
         guard settings.hasValidKey else {
             state.setError("Invalid API Key")
+            return
+        }
+        
+        // Prevent redundant connection attempts if already active or connecting.
+        guard state.status != .connecting && state.status != .ready && state.status != .speaking && state.status != .thinking else {
+            print("[AI]: Already connected or connecting, skipping.")
             return
         }
 

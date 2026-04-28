@@ -20,11 +20,13 @@ final class NeuraLinkUITests: XCTestCase {
 
         // FAB toggle is the only navigation-bar button; wait 30s for cold CI simulator boot
         let fabToggle = app.navigationBars.buttons.element(boundBy: 0)
-        XCTAssertTrue(fabToggle.waitForExistence(timeout: 30.0), "FAB toggle button should exist in navigation bar")
+        XCTAssertTrue(
+            fabToggle.waitForExistence(timeout: 30.0),
+            "FAB toggle button should exist in navigation bar")
 
         // Overlay hint — present when ready or unconfigured
         let startTalking = app.staticTexts["Start talking"]
-        let tapToConfigure = app.staticTexts["Tap to configure API key"]
+        let tapToConfigure = app.staticTexts["Tap to configure LLMs"]
         XCTAssertTrue(
             startTalking.waitForExistence(timeout: 10.0) || tapToConfigure.exists,
             "Overlay hint should be visible"
@@ -43,15 +45,19 @@ final class NeuraLinkUITests: XCTestCase {
 
         // 2 — Settings child button appears with accessibilityLabel "Settings"
         let settingsButton = app.buttons["Settings"]
-        XCTAssertTrue(settingsButton.waitForExistence(timeout: 10.0), "Settings button should appear after expanding FAB")
+        XCTAssertTrue(
+            settingsButton.waitForExistence(timeout: 10.0),
+            "Settings button should appear after expanding FAB")
         settingsButton.tap()
 
         // 3 — Settings sheet
         let settingsTitle = app.staticTexts["AI Settings"]
-        XCTAssertTrue(settingsTitle.waitForExistence(timeout: 20.0), "AI Settings sheet should appear")
+        XCTAssertTrue(
+            settingsTitle.waitForExistence(timeout: 20.0), "AI Settings sheet should appear")
 
         let apiKeyField = app.secureTextFields.element(boundBy: 0)
-        XCTAssertTrue(apiKeyField.waitForExistence(timeout: 10.0), "API Key field should be visible")
+        XCTAssertTrue(
+            apiKeyField.waitForExistence(timeout: 10.0), "API Key field should be visible")
 
         // 4 — Dismiss sheet
         let doneButton = app.buttons["Done"]

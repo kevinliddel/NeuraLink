@@ -156,7 +156,7 @@ fragment float4 terrain_fragment(
     float  shadowSoft = u.terrainParams.z;
 
     float NdotL   = max(dot(normal, sunDir), 0.0f);
-    float ambient = 0.40f + max(sunDir.y, 0.0f) * 0.30f;
+    float ambient = 0.40f + max(u.sunDirection.w, 0.0f) * 0.30f;
     float shadow  = shadowSoft > 0.0f
                     ? sampleShadow(shadowMap, shadowSmp, in.worldPos, u.lightViewProjection, shadowSoft)
                     : 0.0f;
@@ -172,7 +172,7 @@ fragment float4 terrain_fragment(
     float  dist    = length(in.worldPos.xz);
     float  haze    = smoothstep(20.0f, 90.0f, dist);
     float3 hazeCol = mix(float3(0.72f, 0.78f, 0.88f), float3(0.55f, 0.65f, 0.80f),
-                         max(sunDir.y, 0.0f));
+                         max(u.sunDirection.w, 0.0f));
     colour = mix(colour, hazeCol, haze * 0.60f);
 
     return float4(colour, 1.0f);

@@ -18,6 +18,11 @@ struct MetalKitView: UIViewRepresentable {
 public struct VRMSceneView: View {
     let modelURL: URL?
     @State private var state = VRMMetalState()
+    @State private var settings = OpenAISettings.shared
+    // Tracks whether the initial model load (app launch) has completed.
+    // On app launch we never auto-connect; subsequent model switches reconnect
+    // using whatever is currently enabled in settings.
+    @State private var isFirstLoad = true
 
     public init(modelURL: URL?) {
         self.modelURL = modelURL
@@ -28,6 +33,13 @@ public struct VRMSceneView: View {
             primaryContent
         }
         .task(id: modelURL) { await loadModel() }
+        // Connect when the user explicitly enables a setting — not on launch.
+        .onChange(of: settings.isLocalLLMEnabled) { _, enabled in
+            if enabled { startAIConnection() }
+        }
+        .onChange(of: settings.isEnabled) { _, enabled in
+            if enabled { startAIConnection() }
+        }
     }
 
     @ViewBuilder
@@ -106,8 +118,14 @@ public struct VRMSceneView: View {
         guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
         guard state.isMetalAvailable, let url = modelURL else { return }
         state.clear()
+
         let characterName = url.deletingPathExtension().lastPathComponent
-        connectAI(characterName: characterName)
+        RealtimeChatState.shared.selectedCharacterName = characterName
+
+        // Stop any active AI before switching characters.
+        OpenAIRealtimeManager.shared.disconnect()
+        LocalLLMManager.shared.stop()
+
         do {
             guard let device = state.mtkView.device else { return }
             let model = try await VRMModel.load(from: url, device: device)
@@ -115,14 +133,22 @@ public struct VRMSceneView: View {
         } catch {
             state.errorMessage = error.localizedDescription
         }
+
+        // On the first load (app launch) never auto-connect — the user must
+        // explicitly enable a setting. On subsequent model switches, reconnect
+        // using whatever is currently active in settings.
+        if isFirstLoad {
+            isFirstLoad = false
+        } else {
+            startAIConnection()
+        }
     }
 
-    private func connectAI(characterName: String) {
-        guard OpenAISettings.shared.hasValidKey else { return }
-        let chatState = RealtimeChatState.shared
-        chatState.selectedCharacterName = characterName
-        let ai = OpenAIRealtimeManager.shared
-        ai.disconnect()
-        ai.connect()
+    private func startAIConnection() {
+        if settings.isLocalLLMEnabled {
+            LocalLLMManager.shared.startListening()
+        } else if settings.isEnabled && settings.hasValidKey {
+            OpenAIRealtimeManager.shared.connect()
+        }
     }
 }

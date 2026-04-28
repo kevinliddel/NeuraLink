@@ -11,7 +11,7 @@ import RealTimeCutVADLibrary
 /// Callback interface for Silero voice activity events.
 protocol SileroVADDelegate: AnyObject {
     func sileroVADDidDetectVoiceStart()
-    func sileroVADDidDetectVoiceEnd()
+    func sileroVADDidDetectVoiceEnd(wavData: Data?)
 }
 
 /// Local voice activity detector backed by the Silero VAD model.
@@ -26,8 +26,9 @@ final class SileroVADProcessor: NSObject {
 
     // MARK: - Lifecycle
 
-    /// Starts the Silero VAD engine and microphone tap.
-    func start() {
+    /// Starts the Silero VAD engine. If `externalSampleRate` is provided, it expects audio
+    /// via `processAudioBuffer(_:)` and will NOT start its internal microphone tap.
+    func start(externalSampleRate: Double? = nil) {
         guard vadWrapper == nil else { return }
         guard let wrapper = VADWrapper() else {
             print("[SileroVAD]: VADWrapper init failed")
@@ -36,7 +37,20 @@ final class SileroVADProcessor: NSObject {
         wrapper.delegate = self
         wrapper.setSileroModel(.v5)
         vadWrapper = wrapper
-        startAudioCapture()
+
+        if let rate = externalSampleRate {
+            wrapper.setSamplerate(mappedSampleRate(rate))
+            print("[SileroVAD]: Started at \(Int(rate)) Hz")
+        } else {
+            startAudioCapture()
+        }
+    }
+
+    /// Processes an external audio buffer when not using the internal microphone tap.
+    func processAudioBuffer(_ buffer: AVAudioPCMBuffer) {
+        guard let wrapper = vadWrapper else { return }
+        guard let channelData = buffer.floatChannelData else { return }
+        wrapper.processAudioData(withBuffer: channelData[0], count: UInt(buffer.frameLength))
     }
 
     /// Stops the engine and releases all resources.
@@ -58,9 +72,11 @@ final class SileroVADProcessor: NSObject {
 
         vadWrapper?.setSamplerate(mappedSampleRate(inputFormat.sampleRate))
 
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [weak self] buffer, _ in
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) {
+            [weak self] buffer, _ in
             guard let channelData = buffer.floatChannelData else { return }
-            self?.vadWrapper?.processAudioData(withBuffer: channelData[0], count: UInt(buffer.frameLength))
+            self?.vadWrapper?.processAudioData(
+                withBuffer: channelData[0], count: UInt(buffer.frameLength))
         }
 
         do {
@@ -78,10 +94,10 @@ final class SileroVADProcessor: NSObject {
 
     private func mappedSampleRate(_ rate: Double) -> SL {
         switch Int(rate) {
-        case 8_000:  return .SAMPLERATE_8
+        case 8_000: return .SAMPLERATE_8
         case 16_000: return .SAMPLERATE_16
         case 24_000: return .SAMPLERATE_24
-        default:     return .SAMPLERATE_48
+        default: return .SAMPLERATE_48
         }
     }
 }
@@ -96,10 +112,10 @@ extension SileroVADProcessor: VADDelegate {
         }
     }
 
-    func voiceEnded(withWavData _: Data!) {
+    func voiceEnded(withWavData wavData: Data!) {
         isVoiceActive = false
         DispatchQueue.main.async { [weak self] in
-            self?.delegate?.sileroVADDidDetectVoiceEnd()
+            self?.delegate?.sileroVADDidDetectVoiceEnd(wavData: wavData)
         }
     }
 

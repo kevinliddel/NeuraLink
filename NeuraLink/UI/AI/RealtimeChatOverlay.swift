@@ -45,15 +45,24 @@ struct RealtimeChatOverlay: View {
 
     @ViewBuilder
     private var idleHint: some View {
+        let settings = OpenAISettings.shared
+
         if case .error = aiState.status {
             hint("Connection error", icon: "exclamationmark.circle")
-        } else if aiState.status == .connecting {
-            hint("Connecting…", progress: true)
-        } else if !OpenAISettings.shared.hasValidKey {
-            hint("Tap to configure API key", icon: "key.fill")
+        } else if aiState.status == .preparing || aiState.status == .connecting {
+            hint(aiState.status.label, progress: true)
+        } else if settings.isLocalLLMEnabled && aiState.status == .ready {
+            hint("Apple Neural Engine Ready", icon: "apple.intelligence")
+        } else if settings.isEnabled && aiState.status == .ready {
+            hint("OpenAI Connected", icon: "antenna.radiowaves.left.and.right")
+        } else if !settings.hasValidKey && !settings.isLocalLLMEnabled {
+            hint("Tap to configure LLMs", icon: "key.fill")
                 .onTapGesture { aiState.showSettings = true }
-        } else {
+        } else if aiState.status == .ready {
             hint("Start talking", icon: "waveform")
+        } else {
+            // Fallback for transition states
+            hint("Initializing...", progress: true)
         }
     }
 
@@ -65,7 +74,8 @@ struct RealtimeChatOverlay: View {
             .padding(.horizontal, 18)
             .padding(.vertical, 9)
             .background(.black.opacity(0.32), in: RoundedRectangle(cornerRadius: 20))
-            .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(.white.opacity(0.18), lineWidth: 1))
+            .overlay(
+                RoundedRectangle(cornerRadius: 20).strokeBorder(.white.opacity(0.18), lineWidth: 1))
     }
 
     // MARK: - Reusable Atoms
@@ -96,7 +106,7 @@ struct RealtimeChatOverlay: View {
             transition(to: .aiResponding)
         case .ready:
             scheduleDismissToIdle()
-        case .connecting, .disconnected, .error:
+        case .preparing, .connecting, .disconnected, .error:
             transition(to: .idle)
         }
     }
