@@ -2,22 +2,13 @@
 
 NeuraLink currently leverages cloud infrastructure (OpenAI Realtime API) for its core AI loop, while performing edge processing like Silero VAD and rendering (Metal GPU) locally. However, modern iOS devices (A12 Bionic and newer) are equipped with the **Apple Neural Engine (ANE)**, a highly efficient Neural Processing Unit (NPU) designed to accelerate machine learning tasks with minimal battery impact.
 
-This document outlines how we can integrate and leverage the NPU in NeuraLink to move towards a more performant, power-efficient, and potentially fully offline AI companion.
+This document outlines how we leverage the NPU in NeuraLink for a performant, power-efficient, and fully offline AI companion.
 
 ---
 
-## Current Architecture vs. NPU Potential
+## Local AI Architecture (Orchestrated)
 
-Currently, the Apple Neural Engine is largely unutilized in the project:
-- **Audio/VAD**: `RealTimeCutVADLibrary` likely runs ONNX/C++ inference on the **CPU**.
-- **LLM & Speech**: Cloud-dependent (OpenAI servers).
-- **Rendering & Physics**: Hardware-accelerated on the **GPU** (Metal).
-
-By integrating Apple's **Core ML** and **MLX** frameworks, we can offload neural network workloads directly to the NPU.
-
-## Offline AI Architecture (Implemented)
-
-NeuraLink features a fully implemented local AI loop that operates entirely offline by aggressively utilizing the Apple Neural Engine. This provides a private, zero-latency fallback to the OpenAI Cloud API.
+NeuraLink features a modular local AI loop that operates entirely offline. The system automatically selects the best Small Language Model (SLM) for your hardware, providing a private, zero-latency fallback to the OpenAI Cloud API.
 
 ```mermaid
 graph TD
@@ -31,14 +22,20 @@ graph TD
         VAD --> D2["Voice End / WAV"] --> Whisper["LocalWhisperManager\nWhisperKit: base.en"]
         Whisper --> D3["Transcribed Text"] --> Manager["LocalLLMManager\nOrchestrator"]
         
+        %% Model Selection
+        Manager --> Selector{"Engine Selector"}
+        
+        Selector --> C1["iOS 18+ / 6GB+ RAM"] --> Qwen["StatefulQwenEngine\nQwen-2.5-1.5B"]
+        Selector --> C2["iOS 17 / 4GB RAM"] --> Llama["LocalLLMEngine\nLlama-3.2-1B"]
+        
         %% State loop
         Manager --> D10["State & Prompt"] --> UI["RealtimeChatState"]
         UI --> D10 --> Manager
         
         %% LLM flow
-        Manager --> D4["Text Prompt"] --> Engine["LocalLLMEngine\nCore ML NPU"]
-        Engine --> D11["swift-transformers"] --> Engine
-        Engine --> D5["Streaming Tokens"] --> Manager
+        Qwen --> D5["Streaming Tokens"]
+        Llama --> D5
+        D5 --> Manager
         
         %% TTS
         Manager --> D6["Chunked Sentences"] --> TTS["AVSpeechSynthesizer\nLocal TTS"]
@@ -50,29 +47,47 @@ graph TD
     Mixer --> D9["RMS Amplitude"] --> VRM["VRM Lip Sync"]
 
     %% Core component styles
-    style Engine fill:#f59e0b,stroke:#ffffff,color:#ffffff
+    style Qwen fill:#f59e0b,stroke:#ffffff,color:#ffffff
+    style Llama fill:#f59e0b,stroke:#ffffff,color:#ffffff
     style Whisper fill:#10b981,stroke:#ffffff,color:#ffffff
     style VAD fill:#6366f1,stroke:#ffffff,color:#ffffff
     style TTS fill:#ec4899,stroke:#ffffff,color:#ffffff
 
-    %% Data / flow nodes (your "SkyEvent" equivalent)
+    %% Data / flow nodes (including conditions)
     classDef data fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
-    class D1,D2,D3,D4,D5,D6,D7,D8,D9,D10,D11 data
+    class D1,D2,D3,D5,D6,D7,D8,D9,D10,C1,C2 data
 ```
 
 ### How the Local Pipeline Works
 1. **Voice Detection**: The `SileroVADProcessor` listens to the microphone. When speech ends, it packages the audio into a WAV buffer.
 2. **Speech-to-Text**: The WAV buffer is passed to `LocalWhisperManager`, which uses **WhisperKit** to run transcription directly on the NPU, returning text almost instantly.
-3. **Local LLM Inference**: The transcribed text is combined with the character's persona and fed into `LocalLLMEngine`. 
-   - We utilize `swift-transformers` for native BPE tokenization.
-   - The engine uses `MLState` (iOS 17+) to run stateful generation of a `.mlpackage` Small Language Model (SLM) like **Llama-3.2-1B-Instruct**. This offloads the KV cache and matrix math directly to the NPU/GPU.
-4. **Text-to-Speech & Lip-Sync**: As tokens stream out, `LocalLLMManager` chunks them into sentences and synthesizes speech using `AVSpeechSynthesizer`. Using advanced audio tap techniques, the generated audio buffers are routed through `AVAudioEngine` to extract amplitude curves, ensuring the 3D VRM model's lips perfectly synchronize with the offline voice!
+3. **Engine Orchestration**: The `LocalLLMManager` selects the inference engine:
+   - **`StatefulQwenEngine`**: Utilizes new iOS 18 stateful MLX/Core ML features for high-performance inference of the Qwen-2.5-1.5B model.
+   - **`LocalLLMEngine`**: A memory-optimized engine for Llama-3.2-1B, split into 6 chunks to stay within the ANE's memory limits on older devices.
+4. **Local LLM Inference**: Transcribed text is formatted using model-specific chat templates and fed into the selected engine. Both engines utilize `MLState` (iOS 17+) to manage KV-caches efficiently on-device.
+5. **Text-to-Speech & Lip-Sync**: As tokens stream out, `LocalLLMManager` chunks them into sentences and synthesizes speech using `AVSpeechSynthesizer`. The generated audio buffers are routed through `AVAudioEngine` to extract amplitude curves, ensuring the 3D VRM model's lips synchronize perfectly with the offline voice.
+
+---
+
+## Supported Local SLMs
+
+| Model | Parameters | Quantization | Min. iOS | Min. RAM | Notes |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Llama-3.2-1B** | 1.2B | 4-bit | iOS 17.0 | 4 GB | Multi-chunk, CPU-optimized for stability. |
+| **Qwen-2.5-1.5B** | 1.5B | 4-bit | iOS 18.0 | 6 GB | Stateful, higher reasoning capabilities. |
+
+### Model Downloader Architecture
+To ensure a small initial binary size, models are downloaded on-demand from Hugging Face via the `LocalModelDownloadManager`. Each model has a dedicated downloader type (`LlamaModelDownloader`, `QwenModelDownloader`) that handles:
+- Snapshot acquisition via `HubApi`.
+- Bundle verification and layout normalization.
+- Path resolution via model-specific `Access` helpers.
 
 ---
 
 ## Hardware Requirements
 Because Local LLMs require significant Unified Memory:
-- **iPhone 11 (4GB RAM)**: Limited to 1B parameter models (e.g., Llama-3.2-1B) at 4-bit quantization.
-- **iPhone 15 Pro / iPads (8GB+ RAM)**: Can comfortably run 3B to 7B parameter models (e.g., Mistral-7B).
+- **iPhone 11, 12 or 13 (4GB RAM)**: Limited to **Llama-3.2-1B**. The engine is locked to `.cpuOnly` to prevent `ENOMEM` crashes when the NPU/GPU maps large weight files.
+- **iPhone 15 Pro and higher, or iPads (8GB+ RAM)**: Can comfortably run **Qwen-2.5-1.5B** and larger models with full NPU acceleration.
 
 By moving these workloads to the NPU, NeuraLink achieves its goal of being a high-performance, private, and deeply native iOS application.
+

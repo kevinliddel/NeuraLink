@@ -53,16 +53,16 @@ struct AISettingsView: View {
     private var localSLMSection: some View {
         Section {
             // Model Selection Picker
-            Picker("Selected Model", selection: $downloader.selectedConfig) {
+            Picker("Selected Model", selection: Binding(
+                get: { downloader.selectedConfig },
+                set: { downloader.selectConfig($0) }
+            )) {
                 ForEach(LocalModelDownloadManager.ModelConfiguration.allCases) { config in
                     Text(config.rawValue).tag(config)
                 }
             }
             .pickerStyle(.segmented)
             .disabled(downloader.state != .notDownloaded && downloader.state != .ready && !downloader.state.isFailed)
-            .onChange(of: downloader.selectedConfig) { _, newValue in
-                downloader.selectConfig(newValue)
-            }
 
             // Header row: model name + status badge
             HStack {
@@ -85,7 +85,6 @@ struct AISettingsView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     ProgressView(value: progress)
                         .tint(.blue)
-                        .animation(.spring(duration: 0.5), value: progress)
                     Text(downloadPhaseLabel(progress: progress))
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -194,7 +193,7 @@ struct AISettingsView: View {
 
     private func downloadPhaseLabel(progress: Double) -> String {
         let pct = Int(progress * 100)
-        if progress < 0.5 {
+        if progress < 0.9 {
             return "Downloading… \(pct)%"
         } else {
             return "Compiling for Neural Engine… \(pct)%"

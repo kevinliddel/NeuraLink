@@ -12,6 +12,8 @@
 //
 //  Requirements: iOS 18+ (MLState + ct.target.iOS18 deployment target)
 //
+//  Created by Dedicatus on 27/04/2026.
+//
 
 import CoreML
 import Darwin
@@ -49,7 +51,7 @@ final class StatefulQwenEngine: NSObject, @unchecked Sendable, LLMEngineProtocol
     private let numChunks = 4
     private let vocabSize = 151936
     private let hiddenSize = 2048
-    private let halfDim = 64        // head_dim(128) / 2
+    private let halfDim = 64  // head_dim(128) / 2
     private let ropeTheta = 5_000_000.0
     private let maxSeqLen = 2048
 
@@ -78,28 +80,35 @@ final class StatefulQwenEngine: NSObject, @unchecked Sendable, LLMEngineProtocol
             if let existing = loadTask { return existing }
             let t = Task<Void, Error> { [self] in
                 print("[QwenVL] Loading tokenizer…")
-                self.tokenizer = try await AutoTokenizer.from(
-                    pretrained: "Qwen/Qwen3-VL-2B-Instruct")
+                // Prefer local tokenizer.json from the snapshot root; fall back to
+                // pretrained ID (Hub-cached after first network fetch).
+                if let root = QwenModelAccess.snapshotRoot(),
+                    FileManager.default.fileExists(
+                        atPath: root.appendingPathComponent("tokenizer.json").path) {
+                    self.tokenizer = try await AutoTokenizer.from(modelFolder: root)
+                } else {
+                    self.tokenizer = try await AutoTokenizer.from(
+                        pretrained: QwenModelAccess.tokenizerID)
+                }
                 print("[QwenVL] Tokenizer ready.")
 
                 let cfg = MLModelConfiguration()
                 cfg.computeUnits = .cpuAndNeuralEngine
 
-                let downloader = LocalModelDownloadManager.shared
                 var loaded: [MLModel] = []
                 for i in 0..<self.numChunks {
-                    guard let url = downloader.urlForChunk("chunk_\(i)")
+                    guard let url = QwenModelAccess.chunkURL(index: i)
                     else { throw LLMError.modelNotFound }
                     print("[QwenVL] Loading chunk_\(i)…")
                     loaded.append(try await MLModel.load(contentsOf: url, configuration: cfg))
                 }
 
-                guard let headURL = downloader.urlForChunk("chunk_head")
+                guard let headURL = QwenModelAccess.headChunkURL()
                 else { throw LLMError.modelNotFound }
                 print("[QwenVL] Loading chunk_head…")
                 let head = try await MLModel.load(contentsOf: headURL, configuration: cfg)
 
-                guard let embedURL = downloader.urlForEmbed()
+                guard let embedURL = QwenModelAccess.embedWeightURL()
                 else { throw LLMError.modelNotFound }
 
                 let fd = open(embedURL.path, O_RDONLY)
@@ -138,11 +147,11 @@ final class StatefulQwenEngine: NSObject, @unchecked Sendable, LLMEngineProtocol
 
         // Pre-allocate reusable arrays for the hot loop
         do {
-            cosArr  = try MLMultiArray(shape: [1, 1, 128], dataType: .float16)
-            sinArr  = try MLMultiArray(shape: [1, 1, 128], dataType: .float16)
+            cosArr = try MLMultiArray(shape: [1, 1, 128], dataType: .float16)
+            sinArr = try MLMultiArray(shape: [1, 1, 128], dataType: .float16)
             maskArr = try MLMultiArray(
                 shape: [1, 1, 1, NSNumber(value: maxSeqLen)], dataType: .float16)
-            posArr  = try MLMultiArray(shape: [1], dataType: .int32)
+            posArr = try MLMultiArray(shape: [1], dataType: .int32)
 
             // Mask starts fully blocked; positions are unmasked incrementally
             let mPtr = maskArr!.dataPointer.bindMemory(to: Float16.self, capacity: maxSeqLen)
@@ -157,7 +166,8 @@ final class StatefulQwenEngine: NSObject, @unchecked Sendable, LLMEngineProtocol
 
         let rawTokens = tok.encode(text: prompt).map { Int32($0) }
         let maxCtx = maxSeqLen - maxTokens - 1
-        let inputTokens = rawTokens.count > maxCtx
+        let inputTokens =
+            rawTokens.count > maxCtx
             ? Array(rawTokens.suffix(maxCtx)) : rawTokens
 
         print("[QwenVL] Prefilling \(inputTokens.count) tokens, max \(maxTokens) new")
@@ -286,8 +296,9 @@ final class StatefulQwenEngine: NSObject, @unchecked Sendable, LLMEngineProtocol
         let hidden = try MLMultiArray(
             shape: [1, 1, NSNumber(value: hiddenSize)], dataType: .float16)
         let byteOffset = Int(token) * hiddenSize * MemoryLayout<Float16>.size
-        memcpy(hidden.dataPointer, ptr.advanced(by: byteOffset),
-               hiddenSize * MemoryLayout<Float16>.size)
+        memcpy(
+            hidden.dataPointer, ptr.advanced(by: byteOffset),
+            hiddenSize * MemoryLayout<Float16>.size)
         return MLFeatureValue(multiArray: hidden)
     }
 
@@ -301,8 +312,10 @@ final class StatefulQwenEngine: NSObject, @unchecked Sendable, LLMEngineProtocol
             let freq = Double(pos) / pow(ropeTheta, Double(2 * i) / 128.0)
             let c = Float16(Darwin.cos(freq))
             let s = Float16(Darwin.sin(freq))
-            cPtr[i] = c;         cPtr[i + halfDim] = c
-            sPtr[i] = s;         sPtr[i + halfDim] = s
+            cPtr[i] = c
+            cPtr[i + halfDim] = c
+            sPtr[i] = s
+            sPtr[i + halfDim] = s
         }
     }
 

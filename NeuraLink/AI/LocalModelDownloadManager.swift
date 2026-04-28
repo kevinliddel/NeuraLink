@@ -2,13 +2,13 @@
 //  LocalModelDownloadManager.swift
 //  NeuraLink
 //
-//  Tracks whether the Qwen3-VL 2B model is bundled, already downloaded to
-//  Application Support, or needs to be fetched from HuggingFace.
-//  The LLM engines call urlForChunk(_:) / urlForEmbed() to resolve model files
-//  without caring whether they live in the bundle or in the downloaded cache.
+//  Manages the download state machine for local SLMs.
+//  Model-specific download strategies live in QwenModelDownloader and LlamaModelDownloader.
+//  URL/path resolution is delegated to QwenModelAccess and LlamaModelAccess.
+//
+//  Created by Dedicatus on 28/04/2026.
 //
 
-import CoreML
 import Foundation
 import Hub
 
@@ -16,11 +16,13 @@ import Hub
 final class LocalModelDownloadManager: @unchecked Sendable {
     static let shared = LocalModelDownloadManager()
 
+    // MARK: - Types
+
     enum DownloadState: Equatable {
-        case bundled                      // Files are in the app bundle — no download needed
-        case notDownloaded                // Neither bundled nor in Application Support
+        case bundled
+        case notDownloaded
         case downloading(progress: Double)
-        case ready                        // Compiled files are in Application Support
+        case ready
         case failed(String)
 
         var isFailed: Bool {
@@ -32,9 +34,9 @@ final class LocalModelDownloadManager: @unchecked Sendable {
             switch (lhs, rhs) {
             case (.bundled, .bundled), (.notDownloaded, .notDownloaded), (.ready, .ready):
                 return true
-            case let (.downloading(a), .downloading(b)):
+            case (.downloading(let a), .downloading(let b)):
                 return abs(a - b) < 0.001
-            case let (.failed(a), .failed(b)):
+            case (.failed(let a), .failed(let b)):
                 return a == b
             default:
                 return false
@@ -45,41 +47,44 @@ final class LocalModelDownloadManager: @unchecked Sendable {
     enum ModelConfiguration: String, CaseIterable, Identifiable {
         case qwen2b = "Qwen3-VL 2B"
         case llama1b = "Llama-3.2 1B"
-        
-        var id: String { self.rawValue }
-        
+
+        var id: String { rawValue }
+
         var repoID: String {
             switch self {
-            case .qwen2b: return "mlboydaisuke/qwen3-vl-2b-stateful-coreml"
-            case .llama1b: return "smpanaro/Llama-3.2-1B-Instruct-CoreML"
+            case .qwen2b: return QwenModelAccess.repoID
+            case .llama1b: return LlamaModelAccess.repoID
             }
         }
-        
+
         var estimatedSizeGB: Double {
             switch self {
             case .qwen2b: return 2.7
             case .llama1b: return 0.8
             }
         }
-        
+
         var description: String {
             switch self {
-            case .qwen2b: return "High performance, stateful. Recommended for 6GB+ devices."
-            case .llama1b: return "Memory efficient. Recommended for iPhone 11/12/13 (4GB RAM)."
+            case .qwen2b:
+                return "High performance, stateful. Recommended for 6 GB+ devices."
+            case .llama1b:
+                return "Memory efficient. Recommended for iPhone 11, 12 or 13 (4 GB RAM)."
             }
         }
     }
 
-    private(set) var state: DownloadState = .notDownloaded
-    var selectedConfig: ModelConfiguration = ProcessInfo.processInfo.physicalMemory >= 6 * 1024 * 1024 * 1024 ? .qwen2b : .llama1b
-    private var activeTask: Task<Void, Never>?
+    // MARK: - State
 
-    /// Where compiled .mlmodelc and embed_weight.bin live after download.
-    var compiledDir: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("NeuraLink/LocalModels", isDirectory: true)
-            .appendingPathComponent(selectedConfig == .qwen2b ? "qwen3-vl-2b" : "llama-3.2-1b", isDirectory: true)
-    }
+    private static let configKey = "LocalModelSelectedConfig"
+
+    private(set) var state: DownloadState = .notDownloaded
+    private(set) var selectedConfig: ModelConfiguration = {
+        let sixGB: UInt64 = 6 * 1024 * 1024 * 1024
+        return ProcessInfo.processInfo.physicalMemory >= sixGB ? .qwen2b : .llama1b
+    }()
+
+    private var activeTask: Task<Void, Never>?
 
     var isAvailable: Bool {
         switch state {
@@ -88,11 +93,22 @@ final class LocalModelDownloadManager: @unchecked Sendable {
         }
     }
 
-    private init() { refreshState() }
+    // MARK: - Init
+
+    private init() {
+        if let saved = UserDefaults.standard.string(forKey: Self.configKey),
+            let config = ModelConfiguration(rawValue: saved) {
+            selectedConfig = config
+        }
+        refreshState()
+    }
+
+    // MARK: - Configuration
 
     func selectConfig(_ config: ModelConfiguration) {
         guard state == .notDownloaded || state == .ready || state.isFailed else { return }
         selectedConfig = config
+        UserDefaults.standard.set(config.rawValue, forKey: Self.configKey)
         refreshState()
     }
 
@@ -101,55 +117,11 @@ final class LocalModelDownloadManager: @unchecked Sendable {
     func refreshState() {
         if isBundled() {
             state = .bundled
-        } else if isCompiledCacheComplete() {
+        } else if isDownloaded() {
             state = .ready
         } else {
             state = .notDownloaded
         }
-    }
-
-    private func isBundled() -> Bool {
-        Bundle.main.url(forResource: "chunk_0", withExtension: "mlmodelc") != nil
-    }
-
-    private func isCompiledCacheComplete() -> Bool {
-        let dir = compiledDir
-        if selectedConfig == .qwen2b {
-            let chunkNames = (0..<4).map { "chunk_\($0)" } + ["chunk_head"]
-            let chunksOK = chunkNames.allSatisfy {
-                FileManager.default.fileExists(atPath: dir.appendingPathComponent("\($0).mlmodelc").path)
-            }
-            let embedOK = FileManager.default.fileExists(
-                atPath: dir.appendingPathComponent("embed_weight.bin").path)
-            return chunksOK && embedOK
-        } else {
-            return FileManager.default.fileExists(atPath: dir.appendingPathComponent("model.mlmodelc").path)
-        }
-    }
-
-    // MARK: - URL resolution (called by engine loaders)
-
-    /// Returns the .mlmodelc URL for a given chunk name, or nil if unavailable.
-    func urlForChunk(_ name: String) -> URL? {
-        if let url = Bundle.main.url(forResource: name, withExtension: "mlmodelc") {
-            return url
-        }
-        
-        let actualName = (selectedConfig == .llama1b && name == "LocalChatModel_Int4") 
-            ? "model" 
-            : name
-            
-        let cached = compiledDir.appendingPathComponent("\(actualName).mlmodelc")
-        return FileManager.default.fileExists(atPath: cached.path) ? cached : nil
-    }
-
-    /// Returns the embed_weight.bin URL, or nil if unavailable.
-    func urlForEmbed() -> URL? {
-        if let url = Bundle.main.url(forResource: "embed_weight", withExtension: "bin") {
-            return url
-        }
-        let cached = compiledDir.appendingPathComponent("embed_weight.bin")
-        return FileManager.default.fileExists(atPath: cached.path) ? cached : nil
     }
 
     // MARK: - Download lifecycle
@@ -169,86 +141,63 @@ final class LocalModelDownloadManager: @unchecked Sendable {
     func deleteDownloadedModel() {
         activeTask?.cancel()
         activeTask = nil
-        try? FileManager.default.removeItem(at: compiledDir)
+        switch selectedConfig {
+        case .qwen2b: QwenModelAccess.clearCache()
+        case .llama1b: LlamaModelAccess.clearCache()
+        }
         state = .notDownloaded
     }
 
-    // MARK: - Download + compile
+    // MARK: - Private helpers
 
-    private enum DownloadError: LocalizedError {
-        case repositoryNotFound
-        case chunkMissing(String)
+    private func isBundled() -> Bool {
+        Bundle.main.url(forResource: "chunk_0", withExtension: "mlpackage") != nil
+            || Bundle.main.url(forResource: "chunk_0", withExtension: "mlmodelc") != nil
+    }
 
-        var errorDescription: String? {
-            switch self {
-            case .repositoryNotFound:
-                return "Repository was not found on Hugging Face. Make sure the repo is public."
-            case .chunkMissing(let name):
-                return "'\(name)' not found in the repository."
-            }
+    private func isDownloaded() -> Bool {
+        switch selectedConfig {
+        case .qwen2b: return QwenModelAccess.isDownloaded
+        case .llama1b: return LlamaModelAccess.isDownloaded
         }
     }
+
+    // MARK: - Download
 
     private func performDownload() async {
         let appSupport = FileManager.default.urls(
             for: .applicationSupportDirectory, in: .userDomainMask)[0]
         let api = HubApi(downloadBase: appSupport)
-        let repo = Hub.Repo(id: selectedConfig.repoID)
-        let destDir = compiledDir
+        let config = selectedConfig
 
         do {
-            try FileManager.default.createDirectory(at: destDir, withIntermediateDirectories: true)
-
             await MainActor.run { state = .downloading(progress: 0.0) }
 
-            let snapshotDir = try await api.snapshot(from: repo) { progress in
-                Task { @MainActor in
-                    guard case .downloading = self.state else { return }
-                    self.state = .downloading(progress: progress.fractionCompleted * 0.5)
+            switch config {
+            case .qwen2b:
+                try await QwenModelDownloader.download(api: api) { [weak self] progress in
+                    Task { @MainActor [weak self] in
+                        guard case .downloading = self?.state else { return }
+                        self?.state = .downloading(progress: progress)
+                    }
+                }
+            case .llama1b:
+                try await LlamaModelDownloader.download(api: api) { [weak self] progress in
+                    Task { @MainActor [weak self] in
+                        guard case .downloading = self?.state else { return }
+                        self?.state = .downloading(progress: progress)
+                    }
                 }
             }
 
             guard !Task.isCancelled else { return }
-            let repoRoot = snapshotDir
-            
-            if selectedConfig == .qwen2b {
-                let sub = "qwen3_vl_2b_stateful_chunks"
-                let subRoot = repoRoot.appendingPathComponent(sub)
-                
-                let embedSrc = subRoot.appendingPathComponent("embed_weight.bin")
-                let embedDest = destDir.appendingPathComponent("embed_weight.bin")
-                if FileManager.default.fileExists(atPath: embedSrc.path) {
-                    try? FileManager.default.removeItem(at: embedDest)
-                    try FileManager.default.copyItem(at: embedSrc, to: embedDest)
-                }
-                
-                let chunkNames = (0..<4).map { "chunk_\($0)" } + ["chunk_head"]
-                for (index, chunkName) in chunkNames.enumerated() {
-                    guard !Task.isCancelled else { return }
-                    let phaseProgress = 0.5 + 0.5 * Double(index) / Double(chunkNames.count)
-                    await MainActor.run { state = .downloading(progress: phaseProgress) }
-                    
-                    let compiledDest = destDir.appendingPathComponent("\(chunkName).mlmodelc")
-                    let mlcSrc = subRoot.appendingPathComponent("\(chunkName).mlmodelc")
-                    if FileManager.default.fileExists(atPath: mlcSrc.path) {
-                        try? FileManager.default.removeItem(at: compiledDest)
-                        try FileManager.default.copyItem(at: mlcSrc, to: compiledDest)
-                    }
-                }
-            } else {
-                let modelSrc = repoRoot.appendingPathComponent("model.mlmodelc")
-                let modelDest = destDir.appendingPathComponent("model.mlmodelc")
-                if FileManager.default.fileExists(atPath: modelSrc.path) {
-                    try? FileManager.default.removeItem(at: modelDest)
-                    try FileManager.default.copyItem(at: modelSrc, to: modelDest)
-                }
-            }
-
+            await MainActor.run { state = .downloading(progress: 1.0) }
+            try? await Task.sleep(nanoseconds: 500_000_000)
             await MainActor.run { state = .ready }
-            print("[ModelDownload] All files ready for \(selectedConfig.rawValue).")
+            print("[ModelDownload] Ready: \(config.rawValue)")
 
         } catch {
-            if Task.isCancelled {
+            guard !Task.isCancelled else {
                 await MainActor.run { state = .notDownloaded }
                 return
             }

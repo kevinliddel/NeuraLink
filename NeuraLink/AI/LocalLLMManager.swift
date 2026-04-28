@@ -12,24 +12,26 @@ import Foundation
 final class LocalLLMManager: NSObject, @unchecked Sendable {
     static let shared = LocalLLMManager()
 
-    // On iOS 18+ with ≥6 GB RAM: stateful Qwen3-VL 2B (KV cache, fast decode).
-    // On iOS 18+ with <6 GB RAM (e.g. iPhone 11 / 4 GB): Qwen3-VL 2B needs ~3 GB at
-    // runtime and will OOM — fall back to the stateless Llama-3.2-1B engine.
-    // On iOS 17: always use the Llama-3.2-1B engine.
+    // Routes to the engine matching the user's explicit model selection.
+    // Qwen (stateful, KV-cache) requires iOS 18+; falls back to Llama on iOS 17.
+    // Llama is always available as the memory-safe fallback for 4 GB devices.
     private static func makeEngine() -> any LLMEngineProtocol {
-        if #available(iOS 18.0, *) {
-            let sixGB: UInt64 = 6 * 1024 * 1024 * 1024
-            let hasEnoughRAM = ProcessInfo.processInfo.physicalMemory >= sixGB
-            
-            // On iOS 18, we prefer the stateful Qwen engine if the device has enough RAM
-            // (6GB+) to avoid OOM crashes.
-            if hasEnoughRAM && LocalModelDownloadManager.shared.isAvailable {
-                return StatefulQwenEngine.shared as! LLMEngineProtocol
-            }
+        let manager = LocalModelDownloadManager.shared
+        guard manager.isAvailable else {
+            // No model is ready yet; return Llama as a safe placeholder.
+            return LocalLLMEngine.shared
         }
-        // Fallback: Llama-3.2-1B (requires LocalChatModel_Int4.mlmodelc in bundle).
-        // This engine is more memory-efficient for 4GB devices.
-        return LocalLLMEngine.shared
+
+        switch manager.selectedConfig {
+        case .qwen2b:
+            if #available(iOS 18.0, *) {
+                return StatefulQwenEngine.shared as any LLMEngineProtocol
+            }
+            // iOS 17 cannot run the stateful Qwen model — use Llama.
+            return LocalLLMEngine.shared
+        case .llama1b:
+            return LocalLLMEngine.shared
+        }
     }
 
     // Audio Engine for TTS Lip-sync

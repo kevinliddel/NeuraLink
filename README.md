@@ -33,7 +33,7 @@ A high-performance, native iOS VRM character viewer and AI companion built from 
 - **"Eyes on You" System**: Features an Arknights: Endfield-inspired camera system, where characters will maintain eye contact by turning their heads toward the camera if it remains behind them for more than 5 seconds.
 - **Dual-Layer VAD**: Client-side Silero VAD (v5 model) runs alongside OpenAI's server VAD for instant local voice detection and immediate UI feedback.
 - **Per-Character Personas**: Each character carries her own system prompt and voice model, hot-swapped on model selection.
-- **NPU Ready**: Architecture planned for [Apple Neural Engine integration](./docs/npu.md) via Core ML and MLX to enable local VAD, offline speech-to-text, and local LLMs.
+- **NPU Ready**: Architecture for [Apple Neural Engine integration](./docs/npu.md) via Core ML and MLX to enable local VAD, offline speech-to-text, and local LLMs.
 
 
 ---
