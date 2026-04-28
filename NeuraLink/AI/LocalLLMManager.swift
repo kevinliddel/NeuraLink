@@ -19,10 +19,16 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     private static func makeEngine() -> any LLMEngineProtocol {
         if #available(iOS 18.0, *) {
             let sixGB: UInt64 = 6 * 1024 * 1024 * 1024
-            if ProcessInfo.processInfo.physicalMemory >= sixGB {
+            let hasEnoughRAM = ProcessInfo.processInfo.physicalMemory >= sixGB
+            
+            // On iOS 18, we prefer the stateful Qwen engine if the device has enough RAM
+            // (6GB+) to avoid OOM crashes.
+            if hasEnoughRAM && LocalModelDownloadManager.shared.isAvailable {
                 return StatefulQwenEngine.shared as! LLMEngineProtocol
             }
         }
+        // Fallback: Llama-3.2-1B (requires LocalChatModel_Int4.mlmodelc in bundle).
+        // This engine is more memory-efficient for 4GB devices.
         return LocalLLMEngine.shared
     }
 
@@ -33,7 +39,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
 
     // State
     private let state = RealtimeChatState.shared
-    private let llmEngine: any LLMEngineProtocol = LocalLLMManager.makeEngine()
+    private var llmEngine: any LLMEngineProtocol = LocalLLMManager.makeEngine()
 
     private let whisperManager = LocalWhisperManager.shared
     private let sileroVAD = SileroVADProcessor()
@@ -86,6 +92,10 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
 
     func startListening() {
         Task {
+            // Re-evaluate engine choice in case the model was downloaded since launch
+            self.llmEngine = Self.makeEngine()
+            self.llmEngine.delegate = self
+
             // Fast path: models already hot from preload() — start VAD with no delay.
             if llmEngine.isLoaded {
                 await MainActor.run { state.status = .ready }

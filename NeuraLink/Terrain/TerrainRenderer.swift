@@ -172,7 +172,7 @@ final class TerrainRenderer: @unchecked Sendable {
         var data = TerrainUniforms(
             viewProjection: viewProjection,
             lightViewProjection: lightViewProjection,
-            sunDirection: SIMD4<Float>(lightDir.x, lightDir.y, lightDir.z, 0),
+            sunDirection: SIMD4<Float>(lightDir.x, lightDir.y, lightDir.z, sd.y),
             snowColor: SIMD4<Float>(0.93, 0.95, 0.97, 1.0),
             terrainParams: SIMD4<Float>(
                 0.0,  // unused

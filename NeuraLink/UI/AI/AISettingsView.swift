@@ -50,16 +50,27 @@ struct AISettingsView: View {
             }
         }
     }
-
     private var localSLMSection: some View {
         Section {
+            // Model Selection Picker
+            Picker("Selected Model", selection: $downloader.selectedConfig) {
+                ForEach(LocalModelDownloadManager.ModelConfiguration.allCases) { config in
+                    Text(config.rawValue).tag(config)
+                }
+            }
+            .pickerStyle(.segmented)
+            .disabled(downloader.state != .notDownloaded && downloader.state != .ready && !downloader.state.isFailed)
+            .onChange(of: downloader.selectedConfig) { _, newValue in
+                downloader.selectConfig(newValue)
+            }
+
             // Header row: model name + status badge
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Qwen3-VL 2B")
+                    Text(downloader.selectedConfig.rawValue)
                         .font(.headline)
                     Text(
-                        "~\(String(format: "%.1f", LocalModelDownloadManager.estimatedSizeGB)) GB · Apple Neural Engine"
+                        "~\(String(format: "%.1f", downloader.selectedConfig.estimatedSizeGB)) GB · \(downloader.selectedConfig.description)"
                     )
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -74,6 +85,7 @@ struct AISettingsView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     ProgressView(value: progress)
                         .tint(.blue)
+                        .animation(.spring(duration: 0.5), value: progress)
                     Text(downloadPhaseLabel(progress: progress))
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -107,9 +119,22 @@ struct AISettingsView: View {
         } header: {
             Text("Local Edge SLMs")
         } footer: {
-            if case .failed(let msg) = downloader.state {
-                Text("Download failed: \(msg)")
-                    .foregroundStyle(.red)
+            VStack(alignment: .leading, spacing: 8) {
+                if ProcessInfo.processInfo.physicalMemory < 6 * 1024 * 1024 * 1024 && downloader.selectedConfig == .qwen2b {
+                    Label {
+                        Text("This device (4GB RAM) is under the 6GB requirement for Qwen 2B. The 1B model is recommended to prevent crashes.")
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                }
+
+                if case .failed(let msg) = downloader.state {
+                    Text("Download failed: \(msg)")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
             }
         }
     }
@@ -168,11 +193,10 @@ struct AISettingsView: View {
     }
 
     private func downloadPhaseLabel(progress: Double) -> String {
+        let pct = Int(progress * 100)
         if progress < 0.5 {
-            let pct = Int(progress * 200)
             return "Downloading… \(pct)%"
         } else {
-            let pct = Int((progress - 0.5) * 200)
             return "Compiling for Neural Engine… \(pct)%"
         }
     }
