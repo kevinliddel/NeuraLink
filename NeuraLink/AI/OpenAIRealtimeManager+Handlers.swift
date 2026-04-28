@@ -35,7 +35,8 @@ extension OpenAIRealtimeManager {
             case "response.output_item.added":
                 if let item = json["item"] as? [String: Any],
                     let itemType = item["type"] as? String,
-                    itemType == "function_call" {
+                    itemType == "function_call"
+                {
                     // Begin accumulating a function call
                     pendingFunctionCallId = item["call_id"] as? String ?? ""
                     pendingFunctionName = item["name"] as? String ?? ""
@@ -152,8 +153,8 @@ extension OpenAIRealtimeManager {
             "item": [
                 "type": "function_call_output",
                 "call_id": callId,
-                "output": result
-            ]
+                "output": result,
+            ],
         ]
         let trigger: [String: Any] = ["type": "response.create"]
 
@@ -207,7 +208,8 @@ extension OpenAIRealtimeManager: RTCPeerConnectionDelegate {
         }
     }
 
-    func peerConnection(_ peerConnection: RTCPeerConnection, didGenerate candidate: RTCIceCandidate) {
+    func peerConnection(_ peerConnection: RTCPeerConnection, didGenerate candidate: RTCIceCandidate)
+    {
         print("[AI]: Generated ICE candidate: \(candidate.sdpMid ?? "none")")
     }
 
@@ -271,8 +273,8 @@ extension OpenAIRealtimeManager: RTCDataChannelDelegate {
                 ],
                 "turn_detection": [
                     "type": "server_vad"
-                ]
-            ]
+                ],
+            ],
         ]
 
         guard let data = try? JSONSerialization.data(withJSONObject: update) else { return }
