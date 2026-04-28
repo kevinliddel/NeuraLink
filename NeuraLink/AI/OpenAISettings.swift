@@ -38,9 +38,15 @@ final class OpenAISettings {
     var isEnabled: Bool {
         get { UserDefaults.standard.object(forKey: enabledKey) as? Bool ?? false }
         set { 
+            let oldValue = isEnabled
             UserDefaults.standard.set(newValue, forKey: enabledKey)
             if newValue {
                 isLocalLLMEnabled = false
+                if hasValidKey {
+                    OpenAIRealtimeManager.shared.connect()
+                }
+            } else if oldValue {
+                OpenAIRealtimeManager.shared.disconnect()
             }
         }
     }
@@ -48,10 +54,12 @@ final class OpenAISettings {
     var isLocalLLMEnabled: Bool {
         get { UserDefaults.standard.object(forKey: localLLMEnabledKey) as? Bool ?? false }
         set {
+            let oldValue = isLocalLLMEnabled
             UserDefaults.standard.set(newValue, forKey: localLLMEnabledKey)
             if newValue {
                 isEnabled = false
-            } else {
+                LocalLLMManager.shared.startListening()
+            } else if oldValue {
                 LocalLLMManager.shared.unload()
             }
         }

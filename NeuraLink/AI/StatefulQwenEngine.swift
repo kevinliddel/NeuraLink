@@ -246,7 +246,7 @@ final class StatefulQwenEngine: NSObject, @unchecked Sendable, LLMEngineProtocol
         embedPtr = nil
         embedFd = -1
         embedMapSize = 0
-        print("[QwenVL] Model unloaded — GPU/ANE memory freed.")
+        print("[QwenVL] Model unloaded — GPU/Apple Neural Enginememory freed.")
     }
 
     // MARK: - Inference core

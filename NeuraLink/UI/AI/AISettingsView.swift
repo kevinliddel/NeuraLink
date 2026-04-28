@@ -20,8 +20,11 @@ struct AISettingsView: View {
                 interactionSection
 
                 Section {
-                    Button("Done") { dismiss() }
-                        .frame(maxWidth: .infinity)
+                    Button("Done") {
+                        triggerConnectionIfNeeded()
+                        dismiss()
+                    }
+                    .frame(maxWidth: .infinity)
                 }
             }
             .navigationTitle("AI Settings")
@@ -53,16 +56,21 @@ struct AISettingsView: View {
     private var localSLMSection: some View {
         Section {
             // Model Selection Picker
-            Picker("Selected Model", selection: Binding(
-                get: { downloader.selectedConfig },
-                set: { downloader.selectConfig($0) }
-            )) {
+            Picker(
+                "Selected Model",
+                selection: Binding(
+                    get: { downloader.selectedConfig },
+                    set: { downloader.selectConfig($0) }
+                )
+            ) {
                 ForEach(LocalModelDownloadManager.ModelConfiguration.allCases) { config in
                     Text(config.rawValue).tag(config)
                 }
             }
             .pickerStyle(.segmented)
-            .disabled(downloader.state != .notDownloaded && downloader.state != .ready && !downloader.state.isFailed)
+            .disabled(
+                downloader.state != .notDownloaded && downloader.state != .ready
+                    && !downloader.state.isFailed)
 
             // Header row: model name + status badge
             HStack {
@@ -116,12 +124,15 @@ struct AISettingsView: View {
             }
 
         } header: {
-            Text("Local Edge SLMs")
+            Text("Local Edge LLMs")
         } footer: {
             VStack(alignment: .leading, spacing: 8) {
-                if ProcessInfo.processInfo.physicalMemory < 6 * 1024 * 1024 * 1024 && downloader.selectedConfig == .qwen2b {
+                if ProcessInfo.processInfo.physicalMemory < 6 * 1024 * 1024 * 1024
+                    && downloader.selectedConfig == .qwen2b {
                     Label {
-                        Text("This device (4GB RAM) is under the 6GB requirement for Qwen 2B. The 1B model is recommended to prevent crashes.")
+                        Text(
+                            "This device (4GB RAM) is under the 6GB requirement for Qwen 2B. The 1B model is recommended to prevent crashes."
+                        )
                     } icon: {
                         Image(systemName: "exclamationmark.triangle.fill")
                     }
@@ -197,6 +208,14 @@ struct AISettingsView: View {
             return "Downloading… \(pct)%"
         } else {
             return "Compiling for Neural Engine… \(pct)%"
+        }
+    }
+
+    private func triggerConnectionIfNeeded() {
+        if settings.isEnabled && settings.hasValidKey {
+            OpenAIRealtimeManager.shared.connect()
+        } else if settings.isLocalLLMEnabled && LocalModelDownloadManager.shared.isAvailable {
+            LocalLLMManager.shared.startListening()
         }
     }
 }

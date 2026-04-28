@@ -45,17 +45,24 @@ struct RealtimeChatOverlay: View {
 
     @ViewBuilder
     private var idleHint: some View {
+        let settings = OpenAISettings.shared
+
         if case .error = aiState.status {
             hint("Connection error", icon: "exclamationmark.circle")
-        } else if aiState.status == .preparing {
-            hint("Preparing local SLMs…", progress: true)
-        } else if aiState.status == .connecting {
-            hint("Connecting…", progress: true)
-        } else if !OpenAISettings.shared.hasValidKey {
+        } else if aiState.status == .preparing || aiState.status == .connecting {
+            hint(aiState.status.label, progress: true)
+        } else if settings.isLocalLLMEnabled && aiState.status == .ready {
+            hint("Apple Neural Engine Ready", icon: "apple.intelligence")
+        } else if settings.isEnabled && aiState.status == .ready {
+            hint("OpenAI Connected", icon: "antenna.radiowaves.left.and.right")
+        } else if !settings.hasValidKey && !settings.isLocalLLMEnabled {
             hint("Tap to configure LLMs", icon: "key.fill")
                 .onTapGesture { aiState.showSettings = true }
-        } else {
+        } else if aiState.status == .ready {
             hint("Start talking", icon: "waveform")
+        } else {
+            // Fallback for transition states
+            hint("Initializing...", progress: true)
         }
     }
 

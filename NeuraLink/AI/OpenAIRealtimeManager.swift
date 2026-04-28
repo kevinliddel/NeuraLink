@@ -87,6 +87,12 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
             state.setError("Invalid API Key")
             return
         }
+        
+        // Prevent redundant connection attempts if already active or connecting.
+        guard state.status != .connecting && state.status != .ready && state.status != .speaking && state.status != .thinking else {
+            print("[AI]: Already connected or connecting, skipping.")
+            return
+        }
 
         state.status = .connecting
         print("[AI]: Connecting to OpenAI Realtime...")

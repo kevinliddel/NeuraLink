@@ -93,6 +93,13 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     }
 
     func startListening() {
+        // Prevent redundant start attempts if already active or preparing.
+        guard state.status != .preparing && state.status != .ready && state.status != .listening && 
+              state.status != .thinking && state.status != .speaking else {
+            print("[LocalAI]: Already listening or preparing, skipping.")
+            return
+        }
+
         Task {
             // Re-evaluate engine choice in case the model was downloaded since launch
             self.llmEngine = Self.makeEngine()
