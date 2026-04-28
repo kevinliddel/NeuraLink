@@ -7,6 +7,7 @@
 
 import CoreML
 import Foundation
+import Tokenizers
 
 extension LocalLLMEngine {
     // MARK: - Tensor name discovery
