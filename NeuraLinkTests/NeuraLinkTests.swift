@@ -46,6 +46,7 @@ struct NeuraLinkTests {
     }
 
     @Test("VRM Model Basic Init")
+    @MainActor
     func testModelInitialization() throws {
         let meta = VRMMeta(licenseUrl: "https://vrm.dev")
         
@@ -135,6 +136,7 @@ struct NeuraLinkTests {
     }
 
     @Test("Local LLM Engine Initialization")
+    @MainActor
     func testLocalLLMEngineInitialization() async {
         let engine = LocalLLMEngine.shared
         

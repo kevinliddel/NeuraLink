@@ -20,9 +20,9 @@ extension LocalLLMEngine {
 
         let generationStartNs = DispatchTime.now().uptimeNanoseconds
 
-        if #available(iOS 17.0, *) {
-            states = bodyChunks.map { $0.makeState() }
-        }
+        // KV state is managed via manual kvCaches (see prepareManualCaches).
+        // makeState() is intentionally omitted: all chunks declare states:[],
+        // and calling it when ANE falls back to CPU crashes with NSInternalInconsistencyException.
         prepareManualCaches()
 
         isGenerating = true
@@ -153,7 +153,7 @@ extension LocalLLMEngine {
         cacheProcessor = nil
         logitProcessor = nil
         tokenizer = nil
-        if #available(iOS 17.0, *) { states = [] }
+        kvCaches = []
         print("[LlamaEngine] Unloaded.")
     }
 
@@ -204,7 +204,9 @@ extension LocalLLMEngine {
             let requiredInputs = chunk.modelDescription.inputDescriptionsByName.keys
 
             if i == 0 {
-                // Model expects a fixed-size sequence input of [1, 64].
+                // chunk1 receives the current token at slot 0 of the [1,64] input_ids array.
+                // full_sequence_length (set above) tells the model the causal position
+                // for RoPE and the attention mask — the token slot is always 0.
                 let tokenArr = try MLMultiArray(shape: [1, 64], dataType: .int32)
                 for j in 0..<64 { tokenArr[j] = 0 }
                 tokenArr[0] = NSNumber(value: token)

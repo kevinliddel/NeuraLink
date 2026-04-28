@@ -20,9 +20,15 @@ extension LocalLLMEngine {
             let outputs = chunk.modelDescription.outputDescriptionsByName
             print("[LlamaEngine] chunk\(i+1) inputs: \(inputs.keys.sorted())")
             print("[LlamaEngine] chunk\(i+1) outputs: \(outputs.keys.sorted())")
-            if #available(iOS 17.0, *) {
-                let states = chunk.modelDescription.stateDescriptionsByName
-                print("[LlamaEngine] chunk\(i+1) states: \(states.keys.sorted())")
+
+            // Log shapes for every cache tensor so we can verify cache-processor sizing.
+            for (name, desc) in inputs where name.contains("cache") {
+                let shape = desc.multiArrayConstraint?.shape ?? []
+                print("[LlamaEngine] chunk\(i+1) input  '\(name)' shape: \(shape)")
+            }
+            for (name, desc) in outputs where name.contains("cache") {
+                let shape = desc.multiArrayConstraint?.shape ?? []
+                print("[LlamaEngine] chunk\(i+1) output '\(name)' shape: \(shape)")
             }
 
             if i == 0 {
@@ -40,12 +46,18 @@ extension LocalLLMEngine {
         }
 
         if let proc = cacheProcessor {
-            print(
-                "[LlamaEngine] cache-processor inputs: \(proc.modelDescription.inputDescriptionsByName.keys.sorted())"
-            )
-            print(
-                "[LlamaEngine] cache-processor outputs: \(proc.modelDescription.outputDescriptionsByName.keys.sorted())"
-            )
+            let cpInputs = proc.modelDescription.inputDescriptionsByName
+            let cpOutputs = proc.modelDescription.outputDescriptionsByName
+            print("[LlamaEngine] cache-processor inputs:  \(cpInputs.keys.sorted())")
+            print("[LlamaEngine] cache-processor outputs: \(cpOutputs.keys.sorted())")
+            for (name, desc) in cpInputs {
+                let shape = desc.multiArrayConstraint?.shape ?? []
+                print("[LlamaEngine] cache-processor input  '\(name)' shape: \(shape)")
+            }
+            for (name, desc) in cpOutputs {
+                let shape = desc.multiArrayConstraint?.shape ?? []
+                print("[LlamaEngine] cache-processor output '\(name)' shape: \(shape)")
+            }
         }
 
         if let logit = logitProcessor {

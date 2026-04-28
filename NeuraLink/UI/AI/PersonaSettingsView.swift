@@ -55,7 +55,9 @@ struct PersonaSettingsView: View {
     @State private var previewPlayer = VoicePreviewPlayer()
     @State private var isLoadingPreview = false
 
-    private let voices = ["alloy", "echo", "shimmer", "ash", "ballad", "coral", "sage", "verse", "marin"]
+    private let voices = [
+        "alloy", "echo", "shimmer", "ash", "ballad", "coral", "sage", "verse", "marin"
+    ]
 
     init(modelID: String) {
         self.modelID = modelID
@@ -113,13 +115,12 @@ struct PersonaSettingsView: View {
     private var voicePreviewSection: some View {
         Section {
             HStack(alignment: .center, spacing: 12) {
-                TextField("Enter text to preview…", text: $previewText, axis: .vertical)
-                    .lineLimit(1...4)
+                TextField("Enter text to preview…", text: $previewText)
+                    .controlSize(.regular)
                     .disabled(isLoadingPreview)
 
                 previewButton
             }
-            .padding(.vertical, 2)
         } header: {
             Text("Voice Preview")
         } footer: {
@@ -144,8 +145,10 @@ struct PersonaSettingsView: View {
     @ViewBuilder
     private var previewButton: some View {
         let isActive = previewPlayer.isSpeaking
-        let canTap = isActive || (!previewText.trimmingCharacters(in: .whitespaces).isEmpty
-            && OpenAISettings.shared.isEnabled && OpenAISettings.shared.hasValidKey)
+        let canTap =
+            isActive
+            || (!previewText.trimmingCharacters(in: .whitespaces).isEmpty
+                && OpenAISettings.shared.isEnabled && OpenAISettings.shared.hasValidKey)
 
         Button {
             if isActive {

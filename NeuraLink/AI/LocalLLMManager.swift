@@ -226,12 +226,14 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             prompt = "<|im_start|>system\n\(persona.instructions)<|im_end|>\n<|im_start|>user\n\(text)<|im_end|>\n<|im_start|>assistant\n"
             maxTokens = 128
         } else {
-            // Llama-3 instruct template — keep system prompt short (~30 tokens) to fit
-            // the 64-token context window without losing the user turn to front truncation.
-            let brief = String(persona.instructions.prefix(80))
+            // Llama-3 on CPU: every prefill token costs ~11 s, so keep the prompt as
+            // short as possible. 30-char system tag ≈ 6 tokens; 40-char user ≈ 8 tokens;
+            // total prompt ≈ 20 tokens → prefill ≈ 220 s instead of 427 s.
+            let brief = String(persona.instructions.prefix(30))
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            prompt = "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n\(brief)<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n\(text)<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
-            maxTokens = 24
+            let shortText = String(text.prefix(40))
+            prompt = "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n\(brief)<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n\(shortText)<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
+            maxTokens = 16
         }
 
         Task {
@@ -280,7 +282,13 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             )
         }
 
-        let utterance = AVSpeechUtterance(string: text)
+        // Don’t send non-speech noise to TTS (e.g. garbage tokens like "!!!!!").
+        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty,
+              clean.unicodeScalars.contains(where: { CharacterSet.letters.contains($0) || CharacterSet.decimalDigits.contains($0) })
+        else { return }
+
+        let utterance = AVSpeechUtterance(string: clean)
 
         // Select an appropriate voice based on Persona
         let persona = CharacterPersona.forCharacter(named: state.selectedCharacterName)
@@ -294,32 +302,38 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         synthesizer.write(utterance) { [weak self] buffer in
             guard let self = self, let pcmBuffer = buffer as? AVAudioPCMBuffer else { return }
 
-            // Prevent AVAudioBuffer crash on EOF
+            // Bail BEFORE any engine manipulation to avoid the zero-byte AVAudioBuffer crash.
             guard pcmBuffer.frameLength > 0 else { return }
 
-            // AVSpeechSynthesizer can change formats depending on the voice (22050Hz vs 24000Hz).
-            // Reconnect the node if the format differs from what we initialized.
-            let currentFormat = self.playerNode.outputFormat(forBus: 0)
-            if currentFormat != pcmBuffer.format {
-                let wasRunning = self.engine.isRunning
-                if wasRunning { self.engine.pause() }
+            // Engine reconnection must run on the main thread to prevent the
+            // "unsafeForcedSync called from Swift Concurrent context" deadlock.
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
 
-                self.engine.disconnectNodeInput(self.playerNode)
-                self.engine.connect(
-                    self.playerNode, to: self.engine.mainMixerNode, format: pcmBuffer.format)
+                // AVSpeechSynthesizer can change formats depending on the voice.
+                // Reconnect the node if the format differs from what we initialized.
+                let currentFormat = self.playerNode.outputFormat(forBus: 0)
+                if currentFormat != pcmBuffer.format {
+                    let wasRunning = self.engine.isRunning
+                    if wasRunning { self.engine.pause() }
 
-                if wasRunning { try? self.engine.start() }
+                    self.engine.disconnectNodeInput(self.playerNode)
+                    self.engine.connect(
+                        self.playerNode, to: self.engine.mainMixerNode, format: pcmBuffer.format)
+
+                    if wasRunning { try? self.engine.start() }
+                }
+
+                if !self.engine.isRunning {
+                    try? self.engine.start()
+                }
+
+                if !self.playerNode.isPlaying {
+                    self.playerNode.play()
+                }
+
+                self.playerNode.scheduleBuffer(pcmBuffer)
             }
-
-            if !self.engine.isRunning {
-                try? self.engine.start()
-            }
-
-            if !self.playerNode.isPlaying {
-                self.playerNode.play()
-            }
-
-            self.playerNode.scheduleBuffer(pcmBuffer)
         }
     }
 

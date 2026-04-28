@@ -11,7 +11,7 @@ import Foundation
 
 // MARK: - Errors
 
-enum LLMError: LocalizedError {
+enum LLMError: LocalizedError, Equatable {
     case modelNotFound
     case initializationFailed
     case inferenceFailed
