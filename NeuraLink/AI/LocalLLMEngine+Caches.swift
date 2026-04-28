@@ -66,13 +66,14 @@ extension LocalLLMEngine {
                 let oldPtr = old.dataPointer.bindMemory(to: Float16.self, capacity: oldSize)
                 let newPtr = new.dataPointer.bindMemory(to: Float16.self, capacity: newSize)
                 let resPtr = result.dataPointer.bindMemory(to: Float16.self, capacity: expectedSize)
-
-                for i in 0..<copyFromOldCount {
-                    resPtr[i] = oldPtr[i + shiftAmount]
-                }
-                for i in 0..<newSize {
-                    resPtr[i + copyFromOldCount] = newPtr[i]
-                }
+                for i in 0..<copyFromOldCount { resPtr[i] = oldPtr[i + shiftAmount] }
+                for i in 0..<newSize { resPtr[i + copyFromOldCount] = newPtr[i] }
+            } else if old.dataType == .float32 {
+                let oldPtr = old.dataPointer.bindMemory(to: Float.self, capacity: oldSize)
+                let newPtr = new.dataPointer.bindMemory(to: Float.self, capacity: newSize)
+                let resPtr = result.dataPointer.bindMemory(to: Float.self, capacity: expectedSize)
+                for i in 0..<copyFromOldCount { resPtr[i] = oldPtr[i + shiftAmount] }
+                for i in 0..<newSize { resPtr[i + copyFromOldCount] = newPtr[i] }
             }
             return result
         } catch {
@@ -80,52 +81,13 @@ extension LocalLLMEngine {
         }
     }
 
-    /// Queries the cache-processor (if loaded) for position tensors.
-    /// Returns an empty dict if the processor is unavailable — chunks using
-    /// MLState will derive position from their own state.
+    /// Returns the position scalar needed by chunk1 (`full_sequence_length`).
+    /// The cache-processor in this model is a KV-cache updater that runs on ANE,
+    /// not a position-input generator — calling it here with zeros was causing 255+
+    /// synchronous CPU predictions during prefill (the inference hang).
     internal func buildPositionInputs(from pos: Int) -> [String: MLFeatureValue] {
-        guard let proc = cacheProcessor else { return [:] }
-
-        let posKey = "full_sequence_length"  // Standard for smpanaro models
         let posArr = try! MLMultiArray(shape: [1], dataType: .int32)
         posArr[0] = NSNumber(value: Int32(pos + 1))
-
-        var dict: [String: MLFeatureValue] = [posKey: MLFeatureValue(multiArray: posArr)]
-
-        // If the cache processor itself requires cache inputs, provide them.
-        let inputs = proc.modelDescription.inputDescriptionsByName
-        for (name, desc) in inputs {
-            if name.contains("old_") || name.contains("cache") {
-                if let constraint = desc.multiArrayConstraint {
-                    if let arr = try? MLMultiArray(
-                        shape: constraint.shape, dataType: constraint.dataType) {
-                        zeroFill(arr)
-                        dict[name] = MLFeatureValue(multiArray: arr)
-                        if pos == 0 {
-                            print(
-                                "[LlamaEngine] Cache-processor requested \(name) with shape \(constraint.shape)"
-                            )
-                        }
-                    }
-                }
-            } else if dict[name] == nil && !name.contains("position")
-                && !name.contains("full_sequence_length") {
-                print("[LlamaEngine] Cache-processor missing input: \(name)")
-            }
-        }
-
-        let provider = try? MLDictionaryFeatureProvider(dictionary: dict)
-        guard let p = provider, let result = try? proc.prediction(from: p) else {
-            // Even if prediction fails, return the manual caches we prepared
-            return dict
-        }
-
-        var out: [String: MLFeatureValue] = dict  // Start with inputs (cos/sin might be here too)
-        for name in result.featureNames {
-            if let val = result.featureValue(for: name) {
-                out[name] = val
-            }
-        }
-        return out
+        return ["full_sequence_length": MLFeatureValue(multiArray: posArr)]
     }
 }

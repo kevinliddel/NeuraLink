@@ -79,7 +79,8 @@ final class LocalLLMEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
                         throw LLMError.modelNotFound
                     }
                     print("[LlamaEngine] Loading chunk\(i)…")
-                    let chunk = try await MLModel.load(contentsOf: url, configuration: cfg)
+                    let chunk = try await loadWithTimeout(
+                        url: url, configuration: cfg, label: "chunk\(i)")
                     chunks.append(chunk)
                     print("[LlamaEngine] Chunk \(i) ready.")
                 }
@@ -98,8 +99,8 @@ final class LocalLLMEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
                     throw LLMError.modelNotFound
                 }
                 print("[LlamaEngine] Loading logit-processor…")
-                self.logitProcessor = try await MLModel.load(
-                    contentsOf: logitURL, configuration: cfg)
+                self.logitProcessor = try await loadWithTimeout(
+                    url: logitURL, configuration: cfg, label: "logit-processor")
                 print("[LlamaEngine] Logit-processor ready.")
 
                 if #available(iOS 17.0, *) {
@@ -118,6 +119,12 @@ final class LocalLLMEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
             try await task.value
         } catch {
             loadLock.withLock { loadTask = nil }  // Allow retry
+            // A timeout almost certainly means a corrupt/incomplete bundle.
+            // Clear the cached path so the next launch re-validates from disk.
+            if case LLMError.loadTimeout = error {
+                LlamaModelAccess.clearCache()
+                print("[LlamaEngine] Cleared snapshot cache after timeout — re-download required.")
+            }
             throw error
         }
     }

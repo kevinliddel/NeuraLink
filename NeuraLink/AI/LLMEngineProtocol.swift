@@ -15,6 +15,7 @@ enum LLMError: LocalizedError {
     case modelNotFound
     case initializationFailed
     case inferenceFailed
+    case loadTimeout(String)
 
     var errorDescription: String? {
         switch self {
@@ -24,6 +25,8 @@ enum LLMError: LocalizedError {
             return "Failed to initialise the local LLM engine."
         case .inferenceFailed:
             return "Inference failed unexpectedly."
+        case .loadTimeout(let label):
+            return "Timed out loading \(label). The model file may be corrupted — try deleting and re-downloading it."
         }
     }
 }

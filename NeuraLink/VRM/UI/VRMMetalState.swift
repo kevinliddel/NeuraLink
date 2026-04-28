@@ -41,6 +41,8 @@ final class VRMMetalState {
     // Look-back behavior
     private var lookBackController = VRMLookBackController()
     private var isPlayingLookBack = false
+    private var lookBackClip: AnimationClip?
+    private var lookBackTime: Float = 0
 
     // Drives fade-in of the Metal view so T-pose is never visible
     var modelAlpha: Double = 0
@@ -99,6 +101,8 @@ final class VRMMetalState {
         modelAlpha = 0
         lookBackController.reset()
         isPlayingLookBack = false
+        lookBackClip = nil
+        lookBackTime = 0
     }
 
     func display(_ model: VRMModel) {
@@ -244,23 +248,41 @@ final class VRMMetalState {
         // Look-back: always tick state machine (advances cooldown even while animating)
         let lookBackTrigger = lookBackController.update(orbitYaw: orbitYaw, deltaTime: dt)
 
-        // Look-back: return to idle loop when one-shot animation finishes
-        if isPlayingLookBack && animationPlayer.isFinished {
-            isPlayingLookBack = false
-            if let clip = defaultClip {
-                animationPlayer.crossfade(to: clip, duration: 0.5, from: model)
-            }
-        }
-
-        // Look-back: trigger the gesture (not during appear or while already animating)
+        // Look-back: trigger — stores peak-rotation clip, never interrupts main animation
         if let side = lookBackTrigger, !isPlayingLookBack, !isPlayingAppear {
-            let lookBackClip = VRMLookBackAnimationBuilder.makeClip(side: side)
-            animationPlayer.crossfade(to: lookBackClip, duration: 0.3, from: model)
-            animationPlayer.isLooping = false
+            lookBackClip = VRMLookBackAnimationBuilder.makeClip(side: side)
+            lookBackTime = 0
             isPlayingLookBack = true
         }
 
+        // Base animation runs uninterrupted
         animationPlayer.update(deltaTime: dt, model: model)
+
+        // Look-back slerp overlay: blend affected bones toward peak look-back pose
+        if isPlayingLookBack, let lbClip = lookBackClip {
+            lookBackTime += dt
+            if lookBackTime >= VRMLookBackAnimationBuilder.duration {
+                isPlayingLookBack = false
+                lookBackClip = nil
+            } else {
+                let blendWeight = VRMLookBackAnimationBuilder.envelopeValue(lookBackTime)
+                model.withLock {
+                    for track in lbClip.jointTracks {
+                        guard let humanoid = model.humanoid,
+                              let nodeIndex = humanoid.getBoneNode(track.bone),
+                              nodeIndex < model.nodes.count else { continue }
+                        let node = model.nodes[nodeIndex]
+                        // Peak rotation is constant — sample at any time (use 0)
+                        if let peakRot = track.rotationSampler?(0) {
+                            node.rotation = simd_slerp(node.rotation, peakRot, blendWeight)
+                            node.updateLocalMatrix()
+                        }
+                    }
+                    model.updateNodeTransforms()
+                }
+            }
+        }
+
         animationPlayer.applyMorphWeights(to: renderer?.expressionController)
 
         // Update look-at tracking (eyes, head, neck)

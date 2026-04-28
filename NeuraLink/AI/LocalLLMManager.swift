@@ -40,20 +40,20 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     private let synthesizer = AVSpeechSynthesizer()
 
     // State
-    private let state = RealtimeChatState.shared
-    private var llmEngine: any LLMEngineProtocol = LocalLLMManager.makeEngine()
+    let state = RealtimeChatState.shared
+    var llmEngine: any LLMEngineProtocol = LocalLLMManager.makeEngine()
 
-    private let whisperManager = LocalWhisperManager.shared
+    let whisperManager = LocalWhisperManager.shared
     private let sileroVAD = SileroVADProcessor()
 
     // Accumulate text for TTS chunking (e.g., speak sentence by sentence)
-    private var ttsBuffer = ""
+    var ttsBuffer = ""
 
     // Audio Capture State
-    private var hardwareInputFormat: AVAudioFormat?
-    private var recordingBuffer = [Float]()
-    private var isRecordingVoice = false
-    private let recordingLock = NSLock()
+    var hardwareInputFormat: AVAudioFormat?
+    var recordingBuffer = [Float]()
+    var isRecordingVoice = false
+    let recordingLock = NSLock()
 
     override init() {
         super.init()
@@ -202,13 +202,26 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         let persona = CharacterPersona.forCharacter(named: state.selectedCharacterName)
         let prompt: String
         let maxTokens: Int
+        // Mirror makeEngine() logic: Qwen only when iOS 18+ and qwen2b is the selected
+        // downloaded model. Everything else uses Llama-3.
+        let mgr = LocalModelDownloadManager.shared
+        let useQwen: Bool
         if #available(iOS 18.0, *) {
-            // Qwen3 instruct chat template
+            useQwen = mgr.isAvailable && mgr.selectedConfig == .qwen2b
+        } else {
+            useQwen = false
+        }
+
+        if useQwen {
+            // Qwen3 instruct template (StatefulQwenEngine on iOS 18+)
             prompt = "<|im_start|>system\n\(persona.instructions)<|im_end|>\n<|im_start|>user\n\(text)<|im_end|>\n<|im_start|>assistant\n"
             maxTokens = 128
         } else {
-            // Llama-3 instruct chat template (iOS 17 fallback)
-            prompt = "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n\(persona.instructions)<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n\(text)<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
+            // Llama-3 instruct template — keep system prompt short (~30 tokens) to fit
+            // the 64-token context window without losing the user turn to front truncation.
+            let brief = String(persona.instructions.prefix(120))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            prompt = "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n\(brief)<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n\(text)<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
             maxTokens = 30
         }
 
@@ -368,127 +381,6 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
     func localLLM(didFailWithError error: Error) {
         Task { @MainActor in
             state.setError(error.localizedDescription)
-        }
-    }
-}
-
-// MARK: - SileroVADDelegate
-
-extension LocalLLMManager: SileroVADDelegate {
-    func sileroVADDidDetectVoiceStart() {
-        Task { @MainActor in
-            if state.status == .ready {
-                state.status = .listening
-            }
-        }
-        recordingLock.lock()
-        isRecordingVoice = true
-        // Keep the pre-roll buffer intact so we don't lose the first word
-        recordingLock.unlock()
-    }
-
-    func sileroVADDidDetectVoiceEnd(wavData: Data?) {
-        Task { @MainActor in
-            if state.status == .listening {
-                state.status = .ready
-            }
-        }
-
-        recordingLock.lock()
-        isRecordingVoice = false
-        var rawSamples = recordingBuffer
-        recordingBuffer.removeAll(keepingCapacity: true)  // Clear buffer for next utterance
-        recordingLock.unlock()
-
-        // VAD requires ~1.8s of silence to trigger the voice end.
-        // We drop the last 1.5s of trailing silence to tightly bound the speech.
-        // This prevents short utterances from being diluted by silence and rejected by Whisper.
-        let sr = hardwareInputFormat?.sampleRate ?? 48000.0
-        let dropFrames = Int(sr * 1.5)
-        let minKeep = Int(sr * 0.5)  // Always keep at least 0.5s of audio
-        if rawSamples.count > dropFrames + minKeep {
-            rawSamples.removeLast(dropFrames)
-        }
-
-        guard !rawSamples.isEmpty else { return }
-
-        // Pass to WhisperKit for local transcription
-        Task {
-            guard let inputFmt = hardwareInputFormat,
-                let targetFmt = AVAudioFormat(
-                    commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1,
-                    interleaved: false),
-                let converter = AVAudioConverter(from: inputFmt, to: targetFmt)
-            else {
-                print("[LocalAI]: Failed to create AVAudioConverter.")
-                return
-            }
-
-            // Create input buffer matching hardware format
-            let frameCapacity = AVAudioFrameCount(rawSamples.count)
-            guard
-                let inputBuffer = AVAudioPCMBuffer(
-                    pcmFormat: inputFmt, frameCapacity: frameCapacity)
-            else { return }
-            inputBuffer.frameLength = frameCapacity
-
-            if let channelData = inputBuffer.floatChannelData {
-                // If input format is stereo, populate both channels to prevent garbage during mixdown
-                for channel in 0..<Int(inputFmt.channelCount) {
-                    rawSamples.withUnsafeBufferPointer { ptr in
-                        channelData[channel].assign(from: ptr.baseAddress!, count: rawSamples.count)
-                    }
-                }
-            }
-
-            // Convert to 16kHz Mono
-            let outCapacity = AVAudioFrameCount(
-                ceil(Double(rawSamples.count) * 16000.0 / inputFmt.sampleRate))
-            guard
-                let outputBuffer = AVAudioPCMBuffer(
-                    pcmFormat: targetFmt, frameCapacity: outCapacity)
-            else { return }
-
-            var error: NSError?
-            var providedData = false
-            let inputBlock: AVAudioConverterInputBlock = { _, outStatus in
-                if providedData {
-                    outStatus.pointee = .noDataNow
-                    return nil
-                }
-                providedData = true
-                outStatus.pointee = .haveData
-                return inputBuffer
-            }
-
-            converter.convert(to: outputBuffer, error: &error, withInputFrom: inputBlock)
-
-            if let error = error {
-                print("[LocalAI]: AVAudioConverter Error at end: \(error)")
-                return
-            }
-
-            guard let outChannelData = outputBuffer.floatChannelData else { return }
-            let outLength = Int(outputBuffer.frameLength)
-            let whisperSamples = Array(
-                UnsafeBufferPointer(start: outChannelData[0], count: outLength))
-
-            await whisperManager.transcribe(samples: whisperSamples)
-        }
-    }
-}
-
-// MARK: - LocalWhisperManagerDelegate
-
-extension LocalLLMManager: LocalWhisperManagerDelegate {
-    func whisperManager(didTranscribeText text: String) {
-        // Feed the localized transcription directly to the Local LLM
-        handleUserInput(text)
-    }
-
-    func whisperManager(didFailWithError error: Error) {
-        Task { @MainActor in
-            state.setError("Whisper Error: \(error.localizedDescription)")
         }
     }
 }

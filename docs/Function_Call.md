@@ -75,8 +75,8 @@ Searches Apple Music for a song, artist, album, or playlist and opens the result
 
 **Trigger phrases:**
 - *"Play some lo-fi hip hop"*
-- *"Put on Taylor Swift"*
-- *"Play the Blade Runner 2049 soundtrack"*
+- *"Put on The Beatles"*
+- *"Play the song Never Give up on Your Dreams from Two Steps from Hell"*
 
 ```swift
 { "query": "lo-fi hip hop" }

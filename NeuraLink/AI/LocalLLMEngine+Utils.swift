@@ -61,6 +61,28 @@ extension LocalLLMEngine {
         }
     }
 
+    // MARK: - Chunk loading with timeout
+
+    /// Wraps `MLModel.load` with a 90-second deadline. MLModel.load hangs indefinitely
+    /// on a partially-downloaded (corrupt) .mlmodelc bundle — the timeout surfaces that
+    /// as a recoverable error instead of freezing the load sequence.
+    internal func loadWithTimeout(
+        url: URL, configuration: MLModelConfiguration, label: String
+    ) async throws -> MLModel {
+        try await withThrowingTaskGroup(of: MLModel.self) { group in
+            group.addTask {
+                try await MLModel.load(contentsOf: url, configuration: configuration)
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: 90_000_000_000)
+                throw LLMError.loadTimeout(label)
+            }
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
+        }
+    }
+
     // MARK: - Helpers
 
     internal func tokenize(text: String) -> [Int32] {
