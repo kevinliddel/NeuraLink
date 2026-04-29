@@ -2,9 +2,9 @@ name: iOS CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, improv/npu ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, improv/npu ]
 
 jobs:
   lint:
@@ -63,14 +63,8 @@ jobs:
           mkdir -p build-ios-sim/framework/llama.framework/Headers
           mkdir -p build-ios-sim/framework/llama.framework/Modules
           
-          cp include/llama.h build-ios-sim/framework/llama.framework/Headers/
-          cp ggml/include/ggml.h build-ios-sim/framework/llama.framework/Headers/
-          cp ggml/include/ggml-alloc.h build-ios-sim/framework/llama.framework/Headers/
-          cp ggml/include/ggml-backend.h build-ios-sim/framework/llama.framework/Headers/
-          cp ggml/include/ggml-metal.h build-ios-sim/framework/llama.framework/Headers/
-          cp ggml/include/ggml-cpu.h build-ios-sim/framework/llama.framework/Headers/
-          cp ggml/include/ggml-blas.h build-ios-sim/framework/llama.framework/Headers/
-          cp ggml/include/gguf.h build-ios-sim/framework/llama.framework/Headers/
+          cp include/*.h build-ios-sim/framework/llama.framework/Headers/
+          cp ggml/include/*.h build-ios-sim/framework/llama.framework/Headers/
           
           cat > build-ios-sim/framework/llama.framework/Modules/module.modulemap << EOF
           framework module llama {
