@@ -25,8 +25,8 @@ graph TD
         %% Model Selection
         Manager --> Selector{"Engine Selector"}
         
-        Selector --> C1["iOS 18+ / 6GB+ RAM"] --> Qwen["StatefulQwenEngine\nQwen-2.5-1.5B"]
-        Selector --> C2["iOS 17 / 4GB RAM"] --> Llama["LocalLLMEngine\nLlama-3.2-1B"]
+        Selector --> C1["6GB+ RAM"] --> Qwen["GGUFQwenEngine\nQwen-2.5-1.5B (GGUF)"]
+        Selector --> C2["4GB RAM"] --> Llama["GGUFLlamaEngine\nLlama-3.2-1B (GGUF)"]
         
         %% State loop
         Manager --> D10["State & Prompt"] --> UI["RealtimeChatState"]
@@ -62,25 +62,29 @@ graph TD
 1. **Voice Detection**: The `SileroVADProcessor` listens to the microphone. When speech ends, it packages the audio into a WAV buffer.
 2. **Speech-to-Text**: The WAV buffer is passed to `LocalWhisperManager`, which uses **WhisperKit** to run transcription directly on the NPU, returning text almost instantly.
 3. **Engine Orchestration**: The `LocalLLMManager` selects the inference engine:
-   - **`StatefulQwenEngine`**: Utilizes new iOS 18 stateful MLX/Core ML features for high-performance inference of the Qwen-2.5-1.5B model.
-   - **`LocalLLMEngine`**: A memory-optimized engine for Llama-3.2-1B, split into 6 chunks to stay within the ANE's memory limits on older devices.
-4. **Local LLM Inference**: Transcribed text is formatted using model-specific chat templates and fed into the selected engine. Both engines utilize `MLState` (iOS 17+) to manage KV-caches efficiently on-device.
+   - **`GGUFQwenEngine`**: Utilizes `llama.cpp` for high-performance GGUF inference of the Qwen-2.5-1.5B model, accelerated by the Metal GPU and NPU.
+   - **`GGUFLlamaEngine`**: A memory-optimized GGUF engine for Llama-3.2-1B, utilizing Metal acceleration for stable performance on all devices.
+4. **Local LLM Inference**: Transcribed text is formatted and fed into the selected engine. Both engines utilize the `llama.cpp` backend for efficient token generation.
 5. **Text-to-Speech & Lip-Sync**: As tokens stream out, `LocalLLMManager` chunks them into sentences and synthesizes speech using `AVSpeechSynthesizer`. The generated audio buffers are routed through `AVAudioEngine` to extract amplitude curves, ensuring the 3D VRM model's lips synchronize perfectly with the offline voice.
+
+> [⚠️NOTE]
+>
+> NeuraLink recently migrated its local AI pipeline from a CoreML-based architecture to a unified `GGUF` backend using `llama.cpp`. This resolved memory crashes and improved compatibility across iOS 17+. For a detailed technical breakdown of this migration, see the [NPU Migration Guide](npu_migration.md).
 
 ---
 
 ## Supported Local SLMs
 
-| Model | Parameters | Quantization | Min. iOS | Min. RAM | Notes |
+| Model | Parameters | Format | Min. iOS | Min. RAM | Notes |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Llama-3.2-1B** | 1.2B | 4-bit | iOS 17.0 | 4 GB | Multi-chunk, CPU-optimized for stability. |
-| **Qwen-2.5-1.5B** | 1.5B | 4-bit | iOS 18.0 | 6 GB | Stateful, higher reasoning capabilities. |
+| **Llama-3.2-1B** | 1.2B | GGUF | iOS 17.0 | 4 GB | Memory efficient, Metal-accelerated. |
+| **Qwen-2.5-1.5B** | 1.5B | GGUF | iOS 17.0 | 6 GB | High-performance, better reasoning. |
 
 ### Model Downloader Architecture
-To ensure a small initial binary size, models are downloaded on-demand from Hugging Face via the `LocalModelDownloadManager`. Each model has a dedicated downloader type (`LlamaModelDownloader`, `QwenModelDownloader`) that handles:
+To ensure a small initial binary size, models are downloaded on-demand from Hugging Face via the `LocalModelDownloadManager`. Each model has a dedicated downloader type (`GGUFLlamaDownloader`, `GGUFQwenDownloader`) that handles:
 - Snapshot acquisition via `HubApi`.
-- Bundle verification and layout normalization.
-- Path resolution via model-specific `Access` helpers.
+- Single-file verification and layout normalization.
+- Path resolution via model-specific `GGUF...ModelAccess` helpers.
 
 ---
 

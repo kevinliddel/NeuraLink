@@ -52,14 +52,14 @@ final class LocalModelDownloadManager: @unchecked Sendable {
 
         var repoID: String {
             switch self {
-            case .qwen2b: return QwenModelAccess.repoID
-            case .llama1b: return LlamaModelAccess.repoID
+            case .qwen2b: return GGUFQwenModelAccess.repoID
+            case .llama1b: return GGUFModelAccess.repoID
             }
         }
 
         var estimatedSizeGB: Double {
             switch self {
-            case .qwen2b: return 2.7
+            case .qwen2b: return 1.1
             case .llama1b: return 0.8
             }
         }
@@ -142,8 +142,8 @@ final class LocalModelDownloadManager: @unchecked Sendable {
         activeTask?.cancel()
         activeTask = nil
         switch selectedConfig {
-        case .qwen2b: QwenModelAccess.clearCache()
-        case .llama1b: LlamaModelAccess.clearCache()
+        case .qwen2b: GGUFQwenModelAccess.clearCache()
+        case .llama1b: GGUFModelAccess.clearCache()
         }
         state = .notDownloaded
     }
@@ -157,8 +157,8 @@ final class LocalModelDownloadManager: @unchecked Sendable {
 
     private func isDownloaded() -> Bool {
         switch selectedConfig {
-        case .qwen2b: return QwenModelAccess.isDownloaded
-        case .llama1b: return LlamaModelAccess.isDownloaded
+        case .qwen2b: return GGUFQwenModelAccess.isDownloaded
+        case .llama1b: return GGUFModelAccess.isDownloaded
         }
     }
 
@@ -175,14 +175,14 @@ final class LocalModelDownloadManager: @unchecked Sendable {
 
             switch config {
             case .qwen2b:
-                try await QwenModelDownloader.download(api: api) { [weak self] progress in
+                try await GGUFQwenDownloader.download(api: api) { [weak self] progress in
                     Task { @MainActor [weak self] in
                         guard case .downloading = self?.state else { return }
                         self?.state = .downloading(progress: progress)
                     }
                 }
             case .llama1b:
-                try await LlamaModelDownloader.download(api: api) { [weak self] progress in
+                try await GGUFLlamaDownloader.download(api: api) { [weak self] progress in
                     Task { @MainActor [weak self] in
                         guard case .downloading = self?.state else { return }
                         self?.state = .downloading(progress: progress)
