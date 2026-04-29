@@ -55,6 +55,7 @@ LlamaBridgeHandle* llama_bridge_create(
     // ── Context creation ────────────────────────────────────────────────────
     llama_context_params cp = llama_context_default_params();
     cp.n_ctx        = static_cast<uint32_t>(n_ctx);
+    cp.n_batch      = static_cast<uint32_t>(n_ctx);
     cp.n_threads    = static_cast<uint32_t>(n_threads);
 
     llama_context* ctx = llama_new_context_with_model(model, cp);

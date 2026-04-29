@@ -210,19 +210,16 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         let mgr = LocalModelDownloadManager.shared
         let useQwen = mgr.isAvailable && mgr.selectedConfig == .qwen2b
 
+        let languageGuidance = "IMPORTANT: You MUST reply in Japanese (using Kanji, Hiragana, and Katakana). NEVER use Romaji or English letters for Japanese words. This is critical for the voice engine to work."
+        
         if useQwen {
             // Qwen instruct template
-            prompt = "<|im_start|>system\n\(persona.instructions)<|im_end|>\n<|im_start|>user\n\(text)<|im_end|>\n<|im_start|>assistant\n"
+            prompt = "<|im_start|>system\n\(persona.instructions)\n\(languageGuidance)<|im_end|>\n<|im_start|>user\n\(text)<|im_end|>\n<|im_start|>assistant\n"
             maxTokens = 128
         } else {
-            // Llama-3 on CPU: every prefill token costs ~11 s, so keep the prompt as
-            // short as possible. 30-char system tag ≈ 6 tokens; 40-char user ≈ 8 tokens;
-            // total prompt ≈ 20 tokens → prefill ≈ 220 s instead of 427 s.
-            let brief = String(persona.instructions.prefix(30))
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            let shortText = String(text.prefix(40))
-            prompt = "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n\(brief)<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n\(shortText)<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
-            maxTokens = 16
+            // Llama-3 on CPU
+            prompt = "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n\(persona.instructions)\n\(languageGuidance)<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n\(text)<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
+            maxTokens = 64
         }
 
         Task {
