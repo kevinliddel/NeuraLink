@@ -43,10 +43,10 @@ extension VoiceVoxSpeaker {
             return Mapping(filenameID: 8, internalStyleID: 23)
         case 9:     // Ritsu
             return Mapping(filenameID: 9, internalStyleID: 9)
-        case 14:    // Himari
-            return Mapping(filenameID: 14, internalStyleID: 14)
-        case 20:    // Mochiko
-            return Mapping(filenameID: 20, internalStyleID: 20)
+        case 14, 67: // Himari/Marron
+            return Mapping(filenameID: 14, internalStyleID: 67)
+        case 20, 102: // Mochiko/Yurei
+            return Mapping(filenameID: 20, internalStyleID: 102)
         default:
             return Mapping(filenameID: incomingID, internalStyleID: incomingID)
         }

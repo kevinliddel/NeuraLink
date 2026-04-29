@@ -26,6 +26,9 @@ final class VoiceVoxEngine: NSObject, @unchecked Sendable, TTSEngineProtocol {
     private var onnxRuntime: OpaquePointer?
     private var openJtalk: OpaquePointer?
     
+    // Concurrency control to prevent freezing
+    private var isProcessing = false
+    
     // Track loaded model IDs and their handles to prevent data invalidation
     private var loadedModelIDs = Set<String>()
     private var modelHandles = [String: OpaquePointer]()
@@ -115,6 +118,15 @@ final class VoiceVoxEngine: NSObject, @unchecked Sendable, TTSEngineProtocol {
 
     func synthesize(text: String, speakerID: Int) async throws -> Data {
         guard isReady else { throw TTSError.notInitialized }
+        
+        // Prevent concurrent requests from freezing the engine
+        guard !isProcessing else {
+            print("[VoiceVox] Engine is busy, ignoring request.")
+            throw TTSError.synthesisFailed(reason: "Engine busy")
+        }
+        
+        isProcessing = true
+        defer { isProcessing = false }
         
         // 1. Map Style ID to Character ID for model loading and get actual internal ID
         let mapping = VoiceVoxSpeaker.map(speakerID)
