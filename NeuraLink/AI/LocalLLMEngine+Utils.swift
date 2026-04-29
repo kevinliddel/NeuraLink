@@ -20,9 +20,15 @@ extension LocalLLMEngine {
             let outputs = chunk.modelDescription.outputDescriptionsByName
             print("[LlamaEngine] chunk\(i+1) inputs: \(inputs.keys.sorted())")
             print("[LlamaEngine] chunk\(i+1) outputs: \(outputs.keys.sorted())")
-            if #available(iOS 17.0, *) {
-                let states = chunk.modelDescription.stateDescriptionsByName
-                print("[LlamaEngine] chunk\(i+1) states: \(states.keys.sorted())")
+
+            // Log shapes for every cache tensor so we can verify cache-processor sizing.
+            for (name, desc) in inputs where name.contains("cache") {
+                let shape = desc.multiArrayConstraint?.shape ?? []
+                print("[LlamaEngine] chunk\(i+1) input  '\(name)' shape: \(shape)")
+            }
+            for (name, desc) in outputs where name.contains("cache") {
+                let shape = desc.multiArrayConstraint?.shape ?? []
+                print("[LlamaEngine] chunk\(i+1) output '\(name)' shape: \(shape)")
             }
 
             if i == 0 {
@@ -40,12 +46,18 @@ extension LocalLLMEngine {
         }
 
         if let proc = cacheProcessor {
-            print(
-                "[LlamaEngine] cache-processor inputs: \(proc.modelDescription.inputDescriptionsByName.keys.sorted())"
-            )
-            print(
-                "[LlamaEngine] cache-processor outputs: \(proc.modelDescription.outputDescriptionsByName.keys.sorted())"
-            )
+            let cpInputs = proc.modelDescription.inputDescriptionsByName
+            let cpOutputs = proc.modelDescription.outputDescriptionsByName
+            print("[LlamaEngine] cache-processor inputs:  \(cpInputs.keys.sorted())")
+            print("[LlamaEngine] cache-processor outputs: \(cpOutputs.keys.sorted())")
+            for (name, desc) in cpInputs {
+                let shape = desc.multiArrayConstraint?.shape ?? []
+                print("[LlamaEngine] cache-processor input  '\(name)' shape: \(shape)")
+            }
+            for (name, desc) in cpOutputs {
+                let shape = desc.multiArrayConstraint?.shape ?? []
+                print("[LlamaEngine] cache-processor output '\(name)' shape: \(shape)")
+            }
         }
 
         if let logit = logitProcessor {
@@ -61,6 +73,28 @@ extension LocalLLMEngine {
         }
     }
 
+    // MARK: - Chunk loading with timeout
+
+    /// Wraps `MLModel.load` with a 90-second deadline. MLModel.load hangs indefinitely
+    /// on a partially-downloaded (corrupt) .mlmodelc bundle — the timeout surfaces that
+    /// as a recoverable error instead of freezing the load sequence.
+    internal func loadWithTimeout(
+        url: URL, configuration: MLModelConfiguration, label: String
+    ) async throws -> MLModel {
+        try await withThrowingTaskGroup(of: MLModel.self) { group in
+            group.addTask {
+                try await MLModel.load(contentsOf: url, configuration: configuration)
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: 90_000_000_000)
+                throw LLMError.loadTimeout(label)
+            }
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
+        }
+    }
+
     // MARK: - Helpers
 
     internal func tokenize(text: String) -> [Int32] {
@@ -72,16 +106,60 @@ extension LocalLLMEngine {
         tokenizer?.decode(tokens: [Int(tokenID)], skipSpecialTokens: true) ?? ""
     }
 
-    internal func argmax(logits: MLMultiArray) -> Int32 {
-        let ptr = logits.dataPointer.bindMemory(to: Float.self, capacity: logits.count)
-        var maxVal: Float = -.greatestFiniteMagnitude
-        var maxIdx: Int32 = 0
-        for i in 0..<logits.count {
-            if ptr[i] > maxVal {
-                maxVal = ptr[i]
-                maxIdx = Int32(i)
-            }
+    internal func scalarToken(from arr: MLMultiArray) -> Int32? {
+        guard arr.count == 1 else { return nil }
+        switch arr.dataType {
+        case .int32:
+            return arr.dataPointer.bindMemory(to: Int32.self, capacity: 1).pointee
+        case .float16:
+            let value = arr.dataPointer.bindMemory(to: Float16.self, capacity: 1).pointee
+            return Int32(value.rounded())
+        case .float32:
+            let value = arr.dataPointer.bindMemory(to: Float.self, capacity: 1).pointee
+            return Int32(value.rounded())
+        case .double:
+            let value = arr.dataPointer.bindMemory(to: Double.self, capacity: 1).pointee
+            return Int32(value.rounded())
+        default:
+            return nil
         }
+    }
+
+    internal func argmax(logits: MLMultiArray) -> Int32 {
+        var maxIdx: Int32 = 0
+
+        switch logits.dataType {
+        case .float16:
+            let ptr = logits.dataPointer.bindMemory(to: Float16.self, capacity: logits.count)
+            var maxVal = Float16(-Float.greatestFiniteMagnitude)
+            for i in 0..<logits.count {
+                if ptr[i] > maxVal {
+                    maxVal = ptr[i]
+                    maxIdx = Int32(i)
+                }
+            }
+        case .float32:
+            let ptr = logits.dataPointer.bindMemory(to: Float.self, capacity: logits.count)
+            var maxVal: Float = -.greatestFiniteMagnitude
+            for i in 0..<logits.count {
+                if ptr[i] > maxVal {
+                    maxVal = ptr[i]
+                    maxIdx = Int32(i)
+                }
+            }
+        case .double:
+            let ptr = logits.dataPointer.bindMemory(to: Double.self, capacity: logits.count)
+            var maxVal: Double = -.greatestFiniteMagnitude
+            for i in 0..<logits.count {
+                if ptr[i] > maxVal {
+                    maxVal = ptr[i]
+                    maxIdx = Int32(i)
+                }
+            }
+        default:
+            break
+        }
+
         return maxIdx
     }
 }

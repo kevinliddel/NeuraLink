@@ -70,7 +70,9 @@ struct VRMLookBackController {
 enum VRMLookBackAnimationBuilder {
     static let duration: Float = 2.2
 
-    /// Returns a one-shot clip where the VRM twists its spine and head to peer over the shoulder.
+    /// Returns a one-shot clip containing the PEAK rotations for each look-back bone.
+    /// Rotations are constant (always at peak) — the blend weight from `envelopeValue(_:)`
+    /// controls how much they're applied via slerp in the calling site.
     ///
     /// Rotation budget (all local-Y, cascading): hips 15 + spine 28 + chest 23 + upperChest 18
     /// + neck 9 + head 35 = 128° total world rotation — a natural over-the-shoulder glance.
@@ -79,31 +81,28 @@ enum VRMLookBackAnimationBuilder {
         var clip = AnimationClip(duration: duration)
         let sign = side.ySign
 
-        // Pure Y-axis bones (hips through neck)
+        // Pure Y-axis bones (hips through neck) — constant peak rotation, no envelope baked in
         let yOnlyBones: [(VRMHumanoidBone, Float)] = [
             (.hips, 15.0),
             (.spine, 28.0),
             (.chest, 23.0),
-            (.upperChest, 18.0),  // skipped automatically if bone is not mapped
+            (.upperChest, 18.0),
             (.neck, 9.0)
         ]
 
         for (bone, degrees) in yOnlyBones {
             let rad = degrees * Float.pi / 180.0
-            clip.addEulerTrack(bone: bone, axis: .y) { time in
-                sign * rad * VRMLookBackAnimationBuilder.envelope(time)
-            }
+            clip.addEulerTrack(bone: bone, axis: .y) { _ in sign * rad }
         }
 
-        // Head: Y twist + slight X chin-up (−3°), combined into one sampler so both apply.
+        // Head: Y twist + slight X chin-up (−3°)
         let headYRad: Float = 35.0 * .pi / 180.0
         let headXRad: Float = -3.0 * .pi / 180.0
         let headTrack = JointTrack(
             bone: .head,
-            rotationSampler: { time in
-                let e = VRMLookBackAnimationBuilder.envelope(time)
-                let qY = simd_quatf(angle: sign * headYRad * e, axis: SIMD3<Float>(0, 1, 0))
-                let qX = simd_quatf(angle: headXRad * e, axis: SIMD3<Float>(1, 0, 0))
+            rotationSampler: { _ in
+                let qY = simd_quatf(angle: sign * headYRad, axis: SIMD3<Float>(0, 1, 0))
+                let qX = simd_quatf(angle: headXRad, axis: SIMD3<Float>(1, 0, 0))
                 return simd_mul(qY, qX)
             }
         )
@@ -112,16 +111,18 @@ enum VRMLookBackAnimationBuilder {
         return clip
     }
 
-    // Smooth 0 → 1 → 1 → 0 envelope:
-    //   0 – 20 %  ease-in
-    //   20 – 65 % hold
-    //   65 – 100% ease-out (longer hold at peak for a natural glance)
-    private static func envelope(_ time: Float) -> Float {
+    /// Blend weight for the look-back gesture: 0 → 1 → 1 → 0 over the clip duration.
+    ///   0 – 20 %  ease-in
+    ///   20 – 65 % hold
+    ///   65 – 100% ease-out
+    static func envelopeValue(_ time: Float) -> Float {
         let n = time / duration
         if n < 0.20 { return smoothstep(n / 0.20) }
         if n < 0.65 { return 1.0 }
         return 1.0 - smoothstep((n - 0.65) / 0.35)
     }
+
+    private static func envelope(_ time: Float) -> Float { envelopeValue(time) }
 
     private static func smoothstep(_ x: Float) -> Float {
         let t = max(0.0, min(1.0, x))

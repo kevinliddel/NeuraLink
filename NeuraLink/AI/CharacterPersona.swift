@@ -8,13 +8,15 @@
 import Foundation
 
 /// Encapsulates the AI persona instructions and voice model for a character.
-struct CharacterPersona {
-    let instructions: String
-    let voice: String
+struct CharacterPersona: Codable {
+    var name: String
+    var instructions: String
+    var voice: String
 
     // MARK: - Character Definitions
 
     static let ekaterina = CharacterPersona(
+        name: "Ekaterina",
         instructions: """
         ANIME CHARACTER VIBE:
             Tone: Very gentle, soothing, and warm. The classic "Onee-san" (Big Sister) archetype. \
@@ -41,6 +43,7 @@ struct CharacterPersona {
     )
 
     static let dedicatus = CharacterPersona(
+        name: "Dedicatus",
         instructions: """
         ANIME CHARACTER VIBE:
             Tone: Sharp, condescending, but with a hidden sweetness that rarely surfaces. Classic Tsundere Queen.
@@ -71,6 +74,7 @@ struct CharacterPersona {
     )
 
     static let fallback = CharacterPersona(
+        name: "AI Assistant",
         instructions: "You are a helpful AI assistant. Respond briefly and concisely.",
         voice: "alloy"
     )
@@ -78,8 +82,13 @@ struct CharacterPersona {
     // MARK: - Lookup
 
     /// Returns the persona matching the given VRM model file name (case-insensitive).
-    static func forCharacter(named name: String) -> CharacterPersona {
-        switch name.lowercased() {
+    /// Now checks PersonaStore for user-defined overrides.
+    static func forCharacter(named modelID: String) -> CharacterPersona {
+        if let saved = PersonaStore.shared.getPersona(for: modelID) {
+            return saved
+        }
+
+        switch modelID.lowercased() {
         case "ekaterina": return .ekaterina
         case "sonya":     return .dedicatus
         default:          return .fallback

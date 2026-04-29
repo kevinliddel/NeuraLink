@@ -62,6 +62,7 @@ final class AITests: XCTestCase {
 
     // MARK: - RealtimeChatState Tests
 
+    @MainActor
     func testChatStateTransitions() {
         let state = RealtimeChatState.shared
 
@@ -95,6 +96,7 @@ final class AITests: XCTestCase {
 
     // MARK: - Local LLM Engine Tests
 
+    @MainActor
     func testLocalLLMEngineInitialization() async {
         let engine = LocalLLMEngine.shared
 

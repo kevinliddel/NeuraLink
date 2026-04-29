@@ -77,9 +77,18 @@ enum LlamaModelAccess {
     }
 
     static func isComplete(at dir: URL) -> Bool {
-        requiredNames.allSatisfy {
-            FileManager.default.fileExists(atPath: dir.appendingPathComponent($0).path)
-        }
+        requiredNames.allSatisfy { isValidBundle(at: dir.appendingPathComponent($0)) }
+    }
+
+    /// Verifies a `.mlmodelc` bundle is non-empty and contains at least one model file.
+    /// A missing or partially-downloaded bundle is an empty directory — MLModel.load
+    /// will hang indefinitely on it rather than throwing an error.
+    private static func isValidBundle(at url: URL) -> Bool {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: url.path) else { return false }
+        let sentinels = ["model.espresso.net", "model.espresso.shape",
+                         "coremldata.bin", "metadata.json"]
+        return sentinels.contains { fm.fileExists(atPath: url.appendingPathComponent($0).path) }
     }
 
     private static func scanHubCache() -> URL? {

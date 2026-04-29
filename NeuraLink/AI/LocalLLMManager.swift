@@ -40,20 +40,25 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     private let synthesizer = AVSpeechSynthesizer()
 
     // State
-    private let state = RealtimeChatState.shared
-    private var llmEngine: any LLMEngineProtocol = LocalLLMManager.makeEngine()
+    let state = RealtimeChatState.shared
+    var llmEngine: any LLMEngineProtocol = LocalLLMManager.makeEngine()
 
-    private let whisperManager = LocalWhisperManager.shared
+    let whisperManager = LocalWhisperManager.shared
     private let sileroVAD = SileroVADProcessor()
 
     // Accumulate text for TTS chunking (e.g., speak sentence by sentence)
-    private var ttsBuffer = ""
+    var ttsBuffer = ""
 
     // Audio Capture State
-    private var hardwareInputFormat: AVAudioFormat?
-    private var recordingBuffer = [Float]()
-    private var isRecordingVoice = false
-    private let recordingLock = NSLock()
+    var hardwareInputFormat: AVAudioFormat?
+    var recordingBuffer = [Float]()
+    var isRecordingVoice = false
+    let recordingLock = NSLock()
+
+    // Lightweight turn-level latency metrics (user text → token/audio)
+    private var turnStartNs: UInt64?
+    private var firstTokenLatencyLogged = false
+    private var firstAudioLatencyLogged = false
 
     override init() {
         super.init()
@@ -193,6 +198,10 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
 
     /// Receives transcribed text from the user, updates UI, and triggers the local LLM.
     func handleUserInput(_ text: String) {
+        turnStartNs = DispatchTime.now().uptimeNanoseconds
+        firstTokenLatencyLogged = false
+        firstAudioLatencyLogged = false
+
         Task { @MainActor in
             state.userTranscript = text
             state.aiTranscript = ""
@@ -202,14 +211,29 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         let persona = CharacterPersona.forCharacter(named: state.selectedCharacterName)
         let prompt: String
         let maxTokens: Int
+        // Mirror makeEngine() logic: Qwen only when iOS 18+ and qwen2b is the selected
+        // downloaded model. Everything else uses Llama-3.
+        let mgr = LocalModelDownloadManager.shared
+        let useQwen: Bool
         if #available(iOS 18.0, *) {
-            // Qwen3 instruct chat template
+            useQwen = mgr.isAvailable && mgr.selectedConfig == .qwen2b
+        } else {
+            useQwen = false
+        }
+
+        if useQwen {
+            // Qwen3 instruct template (StatefulQwenEngine on iOS 18+)
             prompt = "<|im_start|>system\n\(persona.instructions)<|im_end|>\n<|im_start|>user\n\(text)<|im_end|>\n<|im_start|>assistant\n"
             maxTokens = 128
         } else {
-            // Llama-3 instruct chat template (iOS 17 fallback)
-            prompt = "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n\(persona.instructions)<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n\(text)<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
-            maxTokens = 30
+            // Llama-3 on CPU: every prefill token costs ~11 s, so keep the prompt as
+            // short as possible. 30-char system tag ≈ 6 tokens; 40-char user ≈ 8 tokens;
+            // total prompt ≈ 20 tokens → prefill ≈ 220 s instead of 427 s.
+            let brief = String(persona.instructions.prefix(30))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let shortText = String(text.prefix(40))
+            prompt = "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n\(brief)<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n\(shortText)<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
+            maxTokens = 16
         }
 
         Task {
@@ -248,7 +272,23 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     // MARK: - Local TTS (AVSpeechSynthesizer + AVAudioEngine)
 
     private func speakChunk(_ text: String) {
-        let utterance = AVSpeechUtterance(string: text)
+        if !firstAudioLatencyLogged,
+            let start = turnStartNs,
+            !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            firstAudioLatencyLogged = true
+            let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000.0
+            print(
+                "[LocalLLM] First TTS chunk latency: \(String(format: "%.1f", elapsedMs)) ms"
+            )
+        }
+
+        // Don’t send non-speech noise to TTS (e.g. garbage tokens like "!!!!!").
+        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty,
+              clean.unicodeScalars.contains(where: { CharacterSet.letters.contains($0) || CharacterSet.decimalDigits.contains($0) })
+        else { return }
+
+        let utterance = AVSpeechUtterance(string: clean)
 
         // Select an appropriate voice based on Persona
         let persona = CharacterPersona.forCharacter(named: state.selectedCharacterName)
@@ -262,32 +302,38 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         synthesizer.write(utterance) { [weak self] buffer in
             guard let self = self, let pcmBuffer = buffer as? AVAudioPCMBuffer else { return }
 
-            // Prevent AVAudioBuffer crash on EOF
+            // Bail BEFORE any engine manipulation to avoid the zero-byte AVAudioBuffer crash.
             guard pcmBuffer.frameLength > 0 else { return }
 
-            // AVSpeechSynthesizer can change formats depending on the voice (22050Hz vs 24000Hz).
-            // Reconnect the node if the format differs from what we initialized.
-            let currentFormat = self.playerNode.outputFormat(forBus: 0)
-            if currentFormat != pcmBuffer.format {
-                let wasRunning = self.engine.isRunning
-                if wasRunning { self.engine.pause() }
+            // Engine reconnection must run on the main thread to prevent the
+            // "unsafeForcedSync called from Swift Concurrent context" deadlock.
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
 
-                self.engine.disconnectNodeInput(self.playerNode)
-                self.engine.connect(
-                    self.playerNode, to: self.engine.mainMixerNode, format: pcmBuffer.format)
+                // AVSpeechSynthesizer can change formats depending on the voice.
+                // Reconnect the node if the format differs from what we initialized.
+                let currentFormat = self.playerNode.outputFormat(forBus: 0)
+                if currentFormat != pcmBuffer.format {
+                    let wasRunning = self.engine.isRunning
+                    if wasRunning { self.engine.pause() }
 
-                if wasRunning { try? self.engine.start() }
+                    self.engine.disconnectNodeInput(self.playerNode)
+                    self.engine.connect(
+                        self.playerNode, to: self.engine.mainMixerNode, format: pcmBuffer.format)
+
+                    if wasRunning { try? self.engine.start() }
+                }
+
+                if !self.engine.isRunning {
+                    try? self.engine.start()
+                }
+
+                if !self.playerNode.isPlaying {
+                    self.playerNode.play()
+                }
+
+                self.playerNode.scheduleBuffer(pcmBuffer)
             }
-
-            if !self.engine.isRunning {
-                try? self.engine.start()
-            }
-
-            if !self.playerNode.isPlaying {
-                self.playerNode.play()
-            }
-
-            self.playerNode.scheduleBuffer(pcmBuffer)
         }
     }
 
@@ -337,6 +383,16 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
 
 extension LocalLLMManager: LocalLLMEngineDelegate {
     func localLLM(didGenerateToken token: String) {
+        if !firstTokenLatencyLogged,
+            let start = turnStartNs,
+            !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            firstTokenLatencyLogged = true
+            let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000.0
+            print(
+                "[LocalLLM] First token latency: \(String(format: "%.1f", elapsedMs)) ms"
+            )
+        }
+
         Task { @MainActor in
             if state.status == .thinking {
                 state.status = .speaking
@@ -347,7 +403,8 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
         // Buffer tokens. When we hit a punctuation mark, synthesize speech.
         ttsBuffer += token
         if token.contains(".") || token.contains("!") || token.contains("?")
-            || token.contains("。") || token.contains(",") || token.contains("\n") {
+            || token.contains("。") || token.contains(",") || token.contains("\n")
+            || (ttsBuffer.count >= 32 && ttsBuffer.contains(" ")) {
             let chunkToSpeak = ttsBuffer
             ttsBuffer = ""
             speakChunk(chunkToSpeak)
@@ -355,6 +412,11 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
     }
 
     func localLLM(didFinishGeneration fullText: String) {
+        if let start = turnStartNs {
+            let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000.0
+            print("[LocalLLM] Turn total latency: \(String(format: "%.1f", elapsedMs)) ms")
+        }
+
         // Flush any remaining text in the buffer
         if !ttsBuffer.trimmingCharacters(in: .whitespaces).isEmpty {
             speakChunk(ttsBuffer)
@@ -368,127 +430,6 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
     func localLLM(didFailWithError error: Error) {
         Task { @MainActor in
             state.setError(error.localizedDescription)
-        }
-    }
-}
-
-// MARK: - SileroVADDelegate
-
-extension LocalLLMManager: SileroVADDelegate {
-    func sileroVADDidDetectVoiceStart() {
-        Task { @MainActor in
-            if state.status == .ready {
-                state.status = .listening
-            }
-        }
-        recordingLock.lock()
-        isRecordingVoice = true
-        // Keep the pre-roll buffer intact so we don't lose the first word
-        recordingLock.unlock()
-    }
-
-    func sileroVADDidDetectVoiceEnd(wavData: Data?) {
-        Task { @MainActor in
-            if state.status == .listening {
-                state.status = .ready
-            }
-        }
-
-        recordingLock.lock()
-        isRecordingVoice = false
-        var rawSamples = recordingBuffer
-        recordingBuffer.removeAll(keepingCapacity: true)  // Clear buffer for next utterance
-        recordingLock.unlock()
-
-        // VAD requires ~1.8s of silence to trigger the voice end.
-        // We drop the last 1.5s of trailing silence to tightly bound the speech.
-        // This prevents short utterances from being diluted by silence and rejected by Whisper.
-        let sr = hardwareInputFormat?.sampleRate ?? 48000.0
-        let dropFrames = Int(sr * 1.5)
-        let minKeep = Int(sr * 0.5)  // Always keep at least 0.5s of audio
-        if rawSamples.count > dropFrames + minKeep {
-            rawSamples.removeLast(dropFrames)
-        }
-
-        guard !rawSamples.isEmpty else { return }
-
-        // Pass to WhisperKit for local transcription
-        Task {
-            guard let inputFmt = hardwareInputFormat,
-                let targetFmt = AVAudioFormat(
-                    commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1,
-                    interleaved: false),
-                let converter = AVAudioConverter(from: inputFmt, to: targetFmt)
-            else {
-                print("[LocalAI]: Failed to create AVAudioConverter.")
-                return
-            }
-
-            // Create input buffer matching hardware format
-            let frameCapacity = AVAudioFrameCount(rawSamples.count)
-            guard
-                let inputBuffer = AVAudioPCMBuffer(
-                    pcmFormat: inputFmt, frameCapacity: frameCapacity)
-            else { return }
-            inputBuffer.frameLength = frameCapacity
-
-            if let channelData = inputBuffer.floatChannelData {
-                // If input format is stereo, populate both channels to prevent garbage during mixdown
-                for channel in 0..<Int(inputFmt.channelCount) {
-                    rawSamples.withUnsafeBufferPointer { ptr in
-                        channelData[channel].assign(from: ptr.baseAddress!, count: rawSamples.count)
-                    }
-                }
-            }
-
-            // Convert to 16kHz Mono
-            let outCapacity = AVAudioFrameCount(
-                ceil(Double(rawSamples.count) * 16000.0 / inputFmt.sampleRate))
-            guard
-                let outputBuffer = AVAudioPCMBuffer(
-                    pcmFormat: targetFmt, frameCapacity: outCapacity)
-            else { return }
-
-            var error: NSError?
-            var providedData = false
-            let inputBlock: AVAudioConverterInputBlock = { _, outStatus in
-                if providedData {
-                    outStatus.pointee = .noDataNow
-                    return nil
-                }
-                providedData = true
-                outStatus.pointee = .haveData
-                return inputBuffer
-            }
-
-            converter.convert(to: outputBuffer, error: &error, withInputFrom: inputBlock)
-
-            if let error = error {
-                print("[LocalAI]: AVAudioConverter Error at end: \(error)")
-                return
-            }
-
-            guard let outChannelData = outputBuffer.floatChannelData else { return }
-            let outLength = Int(outputBuffer.frameLength)
-            let whisperSamples = Array(
-                UnsafeBufferPointer(start: outChannelData[0], count: outLength))
-
-            await whisperManager.transcribe(samples: whisperSamples)
-        }
-    }
-}
-
-// MARK: - LocalWhisperManagerDelegate
-
-extension LocalLLMManager: LocalWhisperManagerDelegate {
-    func whisperManager(didTranscribeText text: String) {
-        // Feed the localized transcription directly to the Local LLM
-        handleUserInput(text)
-    }
-
-    func whisperManager(didFailWithError error: Error) {
-        Task { @MainActor in
-            state.setError("Whisper Error: \(error.localizedDescription)")
         }
     }
 }

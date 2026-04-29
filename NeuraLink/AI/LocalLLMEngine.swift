@@ -27,9 +27,9 @@ final class LocalLLMEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
     internal var tokenizer: Tokenizer?
     internal var isGenerating = false
 
-    // One KV-cache state per body chunk (iOS 17+ stateful model).
-    @available(iOS 17.0, *)
-    internal var states: [MLState] = []
+    // NOTE: All 6 body chunks report states:[] — no MLState features exist.
+    // makeState() crashes when ANE falls back to CPU (engine becomes null).
+    // We use manual kvCaches exclusively; no MLState is needed.
 
     // Tensor names discovered at load time from each model's modelDescription.
     internal var chunk1TokenInputKey = "input_ids"
@@ -68,18 +68,27 @@ final class LocalLLMEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
                     pretrained: LlamaModelAccess.tokenizerID)
                 print("[LlamaEngine] Tokenizer ready.")
 
-                // CPU-only: avoids ENOMEM on 4 GB devices when Apple Neural Engine mmaps weight files.
-                let cfg = MLModelConfiguration()
-                cfg.computeUnits = .cpuOnly
+                // Memory constraint: iPhone 11 (4 GB) OOMs when body chunks are
+                // loaded with cpuAndGPU — the Metal weight copy doubles DRAM usage.
+                // ANE is blocked for chunks 2-5 by an H12 fp16 channel-alignment bug
+                // in the smpanaro model (8 ch × 2 B = 16 B, ANE needs 64 B).
+                // cpuOnly is the only safe config until the model is re-exported.
+                let cpuCfg = MLModelConfiguration()
+                cpuCfg.computeUnits = .cpuOnly
+
+                // Smaller models (processors) are safe to target ANE.
+                let aneCfg = MLModelConfiguration()
+                aneCfg.computeUnits = .cpuAndNeuralEngine
 
                 var chunks: [MLModel] = []
                 for i in 1...6 {
-                    await Task.yield()  // Give the system a breather between large chunk loads
+                    await Task.yield()  // Yield between chunks to let the OS breathe
                     guard let url = LlamaModelAccess.chunkURL(index: i) else {
                         throw LLMError.modelNotFound
                     }
-                    print("[LlamaEngine] Loading chunk\(i)…")
-                    let chunk = try await MLModel.load(contentsOf: url, configuration: cfg)
+                    print("[LlamaEngine] Loading chunk\(i) (CPU)…")
+                    let chunk = try await loadWithTimeout(
+                        url: url, configuration: cpuCfg, label: "chunk\(i)")
                     chunks.append(chunk)
                     print("[LlamaEngine] Chunk \(i) ready.")
                 }
@@ -88,24 +97,22 @@ final class LocalLLMEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
                 if let url = LlamaModelAccess.cacheProcessorURL() {
                     print("[LlamaEngine] Loading cache-processor…")
                     self.cacheProcessor = try? await MLModel.load(
-                        contentsOf: url, configuration: cfg)
-                    print(
-                        "[LlamaEngine] Cache-processor \(self.cacheProcessor != nil ? "ready" : "skipped")."
-                    )
+                        contentsOf: url, configuration: aneCfg)
+                    let cpStatus = self.cacheProcessor != nil ? "ready" : "skipped"
+                    print("[LlamaEngine] Cache-processor \(cpStatus).")
                 }
 
                 guard let logitURL = LlamaModelAccess.logitProcessorURL() else {
                     throw LLMError.modelNotFound
                 }
                 print("[LlamaEngine] Loading logit-processor…")
-                self.logitProcessor = try await MLModel.load(
-                    contentsOf: logitURL, configuration: cfg)
+                self.logitProcessor = try await loadWithTimeout(
+                    url: logitURL, configuration: aneCfg, label: "logit-processor")
                 print("[LlamaEngine] Logit-processor ready.")
 
-                if #available(iOS 17.0, *) {
-                    print("[LlamaEngine] Initializing states…")
-                    self.states = chunks.map { $0.makeState() }
-                }
+                // Stateful MLState API is intentionally not used:
+                // all chunks declare states:[] and makeState() crashes when
+                // the ANE compiler falls back to CPU (engine = null).
 
                 self.discoverTensorNames()
                 print("[LlamaEngine] Ready — \(chunks.count) body chunks loaded.")
@@ -118,6 +125,12 @@ final class LocalLLMEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
             try await task.value
         } catch {
             loadLock.withLock { loadTask = nil }  // Allow retry
+            // A timeout almost certainly means a corrupt/incomplete bundle.
+            // Clear the cached path so the next launch re-validates from disk.
+            if case LLMError.loadTimeout = error {
+                LlamaModelAccess.clearCache()
+                print("[LlamaEngine] Cleared snapshot cache after timeout — re-download required.")
+            }
             throw error
         }
     }

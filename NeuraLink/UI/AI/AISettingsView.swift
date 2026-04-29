@@ -10,6 +10,7 @@ import SwiftUI
 struct AISettingsView: View {
     @Bindable var settings = OpenAISettings.shared
     @State private var downloader = LocalModelDownloadManager.shared
+    @State private var personaStore = PersonaStore.shared
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -17,6 +18,7 @@ struct AISettingsView: View {
             Form {
                 openAISection
                 localSLMSection
+                personaSection
                 interactionSection
 
                 Section {
@@ -144,6 +146,51 @@ struct AISettingsView: View {
                     Text("Download failed: \(msg)")
                         .font(.caption)
                         .foregroundStyle(.red)
+                }
+            }
+        }
+    }
+
+    private var personaSection: some View {
+        _ = personaStore.lastUpdated // Observe changes
+        let modelID = RealtimeChatState.shared.selectedCharacterName
+        let persona = CharacterPersona.forCharacter(named: modelID)
+        let avatarImage: UIImage? = VRMModelRegistry.all
+            .first { $0.name.lowercased() == modelID.lowercased() }
+            .flatMap { entry -> UIImage? in
+                let pngURL = entry.url.deletingPathExtension().appendingPathExtension("png")
+                guard FileManager.default.fileExists(atPath: pngURL.path) else { return nil }
+                return UIImage(contentsOfFile: pngURL.path)
+            }
+        return Section("Character Persona") {
+            NavigationLink {
+                PersonaSettingsView(modelID: modelID)
+            } label: {
+                HStack(spacing: 12) {
+                    if let img = avatarImage {
+                        Image(uiImage: img)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 44, height: 44)
+                            .clipped()
+                            .clipShape(Circle())
+                            .overlay(Circle().stroke(Color.primary.opacity(0.15), lineWidth: 1))
+                            .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
+                    } else {
+                        Circle()
+                            .fill(Color.secondary.opacity(0.15))
+                            .frame(width: 44, height: 44)
+                            .overlay(Circle().stroke(Color.primary.opacity(0.15), lineWidth: 1))
+                            .overlay(Image(systemName: "person.fill").foregroundStyle(.secondary))
+                            .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(persona.name)
+                            .font(.headline)
+                        Text("Instructions & Voice")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
         }

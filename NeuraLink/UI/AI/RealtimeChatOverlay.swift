@@ -45,24 +45,35 @@ struct RealtimeChatOverlay: View {
 
     @ViewBuilder
     private var idleHint: some View {
+        let content = hintContent
+        hint(content.text, icon: content.icon, progress: content.progress)
+            .onTapGesture { content.action?() }
+    }
+
+    private var hintContent: (text: String, icon: String?, progress: Bool, action: (() -> Void)?) {
         let settings = OpenAISettings.shared
 
-        if case .error = aiState.status {
-            hint("Connection error", icon: "exclamationmark.circle")
-        } else if aiState.status == .preparing || aiState.status == .connecting {
-            hint(aiState.status.label, progress: true)
-        } else if settings.isLocalLLMEnabled && aiState.status == .ready {
-            hint("Apple Neural Engine Ready", icon: "apple.intelligence")
-        } else if settings.isEnabled && aiState.status == .ready {
-            hint("OpenAI Connected", icon: "antenna.radiowaves.left.and.right")
-        } else if !settings.hasValidKey && !settings.isLocalLLMEnabled {
-            hint("Tap to configure LLMs", icon: "key.fill")
-                .onTapGesture { aiState.showSettings = true }
-        } else if aiState.status == .ready {
-            hint("Start talking", icon: "waveform")
-        } else {
-            // Fallback for transition states
-            hint("Initializing...", progress: true)
+        switch aiState.status {
+        case .error:
+            return ("Connection error", "exclamationmark.circle", false, nil)
+
+        case .preparing, .connecting:
+            return (aiState.status.label, nil, true, nil)
+
+        case .ready:
+            if settings.isLocalLLMEnabled {
+                return ("Apple Neural Engine Ready", "apple.intelligence", false, nil)
+            }
+            if settings.isEnabled && settings.hasValidKey {
+                return ("Start talking", "waveform", false, nil)
+            }
+            if !settings.hasValidKey && !settings.isLocalLLMEnabled {
+                return ("Tap to configure LLMs", "key.fill", false, { aiState.showSettings = true })
+            }
+            return ("Start talking", "waveform", false, nil)
+
+        default:
+            return ("Initializing...", nil, true, nil)
         }
     }
 
