@@ -8,10 +8,13 @@
 //  Xcode Build Setting:
 //    SWIFT_OBJC_BRIDGING_HEADER = NeuraLink/Bridge/NeuraLink-Bridging-Header.h
 //
+//  Created by Dedicatus on 29/04/2026.
+//
 
 #ifndef NeuraLink_Bridging_Header_h
 #define NeuraLink_Bridging_Header_h
 
 #include "llama_bridge.h"
+#include "../Dependencies/VOICEVOX/voicevox_core.xcframework/ios-arm64/voicevox_core.framework/Headers/voicevox_core.h"
 
 #endif /* NeuraLink_Bridging_Header_h */

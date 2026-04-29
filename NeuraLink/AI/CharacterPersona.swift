@@ -11,7 +11,14 @@ import Foundation
 struct CharacterPersona: Codable {
     var name: String
     var instructions: String
-    var voice: String
+    var voice: String // Legacy / OpenAI voice name
+    var ttsProvider: TTSProvider = .openAI
+    var ttsSpeakerID: Int?
+
+    enum TTSProvider: String, Codable {
+        case openAI = "openai"
+        case voicevox = "voicevox"
+    }
 
     // MARK: - Character Definitions
 

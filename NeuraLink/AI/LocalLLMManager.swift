@@ -276,54 +276,80 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         guard !clean.isEmpty,
               clean.unicodeScalars.contains(where: { CharacterSet.letters.contains($0) || CharacterSet.decimalDigits.contains($0) })
         else { return }
-
-        let utterance = AVSpeechUtterance(string: clean)
-
-        // Select an appropriate voice based on Persona
+        
         let persona = CharacterPersona.forCharacter(named: state.selectedCharacterName)
+        let isLocalEnabled = OpenAISettings.shared.isLocalLLMEnabled
+        
+        if isLocalEnabled && VoiceVoxModelManager.shared.isDictionaryAvailable {
+            speakVoiceVoxChunk(clean, persona: persona)
+        } else {
+            speakAVSpeechChunk(clean, persona: persona)
+        }
+    }
+
+    private func speakVoiceVoxChunk(_ text: String, persona: CharacterPersona) {
+        Task {
+            let engine = VoiceVoxEngine.shared
+            do {
+                if !engine.isReady { try await engine.initialize() }
+                let speakerID = persona.ttsSpeakerID ?? 3
+                let data = try await engine.synthesize(text: text, speakerID: speakerID)
+                
+                // Convert WAV data to PCM Buffer for playback
+                guard let buffer = AudioDataConverter.pcmBuffer(from: data) else { return }
+                
+                DispatchQueue.main.async { [weak self] in
+                    self?.playBuffer(buffer)
+                }
+            } catch {
+                print("[VoiceVox] Synthesis failed: \(error)")
+                // Fallback to standard TTS if local synthesis fails
+                speakAVSpeechChunk(text, persona: persona)
+            }
+        }
+    }
+
+    private func speakAVSpeechChunk(_ text: String, persona: CharacterPersona) {
+        let utterance = AVSpeechUtterance(string: text)
         let language = persona.instructions.contains("Japanese") ? "ja-JP" : "en-US"
         utterance.voice = AVSpeechSynthesisVoice(language: language)
         utterance.rate = 0.5
         utterance.pitchMultiplier = 1.1
 
-        // Use the write() API to intercept audio buffers instead of playing directly.
-        // This allows us to route it through AVAudioEngine to measure amplitude for lip-sync.
         synthesizer.write(utterance) { [weak self] buffer in
             guard let self = self, let pcmBuffer = buffer as? AVAudioPCMBuffer else { return }
-
-            // Bail BEFORE any engine manipulation to avoid the zero-byte AVAudioBuffer crash.
             guard pcmBuffer.frameLength > 0 else { return }
 
-            // Engine reconnection must run on the main thread to prevent the
-            // "unsafeForcedSync called from Swift Concurrent context" deadlock.
             DispatchQueue.main.async { [weak self] in
-                guard let self = self else { return }
-
-                // AVSpeechSynthesizer can change formats depending on the voice.
-                // Reconnect the node if the format differs from what we initialized.
-                let currentFormat = self.playerNode.outputFormat(forBus: 0)
-                if currentFormat != pcmBuffer.format {
-                    let wasRunning = self.engine.isRunning
-                    if wasRunning { self.engine.pause() }
-
-                    self.engine.disconnectNodeInput(self.playerNode)
-                    self.engine.connect(
-                        self.playerNode, to: self.engine.mainMixerNode, format: pcmBuffer.format)
-
-                    if wasRunning { try? self.engine.start() }
-                }
-
-                if !self.engine.isRunning {
-                    try? self.engine.start()
-                }
-
-                if !self.playerNode.isPlaying {
-                    self.playerNode.play()
-                }
-
-                self.playerNode.scheduleBuffer(pcmBuffer)
+                self?.playBuffer(pcmBuffer)
             }
         }
+    }
+
+    private func playBuffer(_ pcmBuffer: AVAudioPCMBuffer) {
+        // AVSpeechSynthesizer and VOICEVOX can change formats.
+        // Reconnect the node if the format differs from what we initialized.
+        let currentFormat = self.playerNode.outputFormat(forBus: 0)
+        if currentFormat != pcmBuffer.format {
+            let wasRunning = self.engine.isRunning
+            if wasRunning { self.engine.pause() }
+
+            self.engine.disconnectNodeInput(self.playerNode)
+            self.engine.connect(
+                self.playerNode, to: self.engine.mainMixerNode, format: pcmBuffer.format)
+
+            if wasRunning { try? self.engine.start() }
+        }
+
+        if !self.engine.isRunning {
+            try? self.engine.start()
+        }
+
+        if !self.playerNode.isPlaying {
+            self.playerNode.play()
+        }
+
+        self.playerNode.scheduleBuffer(pcmBuffer)
     }
 
     private func reportAmplitude(_ buffer: AVAudioPCMBuffer) {

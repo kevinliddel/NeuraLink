@@ -70,7 +70,7 @@ NeuraLink features a high-performance 3D rain system that runs entirely on the G
 
 ---
 
-## 🤖 AI Function Calling
+## 🤖 Tool Calling
 
 The AI companion isn't just for chat—she can help you manage your day by interacting with native iOS applications.
 

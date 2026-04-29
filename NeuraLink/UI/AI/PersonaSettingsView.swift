@@ -77,12 +77,18 @@ struct PersonaSettingsView: View {
                     .font(.system(.footnote))
             }
 
-            Section("Voice") {
-                Picker("Voice", selection: $persona.voice) {
-                    ForEach(voices, id: \.self) { voice in
-                        Text(voice.capitalized).tag(voice)
+            let isLocalEnabled = OpenAISettings.shared.isLocalLLMEnabled
+
+            if !isLocalEnabled {
+                Section("OpenAI Voice") {
+                    Picker("Voice", selection: $persona.voice) {
+                        ForEach(voices, id: \.self) { voice in
+                            Text(voice.capitalized).tag(voice)
+                        }
                     }
                 }
+            } else {
+                voicevoxSection
             }
 
             voicePreviewSection
@@ -124,20 +130,61 @@ struct PersonaSettingsView: View {
         } header: {
             Text("Voice Preview")
         } footer: {
-            let settings = OpenAISettings.shared
-            if !settings.isEnabled || !settings.hasValidKey {
-                Label(
-                    "Add an OpenAI API key in settings to preview voices.",
-                    systemImage: "info.circle"
-                )
-                .font(.caption)
-                .foregroundStyle(.orange)
+            let isLocalEnabled = OpenAISettings.shared.isLocalLLMEnabled
+            if !isLocalEnabled {
+                let settings = OpenAISettings.shared
+                if !settings.isEnabled || !settings.hasValidKey {
+                    Label(
+                        "Add an OpenAI API key in settings to preview voices.",
+                        systemImage: "info.circle"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                } else {
+                    Text(
+                        "Tap the mic to hear your text spoken in \(persona.voice.capitalized)'s voice."
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
             } else {
-                Text(
-                    "Tap the mic to hear your text spoken in \(persona.voice.capitalized)'s voice."
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                let ready = VoiceVoxModelManager.shared.isDictionaryAvailable
+                if !ready {
+                    Label("VOICEVOX dictionary not found in bundle.", systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                } else {
+                    Text("Tap the mic to synthesize Japanese text locally via VOICEVOX.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var voicevoxSection: some View {
+        Section("VOICEVOX Character") {
+            let speakers = VoiceVoxSpeaker.allBuiltIn
+            
+            Picker("Character", selection: Binding(
+                get: { persona.ttsSpeakerID ?? 3 }, // Default to Zundamon
+                set: { persona.ttsSpeakerID = $0 }
+            )) {
+                ForEach(speakers) { speaker in
+                    Text(speaker.name).tag(speaker.id)
+                }
+            }
+
+            if let selectedSpeaker = speakers.first(where: { $0.id == (persona.ttsSpeakerID ?? 3) }) {
+                Picker("Style", selection: Binding(
+                    get: { persona.ttsSpeakerID ?? selectedSpeaker.styles[0].id },
+                    set: { persona.ttsSpeakerID = $0 }
+                )) {
+                    ForEach(selectedSpeaker.styles) { style in
+                        Text(style.name).tag(style.id)
+                    }
+                }
             }
         }
     }
@@ -145,10 +192,16 @@ struct PersonaSettingsView: View {
     @ViewBuilder
     private var previewButton: some View {
         let isActive = previewPlayer.isSpeaking
-        let canTap =
-            isActive
-            || (!previewText.trimmingCharacters(in: .whitespaces).isEmpty
-                && OpenAISettings.shared.isEnabled && OpenAISettings.shared.hasValidKey)
+        let isLocalEnabled = OpenAISettings.shared.isLocalLLMEnabled
+        let canTapOpenAI = !isLocalEnabled
+            && !previewText.trimmingCharacters(in: .whitespaces).isEmpty
+            && OpenAISettings.shared.isEnabled && OpenAISettings.shared.hasValidKey
+        
+        let canTapVoiceVox = isLocalEnabled
+            && !previewText.trimmingCharacters(in: .whitespaces).isEmpty
+            && VoiceVoxModelManager.shared.isDictionaryAvailable
+
+        let canTap = isActive || canTapOpenAI || canTapVoiceVox
 
         Button {
             if isActive {
@@ -189,6 +242,15 @@ struct PersonaSettingsView: View {
     private func startPreview() async {
         let text = previewText.trimmingCharacters(in: .whitespaces)
         guard !text.isEmpty else { return }
+
+        if !OpenAISettings.shared.isLocalLLMEnabled {
+            await startOpenAIPreview(text: text)
+        } else {
+            await startVoiceVoxPreview(text: text)
+        }
+    }
+
+    private func startOpenAIPreview(text: String) async {
         let settings = OpenAISettings.shared
         guard settings.isEnabled && settings.hasValidKey else { return }
 
@@ -216,6 +278,21 @@ struct PersonaSettingsView: View {
         else { return }
 
         previewPlayer.start(data: data)
+    }
+
+    private func startVoiceVoxPreview(text: String) async {
+        isLoadingPreview = true
+        defer { isLoadingPreview = false }
+
+        let engine = VoiceVoxEngine.shared
+        do {
+            try await engine.initialize()
+            let speakerID = persona.ttsSpeakerID ?? 3
+            let data = try await engine.synthesize(text: text, speakerID: speakerID)
+            previewPlayer.start(data: data)
+        } catch {
+            print("[VoiceVox] Preview failed: \(error)")
+        }
     }
 }
 
