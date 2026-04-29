@@ -46,7 +46,7 @@ LlamaBridgeHandle* llama_bridge_create(
     llama_model_params mp  = llama_model_default_params();
     mp.n_gpu_layers        = static_cast<int32_t>(n_gpu_layers);
 
-    llama_model* model = llama_load_model_from_file(model_path, mp);
+    llama_model* model = llama_model_load_from_file(model_path, mp);
     if (!model) {
         llama_backend_free();
         return nullptr;

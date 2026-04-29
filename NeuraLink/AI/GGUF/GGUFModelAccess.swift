@@ -25,8 +25,8 @@ enum GGUFModelAccess {
     /// The full URL to the downloaded `.gguf` file, or `nil` if not present.
     static func modelURL() -> URL? {
         // 1. Persisted path from a previous download.
-        if let stored = UserDefaults.standard.string(forKey: pathKey) {
-            let url = URL(fileURLWithPath: stored)
+        if let relative = UserDefaults.standard.string(forKey: pathKey) {
+            let url = appSupport.appendingPathComponent(relative)
             if FileManager.default.fileExists(atPath: url.path) { return url }
         }
         // 2. Scan the Hub cache directory (downloaded via HubApi).
@@ -37,9 +37,10 @@ enum GGUFModelAccess {
 
     static var isDownloaded: Bool { modelURL() != nil }
 
-    /// Persists the resolved file path after a successful download.
+    /// Persists the relative path after a successful download.
     static func setModelPath(_ url: URL) {
-        UserDefaults.standard.set(url.path, forKey: pathKey)
+        let relative = url.path.replacingOccurrences(of: appSupport.path, with: "")
+        UserDefaults.standard.set(relative, forKey: pathKey)
     }
 
     /// Removes the cached file and clears the stored path.
