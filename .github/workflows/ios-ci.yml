@@ -2,9 +2,9 @@ name: iOS CI
 
 on:
   push:
-    branches: [ main, improv/npu ]
+    branches: [ main ]
   pull_request:
-    branches: [ main, improv/npu ]
+    branches: [ main ]
 
 jobs:
   lint:
@@ -49,7 +49,11 @@ jobs:
             -DLLAMA_BUILD_TESTS=OFF \
             -DLLAMA_BUILD_SERVER=OFF \
             -S .
-          cmake --build build-ios-sim --config Release -- -quiet
+          cmake --build build-ios-sim --config Release
+          
+          # Debug: list files if something goes wrong
+          echo "Listing all .a files found:"
+          find . -name "*.a"
           
           # Setup minimal framework structure for xcodebuild -create-xcframework
           mkdir -p build-ios-sim/framework/llama.framework/Headers
@@ -79,13 +83,13 @@ jobs:
           EOF
           
           # Combine static libs into a dynamic one for the framework
-          # We use find to locate the libraries to be robust against path variations
-          LIB_LLAMA=$(find build-ios-sim -name libllama.a | grep Release | head -n 1)
-          LIB_GGML=$(find build-ios-sim -name libggml.a | grep Release | head -n 1)
-          LIB_GGML_BASE=$(find build-ios-sim -name libggml-base.a | grep Release | head -n 1)
-          LIB_GGML_CPU=$(find build-ios-sim -name libggml-cpu.a | grep Release | head -n 1)
-          LIB_GGML_METAL=$(find build-ios-sim -name libggml-metal.a | grep Release | head -n 1)
-          LIB_GGML_BLAS=$(find build-ios-sim -name libggml-blas.a | grep Release | head -n 1)
+          # We search the whole directory for the libs to be safe
+          LIB_LLAMA=$(find . -name libllama.a | grep Release | head -n 1)
+          LIB_GGML=$(find . -name libggml.a | grep Release | head -n 1)
+          LIB_GGML_BASE=$(find . -name libggml-base.a | grep Release | head -n 1)
+          LIB_GGML_CPU=$(find . -name libggml-cpu.a | grep Release | head -n 1)
+          LIB_GGML_METAL=$(find . -name libggml-metal.a | grep Release | head -n 1)
+          LIB_GGML_BLAS=$(find . -name libggml-blas.a | grep Release | head -n 1)
 
           echo "Resolved library paths:"
           echo "LLAMA: $LIB_LLAMA"
