@@ -2,9 +2,9 @@ name: iOS CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, improv/npu ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, improv/npu ]
 
 jobs:
   lint:
@@ -12,6 +12,8 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       
       - name: Install SwiftLint
         run: brew install swiftlint
@@ -25,11 +27,77 @@ jobs:
     needs: lint
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       
       - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest
+
+      - name: Build llama.xcframework (Simulator Only)
+        run: |
+          cd llama.cpp
+          mkdir -p build-ios-sim
+          cmake -B build-ios-sim -G Xcode \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT=iphonesimulator \
+            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+            -DGGML_METAL=ON \
+            -DLLAMA_BUILD_EXAMPLES=OFF \
+            -DLLAMA_BUILD_TOOLS=OFF \
+            -DLLAMA_BUILD_TESTS=OFF \
+            -DLLAMA_BUILD_SERVER=OFF \
+            -S .
+          cmake --build build-ios-sim --config Release -- -quiet
+          
+          # Setup minimal framework structure for xcodebuild -create-xcframework
+          mkdir -p build-ios-sim/framework/llama.framework/Headers
+          mkdir -p build-ios-sim/framework/llama.framework/Modules
+          
+          cp include/llama.h build-ios-sim/framework/llama.framework/Headers/
+          cp ggml/include/ggml.h build-ios-sim/framework/llama.framework/Headers/
+          cp ggml/include/ggml-alloc.h build-ios-sim/framework/llama.framework/Headers/
+          cp ggml/include/ggml-backend.h build-ios-sim/framework/llama.framework/Headers/
+          cp ggml/include/ggml-metal.h build-ios-sim/framework/llama.framework/Headers/
+          cp ggml/include/ggml-cpu.h build-ios-sim/framework/llama.framework/Headers/
+          cp ggml/include/ggml-blas.h build-ios-sim/framework/llama.framework/Headers/
+          cp ggml/include/gguf.h build-ios-sim/framework/llama.framework/Headers/
+          
+          cat > build-ios-sim/framework/llama.framework/Modules/module.modulemap << EOF
+          framework module llama {
+              header "llama.h"
+              header "ggml.h"
+              header "ggml-alloc.h"
+              header "ggml-backend.h"
+              header "ggml-metal.h"
+              header "ggml-cpu.h"
+              header "ggml-blas.h"
+              header "gguf.h"
+              export *
+          }
+          EOF
+          
+          # Combine static libs into a dynamic one for the framework
+          xcrun -sdk iphonesimulator clang++ -dynamiclib \
+            -isysroot $(xcrun --sdk iphonesimulator --show-sdk-path) \
+            -arch arm64 -arch x86_64 \
+            -mios-simulator-version-min=17.0 \
+            -Wl,-force_load,build-ios-sim/src/Release-iphonesimulator/libllama.a \
+            -Wl,-force_load,build-ios-sim/ggml/src/Release-iphonesimulator/libggml.a \
+            -Wl,-force_load,build-ios-sim/ggml/src/Release-iphonesimulator/libggml-base.a \
+            -Wl,-force_load,build-ios-sim/ggml/src/Release-iphonesimulator/libggml-cpu.a \
+            -Wl,-force_load,build-ios-sim/ggml/src/ggml-metal/Release-iphonesimulator/libggml-metal.a \
+            -Wl,-force_load,build-ios-sim/ggml/src/ggml-blas/Release-iphonesimulator/libggml-blas.a \
+            -framework Foundation -framework Metal -framework Accelerate \
+            -install_name @rpath/llama.framework/llama \
+            -o build-ios-sim/framework/llama.framework/llama
+            
+          # Create the xcframework at the path expected by the project
+          mkdir -p build-apple
+          xcrun xcodebuild -create-xcframework \
+            -framework build-ios-sim/framework/llama.framework \
+            -output build-apple/llama.xcframework
 
       - name: Build for Testing
         run: |
