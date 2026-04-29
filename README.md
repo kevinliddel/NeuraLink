@@ -208,6 +208,10 @@ sequenceDiagram
 ```bash
 # Clone the repository
 git clone https://github.com/kevinliddel/NeuraLink.git
+cd NeuraLink
+
+# Initialize submodules (required for llama.cpp)
+git submodule update --init --recursive
 
 # Open in Xcode
 open NeuraLink.xcodeproj
