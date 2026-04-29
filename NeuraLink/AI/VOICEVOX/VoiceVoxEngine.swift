@@ -26,9 +26,6 @@ final class VoiceVoxEngine: NSObject, @unchecked Sendable, TTSEngineProtocol {
     private var onnxRuntime: OpaquePointer?
     private var openJtalk: OpaquePointer?
     
-    // Concurrency control to prevent freezing
-    private var isProcessing = false
-    
     // Track loaded model IDs and their handles to prevent data invalidation
     private var loadedModelIDs = Set<String>()
     private var modelHandles = [String: OpaquePointer]()
@@ -45,8 +42,13 @@ final class VoiceVoxEngine: NSObject, @unchecked Sendable, TTSEngineProtocol {
 
     // MARK: - TTSEngineProtocol
 
+    private var isInitializing = false
+
     func initialize() async throws {
         if isReady { return }
+        guard !isInitializing else { return }
+        isInitializing = true
+        defer { isInitializing = false }
 
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
             queue.async {
@@ -70,16 +72,19 @@ final class VoiceVoxEngine: NSObject, @unchecked Sendable, TTSEngineProtocol {
                 }
 
                 // 3. Create Synthesizer
-                let options = voicevox_make_default_initialize_options()
-                let synResult = voicevox_synthesizer_new(self.onnxRuntime, self.openJtalk, options, &self.synthesizer)
+                var options = voicevox_make_default_initialize_options()
+                // 4 threads is often the sweet spot for iPhone performance to avoid contention
+                options.cpu_num_threads = 4 
                 
-                if Int32(synResult) == 0 {
-                    self.isReady = true
-                    print("[VoiceVox] Engine 0.16.4 initialized successfully.")
-                    cont.resume()
-                } else {
-                    cont.resume(throwing: TTSError.synthesisFailed(reason: "Synthesizer creation failed: \(synResult)"))
+                let synthResult = voicevox_synthesizer_new(self.onnxRuntime, self.openJtalk, options, &self.synthesizer)
+                guard Int32(synthResult) == 0 else {
+                    cont.resume(throwing: TTSError.synthesisFailed(reason: "Synthesizer creation failed: \(synthResult)"))
+                    return
                 }
+
+                self.isReady = true
+                print("[VoiceVox] Engine 0.16.4 initialized successfully.")
+                cont.resume()
             }
         }
     }
@@ -119,54 +124,93 @@ final class VoiceVoxEngine: NSObject, @unchecked Sendable, TTSEngineProtocol {
     func synthesize(text: String, speakerID: Int) async throws -> Data {
         guard isReady else { throw TTSError.notInitialized }
         
-        // Prevent concurrent requests from freezing the engine
-        guard !isProcessing else {
-            print("[VoiceVox] Engine is busy, ignoring request.")
-            throw TTSError.synthesisFailed(reason: "Engine busy")
-        }
+        let cleanText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanText.isEmpty else { return Data() }
         
-        isProcessing = true
-        defer { isProcessing = false }
-        
-        // 1. Map Style ID to Character ID for model loading and get actual internal ID
-        let mapping = VoiceVoxSpeaker.map(speakerID)
-        let characterID = mapping.filenameID
-        let internalStyleID = mapping.internalStyleID
-        
-        // 2. Ensure model is loaded for this character
-        if !loadedModelIDs.contains("\(characterID)") {
-            guard let modelPath = VoiceVoxModelAccess.modelURL(forSpeakerID: characterID)?.path else {
-                print("[VoiceVox] ERROR: Could not find .vvm for Character ID \(characterID)")
-                throw TTSError.modelNotLoaded
-            }
-            try await loadModel(at: modelPath)
-            loadedModelIDs.insert("\(characterID)")
-        }
-        
-        // 3. Synthesize
+        // Use the serial queue to ensure synthesis happens one at a time without dropping requests
         return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Data, Error>) in
             queue.async {
+                // 1. Map and Load Model
+                let mapping = VoiceVoxSpeaker.map(speakerID)
+                let characterID = mapping.filenameID
+                let internalStyleID = mapping.internalStyleID
+                
+                // Ensure model is loaded (this is thread-safe as it uses the same queue)
+                if !self.loadedModelIDs.contains("\(characterID)") {
+                    guard let modelPath = VoiceVoxModelAccess.modelURL(forSpeakerID: characterID)?.path else {
+                        cont.resume(throwing: TTSError.modelNotLoaded)
+                        return
+                    }
+                    
+                    // Direct C-API call for loading
+                    var file: OpaquePointer?
+                    let openResult = voicevox_voice_model_file_open((modelPath as NSString).utf8String, &file)
+                    
+                    guard Int32(openResult) == 0, let modelFile = file else {
+                        cont.resume(throwing: TTSError.modelNotLoaded)
+                        return
+                    }
+                    
+                    let loadResult = voicevox_synthesizer_load_voice_model(self.synthesizer, modelFile)
+                    
+                    if Int32(loadResult) == 0 {
+                        self.modelHandles[modelPath] = modelFile
+                        self.loadedModelIDs.insert("\(characterID)")
+                    } else {
+                        voicevox_voice_model_file_delete(modelFile)
+                        cont.resume(throwing: TTSError.modelNotLoaded)
+                        return
+                    }
+                }
+                
+                // 2. Create Audio Query (to allow manual tuning of speed/intonation)
+                var queryJsonPtr: UnsafeMutablePointer<Int8>?
+                let queryResult = voicevox_synthesizer_create_audio_query(
+                    self.synthesizer,
+                    (cleanText as NSString).utf8String,
+                    VoicevoxStyleId(internalStyleID),
+                    &queryJsonPtr
+                )
+                
+                guard Int32(queryResult) == 0, let originalJsonPtr = queryJsonPtr else {
+                    cont.resume(throwing: TTSError.synthesisFailed(reason: "Query creation failed: \(queryResult)"))
+                    return
+                }
+                
+                var queryJson = String(cString: originalJsonPtr)
+                voicevox_json_free(originalJsonPtr)
+                
+                // 3. Tune the Voice for English Naturalness
+                // We manually patch the JSON since the high-level C-API is limited
+                queryJson = queryJson.replacingOccurrences(of: "\"speedScale\":1.0", with: "\"speedScale\":1.1")
+                queryJson = queryJson.replacingOccurrences(of: "\"intonationScale\":1.0", with: "\"intonationScale\":1.5")
+                
+                // 4. Synthesize from Modified Query
                 var outputSize: Int = 0
                 var outputData: UnsafeMutablePointer<UInt8>?
                 
-                print("[VoiceVox] Synthesizing with style ID: \(internalStyleID) (Mapped from: \(speakerID))")
+                let start = DispatchTime.now()
+                print("[VoiceVox] Synthesizing sentence (tuned): \"\(cleanText.prefix(20))...\"")
                 
-                let result = voicevox_synthesizer_tts(
+                let synthResult = voicevox_synthesizer_synthesis(
                     self.synthesizer,
-                    (text as NSString).utf8String,
+                    (queryJson as NSString).utf8String,
                     VoicevoxStyleId(internalStyleID),
-                    voicevox_make_default_tts_options(),
+                    voicevox_make_default_synthesis_options(),
                     &outputSize,
                     &outputData
                 )
 
-                if Int32(result) == 0, let dataPtr = outputData {
+                if Int32(synthResult) == 0, let dataPtr = outputData {
+                    let elapsed = Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000_000.0
+                    print("[VoiceVox] SUCCESS: Generated \(outputSize) bytes in \(String(format: "%.1f", elapsed))s")
+                    
                     let data = Data(bytes: dataPtr, count: Int(outputSize))
                     voicevox_wav_free(dataPtr)
                     cont.resume(returning: data)
                 } else {
-                    print("[VoiceVox] ERROR: Synthesis failed with result code: \(result)")
-                    cont.resume(throwing: TTSError.synthesisFailed(reason: "Synthesis failed with code \(result)"))
+                    print("[VoiceVox] ERROR: Synthesis failed with result code: \(synthResult)")
+                    cont.resume(throwing: TTSError.synthesisFailed(reason: "Synthesis failed with code \(synthResult)"))
                 }
             }
         }

@@ -418,8 +418,8 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
         // Buffer tokens. When we hit a punctuation mark, synthesize speech.
         ttsBuffer += token
         if token.contains(".") || token.contains("!") || token.contains("?")
-            || token.contains("。") || token.contains(",") || token.contains("\n")
-            || (ttsBuffer.count >= 32 && ttsBuffer.contains(" ")) {
+            || token.contains("。") || token.contains("\n")
+            || (ttsBuffer.count >= 200 && ttsBuffer.contains(" ")) {
             let chunkToSpeak = ttsBuffer
             ttsBuffer = ""
             speakChunk(chunkToSpeak)
@@ -432,9 +432,10 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
             print("[LocalLLM] Turn total latency: \(String(format: "%.1f", elapsedMs)) ms")
         }
 
-        // Flush any remaining text in the buffer
-        if !ttsBuffer.trimmingCharacters(in: .whitespaces).isEmpty {
-            speakChunk(ttsBuffer)
+        // Flush any remaining text in the buffer immediately
+        let remaining = ttsBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !remaining.isEmpty {
+            speakChunk(remaining)
             ttsBuffer = ""
         }
         Task { @MainActor in

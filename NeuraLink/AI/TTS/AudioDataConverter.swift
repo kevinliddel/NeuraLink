@@ -15,6 +15,8 @@ enum AudioDataConverter {
     /// Converts a WAV file in Data format to an AVAudioPCMBuffer.
     /// Supports standard 16-bit PCM WAV.
     static func pcmBuffer(from data: Data) -> AVAudioPCMBuffer? {
+        guard !data.isEmpty else { return nil }
+        
         // We use AVAudioFile to handle the WAV header parsing for us.
         // This is safer than manual byte-parsing.
         let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".wav")
