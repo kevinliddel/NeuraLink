@@ -44,12 +44,16 @@ jobs:
             -DCMAKE_OSX_SYSROOT=iphonesimulator \
             -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
             -DGGML_METAL=ON \
+            -DBUILD_SHARED_LIBS=OFF \
             -DLLAMA_BUILD_EXAMPLES=OFF \
             -DLLAMA_BUILD_TOOLS=OFF \
             -DLLAMA_BUILD_TESTS=OFF \
             -DLLAMA_BUILD_SERVER=OFF \
             -S .
-          cmake --build build-ios-sim --config Release
+          
+          # Build target schemes directly via xcodebuild for better reliability on CI
+          xcodebuild -project build-ios-sim/llama.cpp.xcodeproj -scheme llama -configuration Release -sdk iphonesimulator -quiet
+          xcodebuild -project build-ios-sim/llama.cpp.xcodeproj -scheme ggml -configuration Release -sdk iphonesimulator -quiet
           
           # Debug: list files if something goes wrong
           echo "Listing all .a files found:"
@@ -84,12 +88,12 @@ jobs:
           
           # Combine static libs into a dynamic one for the framework
           # We search the whole directory for the libs to be safe
-          LIB_LLAMA=$(find . -name libllama.a | grep Release | head -n 1)
-          LIB_GGML=$(find . -name libggml.a | grep Release | head -n 1)
-          LIB_GGML_BASE=$(find . -name libggml-base.a | grep Release | head -n 1)
-          LIB_GGML_CPU=$(find . -name libggml-cpu.a | grep Release | head -n 1)
-          LIB_GGML_METAL=$(find . -name libggml-metal.a | grep Release | head -n 1)
-          LIB_GGML_BLAS=$(find . -name libggml-blas.a | grep Release | head -n 1)
+          LIB_LLAMA=$(find . -name libllama.a | grep Release-iphonesimulator | head -n 1)
+          LIB_GGML=$(find . -name libggml.a | grep Release-iphonesimulator | head -n 1)
+          LIB_GGML_BASE=$(find . -name libggml-base.a | grep Release-iphonesimulator | head -n 1)
+          LIB_GGML_CPU=$(find . -name libggml-cpu.a | grep Release-iphonesimulator | head -n 1)
+          LIB_GGML_METAL=$(find . -name libggml-metal.a | grep Release-iphonesimulator | head -n 1)
+          LIB_GGML_BLAS=$(find . -name libggml-blas.a | grep Release-iphonesimulator | head -n 1)
 
           echo "Resolved library paths:"
           echo "LLAMA: $LIB_LLAMA"
