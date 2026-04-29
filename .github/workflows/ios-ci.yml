@@ -79,16 +79,32 @@ jobs:
           EOF
           
           # Combine static libs into a dynamic one for the framework
+          # We use find to locate the libraries to be robust against path variations
+          LIB_LLAMA=$(find build-ios-sim -name libllama.a | grep Release | head -n 1)
+          LIB_GGML=$(find build-ios-sim -name libggml.a | grep Release | head -n 1)
+          LIB_GGML_BASE=$(find build-ios-sim -name libggml-base.a | grep Release | head -n 1)
+          LIB_GGML_CPU=$(find build-ios-sim -name libggml-cpu.a | grep Release | head -n 1)
+          LIB_GGML_METAL=$(find build-ios-sim -name libggml-metal.a | grep Release | head -n 1)
+          LIB_GGML_BLAS=$(find build-ios-sim -name libggml-blas.a | grep Release | head -n 1)
+
+          echo "Resolved library paths:"
+          echo "LLAMA: $LIB_LLAMA"
+          echo "GGML: $LIB_GGML"
+          echo "GGML_BASE: $LIB_GGML_BASE"
+          echo "GGML_CPU: $LIB_GGML_CPU"
+          echo "GGML_METAL: $LIB_GGML_METAL"
+          echo "GGML_BLAS: $LIB_GGML_BLAS"
+
           xcrun -sdk iphonesimulator clang++ -dynamiclib \
             -isysroot $(xcrun --sdk iphonesimulator --show-sdk-path) \
             -arch arm64 -arch x86_64 \
             -mios-simulator-version-min=17.0 \
-            -Wl,-force_load,build-ios-sim/src/Release-iphonesimulator/libllama.a \
-            -Wl,-force_load,build-ios-sim/ggml/src/Release-iphonesimulator/libggml.a \
-            -Wl,-force_load,build-ios-sim/ggml/src/Release-iphonesimulator/libggml-base.a \
-            -Wl,-force_load,build-ios-sim/ggml/src/Release-iphonesimulator/libggml-cpu.a \
-            -Wl,-force_load,build-ios-sim/ggml/src/ggml-metal/Release-iphonesimulator/libggml-metal.a \
-            -Wl,-force_load,build-ios-sim/ggml/src/ggml-blas/Release-iphonesimulator/libggml-blas.a \
+            -Wl,-force_load,"$LIB_LLAMA" \
+            -Wl,-force_load,"$LIB_GGML" \
+            -Wl,-force_load,"$LIB_GGML_BASE" \
+            -Wl,-force_load,"$LIB_GGML_CPU" \
+            -Wl,-force_load,"$LIB_GGML_METAL" \
+            -Wl,-force_load,"$LIB_GGML_BLAS" \
             -framework Foundation -framework Metal -framework Accelerate \
             -install_name @rpath/llama.framework/llama \
             -o build-ios-sim/framework/llama.framework/llama
