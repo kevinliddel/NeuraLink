@@ -18,19 +18,15 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     private static func makeEngine() -> any LLMEngineProtocol {
         let manager = LocalModelDownloadManager.shared
         guard manager.isAvailable else {
-            // No model is ready yet; return Llama as a safe placeholder.
-            return LocalLLMEngine.shared
+            // No model is ready yet; return GGUF engine as a safe placeholder.
+            return GGUFLlamaEngine.shared
         }
 
         switch manager.selectedConfig {
         case .qwen2b:
-            if #available(iOS 18.0, *) {
-                return StatefulQwenEngine.shared as any LLMEngineProtocol
-            }
-            // iOS 17 cannot run the stateful Qwen model — use Llama.
-            return LocalLLMEngine.shared
+            return GGUFQwenEngine.shared as any LLMEngineProtocol
         case .llama1b:
-            return LocalLLMEngine.shared
+            return GGUFLlamaEngine.shared
         }
     }
 
@@ -211,18 +207,11 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         let persona = CharacterPersona.forCharacter(named: state.selectedCharacterName)
         let prompt: String
         let maxTokens: Int
-        // Mirror makeEngine() logic: Qwen only when iOS 18+ and qwen2b is the selected
-        // downloaded model. Everything else uses Llama-3.
         let mgr = LocalModelDownloadManager.shared
-        let useQwen: Bool
-        if #available(iOS 18.0, *) {
-            useQwen = mgr.isAvailable && mgr.selectedConfig == .qwen2b
-        } else {
-            useQwen = false
-        }
+        let useQwen = mgr.isAvailable && mgr.selectedConfig == .qwen2b
 
         if useQwen {
-            // Qwen3 instruct template (StatefulQwenEngine on iOS 18+)
+            // Qwen instruct template
             prompt = "<|im_start|>system\n\(persona.instructions)<|im_end|>\n<|im_start|>user\n\(text)<|im_end|>\n<|im_start|>assistant\n"
             maxTokens = 128
         } else {

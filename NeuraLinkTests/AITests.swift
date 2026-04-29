@@ -97,17 +97,24 @@ final class AITests: XCTestCase {
     // MARK: - Local LLM Engine Tests
 
     @MainActor
-    func testLocalLLMEngineInitialization() async {
-        let engine = LocalLLMEngine.shared
-
+    func testEngineLoadFailure() async {
+        let engine = GGUFLlamaEngine.shared
         do {
-            // Since the test target doesn't bundle the real .mlmodelc, it should fail gracefully
             try await engine.loadModel()
-            XCTFail("Expected modelNotFound error since the mlmodelc is not in the test bundle")
-        } catch let error as LLMError {
-            XCTAssertEqual(error, .modelNotFound)
+            XCTFail("Engine should throw modelNotFound when GGUF is missing on disk.")
         } catch {
-            XCTFail("Unexpected error: \(error)")
+            XCTAssertEqual(error as? LLMError, .modelNotFound)
+        }
+    }
+
+    @MainActor
+    func testQwenEngineLoadFailure() async {
+        let engine = GGUFQwenEngine.shared
+        do {
+            try await engine.loadModel()
+            XCTFail("Engine should throw modelNotFound when GGUF is missing on disk.")
+        } catch {
+            XCTAssertEqual(error as? LLMError, .modelNotFound)
         }
     }
 }

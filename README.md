@@ -33,7 +33,7 @@ A high-performance, native iOS VRM character viewer and AI companion built from 
 - **"Eyes on You" System**: Features an Arknights: Endfield-inspired camera system, where characters will maintain eye contact by turning their heads toward the camera if it remains behind them for more than 5 seconds.
 - **Dual-Layer VAD**: Client-side Silero VAD (v5 model) runs alongside OpenAI's server VAD for instant local voice detection and immediate UI feedback.
 - **Per-Character Personas**: Each character carries her own system prompt and voice model, hot-swapped on model selection.
-- **NPU Ready**: Architecture for [Apple Neural Engine integration](./docs/npu.md) via Core ML and MLX to enable local VAD, offline speech-to-text, and local LLMs.
+- **Offline AI & NPU**: Fully local AI pipeline featuring Whisper (Speech-to-Text) and Llama/Qwen (Language Models) accelerated by the Apple Neural Engine. See [NPU Documentation](./docs/npu.md).
 
 
 ---
@@ -208,18 +208,36 @@ sequenceDiagram
 ```bash
 # Clone the repository
 git clone https://github.com/kevinliddel/NeuraLink.git
+cd NeuraLink
+
+# Initialize submodules (required for llama.cpp)
+git submodule update --init --recursive
 
 # Open in Xcode
-open NeuraLink/NeuraLink.xcodeproj
+open NeuraLink.xcodeproj
+
+# Setup Local AI Backend (Optional)
+# If you intend to use the llama.cpp backend, ensure stale SPM references are purged:
+ruby purge_spm.rb
 ```
 
 ---
 
 ## 🧩 Proof of Concept
 
-Here is a video of the proof of concept:
-
 [Proof-of-Concept](https://github.com/user-attachments/assets/2dc35314-fa8e-4b78-8507-b88d96d8c420)
+
+
+## ֎ Offline AI & NPU
+NeuraLink features a high-performance local AI pipeline that runs entirely on your device using the **Apple Neural Engine**.
+
+- **WhisperKit**: Multi-lingual speech-to-text.
+- **llama.cpp**: Metal-accelerated inference for Llama-3.2 and Qwen-2.5.
+- **Single-file GGUF**: Memory-efficient model distribution.
+
+For detailed technical specs and migration history, refer to:
+- [NPU Integration Guide](./docs/npu.md)
+- [NPU Migration Log](./docs/npu_migration.md)
 
 ---
 

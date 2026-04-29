@@ -138,7 +138,7 @@ struct NeuraLinkTests {
     @Test("Local LLM Engine Initialization")
     @MainActor
     func testLocalLLMEngineInitialization() async {
-        let engine = LocalLLMEngine.shared
+        let engine = GGUFLlamaEngine.shared
         
         do {
             try await engine.loadModel()
