@@ -122,6 +122,9 @@ jobs:
           xcrun xcodebuild -create-xcframework \
             -framework build-ios-sim/framework/llama.framework \
             -output build-apple/llama.xcframework
+          
+          echo "Final xcframework structure:"
+          ls -R build-apple/llama.xcframework
 
       - name: Build for Testing
         run: |
