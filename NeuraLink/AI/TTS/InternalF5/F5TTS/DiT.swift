@@ -4,7 +4,7 @@ import MLXNN
 
 // Diffusion Transformer (DiT) implementation for F5-TTS
 
-final class ConvNeXtBlock_F5: Module {
+final class ConvNeXtBlockF5: Module {
     let dwconv: GroupableConv1d
     let norm: LayerNorm
     let pwconv1: Linear
@@ -75,7 +75,7 @@ final class DiT: Module {
     let input_embed: Linear
     let time_embed: TimestepEmbedding
     let blocks: [DiTBlock]
-    let final_norm: AdaLayerNormZero_Final
+    let final_norm: AdaLayerNormZeroFinal
     let final_linear: Linear
 
     nonisolated override init() { fatalError("Use init(dim:heads:depth:)") }
@@ -92,7 +92,7 @@ final class DiT: Module {
             DiTBlock(dim: dim, heads: heads, dimHead: dim / heads)
         }
         
-        self.final_norm = AdaLayerNormZero_Final(dim: dim)
+        self.final_norm = AdaLayerNormZeroFinal(dim: dim)
         self.final_linear = Linear(dim, 80)
         super.init()
     }
@@ -110,7 +110,7 @@ final class DiT: Module {
     }
 }
 
-final class AdaLayerNormZero_Final: Module {
+final class AdaLayerNormZeroFinal: Module {
     let silu: SiLU = SiLU()
     let linear: Linear
     let norm: LayerNorm
