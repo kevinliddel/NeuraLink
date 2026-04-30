@@ -22,7 +22,7 @@ final class F5TTSEngine: TTSProtocol {
 
     private let voiceFiles: [String: String] = [
         "Ekaterina": "akira.mp3",
-        "Sonya":     "riko.wav"
+        "Sonya": "riko.wav"
     ]
 
     init() {

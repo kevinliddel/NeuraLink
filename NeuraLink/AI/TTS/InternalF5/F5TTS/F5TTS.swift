@@ -309,7 +309,7 @@ public final class F5TTS: @unchecked Sendable {
             switch dtype {
             case "F32":
                 let count = (byteEnd - byteStart) / 4
-                guard count > 0 else { continue }
+                guard !isEmpty else { continue }
                 // withUnsafeBytes keeps the pointer valid for this closure only.
                 // eval() is called INSIDE so MLX materialises the fp16 tensor
                 // before the pointer expires, then the fp32 source can be freed.
@@ -325,7 +325,7 @@ public final class F5TTS: @unchecked Sendable {
 
             case "F16":
                 let count = (byteEnd - byteStart) / 2
-                guard count > 0 else { continue }
+                guard !isEmpty else { continue }
                 let arr = file.subdata(in: byteStart..<byteEnd).withUnsafeBytes { raw -> MLXArray in
                     let u16 = raw.bindMemory(to: UInt16.self)
                     let fp32 = (0..<count).map { Float(Float16(bitPattern: u16[$0])) }
@@ -337,7 +337,7 @@ public final class F5TTS: @unchecked Sendable {
 
             case "BF16":
                 let count = (byteEnd - byteStart) / 2
-                guard count > 0 else { continue }
+                guard !isEmpty else { continue }
                 let arr = file.subdata(in: byteStart..<byteEnd).withUnsafeBytes { raw -> MLXArray in
                     let u16 = raw.bindMemory(to: UInt16.self)
                     let fp32 = (0..<count).map { i -> Float in
