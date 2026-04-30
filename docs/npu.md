@@ -68,7 +68,7 @@ graph TD
    - **`GGUFQwenEngine`**: Utilizes `llama.cpp` for high-performance GGUF inference of the Qwen-2.5-1.5B model, accelerated by the Metal GPU and NPU.
    - **`GGUFLlamaEngine`**: A memory-optimized GGUF engine for Llama-3.2-1B, utilizing Metal acceleration for stable performance on all devices.
 4. **Local LLM Inference**: Transcribed text is formatted and fed into the selected engine. Both engines utilize the `llama.cpp` backend for efficient token generation.
-5. **Text-to-Speech & Lip-Sync**: As tokens stream out, `LocalLLMManager` (via its [TTS extension](./NeuraLink/AI/LocalLLMManager+TTS.swift)) chunks them into sentences. It uses `AVSpeechSynthesizer` to select the best available local voice. By default, iOS compact voices (`q=1`) are used, but the system is optimized for **Enhanced/Premium** voices (`q=2`) which can be downloaded in iOS Accessibility settings. The generated audio buffers are routed through `AVAudioEngine` to extract amplitude curves for real-time VRM lip-sync.
+5. **Text-to-Speech & Lip-Sync**: As tokens stream out, `LocalLLMManager` (via its [TTS extension](../NeuraLink/AI/LocalLLMManager+TTS.swift)) chunks them into sentences. It uses `AVSpeechSynthesizer` to select the best available local voice. By default, iOS compact voices (`q=1`) are used, but the system is optimized for **Enhanced/Premium** voices (`q=2`) which can be downloaded in iOS Accessibility settings. The generated audio buffers are routed through `AVAudioEngine` to extract amplitude curves for real-time VRM lip-sync.
 
 > [⚠️NOTE]
 >
