@@ -503,16 +503,3 @@ gantt
     Build + SwiftLint + Tests      :p5, after p4, 1d
     Device integration test        :p6, after p5, 1d
 ```
-
----
-
-## 7. Risk & Rollback
-
-| Risk | Mitigation |
-|---|---|
-| llama.cpp Metal crash on device | `GGML_METAL_NDEBUG=1` env var disables Metal assertions |
-| GGUF too large for user storage | 0.8 GB — same order of magnitude as current CoreML set |
-| Swift bridging conflicts | All C++ isolated in `Bridge/`; Swift never imports C++ headers |
-| Regression in Qwen path | `StatefulQwenEngine` is completely untouched |
-| Rollback needed | Swap `makeEngine()` back to `LocalLLMEngine.shared` — one line |
-

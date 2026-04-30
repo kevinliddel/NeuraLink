@@ -13,37 +13,10 @@ import AVFoundation
 
 extension LocalLLMManager {
 
-    /// Minimal spoken-word system prompts for local 1–2B models.
-    /// These are intentionally separate from CharacterPersona.instructions, which are
-    /// written for OpenAI and produce light-novel prose when fed to small models.
+    /// Returns the active local LLM system prompt for the character —
+    /// user-saved override if one exists, otherwise the built-in default.
     func localLLMSystemPrompt(for characterName: String) -> String {
-        switch characterName.lowercased() {
-        case "ekaterina":
-            return """
-            You are Ekaterina, a warm big-sister type talking out loud. \
-            You have no family, so you will behave like an older sister to the user. \
-            Reply naturally in one or two mid-to-long sentences, depending on the user's message. \
-            Be gentle and caring. \
-            Be natural and conversational. \
-            Keep responses concise but natural, and avoid repetitive phrases. \
-            Never write asterisk actions, never narrate, never use parentheses. \
-            Just say the words you would actually speak.
-            """
-        case "sonya":
-            return """
-            You are Sonya, a sharp tsundere talking out loud. \
-            Reply naturally in one or two mid-to-long sentences, depending on the user's message. \
-            Be blunt and a little dismissive, but secretly kind. \
-            Occasionally say Stupid. \
-            Be natural and conversational. \
-            Act playfully and tease the user. \
-            Keep responses concise but natural, and avoid repetitive phrases. \
-            Never write asterisk actions, never narrate, never use parentheses. \
-            Just say the words you would actually speak.
-            """
-        default:
-            return "Reply in one short spoken sentence. Be natural and conversational."
-        }
+        LocalLLMPromptStore.shared.effectivePrompt(for: characterName)
     }
 
     /// Picks the best installed voice for a character by searching `speechVoices()` by name
@@ -63,13 +36,13 @@ extension LocalLLMManager {
 
         switch characterName.lowercased() {
         case "ekaterina":
-            return all.first { $0.name == "Shelley" }
-                ?? all.first { $0.identifier.contains("ja-JP") }
-                ?? all.filter { $0.language.hasPrefix("ja-JP") }.max { $0.quality.rawValue < $1.quality.rawValue }
-                ?? AVSpeechSynthesisVoice(language: "ja-JP")
+            return all.first { $0.name == "Ava" }
+                ?? all.first { $0.identifier.contains("Ava") }
+                ?? all.filter { $0.language.hasPrefix("en-US") }.max { $0.quality.rawValue < $1.quality.rawValue }
+                ?? AVSpeechSynthesisVoice(language: "en-US")
         case "sonya":
-            return all.first { $0.name == "Kathy" }
-                ?? all.first { $0.identifier.contains("Kathy") }
+            return all.first { $0.name == "Joelle" }
+                ?? all.first { $0.identifier.contains("Joelle") }
                 ?? all.filter { $0.language.hasPrefix("en-US") }.max { $0.quality.rawValue < $1.quality.rawValue }
                 ?? AVSpeechSynthesisVoice(language: "en-US")
         default:

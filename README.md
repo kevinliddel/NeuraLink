@@ -70,7 +70,7 @@ NeuraLink features a high-performance 3D rain system that runs entirely on the G
 
 ---
 
-## 🤖 AI Function Calling
+## 🤖 Tool Calling
 
 The AI companion isn't just for chat—she can help you manage your day by interacting with native iOS applications.
 
@@ -79,7 +79,7 @@ The AI companion isn't just for chat—she can help you manage your day by inter
 - **Productivity**: Create reminders, take notes, and search the web without leaving the app.
 - **Entertainment**: Search and play music directly in Apple Music.
 
-**[Full Function Calling documentation](./docs/Function_Call.md)**
+**[Full Tool Calling documentation](./docs/Function_Call.md)**
 
 ---
 
@@ -238,6 +238,25 @@ NeuraLink features a high-performance local AI pipeline that runs entirely on yo
 For detailed technical specs and migration history, refer to:
 - [NPU Integration Guide](./docs/npu.md)
 - [NPU Migration Log](./docs/npu_migration.md)
+
+---
+
+## ֎ Offline AI Voices
+
+When running in **Offline Mode** (Local LLM), the system utilizes Apple's **AVSpeechSynthesizer** to generate speech entirely on-device.
+
+### 🗣️ Improving Voice Quality
+By default, iOS uses compact voices (`q=1`) which can sound robotic. To achieve natural, high-fidelity speech, you must download the **Enhanced** or **Premium** versions of the voices:
+
+1.  Open **Settings** on your iPhone.
+2.  Navigate to **Accessibility** → **Spoken Content** → **Voices**.
+3.  Select your language (e.g., **English**).
+4.  Find the voice you wish to use (e.g., **Shelley**, **Ava**, or **Matilda**) and tap the download icon for the **Enhanced** or **Premium** version.
+5.  Once downloaded, the system will automatically jump from `q=1` to `q=2`, providing a dramatically more lifelike experience.
+
+### 🛠️ Implementation Details
+The orchestration of offline synthesis, including voice selection patterns and pitch modulation for local characters, is managed in:
+- [`LocalLLMManager+TTS.swift`](./NeuraLink/AI/LocalLLMManager+TTS.swift)
 
 ---
 

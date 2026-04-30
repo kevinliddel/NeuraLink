@@ -249,6 +249,25 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         }
     }
 
+    /// Stops the current session and immediately starts a fresh one.
+    /// Used when the user switches the local LLM model mid-session.
+    func restart() {
+        sileroVAD.stop()
+        llmEngine.stop()
+        playerNode.stop()
+        ttsBuffer = ""
+        recordingLock.lock()
+        isRecordingVoice = false
+        recordingBuffer.removeAll()
+        recordingLock.unlock()
+        Task { @MainActor in
+            pendingTTSBuffers = 0
+            ttsGenerationDone = false
+            state.status = .disconnected
+            startListening()
+        }
+    }
+
     /// Stops all activity and releases the LLM + Whisper models from memory.
     /// Called when the user disables Local SLM in settings.
     func unload() {
