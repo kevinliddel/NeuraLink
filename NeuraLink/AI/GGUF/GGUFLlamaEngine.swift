@@ -56,10 +56,10 @@ final class GGUFLlamaEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
                 // Run on a dedicated thread so the Swift cooperative pool stays free.
                 let loaded: LlamaBridge = try await withCheckedThrowingContinuation { cont in
                     DispatchQueue.global(qos: .userInitiated).async {
-                        // 4 GB devices: n_ctx=256, 4 threads, all layers on Metal GPU.
+                        // 4 GB devices: n_ctx=1024, 4 threads, all layers on Metal GPU.
                         if let b = LlamaBridge(
                             modelPath: url.path,
-                            contextLength: 256,
+                            contextLength: 1024,
                             threads: 4,
                             gpuLayers: 999
                         ) {

@@ -38,6 +38,15 @@ final class LocalWhisperManager: NSObject, @unchecked Sendable {
 
     var isReadyToUse: Bool { isReady }
 
+    /// Releases WhisperKit from memory so other models can use the freed RAM.
+    /// Call `setup()` to reload before the next transcription.
+    func unload() {
+        whisperKit = nil
+        isReady = false
+        setupLock.withLock { setupTask = nil }
+        print("[Whisper] Unloaded — memory freed for F5-TTS synthesis.")
+    }
+
     // Writes samples as a 16 kHz mono PCM-float WAV. Returns the URL for transcription.
     // Pull files from Documents via Xcode → Window → Devices → NeuraLink → Download Container.
     @discardableResult
@@ -102,6 +111,26 @@ final class LocalWhisperManager: NSObject, @unchecked Sendable {
             return t
         }
         return await task.value
+    }
+
+    /// Transcribes an audio file at the given URL.
+    func transcribe(audioURL: URL) async -> String? {
+        guard await setup() else { return nil }
+        guard let whisper = whisperKit else { return nil }
+        
+        do {
+            var options = DecodingOptions()
+            options.noSpeechThreshold = 0.6
+            options.withoutTimestamps = true
+            options.temperature = 0.0
+            
+            let result = try await whisper.transcribe(audioPath: audioURL.path, decodeOptions: options)
+            let text = result.map { $0.text }.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+            return text.isEmpty ? nil : text
+        } catch {
+            print("[Whisper] Failed to transcribe URL: \(error)")
+            return nil
+        }
     }
 
     /// Transcribes raw PCM float samples captured natively.

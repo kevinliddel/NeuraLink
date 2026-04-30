@@ -36,3 +36,7 @@ DerivedData/
 # MD file
 rule.md
 
+# Safetensors files
+NeuraLink/model.safetensors
+NeuraLink/vocab.txt
+NeuraLink/vocos.safetensors

@@ -33,7 +33,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     // Audio Engine for TTS Lip-sync
     private let engine = AVAudioEngine()
     private let playerNode = AVAudioPlayerNode()
-    private let synthesizer = AVSpeechSynthesizer()
+    private var ttsEngine: any TTSProtocol = F5TTSEngine()
 
     // State
     let state = RealtimeChatState.shared
@@ -62,6 +62,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         whisperManager.delegate = self
         sileroVAD.delegate = self
         setupAudioEngine()
+        setupTTSEngine()
         NotificationCenter.default.addObserver(
             self, selector: #selector(handleAudioInterruption(_:)),
             name: AVAudioSession.interruptionNotification, object: nil)
@@ -73,9 +74,18 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     @objc private func handleAudioInterruption(_ note: Notification) {
         guard let typeVal = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
               let type = AVAudioSession.InterruptionType(rawValue: typeVal) else { return }
-        if type == .ended {
+        switch type {
+        case .began:
+            // Stop the player cleanly so the engine queue isn't left in a torn state.
+            // Font-service / phone-call interruptions hit this path.
+            playerNode.stop()
+            engine.pause()
+        case .ended:
             try? AVAudioSession.sharedInstance().setActive(true)
             if !engine.isRunning { try? engine.start() }
+            playerNode.play()
+        @unknown default:
+            break
         }
     }
 
@@ -192,8 +202,71 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         }
     }
 
+    private func setupTTSEngine() {
+        ttsEngine.onBufferReady = { [weak self] pcmBuffer in
+            guard let self = self else { return }
+
+            // Engine reconnection must run on the main thread to prevent the
+            // "unsafeForcedSync called from Swift Concurrent context" deadlock.
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+
+                // AVSpeechSynthesizer.write() sends a zero-frame "completion" buffer
+                // to signal end of utterance. Scheduling it causes AVAudioPlayerNode
+                // to log "mDataByteSize (0) should be non-zero" and may corrupt the
+                // player's internal queue — drop it before touching the engine.
+                guard pcmBuffer.frameLength > 0 else { return }
+
+                // LLM and Whisper were unloaded before F5-TTS synthesis to keep
+                // total Metal usage under the 2098 MB jetsam ceiling. Reload both
+                // now — speech playback takes ~2-5 s, giving them time to finish
+                // loading before the user's next turn.
+                if !self.llmEngine.isLoaded {
+                    Task { [weak self] in try? await self?.llmEngine.loadModel() }
+                }
+                if !self.whisperManager.isReadyToUse {
+                    Task { [weak self] in await self?.whisperManager.setup() }
+                }
+
+                // Reconnect the node only if the format changed AND is valid.
+                // engine.connect raises an NSException for formats with sampleRate=0.
+                let currentFormat = self.playerNode.outputFormat(forBus: 0)
+                let newFormat = pcmBuffer.format
+                if currentFormat != newFormat,
+                   newFormat.sampleRate > 0, newFormat.channelCount > 0 {
+                    let wasRunning = self.engine.isRunning
+                    if wasRunning { self.engine.pause() }
+
+                    self.engine.disconnectNodeInput(self.playerNode)
+                    self.engine.connect(
+                        self.playerNode, to: self.engine.mainMixerNode, format: newFormat)
+
+                    if wasRunning { try? self.engine.start() }
+                }
+
+                if !self.engine.isRunning {
+                    try? self.engine.start()
+                }
+
+                if !self.playerNode.isPlaying {
+                    self.playerNode.play()
+                }
+
+                self.playerNode.scheduleBuffer(pcmBuffer)
+            }
+        }
+    }
+
     /// Receives transcribed text from the user, updates UI, and triggers the local LLM.
     func handleUserInput(_ text: String) {
+        // Cancel any in-flight generation and speech so a new user turn always
+        // starts clean. Without this, a second VAD trigger during LLM generation
+        // starts a concurrent generate() on the same llama.cpp context → crash.
+        llmEngine.stop()
+        ttsEngine.stop()
+        playerNode.stop()
+        ttsBuffer = ""
+
         turnStartNs = DispatchTime.now().uptimeNanoseconds
         firstTokenLatencyLogged = false
         firstAudioLatencyLogged = false
@@ -215,14 +288,17 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             prompt = "<|im_start|>system\n\(persona.instructions)<|im_end|>\n<|im_start|>user\n\(text)<|im_end|>\n<|im_start|>assistant\n"
             maxTokens = 128
         } else {
-            // Llama-3 on CPU: every prefill token costs ~11 s, so keep the prompt as
-            // short as possible. 30-char system tag ≈ 6 tokens; 40-char user ≈ 8 tokens;
-            // total prompt ≈ 20 tokens → prefill ≈ 220 s instead of 427 s.
+            // Llama-3 on Metal GPU: prefill scales with prompt token count.
+            // A 100-token system prompt alone costs ~25 s on A13.
+            // 30-char system tag ≈ 6 tokens; 40-char user ≈ 8 tokens → ~14 token prefill.
+            // Omit <|begin_of_text|>: llama.cpp adds BOS during tokenisation;
+            // including it manually produces a double-BOS that corrupts positional
+            // embeddings and causes the model to hallucinate multi-turn conversations.
             let brief = String(persona.instructions.prefix(30))
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             let shortText = String(text.prefix(40))
-            prompt = "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n\(brief)<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n\(shortText)<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
-            maxTokens = 16
+            prompt = "<|start_header_id|>system<|end_header_id|>\n\n\(brief)<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n\(shortText)<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
+            maxTokens = 64
         }
 
         Task {
@@ -233,6 +309,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     func stop() {
         sileroVAD.stop()
         llmEngine.stop()
+        ttsEngine.stop()
         playerNode.stop()
         ttsBuffer = ""
         Task { @MainActor in
@@ -271,59 +348,18 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             )
         }
 
-        // Don’t send non-speech noise to TTS (e.g. garbage tokens like "!!!!!").
-        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !clean.isEmpty,
-              clean.unicodeScalars.contains(where: { CharacterSet.letters.contains($0) || CharacterSet.decimalDigits.contains($0) })
-        else { return }
-
-        let utterance = AVSpeechUtterance(string: clean)
-
-        // Select an appropriate voice based on Persona
-        let persona = CharacterPersona.forCharacter(named: state.selectedCharacterName)
-        let language = persona.instructions.contains("Japanese") ? "ja-JP" : "en-US"
-        utterance.voice = AVSpeechSynthesisVoice(language: language)
-        utterance.rate = 0.5
-        utterance.pitchMultiplier = 1.1
-
-        // Use the write() API to intercept audio buffers instead of playing directly.
-        // This allows us to route it through AVAudioEngine to measure amplitude for lip-sync.
-        synthesizer.write(utterance) { [weak self] buffer in
-            guard let self = self, let pcmBuffer = buffer as? AVAudioPCMBuffer else { return }
-
-            // Bail BEFORE any engine manipulation to avoid the zero-byte AVAudioBuffer crash.
-            guard pcmBuffer.frameLength > 0 else { return }
-
-            // Engine reconnection must run on the main thread to prevent the
-            // "unsafeForcedSync called from Swift Concurrent context" deadlock.
-            DispatchQueue.main.async { [weak self] in
-                guard let self = self else { return }
-
-                // AVSpeechSynthesizer can change formats depending on the voice.
-                // Reconnect the node if the format differs from what we initialized.
-                let currentFormat = self.playerNode.outputFormat(forBus: 0)
-                if currentFormat != pcmBuffer.format {
-                    let wasRunning = self.engine.isRunning
-                    if wasRunning { self.engine.pause() }
-
-                    self.engine.disconnectNodeInput(self.playerNode)
-                    self.engine.connect(
-                        self.playerNode, to: self.engine.mainMixerNode, format: pcmBuffer.format)
-
-                    if wasRunning { try? self.engine.start() }
-                }
-
-                if !self.engine.isRunning {
-                    try? self.engine.start()
-                }
-
-                if !self.playerNode.isPlaying {
-                    self.playerNode.play()
-                }
-
-                self.playerNode.scheduleBuffer(pcmBuffer)
-            }
+        // F5-TTS ODE peaks at ~400 MB of Metal activations. Even with the LLM unloaded,
+        // DiT (650 MB) + Vocos (50 MB) + Whisper (150 MB) + activations (400 MB) + Metal
+        // shader compiler service (~300 MB, separate pid) = ~1550 MB — enough to jetsam
+        // the compiler. Also unload Whisper here; F5-TTS runs in Task.detached so the
+        // user can't speak during synthesis anyway. Both models reload in onBufferReady.
+        if (ttsEngine as? F5TTSEngine)?.isReady == true {
+            print("[LocalLLM] F5-TTS ready — unloading LLM + Whisper to free Metal memory")
+            llmEngine.unloadModel()
+            whisperManager.unload()
         }
+
+        ttsEngine.speak(text, for: state.selectedCharacterName)
     }
 
     private func reportAmplitude(_ buffer: AVAudioPCMBuffer) {
@@ -389,15 +425,9 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
             state.aiTranscript += token
         }
 
-        // Buffer tokens. When we hit a punctuation mark, synthesize speech.
+        // Accumulate tokens; speak the complete response on didFinishGeneration
+        // for natural, non-chunked speech.
         ttsBuffer += token
-        if token.contains(".") || token.contains("!") || token.contains("?")
-            || token.contains("。") || token.contains(",") || token.contains("\n")
-            || (ttsBuffer.count >= 32 && ttsBuffer.contains(" ")) {
-            let chunkToSpeak = ttsBuffer
-            ttsBuffer = ""
-            speakChunk(chunkToSpeak)
-        }
     }
 
     func localLLM(didFinishGeneration fullText: String) {
@@ -406,11 +436,12 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
             print("[LocalLLM] Turn total latency: \(String(format: "%.1f", elapsedMs)) ms")
         }
 
-        // Flush any remaining text in the buffer
-        if !ttsBuffer.trimmingCharacters(in: .whitespaces).isEmpty {
-            speakChunk(ttsBuffer)
-            ttsBuffer = ""
+        // Speak the complete response as one utterance for natural prosody.
+        let textToSpeak = fullText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !textToSpeak.isEmpty {
+            speakChunk(textToSpeak)
         }
+        ttsBuffer = ""
         Task { @MainActor in
             state.status = .ready
         }

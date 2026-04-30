@@ -17,6 +17,13 @@
 		041885CD2F99F90100609CCE /* argmax-cli in Frameworks */ = {isa = PBXBuildFile; productRef = 041885CC2F99F90100609CCE /* argmax-cli */; };
 		041E139A2F913E1500D2D110 /* Starscream in Frameworks */ = {isa = PBXBuildFile; productRef = 041E13992F913E1500D2D110 /* Starscream */; };
 		04332ACD2F9913B00035B9D0 /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = 04332ACC2F9913B00035B9D0 /* WebRTC */; };
+		04C15A722FA36402002AD1E8 /* riko.wav in Resources */ = {isa = PBXBuildFile; fileRef = 04C15A702FA36402002AD1E8 /* riko.wav */; };
+		04C15A732FA36402002AD1E8 /* akira.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 04C15A6F2FA36402002AD1E8 /* akira.mp3 */; };
+		04C1B45A2FA3214000865C9C /* MLX in Frameworks */ = {isa = PBXBuildFile; productRef = 04C1B4592FA3214000865C9C /* MLX */; };
+		04C1B45C2FA3214000865C9C /* MLXFFT in Frameworks */ = {isa = PBXBuildFile; productRef = 04C1B45B2FA3214000865C9C /* MLXFFT */; };
+		04C1B45E2FA3214000865C9C /* MLXFast in Frameworks */ = {isa = PBXBuildFile; productRef = 04C1B45D2FA3214000865C9C /* MLXFast */; };
+		04C1B4602FA3214000865C9C /* MLXLinalg in Frameworks */ = {isa = PBXBuildFile; productRef = 04C1B45F2FA3214000865C9C /* MLXLinalg */; };
+		04C1B4622FA3214000865C9C /* MLXNN in Frameworks */ = {isa = PBXBuildFile; productRef = 04C1B4612FA3214000865C9C /* MLXNN */; };
 		04F3BD6F2F9630CD00D2DDF2 /* RealTimeCutVADLibrary in Frameworks */ = {isa = PBXBuildFile; productRef = 04F3BD6E2F9630CD00D2DDF2 /* RealTimeCutVADLibrary */; };
 		AFECF4B6451C234E9720E970 /* llama.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = AC9FBDA126D2084ED6E64CC8 /* llama.xcframework */; };
 		B28C440838DF8F0459096F14 /* llama.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AC9FBDA126D2084ED6E64CC8 /* llama.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -57,6 +64,20 @@
 		041E11DE2F8E782300D2D110 /* NeuraLink.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NeuraLink.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		041E11ED2F8E782800D2D110 /* NeuraLinkTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = NeuraLinkTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		041E11F72F8E782800D2D110 /* NeuraLinkUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = NeuraLinkUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		04C158C52FA3263C002AD1E8 /* mel_filters.npy */ = {isa = PBXFileReference; lastKnownFileType = file; path = mel_filters.npy; sourceTree = "<group>"; };
+		04C158C62FA3263C002AD1E8 /* test_en_1_ref_short.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = test_en_1_ref_short.wav; sourceTree = "<group>"; };
+		04C158C82FA3263C002AD1E8 /* DiT.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiT.swift; sourceTree = "<group>"; };
+		04C158C92FA3263C002AD1E8 /* Duration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Duration.swift; sourceTree = "<group>"; };
+		04C158CA2FA3263C002AD1E8 /* F5TTS.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = F5TTS.swift; sourceTree = "<group>"; };
+		04C158CB2FA3263C002AD1E8 /* Modules.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Modules.swift; sourceTree = "<group>"; };
+		04C15A6F2FA36402002AD1E8 /* akira.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = akira.mp3; sourceTree = "<group>"; };
+		04C15A702FA36402002AD1E8 /* riko.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = riko.wav; sourceTree = "<group>"; };
+		04C1B4812FA3247C00865C9C /* mel_filters.npy */ = {isa = PBXFileReference; lastKnownFileType = file; path = mel_filters.npy; sourceTree = "<group>"; };
+		04C1B4822FA3247C00865C9C /* test_en_1_ref_short.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = test_en_1_ref_short.wav; sourceTree = "<group>"; };
+		04C1B4842FA3247C00865C9C /* DiT.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiT.swift; sourceTree = "<group>"; };
+		04C1B4852FA3247C00865C9C /* Duration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Duration.swift; sourceTree = "<group>"; };
+		04C1B4862FA3247C00865C9C /* F5TTS.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = F5TTS.swift; sourceTree = "<group>"; };
+		04C1B4872FA3247C00865C9C /* Modules.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Modules.swift; sourceTree = "<group>"; };
 		AC9FBDA126D2084ED6E64CC8 /* llama.xcframework */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = wrapper.xcframework; name = llama.xcframework; path = "llama.cpp/build-apple/llama.xcframework"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -97,15 +118,20 @@
 			buildActionMask = 2147483647;
 			files = (
 				041885AF2F99F0B200609CCE /* Transformers in Frameworks */,
+				04C1B4602FA3214000865C9C /* MLXLinalg in Frameworks */,
 				04F3BD6F2F9630CD00D2DDF2 /* RealTimeCutVADLibrary in Frameworks */,
 				041885CB2F99F90100609CCE /* WhisperKit in Frameworks */,
+				04C1B45E2FA3214000865C9C /* MLXFast in Frameworks */,
 				041885C52F99F90100609CCE /* ArgmaxOSS in Frameworks */,
 				04332ACD2F9913B00035B9D0 /* WebRTC in Frameworks */,
 				041885AB2F99F0B200609CCE /* Hub in Frameworks */,
+				04C1B4622FA3214000865C9C /* MLXNN in Frameworks */,
 				041885C72F99F90100609CCE /* SpeakerKit in Frameworks */,
 				041885C92F99F90100609CCE /* TTSKit in Frameworks */,
 				041E139A2F913E1500D2D110 /* Starscream in Frameworks */,
 				041885AD2F99F0B200609CCE /* Tokenizers in Frameworks */,
+				04C1B45A2FA3214000865C9C /* MLX in Frameworks */,
+				04C1B45C2FA3214000865C9C /* MLXFFT in Frameworks */,
 				041885CD2F99F90100609CCE /* argmax-cli in Frameworks */,
 				AFECF4B6451C234E9720E970 /* llama.xcframework in Frameworks */,
 			);
@@ -131,6 +157,7 @@
 		041E11D52F8E782300D2D110 = {
 			isa = PBXGroup;
 			children = (
+				04C15A712FA36402002AD1E8 /* TrainingVoice */,
 				041E11E02F8E782300D2D110 /* NeuraLink */,
 				041E11F02F8E782800D2D110 /* NeuraLinkTests */,
 				041E11FA2F8E782800D2D110 /* NeuraLinkUITests */,
@@ -149,9 +176,64 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		04C158C72FA3263C002AD1E8 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				04C158C52FA3263C002AD1E8 /* mel_filters.npy */,
+				04C158C62FA3263C002AD1E8 /* test_en_1_ref_short.wav */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		04C158CC2FA3263C002AD1E8 /* F5TTS */ = {
+			isa = PBXGroup;
+			children = (
+				04C158C72FA3263C002AD1E8 /* Resources */,
+				04C158C82FA3263C002AD1E8 /* DiT.swift */,
+				04C158C92FA3263C002AD1E8 /* Duration.swift */,
+				04C158CA2FA3263C002AD1E8 /* F5TTS.swift */,
+				04C158CB2FA3263C002AD1E8 /* Modules.swift */,
+			);
+			name = F5TTS;
+			path = "NeuraLink/f5-tts-swift/Sources/F5TTS";
+			sourceTree = "<group>";
+		};
+		04C15A712FA36402002AD1E8 /* TrainingVoice */ = {
+			isa = PBXGroup;
+			children = (
+				04C15A6F2FA36402002AD1E8 /* akira.mp3 */,
+				04C15A702FA36402002AD1E8 /* riko.wav */,
+			);
+			path = TrainingVoice;
+			sourceTree = "<group>";
+		};
+		04C1B4832FA3247C00865C9C /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				04C1B4812FA3247C00865C9C /* mel_filters.npy */,
+				04C1B4822FA3247C00865C9C /* test_en_1_ref_short.wav */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		04C1B4882FA3247C00865C9C /* F5TTS */ = {
+			isa = PBXGroup;
+			children = (
+				04C1B4832FA3247C00865C9C /* Resources */,
+				04C1B4842FA3247C00865C9C /* DiT.swift */,
+				04C1B4852FA3247C00865C9C /* Duration.swift */,
+				04C1B4862FA3247C00865C9C /* F5TTS.swift */,
+				04C1B4872FA3247C00865C9C /* Modules.swift */,
+			);
+			name = F5TTS;
+			path = "NeuraLink/f5-tts-swift/Sources/F5TTS";
+			sourceTree = "<group>";
+		};
 		9BE0701700778F61DE6F71DE /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				04C1B4882FA3247C00865C9C /* F5TTS */,
+				04C158CC2FA3263C002AD1E8 /* F5TTS */,
 				AC9FBDA126D2084ED6E64CC8 /* llama.xcframework */,
 			);
 			name = Frameworks;
@@ -189,6 +271,11 @@
 				041885C82F99F90100609CCE /* TTSKit */,
 				041885CA2F99F90100609CCE /* WhisperKit */,
 				041885CC2F99F90100609CCE /* argmax-cli */,
+				04C1B4592FA3214000865C9C /* MLX */,
+				04C1B45B2FA3214000865C9C /* MLXFFT */,
+				04C1B45D2FA3214000865C9C /* MLXFast */,
+				04C1B45F2FA3214000865C9C /* MLXLinalg */,
+				04C1B4612FA3214000865C9C /* MLXNN */,
 			);
 			productName = NeuraLink;
 			productReference = 041E11DE2F8E782300D2D110 /* NeuraLink.app */;
@@ -274,6 +361,7 @@
 				04332ACB2F9913B00035B9D0 /* XCRemoteSwiftPackageReference "WebRTC" */,
 				041885A92F99F0B200609CCE /* XCRemoteSwiftPackageReference "swift-transformers" */,
 				041885C32F99F90100609CCE /* XCRemoteSwiftPackageReference "argmax-oss-swift" */,
+				04C1B4582FA3214000865C9C /* XCRemoteSwiftPackageReference "mlx-swift" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 041E11DF2F8E782300D2D110 /* Products */;
@@ -292,6 +380,8 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				04C15A722FA36402002AD1E8 /* riko.wav in Resources */,
+				04C15A732FA36402002AD1E8 /* akira.mp3 in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -698,6 +788,14 @@
 				minimumVersion = 147.0.0;
 			};
 		};
+		04C1B4582FA3214000865C9C /* XCRemoteSwiftPackageReference "mlx-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/ml-explore/mlx-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.31.3;
+			};
+		};
 		04F3BD6D2F9630CD00D2DDF2 /* XCRemoteSwiftPackageReference "RealTimeCutVADLibrary" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/helloooideeeeea/RealTimeCutVADLibrary";
@@ -758,6 +856,31 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 04332ACB2F9913B00035B9D0 /* XCRemoteSwiftPackageReference "WebRTC" */;
 			productName = WebRTC;
+		};
+		04C1B4592FA3214000865C9C /* MLX */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 04C1B4582FA3214000865C9C /* XCRemoteSwiftPackageReference "mlx-swift" */;
+			productName = MLX;
+		};
+		04C1B45B2FA3214000865C9C /* MLXFFT */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 04C1B4582FA3214000865C9C /* XCRemoteSwiftPackageReference "mlx-swift" */;
+			productName = MLXFFT;
+		};
+		04C1B45D2FA3214000865C9C /* MLXFast */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 04C1B4582FA3214000865C9C /* XCRemoteSwiftPackageReference "mlx-swift" */;
+			productName = MLXFast;
+		};
+		04C1B45F2FA3214000865C9C /* MLXLinalg */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 04C1B4582FA3214000865C9C /* XCRemoteSwiftPackageReference "mlx-swift" */;
+			productName = MLXLinalg;
+		};
+		04C1B4612FA3214000865C9C /* MLXNN */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 04C1B4582FA3214000865C9C /* XCRemoteSwiftPackageReference "mlx-swift" */;
+			productName = MLXNN;
 		};
 		04F3BD6E2F9630CD00D2DDF2 /* RealTimeCutVADLibrary */ = {
 			isa = XCSwiftPackageProductDependency;

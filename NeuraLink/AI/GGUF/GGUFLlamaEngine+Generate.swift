@@ -38,11 +38,18 @@ extension GGUFLlamaEngine {
                     maxNewTokens: Int32(maxTokens),
                     onToken: { [weak self] token in
                         guard let self else { return false }
+                        // Belt-and-suspenders: stop if the model emits a Llama-3
+                        // control token that llama_vocab_is_eog may have missed.
+                        // <|eot_id|> = end of this turn; <|start_header_id|> = the
+                        // model started generating the next role, i.e. answering itself.
+                        if token.contains("<|eot_id|>") || token.contains("<|start_header_id|>") {
+                            return false
+                        }
                         fullText += token
                         Task { @MainActor [weak self] in
                             self?.delegate?.localLLM(didGenerateToken: token)
                         }
-                        return true   // returning false would stop generation
+                        return true
                     },
                     onFinish: { [weak self] in
                         Task { @MainActor [weak self] in

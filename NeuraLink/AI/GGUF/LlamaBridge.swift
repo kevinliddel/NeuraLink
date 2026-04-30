@@ -36,7 +36,7 @@ final class LlamaBridge {
     ///   - gpuLayers:     Transformer layers to offload to Metal (999 = all).
     init?(
         modelPath: String,
-        contextLength: Int32 = 256,
+        contextLength: Int32 = 1024,
         threads: Int32 = 4,
         gpuLayers: Int32 = 999
     ) {
