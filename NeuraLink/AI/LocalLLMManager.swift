@@ -56,6 +56,14 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     private var firstTokenLatencyLogged = false
     private var firstAudioLatencyLogged = false
 
+    // TTS completion tracking — main thread only.
+    // State stays .speaking until all scheduled PCM buffers have actually played out,
+    // which prevents VAD from picking up speaker output and triggering a self-reply.
+    private var pendingTTSBuffers: Int = 0
+    private var ttsGenerationDone: Bool = false
+
+    var voicesLogged = false
+
     override init() {
         super.init()
         llmEngine.delegate = self
@@ -204,25 +212,24 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             state.status = .thinking
         }
 
-        let persona = CharacterPersona.forCharacter(named: state.selectedCharacterName)
+        // Local LLMs get a stripped-down spoken-word prompt.
+        // The full CharacterPersona.instructions are written for OpenAI and encourage
+        // elaborate roleplay prose (*actions*, emotional narration) that small models
+        // reproduce verbatim — making them sound like a light novel read aloud.
+        // This prompt captures just enough character flavour for a 1-2B model.
+        let sysPrompt = localLLMSystemPrompt(for: state.selectedCharacterName)
         let prompt: String
         let maxTokens: Int
         let mgr = LocalModelDownloadManager.shared
         let useQwen = mgr.isAvailable && mgr.selectedConfig == .qwen2b
 
         if useQwen {
-            // Qwen instruct template
-            prompt = "<|im_start|>system\n\(persona.instructions)<|im_end|>\n<|im_start|>user\n\(text)<|im_end|>\n<|im_start|>assistant\n"
-            maxTokens = 128
+            prompt = "<|im_start|>system\n\(sysPrompt)<|im_end|>\n<|im_start|>user\n\(text)<|im_end|>\n<|im_start|>assistant\n"
+            maxTokens = 160
         } else {
-            // Llama-3 on CPU: every prefill token costs ~11 s, so keep the prompt as
-            // short as possible. 30-char system tag ≈ 6 tokens; 40-char user ≈ 8 tokens;
-            // total prompt ≈ 20 tokens → prefill ≈ 220 s instead of 427 s.
-            let brief = String(persona.instructions.prefix(30))
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            let shortText = String(text.prefix(40))
-            prompt = "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n\(brief)<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n\(shortText)<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
-            maxTokens = 16
+            // Omit <|begin_of_text|> — llama.cpp adds BOS automatically; including it doubles the BOS token.
+            prompt = "<|start_header_id|>system<|end_header_id|>\n\n\(sysPrompt)<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n\(text)<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
+            maxTokens = 100
         }
 
         Task {
@@ -236,6 +243,8 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         playerNode.stop()
         ttsBuffer = ""
         Task { @MainActor in
+            pendingTTSBuffers = 0
+            ttsGenerationDone = false
             state.status = .ready
         }
     }
@@ -253,6 +262,8 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         isRecordingVoice = false
         recordingLock.unlock()
         Task { @MainActor in
+            pendingTTSBuffers = 0
+            ttsGenerationDone = false
             state.status = .disconnected
         }
         print("[LocalLLM] Manager unloaded — all models freed.")
@@ -271,20 +282,34 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             )
         }
 
-        // Don’t send non-speech noise to TTS (e.g. garbage tokens like "!!!!!").
-        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Strip light-novel roleplay markers before TTS — the synthesizer reads them
+        // literally (*big hug* becomes "asterisk big hug asterisk"), which sounds terrible.
+        var clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        clean = clean.replacingOccurrences(of: #"\*[^*\n]+\*"#, with: "", options: .regularExpression)
+        clean = clean.replacingOccurrences(of: #"\[[^\]\n]+\]"#, with: "", options: .regularExpression)
+        clean = clean.replacingOccurrences(of: #" {2,}"#, with: " ", options: .regularExpression)
+        clean = clean.trimmingCharacters(in: .whitespacesAndNewlines)
+
         guard !clean.isEmpty,
               clean.unicodeScalars.contains(where: { CharacterSet.letters.contains($0) || CharacterSet.decimalDigits.contains($0) })
         else { return }
 
         let utterance = AVSpeechUtterance(string: clean)
 
-        // Select an appropriate voice based on Persona
-        let persona = CharacterPersona.forCharacter(named: state.selectedCharacterName)
-        let language = persona.instructions.contains("Japanese") ? "ja-JP" : "en-US"
-        utterance.voice = AVSpeechSynthesisVoice(language: language)
-        utterance.rate = 0.5
-        utterance.pitchMultiplier = 1.1
+        utterance.voice = bestAvailableVoice(for: state.selectedCharacterName)
+
+        // Vary pitch and rate per sentence type so TTS doesn't sound monotone.
+        // Questions rise, exclamations are slightly punchy, statements are calm.
+        if clean.hasSuffix("?") || clean.hasSuffix("？") {
+            utterance.pitchMultiplier = 1.1
+            utterance.rate = AVSpeechUtteranceDefaultSpeechRate
+        } else if clean.hasSuffix("!") || clean.hasSuffix("！") {
+            utterance.pitchMultiplier = 1.05
+            utterance.rate = AVSpeechUtteranceDefaultSpeechRate + 0.03
+        } else {
+            utterance.pitchMultiplier = 1.0
+            utterance.rate = AVSpeechUtteranceDefaultSpeechRate
+        }
 
         // Use the write() API to intercept audio buffers instead of playing directly.
         // This allows us to route it through AVAudioEngine to measure amplitude for lip-sync.
@@ -321,7 +346,20 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
                     self.playerNode.play()
                 }
 
-                self.playerNode.scheduleBuffer(pcmBuffer)
+                // Track this buffer so state stays .speaking until the hardware
+                // finishes playing it — prevents VAD self-trigger from speaker output.
+                self.pendingTTSBuffers += 1
+                self.playerNode.scheduleBuffer(pcmBuffer, completionCallbackType: .dataConsumed) {
+                    [weak self] _ in
+                    DispatchQueue.main.async {
+                        guard let self = self else { return }
+                        self.pendingTTSBuffers -= 1
+                        if self.pendingTTSBuffers == 0 && self.ttsGenerationDone {
+                            self.ttsGenerationDone = false
+                            self.state.status = .ready
+                        }
+                    }
+                }
             }
         }
     }
@@ -405,6 +443,7 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
             let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000.0
             print("[LocalLLM] Turn total latency: \(String(format: "%.1f", elapsedMs)) ms")
         }
+        print("[LocalLLM] Full response: \(fullText)")
 
         // Flush any remaining text in the buffer
         if !ttsBuffer.trimmingCharacters(in: .whitespaces).isEmpty {
@@ -412,7 +451,14 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
             ttsBuffer = ""
         }
         Task { @MainActor in
-            state.status = .ready
+            // Only return to .ready once the last PCM buffer has actually played out.
+            // If there are pending buffers, mark done and let the completion handler fire .ready
+            // when hardware drains the last frame — this prevents VAD from picking up speaker output.
+            if pendingTTSBuffers == 0 {
+                state.status = .ready
+            } else {
+                ttsGenerationDone = true
+            }
         }
     }
 
