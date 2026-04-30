@@ -14,6 +14,26 @@ extension GGUFQwenEngine {
             delegate?.localLLM(didFailWithError: LLMError.initializationFailed)
             return
         }
+
+        generationLock.lock()
+        let alreadyRunning = _isGenerating
+        if !alreadyRunning { _isGenerating = true }
+        generationLock.unlock()
+
+        guard !alreadyRunning else {
+            print("[GGUFQwen] Dropped generate — already in progress")
+            Task { @MainActor [weak self] in
+                self?.delegate?.localLLM(didFinishGeneration: "")
+            }
+            return
+        }
+
+        defer {
+            generationLock.lock()
+            _isGenerating = false
+            generationLock.unlock()
+        }
+
         var fullText = ""
 
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in

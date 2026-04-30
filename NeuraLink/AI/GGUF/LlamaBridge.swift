@@ -31,12 +31,12 @@ final class LlamaBridge {
     ///
     /// - Parameters:
     ///   - modelPath:     Absolute path to the `.gguf` file.
-    ///   - contextLength: KV-cache token capacity (256 for 4 GB devices).
+    ///   - contextLength: KV-cache token capacity (2048 for 4 GB devices).
     ///   - threads:       CPU threads for non-Metal ops (4 on A13 Bionic).
     ///   - gpuLayers:     Transformer layers to offload to Metal (999 = all).
     init?(
         modelPath: String,
-        contextLength: Int32 = 256,
+        contextLength: Int32 = 2048,
         threads: Int32 = 4,
         gpuLayers: Int32 = 999
     ) {

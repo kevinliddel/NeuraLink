@@ -12,29 +12,36 @@ import Foundation
 
 extension LocalLLMManager: SileroVADDelegate {
     func sileroVADDidDetectVoiceStart() {
+        // Guard on MainActor so we only start recording when truly in .ready state.
+        // This prevents the VAD from treating speaker output as user speech while the
+        // AI is speaking (.speaking / .thinking), which would cause a self-reply loop.
         Task { @MainActor in
-            if state.status == .ready {
-                state.status = .listening
-            }
+            guard state.status == .ready else { return }
+            state.status = .listening
+            recordingLock.lock()
+            isRecordingVoice = true
+            // Keep the pre-roll buffer intact so we don't lose the first word
+            recordingLock.unlock()
         }
-        recordingLock.lock()
-        isRecordingVoice = true
-        // Keep the pre-roll buffer intact so we don't lose the first word
-        recordingLock.unlock()
     }
 
     func sileroVADDidDetectVoiceEnd(wavData: Data?) {
+        recordingLock.lock()
+        // wasTrulyRecording is false when voice started during .speaking/.thinking,
+        // meaning isRecordingVoice was never set — so we have no real user audio to transcribe.
+        let wasTrulyRecording = isRecordingVoice
+        isRecordingVoice = false
+        var rawSamples = recordingBuffer
+        recordingBuffer.removeAll(keepingCapacity: true)  // Clear buffer for next utterance
+        recordingLock.unlock()
+
         Task { @MainActor in
             if state.status == .listening {
                 state.status = .ready
             }
         }
 
-        recordingLock.lock()
-        isRecordingVoice = false
-        var rawSamples = recordingBuffer
-        recordingBuffer.removeAll(keepingCapacity: true)  // Clear buffer for next utterance
-        recordingLock.unlock()
+        guard wasTrulyRecording else { return }
 
         // VAD requires ~1.8s of silence to trigger the voice end.
         // We drop the last 1.5s of trailing silence to tightly bound the speech.

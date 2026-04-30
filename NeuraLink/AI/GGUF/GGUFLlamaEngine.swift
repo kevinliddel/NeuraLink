@@ -35,6 +35,12 @@ final class GGUFLlamaEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
     internal var loadTask: Task<Void, Error>?
     internal let loadLock = NSLock()
 
+    // Prevents concurrent llama_decode calls on the same context.
+    // llama.cpp is NOT thread-safe: two simultaneous decode calls corrupt
+    // internal buffers and crash with GGML_ASSERT(buffer) failed.
+    internal let generationLock = NSLock()
+    internal var _isGenerating = false
+
     // MARK: - Init
 
     override private init() { super.init() }
@@ -56,10 +62,10 @@ final class GGUFLlamaEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
                 // Run on a dedicated thread so the Swift cooperative pool stays free.
                 let loaded: LlamaBridge = try await withCheckedThrowingContinuation { cont in
                     DispatchQueue.global(qos: .userInitiated).async {
-                        // 4 GB devices: n_ctx=256, 4 threads, all layers on Metal GPU.
+                        // 4 GB devices: n_ctx=2048, 4 threads, all layers on Metal GPU.
                         if let b = LlamaBridge(
                             modelPath: url.path,
-                            contextLength: 256,
+                            contextLength: 2048,
                             threads: 4,
                             gpuLayers: 999
                         ) {
