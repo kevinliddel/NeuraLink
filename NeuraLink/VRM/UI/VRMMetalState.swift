@@ -31,6 +31,7 @@ final class VRMMetalState {
     // Animation
     private let animationPlayer = AnimationPlayer()
     private let lipSyncController = VRMLipSyncController()
+    private let blinkController = VRMBlinkController()
     private var displayLink: CADisplayLink?
     private var lastTickTimestamp: CFTimeInterval = 0
     private var isPlayingAppear = false
@@ -284,6 +285,10 @@ final class VRMMetalState {
         }
 
         animationPlayer.applyMorphWeights(to: renderer?.expressionController)
+
+        // Native automatic blink animation
+        blinkController.update(deltaTime: dt)
+        blinkController.apply(to: renderer?.expressionController)
 
         // Update look-at tracking (eyes, head, neck)
         if let lookAt = renderer?.lookAtController {
