@@ -73,7 +73,7 @@ struct RealtimeChatOverlay: View {
             return ("Start talking", "waveform", false, nil)
 
         default:
-            return ("Initializing...", nil, true, nil)
+            return ("Thinking...", nil, true, nil)
         }
     }
 

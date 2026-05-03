@@ -33,8 +33,17 @@ final class PersonaStore {
     }
 
     /// Retrieves a cached persona for a given model ID.
+    /// Always injects the latest emotion instructions to override any stale cached data.
     func getPersona(for modelID: String) -> CharacterPersona? {
-        return getAllPersonas()[modelID.lowercased()]
+        guard var persona = getAllPersonas()[modelID.lowercased()] else { return nil }
+        // Strip any previously persisted emotion instructions block, then re-inject
+        // the current one at the top so format changes are always applied.
+        let marker = "\n\n    IMPORTANT: You MUST express"
+        if let range = persona.instructions.range(of: marker) {
+            persona.instructions = String(persona.instructions[..<range.lowerBound])
+        }
+        persona.instructions = CharacterPersona.emotionInstructions + "\n" + persona.instructions
+        return persona
     }
 
     /// Removes any custom persona for a given model ID, reverting to defaults.
