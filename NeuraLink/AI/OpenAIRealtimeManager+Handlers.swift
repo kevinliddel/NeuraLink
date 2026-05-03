@@ -24,6 +24,7 @@ extension OpenAIRealtimeManager {
                 if let delta = json["delta"] as? String {
                     print("[AI Text Delta]: \(delta)")
                     state.aiTranscript += delta
+                    state.parseAndTriggerEmotion(from: state.aiTranscript)
                 }
 
             case "conversation.item.input_audio_transcription.completed":

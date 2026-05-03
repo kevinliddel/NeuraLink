@@ -300,6 +300,20 @@ final class VRMMetalState {
         // not by status, so mouth stays in sync through the WebRTC jitter buffer drain.
         lipSyncController.update(audioLevel: aiState.audioLevel, deltaTime: dt)
         lipSyncController.apply(to: renderer?.expressionController)
+
+        // AI Emotion handling
+        if aiState.emotionDuration > 0 {
+            aiState.emotionDuration -= dt
+            if aiState.emotionDuration <= 0 {
+                aiState.currentEmotion = "neutral"
+                aiState.emotionDuration = 0
+            }
+        }
+
+        // Apply Emotion to Expression Controller
+        if let preset = VRMExpressionPreset(rawValue: aiState.currentEmotion) {
+            renderer?.expressionController?.setMood(preset, intensity: 1.0)
+        }
     }
 
     // MARK: - Camera Setup

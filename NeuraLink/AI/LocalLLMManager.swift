@@ -300,7 +300,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
                 "[LocalLLM] First TTS chunk latency: \(String(format: "%.1f", elapsedMs)) ms"
             )
         }
-
+        
         // Strip light-novel roleplay markers before TTS — the synthesizer reads them
         // literally (*big hug* becomes "asterisk big hug asterisk"), which sounds terrible.
         var clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -444,6 +444,7 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
                 state.status = .speaking
             }
             state.aiTranscript += token
+            state.parseAndTriggerEmotion(from: state.aiTranscript)
         }
 
         // Buffer tokens. When we hit a punctuation mark, synthesize speech.

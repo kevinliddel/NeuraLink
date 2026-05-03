@@ -43,6 +43,9 @@ final class RealtimeChatState {
     var aiTranscript: String = ""
     var audioLevel: Float = 0.0  // 0.0 to 1.0
     var selectedCharacterName: String = ""
+    var currentEmotion: String = "neutral"
+    var emotionDuration: Float = 0
+    private var lastParsedIndex: Int = 0
 
     // UI Controls
     var showSettings: Bool = false
@@ -51,9 +54,39 @@ final class RealtimeChatState {
         userTranscript = ""
         aiTranscript = ""
         audioLevel = 0.0
+        currentEmotion = "neutral"
+        emotionDuration = 0
+        lastParsedIndex = 0
     }
 
     func setError(_ message: String) {
         status = .error(message)
+    }
+
+    func triggerEmotion(_ emotion: String, duration: Float) {
+        self.currentEmotion = emotion.lowercased()
+        self.emotionDuration = duration
+    }
+
+    /// Parses tags like [happy:2.5] from the given text and triggers the corresponding emotion.
+    /// Tracks progress to avoid re-triggering the same tag.
+    func parseAndTriggerEmotion(from text: String) {
+        let nsString = text as NSString
+        guard nsString.length > lastParsedIndex else { return }
+        
+        let remainingRange = NSRange(location: lastParsedIndex, length: nsString.length - lastParsedIndex)
+        let pattern = #"(?i)\[(happy|angry|sad|relaxed|surprised|neutral):(\d+(?:\.\d+)?)\]"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else { return }
+
+        let results = regex.matches(in: text, options: [], range: remainingRange)
+
+        for result in results {
+            let emotion = nsString.substring(with: result.range(at: 1))
+            let durationString = nsString.substring(with: result.range(at: 2))
+            if let duration = Float(durationString) {
+                triggerEmotion(emotion, duration: duration)
+            }
+            lastParsedIndex = result.range.upperBound
+        }
     }
 }

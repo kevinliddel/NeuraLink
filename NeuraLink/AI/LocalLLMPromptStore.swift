@@ -59,7 +59,7 @@ final class LocalLLMPromptStore {
             Keep responses concise but natural, and avoid repetitive phrases. \
             Never write asterisk actions, never narrate, never use parentheses. \
             Just say the words you would actually speak.
-            """
+            """ + CharacterPersona.emotionInstructions
         case "sonya":
             return """
             You are Sonya, a sharp tsundere talking out loud. \
@@ -71,9 +71,9 @@ final class LocalLLMPromptStore {
             Keep responses concise but natural, and avoid repetitive phrases. \
             Never write asterisk actions, never narrate, never use parentheses. \
             Just say the words you would actually speak.
-            """
+            """ + CharacterPersona.emotionInstructions
         default:
-            return "Reply in one short spoken sentence. Be natural and conversational."
+            return "Reply in one short spoken sentence. Be natural and conversational." + CharacterPersona.emotionInstructions
         }
     }
 }
