@@ -72,6 +72,10 @@ final class RealtimeChatState {
     /// Tracks progress to avoid re-triggering the same tag.
     func parseAndTriggerEmotion(from text: String) {
         let nsString = text as NSString
+        // Auto-reset when the transcript was cleared/restarted between turns
+        if nsString.length < lastParsedIndex {
+            lastParsedIndex = 0
+        }
         guard nsString.length > lastParsedIndex else { return }
         
         let remainingRange = NSRange(location: lastParsedIndex, length: nsString.length - lastParsedIndex)
