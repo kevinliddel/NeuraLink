@@ -78,6 +78,7 @@ extension OpenAIRealtimeManager {
 
             // Response lifecycle
             case "response.done":
+                print("[OpenAI] Full response: \(state.aiTranscript)")
                 state.status = .ready
                 if let deferred = deferredFunctionCall {
                     // Execute the function immediately — for UI-opening functions
@@ -280,7 +281,7 @@ extension OpenAIRealtimeManager: RTCDataChannelDelegate {
 
         let buffer = RTCDataBuffer(data: data, isBinary: false)
         remoteDataChannel?.sendData(buffer)
-        print("[AI]: Sent initial session.update with \(AppFunctionTool.all.count) tools")
+        print("[AI]: Sent initial session.update with \(AppFunctionTool.all.count) tools and instructions: \(persona.instructions.prefix(100))...")
     }
 
     func dataChannel(_ dataChannel: RTCDataChannel, didReceiveMessageWith buffer: RTCDataBuffer) {

@@ -39,6 +39,11 @@ final class VRMMetalState {
     private var defaultClip: AnimationClip?
     private var firstFrameApplied = false
 
+    // AI Emotion smooth transition
+    private var currentExpressionWeights: [VRMExpressionPreset: Float] = [:]
+    private var targetExpressionWeights: [VRMExpressionPreset: Float] = [:]
+    private var lastAppliedEmotion: String = ""
+
     // Look-back behavior
     private var lookBackController = VRMLookBackController()
     private var isPlayingLookBack = false
@@ -104,6 +109,9 @@ final class VRMMetalState {
         isPlayingLookBack = false
         lookBackClip = nil
         lookBackTime = 0
+        currentExpressionWeights = [:]
+        targetExpressionWeights = [:]
+        lastAppliedEmotion = ""
     }
 
     func display(_ model: VRMModel) {
@@ -301,7 +309,7 @@ final class VRMMetalState {
         lipSyncController.update(audioLevel: aiState.audioLevel, deltaTime: dt)
         lipSyncController.apply(to: renderer?.expressionController)
 
-        // AI Emotion handling
+        // AI Emotion handling — countdown and revert to neutral
         if aiState.emotionDuration > 0 {
             aiState.emotionDuration -= dt
             if aiState.emotionDuration <= 0 {
@@ -310,9 +318,42 @@ final class VRMMetalState {
             }
         }
 
-        // Apply Emotion to Expression Controller
-        if let preset = VRMExpressionPreset(rawValue: aiState.currentEmotion) {
-            renderer?.expressionController?.setMood(preset, intensity: 1.0)
+        // Update target weights only when the active emotion name changes
+        let emotion = aiState.currentEmotion
+        if emotion != lastAppliedEmotion {
+            lastAppliedEmotion = emotion
+            let profile = VRMEmotionProfile.forName(emotion)
+            for preset in vrmMoodPresets {
+                targetExpressionWeights[preset] = profile.weight(for: preset)
+            }
+            for preset in vrmBlinkEmotionPresets {
+                targetExpressionWeights[preset] = profile.weight(for: preset)
+            }
+            // Suppress/restore auto-blink for blink-controlling emotions (e.g. wink)
+            blinkController.enabled = !profile.controlsBlink
+        }
+
+        // Smooth lerp toward target weights (speed: 5x per second ~0.2 s cross-fade)
+        let lerpSpeed: Float = 5.0
+        let factor = min(lerpSpeed * dt, 1.0)
+        for preset in vrmMoodPresets {
+            let target = targetExpressionWeights[preset] ?? 0
+            let current = currentExpressionWeights[preset] ?? 0
+            let next = current + (target - current) * factor
+            currentExpressionWeights[preset] = next
+            renderer?.expressionController?.setExpressionWeight(preset, weight: next)
+        }
+
+        // Lerp blink presets when wink is active or when fading back out
+        let activeProfile = VRMEmotionProfile.forName(lastAppliedEmotion)
+        if activeProfile.controlsBlink || (currentExpressionWeights[.blinkLeft] ?? 0) > 0.001 {
+            for preset in vrmBlinkEmotionPresets {
+                let target = targetExpressionWeights[preset] ?? 0
+                let current = currentExpressionWeights[preset] ?? 0
+                let next = current + (target - current) * factor
+                currentExpressionWeights[preset] = next
+                renderer?.expressionController?.setExpressionWeight(preset, weight: next)
+            }
         }
     }
 
