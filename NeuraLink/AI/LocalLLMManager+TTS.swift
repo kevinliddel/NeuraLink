@@ -16,7 +16,8 @@ extension LocalLLMManager {
     /// Returns the active local LLM system prompt for the character —
     /// user-saved override if one exists, otherwise the built-in default.
     func localLLMSystemPrompt(for characterName: String) -> String {
-        LocalLLMPromptStore.shared.effectivePrompt(for: characterName)
+        let config = LocalModelDownloadManager.shared.selectedConfig
+        return LocalLLMPromptStore.shared.effectivePrompt(for: characterName, config: config)
     }
 
     /// Picks the best installed voice for a character by searching `speechVoices()` by name
@@ -34,18 +35,36 @@ extension LocalLLMManager {
             }
         }
 
+        let useJapanese = LocalModelDownloadManager.shared.selectedConfig == .japaneseLlama1b
+
         switch characterName.lowercased() {
         case "ekaterina":
+            if useJapanese {
+                return all.first { $0.name == "Kyoko" }
+                    ?? all.first { $0.identifier.contains("Kyoko") }
+                    ?? all.filter { $0.language.hasPrefix("ja-JP") }.max { $0.quality.rawValue < $1.quality.rawValue }
+                    ?? AVSpeechSynthesisVoice(language: "ja-JP")
+            }
             return all.first { $0.name == "Ava" }
                 ?? all.first { $0.identifier.contains("Ava") }
                 ?? all.filter { $0.language.hasPrefix("en-US") }.max { $0.quality.rawValue < $1.quality.rawValue }
                 ?? AVSpeechSynthesisVoice(language: "en-US")
         case "sonya":
+            if useJapanese {
+                return all.first { $0.name == "O-ren" }
+                    ?? all.first { $0.identifier.contains("O-ren") }
+                    ?? all.filter { $0.language.hasPrefix("ja-JP") }.max { $0.quality.rawValue < $1.quality.rawValue }
+                    ?? AVSpeechSynthesisVoice(language: "ja-JP")
+            }
             return all.first { $0.name == "Joelle" }
                 ?? all.first { $0.identifier.contains("Joelle") }
                 ?? all.filter { $0.language.hasPrefix("en-US") }.max { $0.quality.rawValue < $1.quality.rawValue }
                 ?? AVSpeechSynthesisVoice(language: "en-US")
         default:
+            if useJapanese {
+                return all.filter { $0.language.hasPrefix("ja-JP") }.max { $0.quality.rawValue < $1.quality.rawValue }
+                    ?? AVSpeechSynthesisVoice(language: "ja-JP")
+            }
             return all.filter { $0.language.hasPrefix("en-US") }.max { $0.quality.rawValue < $1.quality.rawValue }
                 ?? AVSpeechSynthesisVoice(language: "en-US")
         }

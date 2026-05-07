@@ -27,6 +27,8 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             return GGUFQwenEngine.shared as any LLMEngineProtocol
         case .llama1b:
             return GGUFLlamaEngine.shared
+        case .japaneseLlama1b:
+            return GGUFJapaneseLlamaEngine.shared
         }
     }
 
@@ -57,8 +59,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     private var firstAudioLatencyLogged = false
 
     // TTS completion tracking — main thread only.
-    // State stays .speaking until all scheduled PCM buffers have actually played out,
-    // which prevents VAD from picking up speaker output and triggering a self-reply.
+    // State stays .speaking until all scheduled PCM buffers have actually played out, which prevents VAD from picking up speaker output and triggering a self-reply.
     private var pendingTTSBuffers: Int = 0
     private var ttsGenerationDone: Bool = false
 
@@ -92,8 +93,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         try? engine.start()
     }
 
-    /// Kicks off model loading at app launch. LLM loads first so loadTask is established
-    /// before startListening() can race it; then WhisperKit initializes in the same Task.
+    /// Kicks off model loading at app launch. LLM loads first so loadTask is establish before startListening() can race it; then WhisperKit initializes in the same Task.
     func preload() {
         Task {
             try? await llmEngine.loadModel()
@@ -213,9 +213,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         }
 
         // Local LLMs get a stripped-down spoken-word prompt.
-        // The full CharacterPersona.instructions are written for OpenAI and encourage
-        // elaborate roleplay prose (*actions*, emotional narration) that small models
-        // reproduce verbatim — making them sound like a light novel read aloud.
+        // The full CharacterPersona.instructions are written for OpenAI and encourage elaborate roleplay prose (*actions*, emotional narration) that small model reproduce verbatim — making them sound like a light novel read aloud.
         // This prompt captures just enough character flavour for a 1-2B model.
         let sysPrompt = localLLMSystemPrompt(for: state.selectedCharacterName)
         let prompt: String
@@ -301,8 +299,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             )
         }
         
-        // Strip light-novel roleplay markers before TTS — the synthesizer reads them
-        // literally (*big hug* becomes "asterisk big hug asterisk"), which sounds terrible.
+        // Strip light-novel roleplay markers/tags before TTS — the synthesizer reads them literally (*big hug* becomes "asterisk big hug asterisk"), which sounds terrible.
         var clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         clean = clean.replacingOccurrences(of: #"\*[^*\n]+\*"#, with: "", options: .regularExpression)
         clean = clean.replacingOccurrences(of: #"\[[^\]\n]+\]"#, with: "", options: .regularExpression)
@@ -449,9 +446,17 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
 
         // Buffer tokens. When we hit a punctuation mark, synthesize speech.
         ttsBuffer += token
-        if token.contains(".") || token.contains("!") || token.contains("?")
-            || token.contains("。") || token.contains(",") || token.contains("\n")
-            || (ttsBuffer.count >= 32 && ttsBuffer.contains(" ")) {
+
+        // Never flush mid-tag: a decimal duration like [happy:1.5] contains a period
+        // that would otherwise split the tag across chunks, breaking the strip regex.
+        let openBrackets  = ttsBuffer.filter { $0 == "[" }.count
+        let closeBrackets = ttsBuffer.filter { $0 == "]" }.count
+        let insideTag = openBrackets > closeBrackets
+
+        if !insideTag
+            && (token.contains(".") || token.contains("!") || token.contains("?")
+                || token.contains("。") || token.contains(",") || token.contains("\n")
+                || (ttsBuffer.count >= 32 && ttsBuffer.contains(" "))) {
             let chunkToSpeak = ttsBuffer
             ttsBuffer = ""
             speakChunk(chunkToSpeak)

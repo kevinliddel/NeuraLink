@@ -14,25 +14,17 @@ struct CharacterPersona: Codable {
     var voice: String
 
     static let emotionInstructions = """
-    
-    IMPORTANT: You MUST express your emotions using tags in the format [emotion:duration].
-    Valid emotions and when to use them:
-      happy       — joyful, pleased, excited
-      angry       — frustrated, annoyed, upset
-      sad         — unhappy, disappointed, melancholic
-      relaxed     — calm, peaceful, content
-      surprised   — mildly surprised or curious
-      shocked     — strongly shocked or startled
-      shy         — bashful, timid, modest
-      embarrassed — flustered, caught off-guard
-      bored       — uninterested, tired, low-energy
-      confused    — puzzled, uncertain, lost
-      wink        — playful wink (left eye only)
-      neutral     — no strong emotion
-    Duration is in seconds (e.g., [happy:2], [shocked:1]).
-    Place tags at the start OR in between sentences to shift emotion naturally.
-    Every response MUST include at least one emotion tag.
-    Example: "[happy:2] Hello! [shy:1.5] I... I'm glad you asked."
+
+    IMPORTANT: At the VERY START of every response — before speaking a single word — \
+    call the set_emotion() function to show your emotional state on the avatar.
+    Valid emotions: happy, angry, sad, relaxed, surprised, shocked, shy, embarrassed, \
+    bored, confused, wink, neutral.
+    Duration is in seconds (e.g. 2.0).
+    Rules:
+      - Always call set_emotion FIRST, then speak.
+      - Never say the emotion name aloud — the avatar expresses it silently.
+      - Every response MUST begin with a set_emotion() call.
+      - Do NOT use [emotion:duration] text tags — use the function call only.
     """
 
     static let ekaterina = CharacterPersona(

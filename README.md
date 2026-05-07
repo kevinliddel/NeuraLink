@@ -250,7 +250,7 @@ When running in **Offline Mode** (Local LLM), the system utilizes Apple's **AVSp
 By default, iOS uses compact voices (`q=1`) which can sound robotic. To achieve natural, high-fidelity speech, you must download the **Enhanced** or **Premium** versions of the voices:
 
 1.  Open **Settings** on your iPhone.
-2.  Navigate to **Accessibility** → **Spoken Content** → **Voices**.
+2.  Navigate to **Accessibility** → **Read & Speak** → **Voices**.
 3.  Select your language (e.g., **English**).
 4.  Find the voice you wish to use (e.g., **Shelley**, **Ava**, or **Matilda**) and tap the download icon for the **Enhanced** or **Premium** version.
 5.  Once downloaded, the system will automatically jump from `q=1` to `q=2`, providing a dramatically more lifelike experience.

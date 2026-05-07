@@ -19,12 +19,10 @@ extension OpenAIRealtimeManager {
         Task { @MainActor in
             switch type {
 
-            // Text streaming
             case "response.audio_transcript.delta":
                 if let delta = json["delta"] as? String {
                     print("[AI Text Delta]: \(delta)")
                     state.aiTranscript += delta
-                    state.parseAndTriggerEmotion(from: state.aiTranscript)
                 }
 
             case "conversation.item.input_audio_transcription.completed":
@@ -62,7 +60,20 @@ extension OpenAIRealtimeManager {
                 }
 
             case "response.function_call_arguments.done":
-                if !pendingFunctionName.isEmpty {
+                if pendingFunctionName == AppFunctionTool.setEmotion {
+                    // Handle immediately — no deferral, no audio interruption.
+                    // The model calls this before speaking, so the face updates
+                    // before audio starts. Sending the result + response.create
+                    // continues the conversation into the spoken audio response.
+                    let args = (try? JSONSerialization.jsonObject(
+                        with: Data(pendingFunctionArgsJSON.utf8)) as? [String: Any]) ?? [:]
+                    if let emotion = args["emotion"] as? String,
+                       let duration = args["duration"] as? Double {
+                        state.triggerEmotion(emotion, duration: Float(duration))
+                        print("[Emotion] \(emotion) for \(duration)s")
+                    }
+                    sendFunctionResult(callId: pendingFunctionCallId, result: "ok")
+                } else if !pendingFunctionName.isEmpty {
                     deferredFunctionCall = (
                         id: pendingFunctionCallId,
                         name: pendingFunctionName,
