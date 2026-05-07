@@ -15,13 +15,20 @@ final class NeuraLinkUITestsLaunchTests: XCTestCase {
         false
     }
 
+    var app: XCUIApplication!
+
     override func setUpWithError() throws {
         continueAfterFailure = false
+        app = XCUIApplication()
+    }
+
+    override func tearDownWithError() throws {
+        app.terminate()
+        app = nil
     }
 
     @MainActor
     func testLaunch() throws {
-        let app = XCUIApplication()
         app.launch()
 
         // Insert steps here to perform after app launch but before taking a screenshot,

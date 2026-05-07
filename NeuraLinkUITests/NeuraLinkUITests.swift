@@ -9,13 +9,20 @@ import XCTest
 
 final class NeuraLinkUITests: XCTestCase {
 
+    var app: XCUIApplication!
+
     override func setUpWithError() throws {
         continueAfterFailure = false
+        app = XCUIApplication()
+    }
+
+    override func tearDownWithError() throws {
+        app.terminate()
+        app = nil
     }
 
     @MainActor
     func testAppLaunchAndBasicUI() throws {
-        let app = XCUIApplication()
         app.launch()
 
         // FAB toggle is the only navigation-bar button; wait 30s for cold CI simulator boot
@@ -35,7 +42,6 @@ final class NeuraLinkUITests: XCTestCase {
 
     @MainActor
     func testSettingsSheet() throws {
-        let app = XCUIApplication()
         app.launch()
 
         // 1 — Wait for the navigation bar, then expand the FAB menu
