@@ -18,9 +18,10 @@ struct AppFunctionTests {
     @Test("All tools are correctly defined in schemas")
     func testToolSchemas() {
         let tools = AppFunctionTool.all
-        #expect(tools.count == 7)
+        #expect(tools.count == 8)
 
         let names = tools.compactMap { $0["name"] as? String }
+        #expect(names.contains(AppFunctionTool.setEmotion))
         #expect(names.contains(AppFunctionTool.getWeather))
         #expect(names.contains(AppFunctionTool.searchWeb))
         #expect(names.contains(AppFunctionTool.playMusic))

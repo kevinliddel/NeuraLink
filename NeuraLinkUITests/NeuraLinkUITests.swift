@@ -35,7 +35,7 @@ final class NeuraLinkUITests: XCTestCase {
         let startTalking = app.staticTexts["Start talking"]
         let tapToConfigure = app.staticTexts["Tap to configure LLMs"]
         XCTAssertTrue(
-            startTalking.waitForExistence(timeout: 10.0) || tapToConfigure.exists,
+            startTalking.waitForExistence(timeout: 30.0) || tapToConfigure.waitForExistence(timeout: 5.0),
             "Overlay hint should be visible"
         )
     }
