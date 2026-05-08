@@ -11,14 +11,25 @@ import SwiftUI
 /// Embeds an existing `MTKView` instance into the SwiftUI view hierarchy.
 struct MetalKitView: UIViewRepresentable {
     let mtkView: MTKView
-    func makeUIView(context: Context) -> MTKView { mtkView }
-    func updateUIView(_ uiView: MTKView, context: Context) {}
+    func makeUIView(context: Context) -> UIView {
+        let container = UIView()
+        mtkView.frame = container.bounds
+        mtkView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        container.addSubview(mtkView)
+        
+        // Setup PiP
+        PiPManager.shared.setupPiP(sourceView: container, mtkView: mtkView)
+        
+        return container
+    }
+    func updateUIView(_ uiView: UIView, context: Context) {}
 }
 
 public struct VRMSceneView: View {
     let modelURL: URL?
     @State private var state = VRMMetalState()
     @State private var settings = OpenAISettings.shared
+    @State private var appearance = AppearanceSettings.shared
     // Tracks whether the initial model load (app launch) has completed.
     // On app launch we never auto-connect; subsequent model switches reconnect
     // using whatever is currently enabled in settings.
@@ -30,6 +41,15 @@ public struct VRMSceneView: View {
 
     public var body: some View {
         ZStack(alignment: .bottomLeading) {
+            if !appearance.showEnvironment {
+                Color.black.ignoresSafeArea()
+                if let img = appearance.backgroundUIImage {
+                    Image(uiImage: img)
+                        .resizable()
+                        .scaledToFill()
+                        .ignoresSafeArea()
+                }
+            }
             primaryContent
         }
         .task(id: modelURL) { await loadModel() }

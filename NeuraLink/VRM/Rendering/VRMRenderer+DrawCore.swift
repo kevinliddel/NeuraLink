@@ -96,17 +96,20 @@ extension VRMRenderer {
             return
         }
 
-        // 1. Sky (depth test = always, no depth write — always behind everything)
-        drawSky(encoder: encoder)
+        // Environment drawing
+        if AppearanceSettings.shared.showEnvironment {
+            // 1. Sky (depth test = always, no depth write — always behind everything)
+            drawSky(encoder: encoder)
 
-        // 2. Terrain: skipped when the city GLB is loaded (city has its own ground).
-        //    TerrainRenderer still exists so its wide shadow map remains available.
-        if cityRenderer?.isLoaded != true {
-            drawTerrain(encoder: encoder)
+            // 2. Terrain: skipped when the city GLB is loaded (city has its own ground).
+            //    TerrainRenderer still exists so its wide shadow map remains available.
+            if cityRenderer?.isLoaded != true {
+                drawTerrain(encoder: encoder)
+            }
+
+            // 3. City environment (after terrain so it depth-tests against the ground)
+            drawCity(encoder: encoder)
         }
-
-        // 3. City environment (after terrain so it depth-tests against the ground)
-        drawCity(encoder: encoder)
 
         // Update LookAt controller
         if let lookAtController = lookAtController, lookAtController.enabled {
@@ -331,12 +334,16 @@ extension VRMRenderer {
         )
 
         // 3D World rain (streaks and ripples)
-        drawWorldRain(encoder: encoder)
+        if AppearanceSettings.shared.showEnvironment {
+            drawWorldRain(encoder: encoder)
+        }
 
         encoder.endEncoding()
 
         // Rain-on-glass overlay (compute water map → transparent fragment pass)
-        drawRainOverlay(commandBuffer: commandBuffer, renderPassDescriptor: renderPassDescriptor)
+        if AppearanceSettings.shared.showEnvironment {
+            drawRainOverlay(commandBuffer: commandBuffer, renderPassDescriptor: renderPassDescriptor)
+        }
 
         // End frame validation
         if config.strict != .off {
@@ -371,14 +378,18 @@ extension VRMRenderer {
             inflightSemaphore.signal()
             return
         }
-        drawSky(encoder: encoder)
-        if cityRenderer?.isLoaded != true {
-            drawTerrain(encoder: encoder)
+        if AppearanceSettings.shared.showEnvironment {
+            drawSky(encoder: encoder)
+            if cityRenderer?.isLoaded != true {
+                drawTerrain(encoder: encoder)
+            }
+            drawCity(encoder: encoder)
+            drawWorldRain(encoder: encoder)
         }
-        drawCity(encoder: encoder)
-        drawWorldRain(encoder: encoder)
         encoder.endEncoding()
-        drawRainOverlay(commandBuffer: commandBuffer, renderPassDescriptor: renderPassDescriptor)
+        if AppearanceSettings.shared.showEnvironment {
+            drawRainOverlay(commandBuffer: commandBuffer, renderPassDescriptor: renderPassDescriptor)
+        }
         commandBuffer.addCompletedHandler { [weak self] _ in
             self?.inflightSemaphore.signal()
         }

@@ -14,6 +14,7 @@ struct ExpandableFABMenu: View {
     let onSettings: () -> Void
     let onModelSelection: () -> Void
     let onCameraToggle: () -> Void
+    let onPiP: () -> Void
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 12) {
@@ -44,6 +45,16 @@ struct ExpandableFABMenu: View {
                     action: {
                         collapse()
                         onCameraToggle()
+                    }
+                )
+                .transition(childTransition(delay: 0.0))
+
+                FABChildButton(
+                    icon: Image(systemName: "pip.fill"),
+                    label: "Picture in Picture",
+                    action: {
+                        collapse()
+                        onPiP()
                     }
                 )
                 .transition(childTransition(delay: 0.0))

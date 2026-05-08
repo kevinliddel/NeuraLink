@@ -56,6 +56,9 @@ struct ContentView: View {
                         } else {
                             Task { await camera.requestPermissionAndStart() }
                         }
+                    },
+                    onPiP: {
+                        PiPManager.shared.startPiP()
                     }
                 )
             }

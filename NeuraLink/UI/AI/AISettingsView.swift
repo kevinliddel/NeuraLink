@@ -6,11 +6,14 @@
 //
 
 import SwiftUI
-
+import PhotosUI
 struct AISettingsView: View {
     @Bindable var settings = OpenAISettings.shared
+    @Bindable var appearance = AppearanceSettings.shared
     @State private var downloader = LocalModelDownloadManager.shared
     @State private var personaStore = PersonaStore.shared
+    @State private var selectedPhotoItem: PhotosPickerItem?
+    @State private var backgroundImage: UIImage? = AppearanceSettings.shared.backgroundUIImage
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -19,6 +22,7 @@ struct AISettingsView: View {
                 openAISection
                 localSLMSection
                 personaSection
+                appearanceSection
                 interactionSection
 
                 Section {
@@ -197,6 +201,56 @@ struct AISettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+            }
+        }
+    }
+
+    private var appearanceSection: some View {
+        Section("Appearance") {
+            Toggle("Show 3D Environment", isOn: $appearance.showEnvironment)
+            
+            if !appearance.showEnvironment {
+                PhotosPicker(selection: $selectedPhotoItem, matching: .images, photoLibrary: .shared()) {
+                    HStack {
+                        Text("Custom Background")
+                        Spacer()
+                        if let img = backgroundImage {
+                            Image(uiImage: img)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 40, height: 40)
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                        } else {
+                            Text("None")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .onChange(of: selectedPhotoItem) { _, newItem in
+                    Task {
+                        guard let data = try? await newItem?.loadTransferable(type: Data.self) else { return }
+                        appearance.saveBackgroundImage(data)
+                        if let uiImage = UIImage(data: data) {
+                            await MainActor.run {
+                                backgroundImage = uiImage
+                            }
+                        }
+                    }
+                }
+                
+                if backgroundImage != nil {
+                    Button(role: .destructive) {
+                        appearance.saveBackgroundImage(nil)
+                        backgroundImage = nil
+                        selectedPhotoItem = nil
+                    } label: {
+                        Text("Clear Custom Background")
+                    }
+                }
+                
+                Text("Turn off Show 3D Environment and select a screenshot of your Home Screen to use as a Fake Home Screen background.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
     }
