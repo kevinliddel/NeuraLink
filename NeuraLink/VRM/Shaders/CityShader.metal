@@ -135,16 +135,21 @@ fragment float4 city_fragment(
 
     float3 daySky    = float3(1.00f, 1.05f, 1.15f);  // midday blue-white
     float3 sunsetSky = float3(1.20f, 0.80f, 0.55f);  // warm orange at horizon
-    float3 nightSky  = float3(0.10f, 0.12f, 0.22f);  // dark blue-purple night
+    float3 nightSky  = float3(0.22f, 0.25f, 0.42f);  // moonlit sky — cool blue-purple
     float3 skyAmb    = mix(nightSky, daySky, dayFactor);
            skyAmb    = mix(skyAmb, sunsetSky, sunsetFactor);
 
     float3 dayGnd    = float3(0.65f, 0.62f, 0.56f);  // warm gray ground bounce
-    float3 nightGnd  = float3(0.06f, 0.06f, 0.10f);  // near-black night ground
+    float3 nightGnd  = float3(0.18f, 0.13f, 0.20f);  // city night — warm-purple from street lamps
     float3 gndAmb    = mix(nightGnd, dayGnd, dayFactor);
 
     float  hemi    = N.y * 0.5f + 0.5f;
     float3 ambient = mix(gndAmb, skyAmb, hemi);
+
+    // Artificial city light (street lamps, shop windows) — additive warm glow at night,
+    // strongest on downward-facing surfaces (asphalt, awnings), fades at sunrise.
+    float3 cityArtificial = float3(0.10f, 0.06f, 0.02f) * (1.0f - dayFactor) * (1.0f - hemi);
+    ambient += cityArtificial;
 
     float  dirStr    = 0.20f * NdotL * sunStr;
     float  shadowF   = 1.0f - shadow * sunStr * 0.30f; // stronger contrast in daylight
