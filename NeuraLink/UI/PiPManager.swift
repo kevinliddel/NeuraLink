@@ -89,7 +89,6 @@ final class PiPManager: NSObject, ObservableObject, AVPictureInPictureController
             guard let pipView = pipVideoCallViewController?.view else { return }
             originalSuperview = mtkView.superview
             
-            mtkView.alpha = 0
             pipView.addSubview(mtkView)
             mtkView.translatesAutoresizingMaskIntoConstraints = false
             NSLayoutConstraint.activate([
@@ -98,10 +97,6 @@ final class PiPManager: NSObject, ObservableObject, AVPictureInPictureController
                 mtkView.topAnchor.constraint(equalTo: pipView.topAnchor),
                 mtkView.bottomAnchor.constraint(equalTo: pipView.bottomAnchor)
             ])
-            
-            UIView.animate(withDuration: 0.3) {
-                mtkView.alpha = 1
-            }
         }
     }
 
@@ -109,15 +104,10 @@ final class PiPManager: NSObject, ObservableObject, AVPictureInPictureController
         isPiPActive = false
         guard let mtkView = mtkView, let originalSuperview = originalSuperview else { return }
         
-        mtkView.alpha = 0
         originalSuperview.addSubview(mtkView)
         mtkView.translatesAutoresizingMaskIntoConstraints = true
         mtkView.frame = originalSuperview.bounds
         mtkView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        
-        UIView.animate(withDuration: 0.5, delay: 0.1, options: .curveEaseInOut) {
-            mtkView.alpha = 1
-        }
     }
 
     func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void) {
