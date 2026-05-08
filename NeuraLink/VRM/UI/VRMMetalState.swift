@@ -206,6 +206,7 @@ final class VRMMetalState {
                         self.pendingDefaultClip = loadedDefault
                         self.isPlayingAppear = true
                         self.animationPlayer.isLooping = false
+                        self.animationPlayer.applyRootMotion = true
                         self.animationPlayer.load(appearClip)
                         self.startAnimationTicker()
                     }
@@ -290,6 +291,7 @@ final class VRMMetalState {
         // Seamless appear → neutral transition
         if isPlayingAppear && animationPlayer.isFinished {
             isPlayingAppear = false
+            animationPlayer.applyRootMotion = false
             if let clip = pendingDefaultClip {
                 pendingDefaultClip = nil
                 animationPlayer.crossfade(to: clip, duration: 0.5, from: model)

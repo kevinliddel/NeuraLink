@@ -128,32 +128,51 @@ fragment float4 city_fragment(
                                        u.vrmLightViewProjection, 1.5f);
     float shadow = max(cityShadow, vrmShadow);
 
-    // Hemisphere ambient: approximates outdoor IBL.
-    // Sky-facing normals (N.y→+1) receive cool blue sky light;
-    // ground-facing (N.y→-1) receive warm gray bounce light.
-    // Calibrated so the weighted average for a city scene ≈ 0.88 neutral.
-    float3 skyAmb  = float3(1.00f, 1.05f, 1.15f);   // cool blue-white sky
-    float3 gndAmb  = float3(0.65f, 0.62f, 0.56f);   // warm gray ground bounce
-    float  hemi    = N.y * 0.5f + 0.5f;              // 0 = full ground, 1 = full sky
+    // Time-of-day hemisphere ambient.
+    // Three keyframes: night (dark blue), sunrise/set (warm orange), midday (cool blue).
+    float  dayFactor    = saturate(sunH * 2.5f + 0.25f);          // 0=night, 1=day
+    float  sunsetFactor = saturate(1.0f - abs(sunH) * 5.5f) * 0.70f; // peaks at horizon
+
+    float3 daySky    = float3(1.00f, 1.05f, 1.15f);  // midday blue-white
+    float3 sunsetSky = float3(1.20f, 0.80f, 0.55f);  // warm orange at horizon
+    float3 nightSky  = float3(0.10f, 0.12f, 0.22f);  // dark blue-purple night
+    float3 skyAmb    = mix(nightSky, daySky, dayFactor);
+           skyAmb    = mix(skyAmb, sunsetSky, sunsetFactor);
+
+    float3 dayGnd    = float3(0.65f, 0.62f, 0.56f);  // warm gray ground bounce
+    float3 nightGnd  = float3(0.06f, 0.06f, 0.10f);  // near-black night ground
+    float3 gndAmb    = mix(nightGnd, dayGnd, dayFactor);
+
+    float  hemi    = N.y * 0.5f + 0.5f;
     float3 ambient = mix(gndAmb, skyAmb, hemi);
 
-    float  dirStr    = 0.18f * NdotL * sunStr;
-    float  shadowF   = 1.0f - shadow * sunStr * 0.22f; // shadows dim ambient slightly
+    float  dirStr    = 0.20f * NdotL * sunStr;
+    float  shadowF   = 1.0f - shadow * sunStr * 0.30f; // stronger contrast in daylight
     float  diffScale = 1.0f - metallic * 0.8f;
     float3 lit = color.rgb * (ambient + dirStr) * shadowF * diffScale;
 
     // View direction — used for specular and glass.
     float3 viewDir = normalize(u.cameraPosition.xyz - in.worldPos);
 
-    // Blinn-Phong specular for metallic materials.
-    if (metallic > 0.05f && sunStr > 0.0f) {
-        float3 halfVec  = normalize(sunDir + viewDir);
-        float  NdotH    = max(dot(N, halfVec), 0.0f);
+    // Unified Blinn-Phong specular — metallic AND dielectric surfaces.
+    // Metallic  → strong albedo-tinted highlight, scales with (1-roughness).
+    // Dielectric → subtle neutral highlight, F0≈0.04, scales with (1-roughness)².
+    // e.g. CityGenbasic_metal.001 (M:0, R:0.26) and CityGenroof (M:0, R:0.50)
+    //      both pick up a small sheen; fully rough surfaces (R:1.0) get nothing.
+    if (sunStr > 0.0f) {
+        float3 halfVec   = normalize(sunDir + viewDir);
+        float  NdotH     = max(dot(N, halfVec), 0.0f);
         float  shininess = 2.0f / (roughness * roughness + 0.001f);
-        float  specPow  = pow(NdotH, clamp(shininess, 2.0f, 2048.0f));
-        float3 specTint = mix(float3(0.04f), color.rgb, metallic);
-        float  specStr  = metallic * (1.0f - roughness) * 0.4f * sunStr * (1.0f - shadow);
-        lit += specTint * specPow * specStr;
+        float  specPow   = pow(NdotH, clamp(shininess, 2.0f, 2048.0f));
+        float  litMask   = sunStr * (1.0f - shadow);
+
+        float  metStr  = metallic * (1.0f - roughness) * 0.40f * litMask;
+        float3 metSpec = mix(float3(0.04f), color.rgb, metallic) * specPow * metStr;
+
+        float  dielStr = (1.0f - metallic) * pow(1.0f - roughness, 2.0f) * 0.10f * litMask;
+        float3 dielSpec = float3(specPow * dielStr);
+
+        lit += metSpec + dielSpec;
     }
 
     // Glass: very smooth + semi-transparent → add Fresnel sky-reflection tint.
@@ -169,12 +188,15 @@ fragment float4 city_fragment(
     // Emissive
     lit += min(emissivePacked.xyz, float3(0.35f));
 
-    // Distance haze (50–90 m)
-    float  dist    = length(in.worldPos.xz);
-    float  haze    = smoothstep(50.0f, 90.0f, dist);
-    float3 hazeCol = mix(float3(0.68f, 0.74f, 0.86f),
-                         float3(0.52f, 0.62f, 0.78f), max(sunH, 0.0f));
-    lit = mix(lit, hazeCol, haze * 0.50f);
+    // Distance haze — city scale (80–160 m), tinted by time of day
+    float  dist     = length(in.worldPos.xz);
+    float  haze     = smoothstep(80.0f, 160.0f, dist);
+    float3 dayHaze  = float3(0.70f, 0.76f, 0.88f);  // blue-gray midday
+    float3 sunHaze  = float3(0.88f, 0.70f, 0.58f);  // orange sunset haze
+    float3 nightHaze = float3(0.05f, 0.06f, 0.12f); // near-black night
+    float3 hazeCol  = mix(nightHaze, dayHaze, dayFactor);
+           hazeCol  = mix(hazeCol, sunHaze, sunsetFactor);
+    lit = mix(lit, hazeCol, haze * 0.45f);
 
     return float4(lit, color.a);
 }

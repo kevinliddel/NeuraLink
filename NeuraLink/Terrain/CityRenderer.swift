@@ -342,7 +342,7 @@ final class CityRenderer: @unchecked Sendable {
         encoder.setFrontFacing(.counterClockwise)
         encoder.setVertexBuffer(uniBuf, offset: 0, index: 1)
         encoder.setFragmentBuffer(uniBuf, offset: 0, index: 1)
-        encoder.setFragmentTexture(shadowMap,    index: 1)
+        encoder.setFragmentTexture(shadowMap, index: 1)
         encoder.setFragmentTexture(vrmShadowMap, index: 2)
         encoder.setFragmentSamplerState(shadowSampler, index: 0)
 
