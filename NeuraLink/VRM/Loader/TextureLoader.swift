@@ -17,6 +17,7 @@ public class TextureLoader {
     private let bufferLoader: BufferLoader
     private let document: GLTFDocument
     private let baseURL: URL?
+    private lazy var mipmapCommandQueue: MTLCommandQueue? = device.makeCommandQueue()
 
     public init(
         device: MTLDevice, bufferLoader: BufferLoader, document: GLTFDocument, baseURL: URL? = nil
@@ -32,7 +33,7 @@ public class TextureLoader {
     /// - Parameters:
     ///   - index: The texture index in the glTF document
     ///   - sRGB: If true, texture is treated as sRGB color data (default). If false, treated as linear data (normal maps, etc.)
-    public func loadTexture(at index: Int, sRGB: Bool = true, maxSize: Int = Int.max) async throws -> MTLTexture? {
+    public func loadTexture(at index: Int, sRGB: Bool = true, maxSize: Int = Int.max, withMipmaps: Bool = false) async throws -> MTLTexture? {
         guard let gltfTexture = document.textures?[safe: index] else {
             vrmLog("[TextureLoader] Warning: No texture at index \(index)")
             return nil
@@ -73,7 +74,7 @@ public class TextureLoader {
         // Create texture from image data
         return try await createTexture(
             from: imageData, mimeType: image.mimeType, textureIndex: index, sRGB: sRGB,
-            maxSize: maxSize)
+            maxSize: maxSize, withMipmaps: withMipmaps)
     }
 
     private func loadImageFromBufferView(_ bufferViewIndex: Int, textureIndex: Int) throws -> Data {
@@ -191,13 +192,14 @@ public class TextureLoader {
 
     private func createTexture(
         from imageData: Data, mimeType: String?, textureIndex: Int, sRGB: Bool,
-        maxSize: Int = Int.max
+        maxSize: Int = Int.max, withMipmaps: Bool = false
     ) async throws -> MTLTexture? {
         // Try using CGImage directly to avoid MTKTextureLoader async crash
         if let cgImage = createCGImage(from: imageData) {
             do {
                 let texture = try createTexture(
-                    from: cgImage, textureIndex: textureIndex, sRGB: sRGB, maxSize: maxSize)
+                    from: cgImage, textureIndex: textureIndex, sRGB: sRGB, maxSize: maxSize,
+                    withMipmaps: withMipmaps)
                 return texture
             } catch {
                 vrmLog("[TextureLoader] Failed to create texture from CGImage: \(error)")
@@ -235,7 +237,7 @@ public class TextureLoader {
     }
 
     private func createTexture(from cgImage: CGImage, textureIndex: Int, sRGB: Bool,
-                               maxSize: Int = Int.max) throws -> MTLTexture? {
+                               maxSize: Int = Int.max, withMipmaps: Bool = false) throws -> MTLTexture? {
         vrmLog("[TextureLoader] createTexture(from CGImage) called, sRGB=\(sRGB)")
 
         // MTKTextureLoader seems to crash when called from background async context
@@ -256,18 +258,16 @@ public class TextureLoader {
 
         vrmLog("[TextureLoader] Creating texture descriptor...")
         let pixelFormat: MTLPixelFormat = sRGB ? .rgba8Unorm_srgb : .rgba8Unorm
-        let textureDescriptor = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: pixelFormat,
-            width: width,
-            height: height,
-            mipmapped: false
-        )
-        textureDescriptor.usage = [.shaderRead]
-        textureDescriptor.storageMode = .shared
+
+        // Upload to a shared staging texture (CPU-writable)
+        let stagingDesc = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: pixelFormat, width: width, height: height, mipmapped: false)
+        stagingDesc.usage       = [.shaderRead]
+        stagingDesc.storageMode = .shared
 
         vrmLog("[TextureLoader] Creating Metal texture...")
-        guard let texture = device.makeTexture(descriptor: textureDescriptor) else {
-            vrmLog("[TextureLoader] Failed to create texture")
+        guard let stagingTexture = device.makeTexture(descriptor: stagingDesc) else {
+            vrmLog("[TextureLoader] Failed to create staging texture")
             return nil
         }
         vrmLog("[TextureLoader] Metal texture created")
@@ -302,15 +302,41 @@ public class TextureLoader {
         }
         let bytesPerRow = context.bytesPerRow
 
-        // Copy the data to the texture
         vrmLog("[TextureLoader] Replacing texture data...")
-        texture.replace(
+        stagingTexture.replace(
             region: MTLRegionMake2D(0, 0, width, height),
             mipmapLevel: 0,
             withBytes: bitmapData,
             bytesPerRow: bytesPerRow
         )
         vrmLog("[TextureLoader] Texture data replaced")
+
+        // Mipmap path: blit staging → private mipmapped texture, then generate all mip levels.
+        // Requires .renderTarget usage on the private texture (Metal requirement for generateMipmaps).
+        if withMipmaps,
+           let cmdQueue = mipmapCommandQueue,
+           let cmdBuf   = cmdQueue.makeCommandBuffer() {
+            let mipDesc = MTLTextureDescriptor.texture2DDescriptor(
+                pixelFormat: pixelFormat, width: width, height: height, mipmapped: true)
+            mipDesc.usage       = [.shaderRead, .renderTarget]
+            mipDesc.storageMode = .private
+            if let mipTex = device.makeTexture(descriptor: mipDesc),
+               let blit   = cmdBuf.makeBlitCommandEncoder() {
+                blit.copy(from: stagingTexture,
+                          sourceSlice: 0, sourceLevel: 0,
+                          sourceOrigin: MTLOrigin(x: 0, y: 0, z: 0),
+                          sourceSize: MTLSize(width: width, height: height, depth: 1),
+                          to: mipTex,
+                          destinationSlice: 0, destinationLevel: 0,
+                          destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0))
+                blit.generateMipmaps(for: mipTex)
+                blit.endEncoding()
+                cmdBuf.commit()
+                cmdBuf.waitUntilCompleted()
+                vrmLog("[TextureLoader] Mipmaps generated (\(mipTex.mipmapLevelCount) levels)")
+                return mipTex
+            }
+        }
 
         // DEBUG: Sample first pixel to check for extreme values
         #if DEBUG
@@ -328,7 +354,7 @@ public class TextureLoader {
         #endif
 
         vrmLog("[TextureLoader] Texture created successfully")
-        return texture
+        return stagingTexture
     }
 
     public func createSampler(from gltfSampler: GLTFSampler?) -> MTLSamplerState? {
