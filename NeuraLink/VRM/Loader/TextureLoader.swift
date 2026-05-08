@@ -32,7 +32,7 @@ public class TextureLoader {
     /// - Parameters:
     ///   - index: The texture index in the glTF document
     ///   - sRGB: If true, texture is treated as sRGB color data (default). If false, treated as linear data (normal maps, etc.)
-    public func loadTexture(at index: Int, sRGB: Bool = true) async throws -> MTLTexture? {
+    public func loadTexture(at index: Int, sRGB: Bool = true, maxSize: Int = Int.max) async throws -> MTLTexture? {
         guard let gltfTexture = document.textures?[safe: index] else {
             vrmLog("[TextureLoader] Warning: No texture at index \(index)")
             return nil
@@ -72,7 +72,8 @@ public class TextureLoader {
 
         // Create texture from image data
         return try await createTexture(
-            from: imageData, mimeType: image.mimeType, textureIndex: index, sRGB: sRGB)
+            from: imageData, mimeType: image.mimeType, textureIndex: index, sRGB: sRGB,
+            maxSize: maxSize)
     }
 
     private func loadImageFromBufferView(_ bufferViewIndex: Int, textureIndex: Int) throws -> Data {
@@ -189,13 +190,14 @@ public class TextureLoader {
     }
 
     private func createTexture(
-        from imageData: Data, mimeType: String?, textureIndex: Int, sRGB: Bool
+        from imageData: Data, mimeType: String?, textureIndex: Int, sRGB: Bool,
+        maxSize: Int = Int.max
     ) async throws -> MTLTexture? {
         // Try using CGImage directly to avoid MTKTextureLoader async crash
         if let cgImage = createCGImage(from: imageData) {
             do {
                 let texture = try createTexture(
-                    from: cgImage, textureIndex: textureIndex, sRGB: sRGB)
+                    from: cgImage, textureIndex: textureIndex, sRGB: sRGB, maxSize: maxSize)
                 return texture
             } catch {
                 vrmLog("[TextureLoader] Failed to create texture from CGImage: \(error)")
@@ -232,16 +234,24 @@ public class TextureLoader {
         return cgImage
     }
 
-    private func createTexture(from cgImage: CGImage, textureIndex: Int, sRGB: Bool) throws
-        -> MTLTexture? {
+    private func createTexture(from cgImage: CGImage, textureIndex: Int, sRGB: Bool,
+                               maxSize: Int = Int.max) throws -> MTLTexture? {
         vrmLog("[TextureLoader] createTexture(from CGImage) called, sRGB=\(sRGB)")
 
         // MTKTextureLoader seems to crash when called from background async context
         // Let's create the texture manually instead
 
         vrmLog("[TextureLoader] Getting image dimensions...")
-        let width = cgImage.width
-        let height = cgImage.height
+        let srcWidth = cgImage.width
+        let srcHeight = cgImage.height
+
+        // Downscale if a maxSize cap is set (e.g. 1024 for background environment meshes).
+        let scale = maxSize < Int.max ? min(1.0, Double(maxSize) / Double(max(srcWidth, srcHeight))) : 1.0
+        let width  = max(1, Int(Double(srcWidth)  * scale))
+        let height = max(1, Int(Double(srcHeight) * scale))
+        if scale < 1.0 {
+            vrmLog("[TextureLoader] Downscaled \(srcWidth)x\(srcHeight) → \(width)x\(height)")
+        }
         vrmLog("[TextureLoader] Image size: \(width)x\(height)")
 
         vrmLog("[TextureLoader] Creating texture descriptor...")
@@ -262,44 +272,35 @@ public class TextureLoader {
         }
         vrmLog("[TextureLoader] Metal texture created")
 
-        // Create a bitmap context and draw the image
-        let bytesPerRow = width * 4
-        vrmLog("[TextureLoader] Allocating bitmap data: \(height * bytesPerRow) bytes...")
-        let bitmapData = malloc(height * bytesPerRow)
-        defer { free(bitmapData) }
-
-        guard let bitmapData = bitmapData else {
-            vrmLog("[TextureLoader] Failed to allocate bitmap data")
-            return nil
-        }
-        vrmLog("[TextureLoader] Bitmap data allocated")
-
+        // Pass data:nil and bytesPerRow:0 so CG allocates its own buffer with the alignment
+        // vImage requires. When we provide our own malloc'd buffer CG's internal vImage
+        // scaling path fires an alignment assertion for any non-identity scale factor.
         vrmLog("[TextureLoader] Creating CGContext...")
         let colorSpace = CGColorSpaceCreateDeviceRGB()
-
-        // premultipliedLast preserves the alpha channel in RGBA layout.
-        // IMPORTANT: Must use .copy blend mode when drawing to avoid
-        // source-over compositing which destroys alpha=0 pixels.
-        guard
-            let context = CGContext(
-                data: bitmapData,
-                width: width,
-                height: height,
-                bitsPerComponent: 8,
-                bytesPerRow: bytesPerRow,
-                space: colorSpace,
-                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-            )
-        else {
+        guard let context = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,   // 0 = CG chooses optimal (aligned) stride
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
             vrmLog("[TextureLoader] Failed to create bitmap context")
             return nil
         }
-        vrmLog("[TextureLoader] CGContext created with premultiplied alpha")
+        vrmLog("[TextureLoader] CGContext created")
 
         vrmLog("[TextureLoader] Drawing image to context...")
         context.setBlendMode(.copy)
-        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: CGFloat(width), height: CGFloat(height)))
         vrmLog("[TextureLoader] Image drawn")
+
+        guard let bitmapData = context.data else {
+            vrmLog("[TextureLoader] CGContext has no backing data")
+            return nil
+        }
+        let bytesPerRow = context.bytesPerRow
 
         // Copy the data to the texture
         vrmLog("[TextureLoader] Replacing texture data...")

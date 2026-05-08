@@ -163,6 +163,12 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
     // Snow terrain + shadow map renderer
     var terrainRenderer: TerrainRenderer?
 
+    // 3D environment tree renderer
+    var treeRenderer: TreeRenderer?
+
+    // 3D environment grass renderer (same class, different GLB + instance layout)
+    var grassRenderer: TreeRenderer?
+
     // Sprite rendering pipeline
     var spritePipelineState: MTLRenderPipelineState?
     var spriteVertexBuffer: MTLBuffer?
@@ -332,6 +338,7 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
         setupTripleBuffering()
         setupSkyRenderer()
         setupTerrain()
+        setupTree()
     }
 
     /// Removes the current model from the renderer so only sky and terrain are drawn.

@@ -83,6 +83,7 @@ extension VRMRenderer {
 
         // Shadow map depth pass — must happen before the main render encoder opens
         drawShadowPass(commandBuffer: commandBuffer)
+        drawTreeShadow(commandBuffer: commandBuffer)  // appends tree depths with loadAction:.load
 
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor)
         else {
@@ -100,6 +101,9 @@ extension VRMRenderer {
 
         // 2. Snow terrain (depth write = true — VRM renders on top)
         drawTerrain(encoder: encoder)
+
+        // 3. Environment trees (after terrain so they depth-test against the ground)
+        drawTree(encoder: encoder)
 
         // Update LookAt controller
         if let lookAtController = lookAtController, lookAtController.enabled {
@@ -358,6 +362,7 @@ extension VRMRenderer {
         renderPassDescriptor: MTLRenderPassDescriptor
     ) {
         terrainRenderer?.clearShadowMapIfNeeded(commandBuffer: commandBuffer)
+        drawTreeShadow(commandBuffer: commandBuffer)  // tree depths into cleared/existing shadow map
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor)
         else {
             inflightSemaphore.signal()
@@ -365,6 +370,7 @@ extension VRMRenderer {
         }
         drawSky(encoder: encoder)
         drawTerrain(encoder: encoder)
+        drawTree(encoder: encoder)
         drawWorldRain(encoder: encoder)
         encoder.endEncoding()
         drawRainOverlay(commandBuffer: commandBuffer, renderPassDescriptor: renderPassDescriptor)
