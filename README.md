@@ -1,7 +1,7 @@
 # NeuraLink
 
 <p align="center">
-    <img src="./docs/Models/Ekaterina.jpeg" alt="NeuraLink Model" width="400" />
+    <img src="./docs/Models/Ekaterina.PNG" alt="NeuraLink Model" width="400" />
 </p>
 
 <p align="center">
@@ -11,9 +11,10 @@
   <img src="https://custom-icon-badges.demolab.com/badge/ChatGPT-74aa9c?logo=openai&logoColor=white" alt="OpenAI" />
   <img src="https://img.shields.io/badge/Hugging%20Face-FFD21E?logo=huggingface&logoColor=fff" alt="Hugging Face" />
   <img src="https://img.shields.io/badge/Ollama-fff?logo=ollama&logoColor=000" alt="Ollama" />
-  <img src="https://img.shields.io/badge/WhisperKit-gray?logo=swift" alt="WhisperKit" />
-  <img src="https://img.shields.io/badge/WebRTC-gray?style=flat&logo=webrtc" alt="WebRTC" />
-  <img src="https://img.shields.io/badge/Silero-VAD-red?style=flat&logo=silero" alt="Silero VAD" />
+  <img src="https://custom-icon-badges.demolab.com/badge/Qwen-605CEC?logo=qwen&logoColor=fff" alt="Qwen" />
+  <img src="https://custom-icon-badges.demolab.com/badge/WebRTC-gray?style=flat&logo=webrtc" alt="WebRTC" />
+  <img src="https://custom-icon-badges.demolab.com/badge/WhisperKit-gray?logo=swift" alt="WhisperKit" />
+  <img src="https://custom-icon-badges.demolab.com/badge/Silero-VAD-red?style=flat&logo=silero" alt="Silero VAD" />
 </p>
 
 A high-performance, native iOS VRM character viewer and AI companion built from the ground up using **Metal** and **SwiftUI**. NeuraLink connects to the OpenAI Realtime API via **WebSocket** with **AVAudioEngine** for mic capture and AI audio playback — fully screen-recordable and integrated with synchronized visual feedback.
@@ -79,7 +80,7 @@ The AI companion isn't just for chat—she can help you manage your day by inter
 - **Productivity**: Create reminders, take notes, and search the web without leaving the app.
 - **Entertainment**: Search and play music directly in Apple Music.
 
-**[Full Function Calling documentation](./docs/Function_Call.md)**
+**[Full Tool Calling documentation](./docs/Function_Call.md)**
 
 ---
 
@@ -238,6 +239,25 @@ NeuraLink features a high-performance local AI pipeline that runs entirely on yo
 For detailed technical specs and migration history, refer to:
 - [NPU Integration Guide](./docs/npu.md)
 - [NPU Migration Log](./docs/npu_migration.md)
+
+---
+
+## ֎ Offline AI Voices
+
+When running in **Offline Mode** (Local LLM), the system utilizes Apple's **AVSpeechSynthesizer** to generate speech entirely on-device.
+
+### 🗣️ Improving Voice Quality
+By default, iOS uses compact voices (`q=1`) which can sound robotic. To achieve natural, high-fidelity speech, you must download the **Enhanced** or **Premium** versions of the voices:
+
+1.  Open **Settings** on your iPhone.
+2.  Navigate to **Accessibility** → **Read & Speak** → **Voices**.
+3.  Select your language (e.g., **English**).
+4.  Find the voice you wish to use (e.g., **Shelley**, **Ava**, or **Matilda**) and tap the download icon for the **Enhanced** or **Premium** version.
+5.  Once downloaded, the system will automatically jump from `q=1` to `q=2`, providing a dramatically more lifelike experience.
+
+### 🛠️ Implementation Details
+The orchestration of offline synthesis, including voice selection patterns and pitch modulation for local characters, is managed in:
+- [`LocalLLMManager+TTS.swift`](./NeuraLink/AI/LocalLLMManager+TTS.swift)
 
 ---
 

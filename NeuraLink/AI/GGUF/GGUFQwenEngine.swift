@@ -20,6 +20,10 @@ final class GGUFQwenEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
     internal var loadTask: Task<Void, Error>?
     internal let loadLock = NSLock()
 
+    // Same concurrency guard as GGUFLlamaEngine — see comment there.
+    internal let generationLock = NSLock()
+    internal var _isGenerating = false
+
     override private init() { super.init() }
 
     func loadModel() async throws {
@@ -36,10 +40,10 @@ final class GGUFQwenEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
                 let loaded: LlamaBridge = try await withCheckedThrowingContinuation { cont in
                     DispatchQueue.global(qos: .userInitiated).async {
                         // Qwen models generally have longer context windows. 
-                        // Using 1024 to support slightly longer conversations.
+                        // Using 2048 to support slightly longer conversations.
                         if let b = LlamaBridge(
                             modelPath: url.path,
-                            contextLength: 1024,
+                            contextLength: 2048,
                             threads: 4,
                             gpuLayers: 999
                         ) {

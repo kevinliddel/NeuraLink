@@ -21,6 +21,26 @@ extension GGUFLlamaEngine {
             return
         }
 
+        // Reject concurrent calls — llama.cpp crashes if two generate calls run simultaneously.
+        generationLock.lock()
+        let alreadyRunning = _isGenerating
+        if !alreadyRunning { _isGenerating = true }
+        generationLock.unlock()
+
+        guard !alreadyRunning else {
+            print("[GGUFEngine] Dropped generate — already in progress")
+            Task { @MainActor [weak self] in
+                self?.delegate?.localLLM(didFinishGeneration: "")
+            }
+            return
+        }
+
+        defer {
+            generationLock.lock()
+            _isGenerating = false
+            generationLock.unlock()
+        }
+
         var fullText = ""
 
         // llama_bridge_generate blocks the calling thread.

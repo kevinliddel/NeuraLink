@@ -15,6 +15,7 @@ enum AppFunctionTool {
 
     // MARK: - Tool name constants
 
+    static let setEmotion = "set_emotion"
     static let getWeather = "get_weather"
     static let searchWeb = "search_web"
     static let playMusic = "play_music"
@@ -27,10 +28,39 @@ enum AppFunctionTool {
 
     /// Returns the full `tools` array ready to embed in a session.update payload.
     static var all: [[String: Any]] {
-        [weatherTool, searchTool, musicTool, reminderTool, noteTool, openAppTool, cameraTool]
+        [emotionTool, weatherTool, searchTool, musicTool, reminderTool, noteTool, openAppTool, cameraTool]
     }
 
     // MARK: - Individual schemas
+
+    private static var emotionTool: [String: Any] {
+        [
+            "type": "function",
+            "name": setEmotion,
+            "description": "Update the avatar's facial expression to reflect your emotional state. "
+                + "Call this at the VERY START of every response, before speaking any words. "
+                + "Never mention the emotion in speech — the avatar shows it silently.",
+            "parameters": [
+                "type": "object",
+                "properties": [
+                    "emotion": [
+                        "type": "string",
+                        "enum": [
+                            "happy", "angry", "sad", "relaxed", "surprised",
+                            "shocked", "shy", "embarrassed", "bored", "confused",
+                            "wink", "neutral"
+                        ],
+                        "description": "The emotion to display on the avatar face"
+                    ],
+                    "duration": [
+                        "type": "number",
+                        "description": "How long to hold the expression, in seconds (e.g. 2.0)"
+                    ]
+                ],
+                "required": ["emotion", "duration"]
+            ]
+        ]
+    }
 
     private static var weatherTool: [String: Any] {
         [

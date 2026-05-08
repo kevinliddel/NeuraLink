@@ -62,7 +62,12 @@ struct AISettingsView: View {
                 "Selected Model",
                 selection: Binding(
                     get: { downloader.selectedConfig },
-                    set: { downloader.selectConfig($0) }
+                    set: { newConfig in
+                        downloader.selectConfig(newConfig)
+                        if settings.isLocalLLMEnabled {
+                            LocalLLMManager.shared.restart()
+                        }
+                    }
                 )
             ) {
                 ForEach(LocalModelDownloadManager.ModelConfiguration.allCases) { config in
@@ -187,7 +192,7 @@ struct AISettingsView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(persona.name)
                             .font(.headline)
-                        Text("Instructions & Voice")
+                        Text(settings.isLocalLLMEnabled ? "System Prompt" : "Instructions & Voice")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

@@ -31,6 +31,7 @@ final class VRMMetalState {
     // Animation
     private let animationPlayer = AnimationPlayer()
     private let lipSyncController = VRMLipSyncController()
+    private let blinkController = VRMBlinkController()
     private var displayLink: CADisplayLink?
     private var lastTickTimestamp: CFTimeInterval = 0
     private var isPlayingAppear = false
@@ -38,11 +39,27 @@ final class VRMMetalState {
     private var defaultClip: AnimationClip?
     private var firstFrameApplied = false
 
+    // AI Emotion smooth transition
+    private var currentExpressionWeights: [VRMExpressionPreset: Float] = [:]
+    private var targetExpressionWeights: [VRMExpressionPreset: Float] = [:]
+    private var lastAppliedEmotion: String = ""
+
     // Look-back behavior
     private var lookBackController = VRMLookBackController()
     private var isPlayingLookBack = false
     private var lookBackClip: AnimationClip?
     private var lookBackTime: Float = 0
+
+    // Random idle animations
+    private typealias RandomAnimEntry = (name: String, clip: AnimationClip)
+    private var randomAnimEntries: [RandomAnimEntry] = []
+    private var isPlayingRandomAnim = false
+    private var randomAnimTimer: Float = -1
+    private var randomAnimElapsed: Float = 0
+    private var randomAnimDuration: Float = 0
+    private static let randomAnimNames = ["default_state", "neutral_2", "neutral_3", "neutral_4", "relax", "waiting"]
+    private static let randomAnimIntervalRange: ClosedRange<Float> = 8...20
+    private static let randomAnimDurationRange: ClosedRange<Float> = 5...12
 
     // Drives fade-in of the Metal view so T-pose is never visible
     var modelAlpha: Double = 0
@@ -103,6 +120,14 @@ final class VRMMetalState {
         isPlayingLookBack = false
         lookBackClip = nil
         lookBackTime = 0
+        randomAnimEntries = []
+        isPlayingRandomAnim = false
+        randomAnimTimer = -1
+        randomAnimElapsed = 0
+        randomAnimDuration = 0
+        currentExpressionWeights = [:]
+        targetExpressionWeights = [:]
+        lastAppliedEmotion = ""
     }
 
     func display(_ model: VRMModel) {
@@ -139,37 +164,60 @@ final class VRMMetalState {
 
     private func loadAnimationSequence(for model: VRMModel) {
         let appearURL  = Self.findVRMA(named: "appear")
-        let defaultURL = Self.findVRMA(named: "default_state")
+        let defaultURL = Self.findVRMA(named: "neutral")
 
         guard let defaultURL else {
-            vrmLog("[VRMMetalState] No default_state.vrma found — showing bind pose")
+            vrmLog("[VRMMetalState] No neutral.vrma found — showing bind pose")
             renderer?.isModelVisible = true
             return
+        }
+
+        let randomPairs = Self.randomAnimNames.compactMap { name -> (String, URL)? in
+            guard let url = Self.findVRMA(named: name) else { return nil }
+            return (name, url)
         }
 
         Task.detached(priority: .userInitiated) { [weak self] in
             guard let self else { return }
             do {
+                // Start neutral loading immediately, run random clip loads concurrently
+                async let defaultTask = VRMAnimationLoader.loadVRMA(from: defaultURL, model: model)
+
+                var loadedEntries: [RandomAnimEntry] = []
+                await withTaskGroup(of: RandomAnimEntry?.self) { group in
+                    for (name, url) in randomPairs {
+                        group.addTask {
+                            guard let clip = try? await VRMAnimationLoader.loadVRMA(from: url, model: model) else { return nil }
+                            return (name, clip)
+                        }
+                    }
+                    for await entry in group {
+                        if let entry { loadedEntries.append(entry) }
+                    }
+                }
+
+                let loadedDefault = try await defaultTask
+
                 if let appearURL {
-                    // Load both concurrently so there is no extra delay
-                    async let a = VRMAnimationLoader.loadVRMA(from: appearURL, model: model)
-                    async let d = VRMAnimationLoader.loadVRMA(from: defaultURL, model: model)
-                    let (appearClip, loadedDefault) = try await (a, d)
+                    let appearClip = try await VRMAnimationLoader.loadVRMA(from: appearURL, model: model)
                     await MainActor.run {
+                        self.randomAnimEntries = loadedEntries
                         self.defaultClip = loadedDefault
                         self.pendingDefaultClip = loadedDefault
                         self.isPlayingAppear = true
                         self.animationPlayer.isLooping = false
+                        self.animationPlayer.applyRootMotion = true
                         self.animationPlayer.load(appearClip)
                         self.startAnimationTicker()
                     }
                 } else {
-                    let clip = try await VRMAnimationLoader.loadVRMA(from: defaultURL, model: model)
                     await MainActor.run {
-                        self.defaultClip = clip
+                        self.randomAnimEntries = loadedEntries
+                        self.defaultClip = loadedDefault
                         self.animationPlayer.isLooping = true
-                        self.animationPlayer.load(clip)
+                        self.animationPlayer.load(loadedDefault)
                         self.startAnimationTicker()
+                        self.scheduleNextRandomAnim()
                     }
                 }
             } catch {
@@ -177,6 +225,10 @@ final class VRMMetalState {
                 vrmLog("[VRMMetalState] ⚠️ Failed to load animation: \(error)")
             }
         }
+    }
+
+    private func scheduleNextRandomAnim() {
+        randomAnimTimer = Float.random(in: Self.randomAnimIntervalRange)
     }
 
     // MARK: - Sky Ticker
@@ -236,12 +288,40 @@ final class VRMMetalState {
             renderer?.isModelVisible = true
         }
 
-        // Seamless appear → default_state transition
+        // Seamless appear → neutral transition
         if isPlayingAppear && animationPlayer.isFinished {
             isPlayingAppear = false
+            animationPlayer.applyRootMotion = false
             if let clip = pendingDefaultClip {
                 pendingDefaultClip = nil
                 animationPlayer.crossfade(to: clip, duration: 0.5, from: model)
+                scheduleNextRandomAnim()
+            }
+        }
+
+        // Random idle animation controller
+        if !isPlayingAppear {
+            if isPlayingRandomAnim {
+                randomAnimElapsed += dt
+                if randomAnimElapsed >= randomAnimDuration {
+                    isPlayingRandomAnim = false
+                    randomAnimElapsed = 0
+                    if let clip = defaultClip {
+                        animationPlayer.crossfade(to: clip, duration: 0.5, from: model)
+                    }
+                    scheduleNextRandomAnim()
+                    vrmLog("[RandomAnim] ↩ neutral — next random in \(String(format: "%.1f", randomAnimTimer))s")
+                }
+            } else if randomAnimTimer >= 0 {
+                randomAnimTimer -= dt
+                if randomAnimTimer <= 0, let entry = randomAnimEntries.randomElement() {
+                    isPlayingRandomAnim = true
+                    randomAnimElapsed = 0
+                    randomAnimDuration = Float.random(in: Self.randomAnimDurationRange)
+                    animationPlayer.isLooping = true
+                    animationPlayer.crossfade(to: entry.clip, duration: 0.5, from: model)
+                    vrmLog("[RandomAnim] ▶ '\(entry.name)' — duration: \(String(format: "%.1f", randomAnimDuration))s")
+                }
             }
         }
 
@@ -285,6 +365,10 @@ final class VRMMetalState {
 
         animationPlayer.applyMorphWeights(to: renderer?.expressionController)
 
+        // Native automatic blink animation
+        blinkController.update(deltaTime: dt)
+        blinkController.apply(to: renderer?.expressionController)
+
         // Update look-at tracking (eyes, head, neck)
         if let lookAt = renderer?.lookAtController {
             lookAt.cameraPosition = lastCameraPosition
@@ -295,6 +379,53 @@ final class VRMMetalState {
         // not by status, so mouth stays in sync through the WebRTC jitter buffer drain.
         lipSyncController.update(audioLevel: aiState.audioLevel, deltaTime: dt)
         lipSyncController.apply(to: renderer?.expressionController)
+
+        // AI Emotion handling — countdown and revert to neutral
+        if aiState.emotionDuration > 0 {
+            aiState.emotionDuration -= dt
+            if aiState.emotionDuration <= 0 {
+                aiState.currentEmotion = "neutral"
+                aiState.emotionDuration = 0
+            }
+        }
+
+        // Update target weights only when the active emotion name changes
+        let emotion = aiState.currentEmotion
+        if emotion != lastAppliedEmotion {
+            lastAppliedEmotion = emotion
+            let profile = VRMEmotionProfile.forName(emotion)
+            for preset in vrmMoodPresets {
+                targetExpressionWeights[preset] = profile.weight(for: preset)
+            }
+            for preset in vrmBlinkEmotionPresets {
+                targetExpressionWeights[preset] = profile.weight(for: preset)
+            }
+            // Suppress/restore auto-blink for blink-controlling emotions (e.g. wink)
+            blinkController.enabled = !profile.controlsBlink
+        }
+
+        // Smooth lerp toward target weights (speed: 5x per second ~0.2 s cross-fade)
+        let lerpSpeed: Float = 5.0
+        let factor = min(lerpSpeed * dt, 1.0)
+        for preset in vrmMoodPresets {
+            let target = targetExpressionWeights[preset] ?? 0
+            let current = currentExpressionWeights[preset] ?? 0
+            let next = current + (target - current) * factor
+            currentExpressionWeights[preset] = next
+            renderer?.expressionController?.setExpressionWeight(preset, weight: next)
+        }
+
+        // Lerp blink presets when wink is active or when fading back out
+        let activeProfile = VRMEmotionProfile.forName(lastAppliedEmotion)
+        if activeProfile.controlsBlink || (currentExpressionWeights[.blinkLeft] ?? 0) > 0.001 {
+            for preset in vrmBlinkEmotionPresets {
+                let target = targetExpressionWeights[preset] ?? 0
+                let current = currentExpressionWeights[preset] ?? 0
+                let next = current + (target - current) * factor
+                currentExpressionWeights[preset] = next
+                renderer?.expressionController?.setExpressionWeight(preset, weight: next)
+            }
+        }
     }
 
     // MARK: - Camera Setup

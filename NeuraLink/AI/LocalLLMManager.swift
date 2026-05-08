@@ -27,6 +27,8 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             return GGUFQwenEngine.shared as any LLMEngineProtocol
         case .llama1b:
             return GGUFLlamaEngine.shared
+        case .japaneseLlama1b:
+            return GGUFJapaneseLlamaEngine.shared
         }
     }
 
@@ -56,6 +58,13 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     private var firstTokenLatencyLogged = false
     private var firstAudioLatencyLogged = false
 
+    // TTS completion tracking — main thread only.
+    // State stays .speaking until all scheduled PCM buffers have actually played out, which prevents VAD from picking up speaker output and triggering a self-reply.
+    private var pendingTTSBuffers: Int = 0
+    private var ttsGenerationDone: Bool = false
+
+    var voicesLogged = false
+
     override init() {
         super.init()
         llmEngine.delegate = self
@@ -84,8 +93,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         try? engine.start()
     }
 
-    /// Kicks off model loading at app launch. LLM loads first so loadTask is established
-    /// before startListening() can race it; then WhisperKit initializes in the same Task.
+    /// Kicks off model loading at app launch. LLM loads first so loadTask is establish before startListening() can race it; then WhisperKit initializes in the same Task.
     func preload() {
         Task {
             try? await llmEngine.loadModel()
@@ -204,7 +212,10 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             state.status = .thinking
         }
 
-        let persona = CharacterPersona.forCharacter(named: state.selectedCharacterName)
+        // Local LLMs get a stripped-down spoken-word prompt.
+        // The full CharacterPersona.instructions are written for OpenAI and encourage elaborate roleplay prose (*actions*, emotional narration) that small model reproduce verbatim — making them sound like a light novel read aloud.
+        // This prompt captures just enough character flavour for a 1-2B model.
+        let sysPrompt = localLLMSystemPrompt(for: state.selectedCharacterName)
         let prompt: String
         let maxTokens: Int
         let mgr = LocalModelDownloadManager.shared
@@ -213,13 +224,12 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         let languageGuidance = "IMPORTANT: You MUST reply in Japanese (using Kanji, Hiragana, and Katakana). NEVER use Romaji or English letters for Japanese words. This is critical for the voice engine to work."
         
         if useQwen {
-            // Qwen instruct template
-            prompt = "<|im_start|>system\n\(persona.instructions)\n\(languageGuidance)<|im_end|>\n<|im_start|>user\n\(text)<|im_end|>\n<|im_start|>assistant\n"
-            maxTokens = 128
+            prompt = "<|im_start|>system\n\(sysPrompt)<|im_end|>\n<|im_start|>user\n\(text)<|im_end|>\n<|im_start|>assistant\n"
+            maxTokens = 160
         } else {
-            // Llama-3 on CPU
-            prompt = "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n\(persona.instructions)\n\(languageGuidance)<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n\(text)<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
-            maxTokens = 64
+            // Omit <|begin_of_text|> — llama.cpp adds BOS automatically; including it doubles the BOS token.
+            prompt = "<|start_header_id|>system<|end_header_id|>\n\n\(sysPrompt)<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n\(text)<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
+            maxTokens = 100
         }
 
         Task {
@@ -233,7 +243,28 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         playerNode.stop()
         ttsBuffer = ""
         Task { @MainActor in
+            pendingTTSBuffers = 0
+            ttsGenerationDone = false
             state.status = .ready
+        }
+    }
+
+    /// Stops the current session and immediately starts a fresh one.
+    /// Used when the user switches the local LLM model mid-session.
+    func restart() {
+        sileroVAD.stop()
+        llmEngine.stop()
+        playerNode.stop()
+        ttsBuffer = ""
+        recordingLock.lock()
+        isRecordingVoice = false
+        recordingBuffer.removeAll()
+        recordingLock.unlock()
+        Task { @MainActor in
+            pendingTTSBuffers = 0
+            ttsGenerationDone = false
+            state.status = .disconnected
+            startListening()
         }
     }
 
@@ -250,6 +281,8 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         isRecordingVoice = false
         recordingLock.unlock()
         Task { @MainActor in
+            pendingTTSBuffers = 0
+            ttsGenerationDone = false
             state.status = .disconnected
         }
         print("[LocalLLM] Manager unloaded — all models freed.")
@@ -267,9 +300,14 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
                 "[LocalLLM] First TTS chunk latency: \(String(format: "%.1f", elapsedMs)) ms"
             )
         }
+        
+        // Strip light-novel roleplay markers/tags before TTS — the synthesizer reads them literally (*big hug* becomes "asterisk big hug asterisk"), which sounds terrible.
+        var clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        clean = clean.replacingOccurrences(of: #"\*[^*\n]+\*"#, with: "", options: .regularExpression)
+        clean = clean.replacingOccurrences(of: #"\[[^\]\n]+\]"#, with: "", options: .regularExpression)
+        clean = clean.replacingOccurrences(of: #" {2,}"#, with: " ", options: .regularExpression)
+        clean = clean.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        // Don’t send non-speech noise to TTS (e.g. garbage tokens like "!!!!!").
-        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty,
               clean.unicodeScalars.contains(where: { CharacterSet.letters.contains($0) || CharacterSet.decimalDigits.contains($0) })
         else { return }
@@ -306,12 +344,20 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         }
     }
 
-    private func speakAVSpeechChunk(_ text: String, persona: CharacterPersona) {
-        let utterance = AVSpeechUtterance(string: text)
-        let language = persona.instructions.contains("Japanese") ? "ja-JP" : "en-US"
-        utterance.voice = AVSpeechSynthesisVoice(language: language)
-        utterance.rate = 0.5
-        utterance.pitchMultiplier = 1.1
+        utterance.voice = bestAvailableVoice(for: state.selectedCharacterName)
+
+        // Vary pitch and rate per sentence type so TTS doesn't sound monotone.
+        // Questions rise, exclamations are slightly punchy, statements are calm.
+        if clean.hasSuffix("?") || clean.hasSuffix("？") {
+            utterance.pitchMultiplier = 1.1
+            utterance.rate = AVSpeechUtteranceDefaultSpeechRate
+        } else if clean.hasSuffix("!") || clean.hasSuffix("！") {
+            utterance.pitchMultiplier = 1.05
+            utterance.rate = AVSpeechUtteranceDefaultSpeechRate + 0.03
+        } else {
+            utterance.pitchMultiplier = 1.0
+            utterance.rate = AVSpeechUtteranceDefaultSpeechRate
+        }
 
         synthesizer.write(utterance) { [weak self] buffer in
             guard let self = self, let pcmBuffer = buffer as? AVAudioPCMBuffer else { return }
@@ -342,8 +388,21 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             try? self.engine.start()
         }
 
-        if !self.playerNode.isPlaying {
-            self.playerNode.play()
+                // Track this buffer so state stays .speaking until the hardware
+                // finishes playing it — prevents VAD self-trigger from speaker output.
+                self.pendingTTSBuffers += 1
+                self.playerNode.scheduleBuffer(pcmBuffer, completionCallbackType: .dataConsumed) {
+                    [weak self] _ in
+                    DispatchQueue.main.async {
+                        guard let self = self else { return }
+                        self.pendingTTSBuffers -= 1
+                        if self.pendingTTSBuffers == 0 && self.ttsGenerationDone {
+                            self.ttsGenerationDone = false
+                            self.state.status = .ready
+                        }
+                    }
+                }
+            }
         }
 
         self.playerNode.scheduleBuffer(pcmBuffer)
@@ -410,13 +469,22 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
                 state.status = .speaking
             }
             state.aiTranscript += token
+            state.parseAndTriggerEmotion(from: state.aiTranscript)
         }
 
         // Buffer tokens. When we hit a punctuation mark, synthesize speech.
         ttsBuffer += token
-        if token.contains(".") || token.contains("!") || token.contains("?")
-            || token.contains("。") || token.contains("\n")
-            || (ttsBuffer.count >= 200 && ttsBuffer.contains(" ")) {
+
+        // Never flush mid-tag: a decimal duration like [happy:1.5] contains a period
+        // that would otherwise split the tag across chunks, breaking the strip regex.
+        let openBrackets  = ttsBuffer.filter { $0 == "[" }.count
+        let closeBrackets = ttsBuffer.filter { $0 == "]" }.count
+        let insideTag = openBrackets > closeBrackets
+
+        if !insideTag
+            && (token.contains(".") || token.contains("!") || token.contains("?")
+                || token.contains("。") || token.contains(",") || token.contains("\n")
+                || (ttsBuffer.count >= 32 && ttsBuffer.contains(" "))) {
             let chunkToSpeak = ttsBuffer
             ttsBuffer = ""
             speakChunk(chunkToSpeak)
@@ -428,6 +496,7 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
             let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000.0
             print("[LocalLLM] Turn total latency: \(String(format: "%.1f", elapsedMs)) ms")
         }
+        print("[LocalLLM] Full response: \(fullText)")
 
         // Flush any remaining text in the buffer immediately
         let remaining = ttsBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -436,7 +505,14 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
             ttsBuffer = ""
         }
         Task { @MainActor in
-            state.status = .ready
+            // Only return to .ready once the last PCM buffer has actually played out.
+            // If there are pending buffers, mark done and let the completion handler fire .ready
+            // when hardware drains the last frame — this prevents VAD from picking up speaker output.
+            if pendingTTSBuffers == 0 {
+                state.status = .ready
+            } else {
+                ttsGenerationDone = true
+            }
         }
     }
 

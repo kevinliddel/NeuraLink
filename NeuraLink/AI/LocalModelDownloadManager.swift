@@ -47,6 +47,7 @@ final class LocalModelDownloadManager: @unchecked Sendable {
     enum ModelConfiguration: String, CaseIterable, Identifiable {
         case qwen2b = "Qwen3-VL 2B"
         case llama1b = "Llama-3.2 1B"
+        case japaneseLlama1b = "Llama-3.2 1B (JP)"
 
         var id: String { rawValue }
 
@@ -54,6 +55,7 @@ final class LocalModelDownloadManager: @unchecked Sendable {
             switch self {
             case .qwen2b: return GGUFQwenModelAccess.repoID
             case .llama1b: return GGUFModelAccess.repoID
+            case .japaneseLlama1b: return GGUFJapaneseLlamaModelAccess.repoID
             }
         }
 
@@ -61,6 +63,7 @@ final class LocalModelDownloadManager: @unchecked Sendable {
             switch self {
             case .qwen2b: return 1.1
             case .llama1b: return 0.8
+            case .japaneseLlama1b: return 0.8
             }
         }
 
@@ -70,6 +73,8 @@ final class LocalModelDownloadManager: @unchecked Sendable {
                 return "High performance, stateful. Recommended for 6 GB+ devices."
             case .llama1b:
                 return "Memory efficient. Recommended for iPhone 11, 12 or 13 (4 GB RAM)."
+            case .japaneseLlama1b:
+                return "Japanese-oriented Llama-3.2 1B. Best for Japanese conversation on 4 GB+ devices."
             }
         }
     }
@@ -144,6 +149,7 @@ final class LocalModelDownloadManager: @unchecked Sendable {
         switch selectedConfig {
         case .qwen2b: GGUFQwenModelAccess.clearCache()
         case .llama1b: GGUFModelAccess.clearCache()
+        case .japaneseLlama1b: GGUFJapaneseLlamaModelAccess.clearCache()
         }
         state = .notDownloaded
     }
@@ -159,6 +165,7 @@ final class LocalModelDownloadManager: @unchecked Sendable {
         switch selectedConfig {
         case .qwen2b: return GGUFQwenModelAccess.isDownloaded
         case .llama1b: return GGUFModelAccess.isDownloaded
+        case .japaneseLlama1b: return GGUFJapaneseLlamaModelAccess.isDownloaded
         }
     }
 
@@ -183,6 +190,13 @@ final class LocalModelDownloadManager: @unchecked Sendable {
                 }
             case .llama1b:
                 try await GGUFLlamaDownloader.download(api: api) { [weak self] progress in
+                    Task { @MainActor [weak self] in
+                        guard case .downloading = self?.state else { return }
+                        self?.state = .downloading(progress: progress)
+                    }
+                }
+            case .japaneseLlama1b:
+                try await GGUFJapaneseLlamaDownloader.download(api: api) { [weak self] progress in
                     Task { @MainActor [weak self] in
                         guard case .downloading = self?.state else { return }
                         self?.state = .downloading(progress: progress)

@@ -49,6 +49,15 @@ public class VRMLookAtController {
     private var nextSaccadeTime: Float = 2.0
     private var saccadeOffset = SIMD2<Float>(0, 0)
 
+    // Eye glance — iris drifts left/right then returns to camera
+    private var glanceTimer: Float = 0
+    private var nextGlanceTime: Float = Float.random(in: 5...15)
+    private var isGlancing: Bool = false
+    private var glanceHoldTimer: Float = 0
+    private var glanceTargetYaw: Float = 0
+    private var glanceCurrentYaw: Float = 0
+    private static let glanceHoldDuration: Float = 0.8
+
     public init() {}
 
     // MARK: - Setup
@@ -91,6 +100,7 @@ public class VRMLookAtController {
 
         updateTargetAngles()
         if saccadeEnabled { updateSaccades(deltaTime: deltaTime) }
+        updateGlances(deltaTime: deltaTime)
 
         // Frame-rate independent smoothing.
         let factor = 1.0 - pow(smoothing, deltaTime * 60.0)
@@ -119,6 +129,11 @@ public class VRMLookAtController {
         targetYaw = 0
         targetPitch = 0
         saccadeOffset = .zero
+        glanceCurrentYaw = 0
+        glanceTargetYaw = 0
+        isGlancing = false
+        glanceHoldTimer = 0
+        glanceTimer = 0
     }
 
     // MARK: - Target Calculation
@@ -258,8 +273,8 @@ public class VRMLookAtController {
             head.updateWorldTransform()
         }
 
-        // Apply to Eyes (Relative to head)
-        let eyeYaw = currentYaw * eyeWeight
+        // Apply to Eyes (Relative to head) — includes glance offset (iris only, head unaffected)
+        let eyeYaw = currentYaw * eyeWeight + glanceCurrentYaw
         let eyePitch = currentPitch * eyeWeight
         let eyeRotation = simd_quatf(angle: eyeYaw, axis: [0, 1, 0]) * simd_quatf(angle: eyePitch, axis: [1, 0, 0])
 
@@ -284,9 +299,10 @@ public class VRMLookAtController {
         expressionController?.setCustomExpressionWeight("LookUp", weight: 0)
         expressionController?.setCustomExpressionWeight("LookDown", weight: 0)
 
-        if abs(currentYaw) > 0.02 {
-            let weight = min(abs(currentYaw) / (.pi / 4), 1.0)
-            let key = currentYaw > 0 ? "LookRight" : "LookLeft"
+        let totalYaw = currentYaw + glanceCurrentYaw
+        if abs(totalYaw) > 0.02 {
+            let weight = min(abs(totalYaw) / (.pi / 4), 1.0)
+            let key = totalYaw > 0 ? "LookRight" : "LookLeft"
             expressionController?.setCustomExpressionWeight(key, weight: weight)
         }
 
@@ -310,6 +326,28 @@ public class VRMLookAtController {
             nextSaccadeTime = Float.random(in: 0.1...0.5) * (state == .speaking ? 2 : 1)
         } else {
             saccadeOffset *= 0.95
+        }
+    }
+
+    private func updateGlances(deltaTime: Float) {
+        if isGlancing {
+            glanceHoldTimer += deltaTime
+            glanceCurrentYaw = lerp(glanceCurrentYaw, glanceTargetYaw, 0.12)
+            if glanceHoldTimer >= Self.glanceHoldDuration {
+                isGlancing = false
+                glanceTargetYaw = 0
+                glanceTimer = 0
+                nextGlanceTime = Float.random(in: 5...15)
+            }
+        } else {
+            glanceCurrentYaw = lerp(glanceCurrentYaw, 0, 0.08)
+            glanceTimer += deltaTime
+            if glanceTimer >= nextGlanceTime {
+                isGlancing = true
+                glanceHoldTimer = 0
+                let angle = Float.random(in: 0.25...0.40)
+                glanceTargetYaw = Bool.random() ? angle : -angle
+            }
         }
     }
 

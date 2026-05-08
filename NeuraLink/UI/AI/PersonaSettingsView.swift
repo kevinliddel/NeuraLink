@@ -47,10 +47,12 @@ private final class VoicePreviewPlayer: NSObject, AVAudioPlayerDelegate, @unchec
 
 struct PersonaSettingsView: View {
     let modelID: String
+    let selectedConfig: LocalModelDownloadManager.ModelConfiguration
     @State private var persona: CharacterPersona
+    @State private var localPrompt: String
     @Environment(\.dismiss) private var dismiss
 
-    // Voice preview
+    // Voice preview (OpenAI mode only)
     @State private var previewText: String = ""
     @State private var previewPlayer = VoicePreviewPlayer()
     @State private var isLoadingPreview = false
@@ -59,10 +61,16 @@ struct PersonaSettingsView: View {
         "alloy", "echo", "shimmer", "ash", "ballad", "coral", "sage", "verse", "marin"
     ]
 
+    private var isLocalLLMMode: Bool { OpenAISettings.shared.isLocalLLMEnabled }
+    private var isJapaneseModel: Bool { selectedConfig == .japaneseLlama1b }
+
     init(modelID: String) {
         self.modelID = modelID
+        let config = LocalModelDownloadManager.shared.selectedConfig
+        self.selectedConfig = config
         let current = CharacterPersona.forCharacter(named: modelID)
         _persona = State(initialValue: current)
+        _localPrompt = State(initialValue: LocalLLMPromptStore.shared.effectivePrompt(for: modelID, config: config))
     }
 
     var body: some View {
@@ -71,31 +79,47 @@ struct PersonaSettingsView: View {
                 TextField("Name", text: $persona.name)
             }
 
-            Section("AI Instructions (System Prompt)") {
-                TextEditor(text: $persona.instructions)
-                    .frame(minHeight: 200)
-                    .font(.system(.footnote))
-            }
+            if isLocalLLMMode {
+                Section {
+                    TextEditor(text: $localPrompt)
+                        .frame(minHeight: 200)
+                        .font(.system(.footnote))
+                } header: {
+                    Text(isJapaneseModel ? "System Prompt (Local LLM · Japanese)" : "System Prompt (Local LLM)")
+                } footer: {
+                    Text(
+                        isJapaneseModel
+                            ? "日本語モデル用のプロンプトです。簡潔な話し言葉で記述してください。"
+                            : "This prompt is used by the on-device model. Keep it short and conversational — small models follow explicit spoken-word instructions best."
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+            } else {
+                Section("AI Instructions (System Prompt)") {
+                    TextEditor(text: $persona.instructions)
+                        .frame(minHeight: 200)
+                        .font(.system(.footnote))
+                }
 
-            let isLocalEnabled = OpenAISettings.shared.isLocalLLMEnabled
-
-            if !isLocalEnabled {
-                Section("OpenAI Voice") {
+                Section("Voice") {
                     Picker("Voice", selection: $persona.voice) {
                         ForEach(voices, id: \.self) { voice in
                             Text(voice.capitalized).tag(voice)
                         }
                     }
                 }
-            } else {
-                voicevoxSection
-            }
 
-            voicePreviewSection
+                voicePreviewSection
+            }
 
             Section {
                 Button("Save Changes") {
-                    PersonaStore.shared.savePersona(persona, for: modelID)
+                    if isLocalLLMMode {
+                        LocalLLMPromptStore.shared.savePrompt(localPrompt, for: modelID, config: selectedConfig)
+                    } else {
+                        PersonaStore.shared.savePersona(persona, for: modelID)
+                    }
                     dismiss()
                 }
                 .frame(maxWidth: .infinity)
@@ -103,15 +127,19 @@ struct PersonaSettingsView: View {
                 .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
 
                 Button("Reset to Default", role: .destructive) {
-                    PersonaStore.shared.resetPersona(for: modelID)
-                    let defaults = CharacterPersona.forCharacter(named: modelID)
-                    persona = defaults
+                    if isLocalLLMMode {
+                        LocalLLMPromptStore.shared.resetPrompt(for: modelID, config: selectedConfig)
+                        localPrompt = LocalLLMPromptStore.shared.effectivePrompt(for: modelID, config: selectedConfig)
+                    } else {
+                        PersonaStore.shared.resetPersona(for: modelID)
+                        persona = CharacterPersona.forCharacter(named: modelID)
+                    }
                     dismiss()
                 }
                 .frame(maxWidth: .infinity)
             }
         }
-        .navigationTitle("\(persona.name) Persona")
+        .navigationTitle(isLocalLLMMode ? "\(persona.name) — \(isJapaneseModel ? "JP Prompt" : "Local Prompt")" : "\(persona.name) Persona")
         .navigationBarTitleDisplayMode(.inline)
         .onDisappear { previewPlayer.stop() }
     }

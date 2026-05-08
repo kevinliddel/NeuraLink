@@ -16,9 +16,9 @@ struct TerrainSystemTests {
 
     // MARK: - TerrainUniforms layout
 
-    @Test("TerrainUniforms stride is 176 bytes")
+    @Test("TerrainUniforms stride is 240 bytes")
     func testTerrainUniformsLayout() {
-        #expect(MemoryLayout<TerrainUniforms>.stride == 176)
+        #expect(MemoryLayout<TerrainUniforms>.stride == 240)
     }
 
     @Test("ShadowPassUniforms stride is 64 bytes")

@@ -476,3 +476,30 @@ func testGGUFEngineThrowsModelNotFound() async throws {
 | First token latency | ~4 minutes | **~2 seconds** |
 | ANE dependency | Required (fails) | **None** |
 
+---
+
+## 6. Delivery Phases
+
+```mermaid
+gantt
+    title llama.cpp Migration Phases
+    dateFormat  YYYY-MM-DD
+    axisFormat  Day %d
+
+    section Phase 1 — SPM Setup
+    Add llama.cpp package          :p1, 2026-04-30, 1d
+
+    section Phase 2 — C Bridge
+    llama_bridge.h / .cpp          :p2, after p1, 2d
+
+    section Phase 3 — Swift Engine
+    GGUFModelAccess + LlamaBridge  :p3a, after p2, 1d
+    GGUFLlamaEngine + Generate     :p3b, after p3a, 1d
+
+    section Phase 4 — Wiring
+    makeEngine() + Downloader      :p4, after p3b, 1d
+
+    section Phase 5 — Validation
+    Build + SwiftLint + Tests      :p5, after p4, 1d
+    Device integration test        :p6, after p5, 1d
+```
