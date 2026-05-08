@@ -17,7 +17,7 @@ final class VRMMetalState {
     var renderer: VRMRenderer?
     
     // AI Integration
-    private let aiState = RealtimeChatState.shared
+    let aiState = RealtimeChatState.shared
     
     var isModelLoaded: Bool = false
     var isEnvironmentReady: Bool = false
@@ -30,40 +30,40 @@ final class VRMMetalState {
     private var lastSkyTimestamp: CFTimeInterval = 0
 
     // Animation
-    private let animationPlayer = AnimationPlayer()
-    private let lipSyncController = VRMLipSyncController()
-    private let blinkController = VRMBlinkController()
+    let animationPlayer = AnimationPlayer()
+    let lipSyncController = VRMLipSyncController()
+    let blinkController = VRMBlinkController()
     private var displayLink: CADisplayLink?
     private var backgroundTimer: Timer?
     private var lastTickTimestamp: CFTimeInterval = 0
     private var isAppInBackground = false
     private var cancellables = Set<AnyCancellable>()
-    private var isPlayingAppear = false
-    private var pendingDefaultClip: AnimationClip?
-    private var defaultClip: AnimationClip?
-    private var firstFrameApplied = false
+    var isPlayingAppear = false
+    var pendingDefaultClip: AnimationClip?
+    var defaultClip: AnimationClip?
+    var firstFrameApplied = false
 
     // AI Emotion smooth transition
-    private var currentExpressionWeights: [VRMExpressionPreset: Float] = [:]
-    private var targetExpressionWeights: [VRMExpressionPreset: Float] = [:]
-    private var lastAppliedEmotion: String = ""
+    var currentExpressionWeights: [VRMExpressionPreset: Float] = [:]
+    var targetExpressionWeights: [VRMExpressionPreset: Float] = [:]
+    var lastAppliedEmotion: String = ""
 
     // Look-back behavior
-    private var lookBackController = VRMLookBackController()
-    private var isPlayingLookBack = false
-    private var lookBackClip: AnimationClip?
-    private var lookBackTime: Float = 0
+    var lookBackController = VRMLookBackController()
+    var isPlayingLookBack = false
+    var lookBackClip: AnimationClip?
+    var lookBackTime: Float = 0
 
     // Random idle animations
-    private typealias RandomAnimEntry = (name: String, clip: AnimationClip)
-    private var randomAnimEntries: [RandomAnimEntry] = []
-    private var isPlayingRandomAnim = false
-    private var randomAnimTimer: Float = -1
-    private var randomAnimElapsed: Float = 0
-    private var randomAnimDuration: Float = 0
-    private static let randomAnimNames = ["default_state", "neutral_2", "neutral_3", "neutral_4", "relax", "waiting"]
-    private static let randomAnimIntervalRange: ClosedRange<Float> = 8...20
-    private static let randomAnimDurationRange: ClosedRange<Float> = 5...12
+    typealias RandomAnimEntry = (name: String, clip: AnimationClip)
+    var randomAnimEntries: [RandomAnimEntry] = []
+    var isPlayingRandomAnim = false
+    var randomAnimTimer: Float = -1
+    var randomAnimElapsed: Float = 0
+    var randomAnimDuration: Float = 0
+    static let randomAnimNames = ["default_state", "neutral_2", "neutral_3", "neutral_4", "relax", "waiting"]
+    static let randomAnimIntervalRange: ClosedRange<Float> = 8...20
+    static let randomAnimDurationRange: ClosedRange<Float> = 5...12
 
     // Drives fade-in of the Metal view so T-pose is never visible
     var modelAlpha: Double = 0
@@ -73,8 +73,8 @@ final class VRMMetalState {
     var orbitPitch: Float = 0
     var orbitDistance: Float = 3
     var orbitDistanceLimits: ClosedRange<Float> = 1...10
-    private var lastCameraPosition: SIMD3<Float> = [0, 1.6, 3]
-    private var gestureHandler: VRMGestureHandler?
+    var lastCameraPosition: SIMD3<Float> = [0, 1.6, 3]
+    var gestureHandler: VRMGestureHandler?
     var orbitTarget: SIMD3<Float> = [0, 1.6, 0]
 
     static let pitchMin: Float = -35 * .pi / 180
