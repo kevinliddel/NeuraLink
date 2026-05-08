@@ -1,7 +1,7 @@
 # NeuraLink
 
 <p align="center">
-    <img src="./docs/Models/Ekaterina.jpeg" alt="NeuraLink Model" width="400" />
+    <img src="./docs/Models/Ekaterina.PNG" alt="NeuraLink Model" width="400" />
 </p>
 
 <p align="center">

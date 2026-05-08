@@ -27,7 +27,8 @@ final class TerrainRenderer: @unchecked Sendable {
     // MARK: - State
 
     private let device: MTLDevice
-    private var shadowMapTexture: MTLTexture?
+    private var shadowMapTexture: MTLTexture?       // tight — VRM quality (±7 m)
+    private var wideShadowMapTexture: MTLTexture?   // wide  — trees (±35 m)
     private var shadowDepthState: MTLDepthStencilState?
     private var terrainDepthState: MTLDepthStencilState?
     private var shadowPipeline: MTLRenderPipelineState?
@@ -37,7 +38,17 @@ final class TerrainRenderer: @unchecked Sendable {
     private var shadowSamplerState: MTLSamplerState?
 
     private var lightViewProjection: simd_float4x4 = matrix_identity_float4x4
+    private var wideLightViewProjection: simd_float4x4 = matrix_identity_float4x4
     private var elapsedTime: Float = 0
+
+    // Tight map — VRM character shadows
+    var exposedShadowMap: MTLTexture? { shadowMapTexture }
+    var exposedShadowSampler: MTLSamplerState? { shadowSamplerState }
+    var exposedLightViewProjection: simd_float4x4 { lightViewProjection }
+
+    // Wide map — tree / grass shadows
+    var exposedWideShadowMap: MTLTexture? { wideShadowMapTexture }
+    var exposedWideLightViewProjection: simd_float4x4 { wideLightViewProjection }
     private var currentEnvironment: SkyEnvironment = SkyEnvironment.resolve(hour: 12.0)
     private var clearShadowMapPending = false
 
@@ -57,7 +68,8 @@ final class TerrainRenderer: @unchecked Sendable {
         let sunDir = environment.sunDirection
         // Moon is the mirror of the sun; flip below horizon so shadows always render.
         let effectiveDir = sunDir.y >= 0 ? sunDir : sunDir * -1.0
-        lightViewProjection = Self.makeLightMatrix(sunDir: effectiveDir)
+        lightViewProjection = Self.makeLightMatrix(sunDir: effectiveDir, wide: false)
+        wideLightViewProjection = Self.makeLightMatrix(sunDir: effectiveDir, wide: true)
     }
 
     // MARK: - Shadow map clearing
@@ -159,31 +171,31 @@ final class TerrainRenderer: @unchecked Sendable {
             let depthState = terrainDepthState,
             let uniforms = terrainUniformsBuffer,
             let shadowMap = shadowMapTexture,
+            let wideShadowMap = wideShadowMapTexture,
             let sampler = shadowSamplerState
         else { return }
 
         let env = currentEnvironment
         let sd = env.sunDirection
-        // At night pass the moon direction (already in lightViewProjection) for shading.
         let lightDir = sd.y >= 0 ? sd : sd * -1.0
-        // Moon shadows are slightly softer than sun shadows.
         let shadowSoft: Float = sd.y >= 0 ? 2.5 : 1.5
 
         var data = TerrainUniforms(
             viewProjection: viewProjection,
             lightViewProjection: lightViewProjection,
+            wideLightViewProjection: wideLightViewProjection,
             sunDirection: SIMD4<Float>(lightDir.x, lightDir.y, lightDir.z, sd.y),
-            snowColor: SIMD4<Float>(0.93, 0.95, 0.97, 1.0),
+            groundColor: SIMD4<Float>(0.72, 0.58, 0.40, 1.0),
             terrainParams: SIMD4<Float>(
-                0.0,  // unused
-                0.22,  // duneAmp: max ~22 cm height
+                0.0,
+                0.22,
                 shadowSoft,
                 elapsedTime
             )
         )
         uniforms.contents().copyMemory(from: &data, byteCount: MemoryLayout<TerrainUniforms>.stride)
 
-        encoder.pushDebugGroup("SnowTerrain")
+        encoder.pushDebugGroup("Terrain")
         encoder.setRenderPipelineState(pipeline)
         encoder.setDepthStencilState(depthState)
         encoder.setCullMode(.back)
@@ -191,6 +203,7 @@ final class TerrainRenderer: @unchecked Sendable {
         encoder.setVertexBuffer(uniforms, offset: 0, index: 0)
         encoder.setFragmentBuffer(uniforms, offset: 0, index: 0)
         encoder.setFragmentTexture(shadowMap, index: 0)
+        encoder.setFragmentTexture(wideShadowMap, index: 1)
         encoder.setFragmentSamplerState(sampler, index: 0)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: Self.terrainVertices)
         encoder.popDebugGroup()
@@ -266,7 +279,7 @@ final class TerrainRenderer: @unchecked Sendable {
 extension TerrainRenderer {
 
     fileprivate func setup(config: RendererConfig) -> Bool {
-        guard createShadowMap(),
+        guard createShadowMaps(),
             createDepthStates(),
             createSampler(),
             createTerrainUniformsBuffer(),
@@ -276,17 +289,26 @@ extension TerrainRenderer {
         return true
     }
 
-    fileprivate func createShadowMap() -> Bool {
+    fileprivate func createShadowMaps() -> Bool {
         let desc = MTLTextureDescriptor()
         desc.textureType = .type2D
-        desc.width = Self.shadowMapSize
-        desc.height = Self.shadowMapSize
         desc.pixelFormat = .depth32Float
         desc.usage = [.renderTarget, .shaderRead]
         desc.storageMode = .private
+
+        // Tight map: full 2K for crisp VRM shadows (±7 m coverage)
+        desc.width = Self.shadowMapSize
+        desc.height = Self.shadowMapSize
         shadowMapTexture = device.makeTexture(descriptor: desc)
-        shadowMapTexture?.label = "ShadowMap"
-        return shadowMapTexture != nil
+        shadowMapTexture?.label = "ShadowMap_Tight"
+
+        // Wide map: 1K — tighter ortho bounds compensate for lower resolution
+        desc.width = Self.shadowMapSize / 2
+        desc.height = Self.shadowMapSize / 2
+        wideShadowMapTexture = device.makeTexture(descriptor: desc)
+        wideShadowMapTexture?.label = "ShadowMap_Wide"
+
+        return shadowMapTexture != nil && wideShadowMapTexture != nil
     }
 
     fileprivate func createDepthStates() -> Bool {
@@ -410,20 +432,27 @@ extension TerrainRenderer {
 
 extension TerrainRenderer {
 
-    static func makeLightMatrix(sunDir: SIMD3<Float>) -> simd_float4x4 {
-        // Place the light eye far along the sun direction from scene centre
+    static func makeLightMatrix(sunDir: SIMD3<Float>, wide: Bool = false) -> simd_float4x4 {
         let centre = SIMD3<Float>(0, 1.0, 0)
-        let eyePos = centre + sunDir * 18.0
-
-        // Up vector: use world Y unless sun is nearly vertical
         let up: SIMD3<Float> = abs(sunDir.y) > 0.98 ? SIMD3<Float>(1, 0, 0) : SIMD3<Float>(0, 1, 0)
 
-        let view = OrthographicCamera.makeLookAt(eye: eyePos, target: centre, up: up)
-
-        // Generous ortho box: covers full VRM + shadow on ground
-        let proj = OrthographicCamera.makeOrthographic(
-            left: -4, right: 4, bottom: -3, top: 7, near: 0.1, far: 36
-        )
-        return proj * view
+        if wide {
+            // Wide cascade: trees span ±17 m, house at -22 m → ±26 m fits all with margin.
+            // Tighter than the old ±35 m so 1024 texels give 25% better texel density.
+            let eyePos = centre + sunDir * 35.0
+            let view = OrthographicCamera.makeLookAt(eye: eyePos, target: centre, up: up)
+            let proj = OrthographicCamera.makeOrthographic(
+                left: -26, right: 26, bottom: -5, top: 20, near: 0.1, far: 90
+            )
+            return proj * view
+        } else {
+            // Tight cascade: high-quality VRM character shadows (±7 m)
+            let eyePos = centre + sunDir * 18.0
+            let view = OrthographicCamera.makeLookAt(eye: eyePos, target: centre, up: up)
+            let proj = OrthographicCamera.makeOrthographic(
+                left: -7, right: 7, bottom: -3, top: 10, near: 0.1, far: 40
+            )
+            return proj * view
+        }
     }
 }

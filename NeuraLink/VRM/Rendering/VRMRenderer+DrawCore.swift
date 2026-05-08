@@ -83,6 +83,7 @@ extension VRMRenderer {
 
         // Shadow map depth pass — must happen before the main render encoder opens
         drawShadowPass(commandBuffer: commandBuffer)
+        drawCityShadow(commandBuffer: commandBuffer)
 
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor)
         else {
@@ -98,8 +99,14 @@ extension VRMRenderer {
         // 1. Sky (depth test = always, no depth write — always behind everything)
         drawSky(encoder: encoder)
 
-        // 2. Snow terrain (depth write = true — VRM renders on top)
-        drawTerrain(encoder: encoder)
+        // 2. Terrain: skipped when the city GLB is loaded (city has its own ground).
+        //    TerrainRenderer still exists so its wide shadow map remains available.
+        if cityRenderer?.isLoaded != true {
+            drawTerrain(encoder: encoder)
+        }
+
+        // 3. City environment (after terrain so it depth-tests against the ground)
+        drawCity(encoder: encoder)
 
         // Update LookAt controller
         if let lookAtController = lookAtController, lookAtController.enabled {
@@ -358,13 +365,17 @@ extension VRMRenderer {
         renderPassDescriptor: MTLRenderPassDescriptor
     ) {
         terrainRenderer?.clearShadowMapIfNeeded(commandBuffer: commandBuffer)
+        drawCityShadow(commandBuffer: commandBuffer)
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor)
         else {
             inflightSemaphore.signal()
             return
         }
         drawSky(encoder: encoder)
-        drawTerrain(encoder: encoder)
+        if cityRenderer?.isLoaded != true {
+            drawTerrain(encoder: encoder)
+        }
+        drawCity(encoder: encoder)
         drawWorldRain(encoder: encoder)
         encoder.endEncoding()
         drawRainOverlay(commandBuffer: commandBuffer, renderPassDescriptor: renderPassDescriptor)

@@ -4,21 +4,22 @@
 //
 //  Created by Dedicatus on 17/04/2026.
 //
-//  64×64 subdivided ground mesh with Gaussian dune features + sinusoidal wind
-//  ripples. Maximum displacement ≈ 22 cm (amp=0.22). Centre suppressed 0-1 m
-//  for foot placement. Shadows via 5-tap PCF shadow map (sun + moon).
+//  64×64 subdivided ground mesh with Gaussian hill features + sinusoidal
+//  micro-undulations. Maximum displacement ≈ 22 cm. Centre suppressed 0-1 m
+//  for foot placement. Shadows via 9-tap PCF shadow map (sun + moon).
 
 #include <metal_stdlib>
 using namespace metal;
 
-// MARK: - Uniforms (must match TerrainUniforms in Swift, 176 bytes)
+// MARK: - Uniforms (must match TerrainUniforms in Swift, 240 bytes)
 
 struct TerrainUniforms {
-    float4x4 viewProjection;        // vertex: world → clip
-    float4x4 lightViewProjection;   // shadow: world → light clip
-    float4   sunDirection;          // xyz = toward-sun unit vector
-    float4   snowColor;             // xyz = base snow colour
-    float4   terrainParams;         // x=unused y=amp z=shadowSoft w=time
+    float4x4 viewProjection;             // vertex: world → clip
+    float4x4 lightViewProjection;        // tight shadow map  (VRM, ±7 m)
+    float4x4 wideLightViewProjection;    // wide shadow map   (trees, ±35 m)
+    float4   sunDirection;               // xyz = toward-sun unit vector, w = sun height
+    float4   groundColor;                // xyz = dirt earth base colour
+    float4   terrainParams;              // x=unused y=amp z=shadowSoft w=time
 };
 
 // MARK: - Terrain height
@@ -146,34 +147,42 @@ static float sampleShadow(
 // MARK: - Fragment
 
 fragment float4 terrain_fragment(
-    TerrainOut              in        [[stage_in]],
-    constant TerrainUniforms &u       [[buffer(0)]],
-    texture2d<float>        shadowMap [[texture(0)]],
-    sampler                 shadowSmp [[sampler(0)]]
+    TerrainOut              in            [[stage_in]],
+    constant TerrainUniforms &u           [[buffer(0)]],
+    texture2d<float>        shadowMap     [[texture(0)]],  // tight — VRM
+    texture2d<float>        wideShadowMap [[texture(1)]],  // wide  — trees
+    sampler                 shadowSmp     [[sampler(0)]]
 ) {
     float3 normal     = normalize(in.normal);
     float3 sunDir     = u.sunDirection.xyz;
     float  shadowSoft = u.terrainParams.z;
+    float  sunH       = u.sunDirection.w;
 
+    // Lighting — energy-conserving so colours never blow out.
     float NdotL   = max(dot(normal, sunDir), 0.0f);
-    float ambient = 0.40f + max(u.sunDirection.w, 0.0f) * 0.30f;
-    float shadow  = shadowSoft > 0.0f
-                    ? sampleShadow(shadowMap, shadowSmp, in.worldPos, u.lightViewProjection, shadowSoft)
-                    : 0.0f;
+    float ambient = 0.32f + max(sunH, 0.0f) * 0.18f;   // [0.32 .. 0.50]
 
-    float lighting = ambient + NdotL * (1.0f - shadow * 0.75f);
+    // Sample both cascades; take whichever casts the stronger shadow.
+    float shadow = 0.0f;
+    if (shadowSoft > 0.0f) {
+        float s0 = sampleShadow(shadowMap,     shadowSmp, in.worldPos, u.lightViewProjection,     shadowSoft);
+        float s1 = sampleShadow(wideShadowMap, shadowSmp, in.worldPos, u.wideLightViewProjection, shadowSoft);
+        shadow = max(s0, s1);
+    }
+    float diffuse = max(1.0f - ambient, 0.0f) * NdotL * (1.0f - shadow * 0.80f);
+    float lighting = saturate(ambient + diffuse);
 
-    // Subtle cavity darkening in dune valleys.
-    float cavity = (1.0f - normal.y) * 0.16f;
+    // Ground colour: mid-tone earth with darker hollows and slightly lighter ridges.
+    float3 groundCol  = u.groundColor.xyz;
+    float3 darkEarth  = groundCol * 0.62f;   // wet/compressed soil in valleys
+    float  heightFac  = saturate(in.worldPos.y * 5.0f + 0.5f);
+    float3 colour     = mix(darkEarth, groundCol, heightFac) * lighting;
 
-    float3 colour = u.snowColor.xyz * (lighting - cavity);
-
-    // Atmospheric haze toward the horizon.
+    // Atmospheric haze — warm dusty horizon.
     float  dist    = length(in.worldPos.xz);
     float  haze    = smoothstep(20.0f, 90.0f, dist);
-    float3 hazeCol = mix(float3(0.72f, 0.78f, 0.88f), float3(0.55f, 0.65f, 0.80f),
-                         max(u.sunDirection.w, 0.0f));
-    colour = mix(colour, hazeCol, haze * 0.60f);
+    float3 hazeCol = mix(float3(0.68f, 0.60f, 0.48f), float3(0.74f, 0.72f, 0.68f), max(sunH, 0.0f));
+    colour = mix(colour, hazeCol, haze * 0.55f);
 
     return float4(colour, 1.0f);
 }
