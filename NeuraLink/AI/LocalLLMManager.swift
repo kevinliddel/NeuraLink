@@ -156,8 +156,9 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             // RAG: Fetch relevant past memories
             let memoryContext = await RAGManager.shared.fetchContext(for: text)
             
+            let userContext = UserSettings.shared.systemPromptContext
             let basePrompt = localLLMSystemPrompt(for: state.selectedCharacterName)
-            let sysPrompt = basePrompt + memoryContext
+            let sysPrompt = userContext + basePrompt + memoryContext
             
             let prompt: String
             let maxTokens: Int

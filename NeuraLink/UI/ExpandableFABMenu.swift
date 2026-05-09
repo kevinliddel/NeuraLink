@@ -12,6 +12,7 @@ import SwiftUI
 struct ExpandableFABMenu: View {
     @Binding var isExpanded: Bool
     let onSettings: () -> Void
+    let onUserSettings: () -> Void
     let onModelSelection: () -> Void
     let onCameraToggle: () -> Void
     let onPiP: () -> Void
@@ -25,6 +26,16 @@ struct ExpandableFABMenu: View {
                     action: {
                         collapse()
                         onSettings()
+                    }
+                )
+                .transition(childTransition(delay: 0.135))
+
+                FABChildButton(
+                    icon: Image(systemName: "person.crop.circle"),
+                    label: "Profile",
+                    action: {
+                        collapse()
+                        onUserSettings()
                     }
                 )
                 .transition(childTransition(delay: 0.09))

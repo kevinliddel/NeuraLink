@@ -49,6 +49,7 @@ struct ContentView: View {
                 ExpandableFABMenu(
                     isExpanded: $isMenuExpanded,
                     onSettings: { aiState.showSettings = true },
+                    onUserSettings: { aiState.showUserSettings = true },
                     onModelSelection: { withAnimation { showModelSelection.toggle() } },
                     onCameraToggle: {
                         if camera.isActive {
@@ -63,9 +64,12 @@ struct ContentView: View {
                 )
             }
             .toolbar { menuToggleButton }
-            .allowsHitTesting(!aiState.showSettings)
+            .allowsHitTesting(!aiState.showSettings && !aiState.showUserSettings)
             .sheet(isPresented: $aiState.showSettings) {
                 AISettingsView()
+            }
+            .sheet(isPresented: $aiState.showUserSettings) {
+                UserSettingsView()
             }
         }
     }

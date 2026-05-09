@@ -283,8 +283,9 @@ extension OpenAIRealtimeManager: RTCDataChannelDelegate {
             // Since we don't have a specific query yet, we fetch general recent context
             // or just the persona-related memories. For now, we'll fetch context
             // based on the character's core identity to ground the session.
+            let userContext = UserSettings.shared.systemPromptContext
             let memoryContext = await RAGManager.shared.fetchContext(for: persona.instructions, limit: 5)
-            let finalInstructions = persona.instructions + "\n" + memoryContext
+            let finalInstructions = userContext + persona.instructions + "\n" + memoryContext
             
             let update: [String: Any] = [
                 "type": "session.update",
