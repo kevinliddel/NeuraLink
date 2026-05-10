@@ -13,24 +13,8 @@ import SwiftUI
 final class AppearanceSettings {
     static let shared = AppearanceSettings()
 
-    private let showEnvironmentKey = "com.neuralink.appearance.showEnvironment"
-    
     // For storing the custom background image data to the app's documents directory
     private let backgroundImageFilename = "custom_background.jpg"
-
-    init() {}
-
-    /// Whether the 3D environment (sky, terrain, city, rain) should be rendered.
-    var showEnvironment: Bool {
-        get {
-            // Default to true if not set
-            if UserDefaults.standard.object(forKey: showEnvironmentKey) == nil {
-                return true
-            }
-            return UserDefaults.standard.bool(forKey: showEnvironmentKey)
-        }
-        set { UserDefaults.standard.set(newValue, forKey: showEnvironmentKey) }
-    }
     
     /// Loads the custom background image data from disk, if it exists.
     var backgroundImageData: Data? {

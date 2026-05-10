@@ -95,6 +95,21 @@ final class TerrainRenderer: @unchecked Sendable {
         encoder.endEncoding()
     }
 
+    /// Clears the wide shadow map to full-depth so no stale shadow appears when the environment is disabled.
+    func clearWideShadowMap(commandBuffer: MTLCommandBuffer) {
+        guard let wideShadowMap = wideShadowMapTexture else { return }
+        let passDesc = MTLRenderPassDescriptor()
+        passDesc.depthAttachment.texture = wideShadowMap
+        passDesc.depthAttachment.loadAction = .clear
+        passDesc.depthAttachment.storeAction = .store
+        passDesc.depthAttachment.clearDepth = 1.0
+        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: passDesc) else {
+            return
+        }
+        encoder.label = "ClearWideShadowMap"
+        encoder.endEncoding()
+    }
+
     // MARK: - Shadow pass (before main encoder)
 
     func drawShadowPass(

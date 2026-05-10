@@ -83,7 +83,16 @@ extension VRMRenderer {
 
         // Shadow map depth pass — must happen before the main render encoder opens
         drawShadowPass(commandBuffer: commandBuffer)
-        drawCityShadow(commandBuffer: commandBuffer)
+        if UserSettings.shared.showEnvironment {
+            let selected = UserSettings.shared.selectedEnvironment
+            if selected == "city" {
+                drawCityShadow(commandBuffer: commandBuffer)
+            } else {
+                drawCampusShadow(commandBuffer: commandBuffer)
+            }
+        } else {
+            terrainRenderer?.clearWideShadowMap(commandBuffer: commandBuffer)
+        }
 
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor)
         else {
@@ -96,19 +105,28 @@ extension VRMRenderer {
             return
         }
 
-        // Environment drawing
-        if AppearanceSettings.shared.showEnvironment {
-            // 1. Sky (depth test = always, no depth write — always behind everything)
-            drawSky(encoder: encoder)
+        // 1. Sky (depth test = always, no depth write — always behind everything)
+        drawSky(encoder: encoder)
 
-            // 2. Terrain: skipped when the city GLB is loaded (city has its own ground).
-            //    TerrainRenderer still exists so its wide shadow map remains available.
-            if cityRenderer?.isLoaded != true {
+        // 2. Terrain + Environment
+        if UserSettings.shared.showEnvironment {
+            let selected = UserSettings.shared.selectedEnvironment
+            let currentLoaded = (selected == "city" ? cityRenderer?.isLoaded : campusRenderer?.isLoaded) ?? false
+            
+            // Terrain is skipped when the environment GLB is loaded.
+            if !currentLoaded {
                 drawTerrain(encoder: encoder)
             }
-
-            // 3. City environment (after terrain so it depth-tests against the ground)
-            drawCity(encoder: encoder)
+            
+            // Environment GLB (after terrain so it depth-tests against the ground)
+            if selected == "city" {
+                drawCity(encoder: encoder)
+            } else {
+                drawCampus(encoder: encoder)
+            }
+        } else {
+            // 3D OFF: only display the usual Terrain
+            drawTerrain(encoder: encoder)
         }
 
         // Update LookAt controller
@@ -334,14 +352,14 @@ extension VRMRenderer {
         )
 
         // 3D World rain (streaks and ripples)
-        if AppearanceSettings.shared.showEnvironment {
+        if UserSettings.shared.showEnvironment {
             drawWorldRain(encoder: encoder)
         }
 
         encoder.endEncoding()
 
         // Rain-on-glass overlay (compute water map → transparent fragment pass)
-        if AppearanceSettings.shared.showEnvironment {
+        if UserSettings.shared.showEnvironment {
             drawRainOverlay(commandBuffer: commandBuffer, renderPassDescriptor: renderPassDescriptor)
         }
 
@@ -372,22 +390,45 @@ extension VRMRenderer {
         renderPassDescriptor: MTLRenderPassDescriptor
     ) {
         terrainRenderer?.clearShadowMapIfNeeded(commandBuffer: commandBuffer)
-        drawCityShadow(commandBuffer: commandBuffer)
+        if UserSettings.shared.showEnvironment {
+            let selected = UserSettings.shared.selectedEnvironment
+            if selected == "city" {
+                drawCityShadow(commandBuffer: commandBuffer)
+            } else {
+                drawCampusShadow(commandBuffer: commandBuffer)
+            }
+        } else {
+            terrainRenderer?.clearWideShadowMap(commandBuffer: commandBuffer)
+        }
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor)
         else {
             inflightSemaphore.signal()
             return
         }
-        if AppearanceSettings.shared.showEnvironment {
-            drawSky(encoder: encoder)
-            if cityRenderer?.isLoaded != true {
+
+        // 1. Sky
+        drawSky(encoder: encoder)
+
+        if UserSettings.shared.showEnvironment {
+            let selected = UserSettings.shared.selectedEnvironment
+            let currentLoaded = (selected == "city" ? cityRenderer?.isLoaded : campusRenderer?.isLoaded) ?? false
+            
+            if !currentLoaded {
                 drawTerrain(encoder: encoder)
             }
-            drawCity(encoder: encoder)
+            
+            if selected == "city" {
+                drawCity(encoder: encoder)
+            } else {
+                drawCampus(encoder: encoder)
+            }
             drawWorldRain(encoder: encoder)
+        } else {
+            drawTerrain(encoder: encoder)
         }
         encoder.endEncoding()
-        if AppearanceSettings.shared.showEnvironment {
+        
+        if UserSettings.shared.showEnvironment {
             drawRainOverlay(commandBuffer: commandBuffer, renderPassDescriptor: renderPassDescriptor)
         }
         commandBuffer.addCompletedHandler { [weak self] _ in

@@ -41,7 +41,7 @@ public struct VRMSceneView: View {
 
     public var body: some View {
         ZStack(alignment: .bottomLeading) {
-            if !appearance.showEnvironment {
+            if !UserSettings.shared.showEnvironment {
                 Color.black.ignoresSafeArea()
                 if let img = appearance.backgroundUIImage {
                     Image(uiImage: img)

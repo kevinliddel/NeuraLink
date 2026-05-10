@@ -11,8 +11,8 @@ import SwiftUI
 struct ContentView: View {
 
     @State private var selectedModelURL: URL? = VRMModelRegistry.defaultModel?.url
-    @State private var aiState = RealtimeChatState.shared
-    @State private var camera = CameraManager.shared
+    @Bindable private var aiState = RealtimeChatState.shared
+    private var camera = CameraManager.shared
     @State private var showModelSelection = false
     @State private var isMenuExpanded = false
 

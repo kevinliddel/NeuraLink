@@ -18,8 +18,25 @@ final class UserSettings {
     private let nameKey = "com.neuralink.user.name"
     private let genderKey = "com.neuralink.user.gender"
     private let birthdayKey = "com.neuralink.user.birthday"
+    private let showEnvironmentKey = "com.neuralink.user.showEnvironment"
+    private let selectedEnvironmentKey = "com.neuralink.user.selectedEnvironment"
     
     private init() {}
+    
+    var showEnvironment: Bool {
+        get {
+            if UserDefaults.standard.object(forKey: showEnvironmentKey) == nil {
+                return true
+            }
+            return UserDefaults.standard.bool(forKey: showEnvironmentKey)
+        }
+        set { UserDefaults.standard.set(newValue, forKey: showEnvironmentKey) }
+    }
+    
+    var selectedEnvironment: String {
+        get { UserDefaults.standard.string(forKey: selectedEnvironmentKey) ?? "city" }
+        set { UserDefaults.standard.set(newValue, forKey: selectedEnvironmentKey) }
+    }
     
     var name: String {
         get { UserDefaults.standard.string(forKey: nameKey) ?? "" }
