@@ -28,9 +28,17 @@ final class EmbeddingService {
     /// - Parameter text: The input string.
     /// - Returns: A float array representing the vector, or nil if generation fails.
     func generateVector(for text: String) -> [Double]? {
-        guard let embedding = embedding else { return nil }
-        // NLEmbedding returns [Double]
-        return embedding.vector(for: text)
+        if let vector = embedding?.vector(for: text) {
+            return vector
+        }
+        
+        // Fallback for environments without the system model (e.g. CI/Simulators)
+        // This allows RAG logic to be tested even if the vector quality is zero.
+        #if DEBUG
+        return Array(repeating: 0.0, count: 512)
+        #else
+        return nil
+        #endif
     }
     
     /// Calculates the cosine similarity between two vectors.

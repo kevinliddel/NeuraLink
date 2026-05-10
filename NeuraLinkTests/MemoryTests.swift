@@ -5,27 +5,33 @@
 //  Unit tests for the RAG memory system.
 //
 
-import XCTest
+import Testing
+import Foundation
 @testable import NeuraLink
 
-final class MemoryTests: XCTestCase {
+@Suite("Memory and RAG Tests")
+struct MemoryTests {
 
+    @Test("Embedding generation returns 512-dim vector")
     func testEmbeddingGeneration() {
         let text = "Hello world"
         let vector = EmbeddingService.shared.generateVector(for: text)
-        XCTAssertNotNil(vector)
-        XCTAssertEqual(vector?.count, 512) // NLEmbedding is usually 512
+        
+        #expect(vector != nil)
+        #expect(vector?.count == 512)
     }
 
+    @Test("Cosine similarity calculations")
     func testCosineSimilarity() {
         let v1 = [1.0, 0.0, 0.0]
         let v2 = [1.0, 0.0, 0.0]
         let v3 = [0.0, 1.0, 0.0]
         
-        XCTAssertEqual(EmbeddingService.cosineSimilarity(v1, v2), 1.0, accuracy: 0.001)
-        XCTAssertEqual(EmbeddingService.cosineSimilarity(v1, v3), 0.0, accuracy: 0.001)
+        #expect(EmbeddingService.cosineSimilarity(v1, v2) == 1.0)
+        #expect(EmbeddingService.cosineSimilarity(v1, v3) == 0.0)
     }
 
+    @Test("Memory store persistence and retrieval")
     func testMemoryStorePersistence() {
         let store = MemoryStore.shared
         store.clear()
@@ -36,8 +42,8 @@ final class MemoryTests: XCTestCase {
         store.insert(text: text, vector: vector)
         let memories = store.fetchAll()
         
-        XCTAssertEqual(memories.count, 1)
-        XCTAssertEqual(memories.first?.text, text)
-        XCTAssertEqual(memories.first?.vector, vector)
+        #expect(memories.count == 1)
+        #expect(memories.first?.text == text)
+        #expect(memories.first?.vector == vector)
     }
 }
