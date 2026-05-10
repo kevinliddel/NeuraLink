@@ -14,6 +14,7 @@ struct AISettingsView: View {
     @State private var personaStore = PersonaStore.shared
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var backgroundImage: UIImage? = AppearanceSettings.shared.backgroundUIImage
+    @State private var showModelLibrary = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -61,59 +62,26 @@ struct AISettingsView: View {
     }
     private var localSLMSection: some View {
         Section {
-            // Model Selection Picker
-            Picker(
-                "Selected Model",
-                selection: Binding(
-                    get: { downloader.selectedConfig },
-                    set: { newConfig in
-                        downloader.selectConfig(newConfig)
-                        if settings.isLocalLLMEnabled {
-                            LocalLLMManager.shared.restart()
-                        }
+            Button {
+                showModelLibrary = true
+            } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Model Library")
+                            .font(.headline)
+                        Text(downloader.selectedConfig.rawValue)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
-                )
-            ) {
-                ForEach(LocalModelDownloadManager.ModelConfiguration.allCases) { config in
-                    Text(config.rawValue).tag(config)
-                }
-            }
-            .pickerStyle(.segmented)
-            .disabled(
-                downloader.state != .notDownloaded && downloader.state != .ready
-                    && !downloader.state.isFailed)
-
-            // Header row: model name + status badge
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(downloader.selectedConfig.rawValue)
-                        .font(.headline)
-                    Text(
-                        "~\(String(format: "%.1f", downloader.selectedConfig.estimatedSizeGB)) GB · \(downloader.selectedConfig.description)"
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                }
-                Spacer()
-                stateBadge
-            }
-            .padding(.vertical, 4)
-
-            // Download progress bar
-            if case .downloading(let progress) = downloader.state {
-                VStack(alignment: .leading, spacing: 6) {
-                    ProgressView(value: progress)
-                        .tint(.blue)
-                    Text(downloadPhaseLabel(progress: progress))
-                        .font(.caption)
+                    Spacer()
+                    stateBadge
+                    Image(systemName: "chevron.right")
+                        .font(.caption.bold())
                         .foregroundStyle(.secondary)
                 }
             }
+            .foregroundStyle(.primary)
 
-            // Action button
-            actionButton
-
-            // Enable toggle (only available when model is ready)
             if downloader.isAvailable {
                 Toggle("Use Local SLM (Offline)", isOn: $settings.isLocalLLMEnabled)
             }
@@ -123,17 +91,6 @@ struct AISettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-
-            // Delete option when downloaded (not bundled)
-            if case .ready = downloader.state {
-                Button(role: .destructive) {
-                    settings.isLocalLLMEnabled = false
-                    downloader.deleteDownloadedModel()
-                } label: {
-                    Label("Delete Downloaded Model", systemImage: "trash")
-                }
-            }
-
         } header: {
             Text("Local Edge LLMs")
         } footer: {
@@ -157,6 +114,9 @@ struct AISettingsView: View {
                         .foregroundStyle(.red)
                 }
             }
+        }
+        .sheet(isPresented: $showModelLibrary) {
+            ModelLibraryView()
         }
     }
 

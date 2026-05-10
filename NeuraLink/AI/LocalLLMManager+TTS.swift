@@ -69,4 +69,76 @@ extension LocalLLMManager {
                 ?? AVSpeechSynthesisVoice(language: "en-US")
         }
     }
+
+    /// Generates audio from text using AVSpeechSynthesizer and schedules it on the AVAudioEngine.
+    func speakChunk(_ text: String) {
+        if !firstAudioLatencyLogged,
+            let start = turnStartNs,
+            !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            firstAudioLatencyLogged = true
+            let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000.0
+            print("[LocalLLM] First TTS chunk latency: \(String(format: "%.1f", elapsedMs)) ms")
+        }
+        
+        var clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        clean = clean.replacingOccurrences(of: #"\*[^*\n]+\*"#, with: "", options: .regularExpression)
+        clean = clean.replacingOccurrences(of: #"\[[^\]\n]+\]"#, with: "", options: .regularExpression)
+        clean = clean.replacingOccurrences(of: #" {2,}"#, with: " ", options: .regularExpression)
+        clean = clean.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !clean.isEmpty,
+              clean.unicodeScalars.contains(where: { CharacterSet.letters.contains($0) || CharacterSet.decimalDigits.contains($0) })
+        else { return }
+
+        let utterance = AVSpeechUtterance(string: clean)
+        utterance.voice = bestAvailableVoice(for: state.selectedCharacterName)
+
+        if clean.hasSuffix("?") || clean.hasSuffix("？") {
+            utterance.pitchMultiplier = 1.1
+            utterance.rate = AVSpeechUtteranceDefaultSpeechRate
+        } else if clean.hasSuffix("!") || clean.hasSuffix("！") {
+            utterance.pitchMultiplier = 1.05
+            utterance.rate = AVSpeechUtteranceDefaultSpeechRate + 0.03
+        } else {
+            utterance.pitchMultiplier = 1.0
+            utterance.rate = AVSpeechUtteranceDefaultSpeechRate
+        }
+
+        synthesizer.write(utterance) { [weak self] (buffer: AVAudioBuffer) in
+            guard let self = self, let pcmBuffer = buffer as? AVAudioPCMBuffer else { return }
+            guard pcmBuffer.frameLength > 0 else { return }
+
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+
+                let currentFormat = self.playerNode.outputFormat(forBus: 0)
+                if currentFormat != pcmBuffer.format {
+                    let wasRunning = self.audioEngine.isRunning
+                    if wasRunning { self.audioEngine.pause() }
+
+                    self.audioEngine.disconnectNodeInput(self.playerNode)
+                    self.audioEngine.connect(
+                        self.playerNode, to: self.audioEngine.mainMixerNode, format: pcmBuffer.format)
+
+                    if wasRunning { try? self.audioEngine.start() }
+                }
+
+                if !self.audioEngine.isRunning { try? self.audioEngine.start() }
+                if !self.playerNode.isPlaying { self.playerNode.play() }
+
+                self.pendingTTSBuffers += 1
+                self.playerNode.scheduleBuffer(pcmBuffer, completionCallbackType: .dataConsumed) {
+                    [weak self] _ in
+                    DispatchQueue.main.async {
+                        guard let self = self else { return }
+                        self.pendingTTSBuffers -= 1
+                        if self.pendingTTSBuffers == 0 && self.ttsGenerationDone {
+                            self.ttsGenerationDone = false
+                            self.state.status = .ready
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

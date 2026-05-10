@@ -35,7 +35,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     // Audio Engine for TTS Lip-sync
     internal let audioEngine = AVAudioEngine()
     internal let playerNode = AVAudioPlayerNode()
-    private let synthesizer = AVSpeechSynthesizer()
+    internal let synthesizer = AVSpeechSynthesizer()
 
     // State
     let state = RealtimeChatState.shared
@@ -54,13 +54,13 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     let recordingLock = NSLock()
 
     // Lightweight turn-level latency metrics (user text → token/audio)
-    private var turnStartNs: UInt64?
-    private var firstTokenLatencyLogged = false
-    private var firstAudioLatencyLogged = false
+    internal var turnStartNs: UInt64?
+    internal var firstTokenLatencyLogged = false
+    internal var firstAudioLatencyLogged = false
 
     // TTS completion tracking — main thread only.
-    private var pendingTTSBuffers: Int = 0
-    private var ttsGenerationDone: Bool = false
+    internal var pendingTTSBuffers: Int = 0
+    internal var ttsGenerationDone: Bool = false
 
     var voicesLogged = false
 
@@ -226,141 +226,4 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
 
     // MARK: - Local TTS (AVSpeechSynthesizer + AVAudioEngine)
 
-    private func speakChunk(_ text: String) {
-        if !firstAudioLatencyLogged,
-            let start = turnStartNs,
-            !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            firstAudioLatencyLogged = true
-            let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000.0
-            print("[LocalLLM] First TTS chunk latency: \(String(format: "%.1f", elapsedMs)) ms")
-        }
-        
-        var clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        clean = clean.replacingOccurrences(of: #"\*[^*\n]+\*"#, with: "", options: .regularExpression)
-        clean = clean.replacingOccurrences(of: #"\[[^\]\n]+\]"#, with: "", options: .regularExpression)
-        clean = clean.replacingOccurrences(of: #" {2,}"#, with: " ", options: .regularExpression)
-        clean = clean.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        guard !clean.isEmpty,
-              clean.unicodeScalars.contains(where: { CharacterSet.letters.contains($0) || CharacterSet.decimalDigits.contains($0) })
-        else { return }
-
-        let utterance = AVSpeechUtterance(string: clean)
-        utterance.voice = bestAvailableVoice(for: state.selectedCharacterName)
-
-        if clean.hasSuffix("?") || clean.hasSuffix("？") {
-            utterance.pitchMultiplier = 1.1
-            utterance.rate = AVSpeechUtteranceDefaultSpeechRate
-        } else if clean.hasSuffix("!") || clean.hasSuffix("！") {
-            utterance.pitchMultiplier = 1.05
-            utterance.rate = AVSpeechUtteranceDefaultSpeechRate + 0.03
-        } else {
-            utterance.pitchMultiplier = 1.0
-            utterance.rate = AVSpeechUtteranceDefaultSpeechRate
-        }
-
-        synthesizer.write(utterance) { [weak self] buffer in
-            guard let self = self, let pcmBuffer = buffer as? AVAudioPCMBuffer else { return }
-            guard pcmBuffer.frameLength > 0 else { return }
-
-            DispatchQueue.main.async { [weak self] in
-                guard let self = self else { return }
-
-                let currentFormat = self.playerNode.outputFormat(forBus: 0)
-                if currentFormat != pcmBuffer.format {
-                    let wasRunning = self.audioEngine.isRunning
-                    if wasRunning { self.audioEngine.pause() }
-
-                    self.audioEngine.disconnectNodeInput(self.playerNode)
-                    self.audioEngine.connect(
-                        self.playerNode, to: self.audioEngine.mainMixerNode, format: pcmBuffer.format)
-
-                    if wasRunning { try? self.audioEngine.start() }
-                }
-
-                if !self.audioEngine.isRunning { try? self.audioEngine.start() }
-                if !self.playerNode.isPlaying { self.playerNode.play() }
-
-                self.pendingTTSBuffers += 1
-                self.playerNode.scheduleBuffer(pcmBuffer, completionCallbackType: .dataConsumed) {
-                    [weak self] _ in
-                    DispatchQueue.main.async {
-                        guard let self = self else { return }
-                        self.pendingTTSBuffers -= 1
-                        if self.pendingTTSBuffers == 0 && self.ttsGenerationDone {
-                            self.ttsGenerationDone = false
-                            self.state.status = .ready
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-// MARK: - LocalLLMEngineDelegate
-
-extension LocalLLMManager: LocalLLMEngineDelegate {
-    func localLLM(didGenerateToken token: String) {
-        if !firstTokenLatencyLogged,
-            let start = turnStartNs,
-            !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            firstTokenLatencyLogged = true
-            let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000.0
-            print("[LocalLLM] First token latency: \(String(format: "%.1f", elapsedMs)) ms")
-        }
-
-        Task { @MainActor in
-            if state.status == .thinking {
-                state.status = .speaking
-            }
-            state.aiTranscript += token
-            state.parseAndTriggerEmotion(from: state.aiTranscript)
-        }
-
-        ttsBuffer += token
-
-        let openBrackets  = ttsBuffer.filter { $0 == "[" }.count
-        let closeBrackets = ttsBuffer.filter { $0 == "]" }.count
-        let insideTag = openBrackets > closeBrackets
-
-        if !insideTag
-            && (token.contains(".") || token.contains("!") || token.contains("?")
-                || token.contains("。") || token.contains(",") || token.contains("\n")
-                || (ttsBuffer.count >= 32 && ttsBuffer.contains(" "))) {
-            let chunkToSpeak = ttsBuffer
-            ttsBuffer = ""
-            speakChunk(chunkToSpeak)
-        }
-    }
-
-    func localLLM(didFinishGeneration fullText: String) {
-        if let start = turnStartNs {
-            let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000.0
-            print("[LocalLLM] Turn total latency: \(String(format: "%.1f", elapsedMs)) ms")
-        }
-
-        // RAG: Store the user's input and the AI's response in long-term memory
-        let userText = state.userTranscript
-        RAGManager.shared.store(text: userText)
-        RAGManager.shared.store(text: fullText)
-
-        if !ttsBuffer.trimmingCharacters(in: .whitespaces).isEmpty {
-            speakChunk(ttsBuffer)
-            ttsBuffer = ""
-        }
-        Task { @MainActor in
-            if pendingTTSBuffers == 0 {
-                state.status = .ready
-            } else {
-                ttsGenerationDone = true
-            }
-        }
-    }
-
-    func localLLM(didFailWithError error: Error) {
-        Task { @MainActor in
-            state.setError(error.localizedDescription)
-        }
-    }
 }

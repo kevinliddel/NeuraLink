@@ -67,6 +67,14 @@ final class LocalModelDownloadManager: @unchecked Sendable {
             }
         }
 
+        var quantizationLabel: String {
+            switch self {
+            case .qwen2b: return "Q4_K_M"
+            case .llama1b: return "Q4_K_M"
+            case .japaneseLlama1b: return "Q4_K_M"
+            }
+        }
+
         var description: String {
             switch self {
             case .qwen2b:
@@ -152,6 +160,19 @@ final class LocalModelDownloadManager: @unchecked Sendable {
         case .japaneseLlama1b: GGUFJapaneseLlamaModelAccess.clearCache()
         }
         state = .notDownloaded
+    }
+
+    func diskUsageBytes(for config: ModelConfiguration) -> Int64 {
+        let url: URL?
+        switch config {
+        case .qwen2b: url = GGUFQwenModelAccess.modelURL()
+        case .llama1b: url = GGUFModelAccess.modelURL()
+        case .japaneseLlama1b: url = GGUFJapaneseLlamaModelAccess.modelURL()
+        }
+        
+        guard let fileURL = url else { return 0 }
+        let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path)
+        return attrs?[.size] as? Int64 ?? 0
     }
 
     // MARK: - Private helpers
