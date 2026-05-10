@@ -27,7 +27,7 @@ struct MetalKitView: UIViewRepresentable {
 
 public struct VRMSceneView: View {
     let modelURL: URL?
-    @State private var state = VRMMetalState()
+    @State private var state: VRMMetalState?
     @State private var settings = OpenAISettings.shared
     @State private var appearance = AppearanceSettings.shared
     // Tracks whether the initial model load (app launch) has completed.
@@ -64,20 +64,24 @@ public struct VRMSceneView: View {
 
     @ViewBuilder
     private var primaryContent: some View {
-        if !state.isMetalAvailable {
-            previewPlaceholder
-        } else if modelURL == nil {
-            noModelView
-        } else if let error = state.errorMessage {
-            errorView(message: error)
-        } else if state.isEnvironmentReady {
-            MetalKitView(mtkView: state.mtkView)
-                .ignoresSafeArea()
-                .overlay {
-                    if !state.isModelLoaded {
-                        modelSwitchingOverlay
+        if let state {
+            if !state.isMetalAvailable {
+                previewPlaceholder
+            } else if modelURL == nil {
+                noModelView
+            } else if let error = state.errorMessage {
+                errorView(message: error)
+            } else if state.isEnvironmentReady {
+                MetalKitView(mtkView: state.mtkView)
+                    .ignoresSafeArea()
+                    .overlay {
+                        if !state.isModelLoaded {
+                            modelSwitchingOverlay
+                        }
                     }
-                }
+            } else {
+                loadingView
+            }
         } else {
             loadingView
         }
@@ -136,6 +140,12 @@ public struct VRMSceneView: View {
     @MainActor
     private func loadModel() async {
         guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+        
+        if state == nil {
+            state = VRMMetalState()
+        }
+        guard let state else { return }
+
         guard state.isMetalAvailable, let url = modelURL else { return }
         state.clear()
 

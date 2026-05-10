@@ -21,39 +21,38 @@ final class UserSettings {
     private let showEnvironmentKey = "com.neuralink.user.showEnvironment"
     private let selectedEnvironmentKey = "com.neuralink.user.selectedEnvironment"
     
-    private init() {}
-    
     var showEnvironment: Bool {
-        get {
-            if UserDefaults.standard.object(forKey: showEnvironmentKey) == nil {
-                return true
-            }
-            return UserDefaults.standard.bool(forKey: showEnvironmentKey)
-        }
-        set { UserDefaults.standard.set(newValue, forKey: showEnvironmentKey) }
+        didSet { UserDefaults.standard.set(showEnvironment, forKey: showEnvironmentKey) }
     }
     
     var selectedEnvironment: String {
-        get { UserDefaults.standard.string(forKey: selectedEnvironmentKey) ?? "city" }
-        set { UserDefaults.standard.set(newValue, forKey: selectedEnvironmentKey) }
+        didSet { UserDefaults.standard.set(selectedEnvironment, forKey: selectedEnvironmentKey) }
     }
     
     var name: String {
-        get { UserDefaults.standard.string(forKey: nameKey) ?? "" }
-        set { UserDefaults.standard.set(newValue, forKey: nameKey) }
+        didSet { UserDefaults.standard.set(name, forKey: nameKey) }
     }
     
     var gender: String {
-        get { UserDefaults.standard.string(forKey: genderKey) ?? "Prefer not to say" }
-        set { UserDefaults.standard.set(newValue, forKey: genderKey) }
+        didSet { UserDefaults.standard.set(gender, forKey: genderKey) }
     }
     
     var birthday: Date {
-        get {
-            let interval = UserDefaults.standard.double(forKey: birthdayKey)
-            return interval == 0 ? Date() : Date(timeIntervalSince1970: interval)
+        didSet { UserDefaults.standard.set(birthday.timeIntervalSince1970, forKey: birthdayKey) }
+    }
+    
+    private init() {
+        if UserDefaults.standard.object(forKey: "com.neuralink.user.showEnvironment") == nil {
+            self.showEnvironment = true
+        } else {
+            self.showEnvironment = UserDefaults.standard.bool(forKey: "com.neuralink.user.showEnvironment")
         }
-        set { UserDefaults.standard.set(newValue.timeIntervalSince1970, forKey: birthdayKey) }
+        self.selectedEnvironment = UserDefaults.standard.string(forKey: "com.neuralink.user.selectedEnvironment") ?? "city"
+        self.name = UserDefaults.standard.string(forKey: "com.neuralink.user.name") ?? ""
+        self.gender = UserDefaults.standard.string(forKey: "com.neuralink.user.gender") ?? "Prefer not to say"
+        
+        let interval = UserDefaults.standard.double(forKey: "com.neuralink.user.birthday")
+        self.birthday = interval == 0 ? Date() : Date(timeIntervalSince1970: interval)
     }
     
     /// Returns a formatted string to be injected into the AI's system prompt.

@@ -28,19 +28,21 @@ final class OpenAISettings {
             UserDefaults.standard.set(false, forKey: localLLMEnabledKey)
             UserDefaults.standard.set(true, forKey: Self.migrationV2Key)
         }
+        
+        self.apiKey = UserDefaults.standard.string(forKey: "com.neuralink.openai.apiKey") ?? ""
+        self.isEnabled = UserDefaults.standard.object(forKey: "com.neuralink.openai.enabled") as? Bool ?? false
+        self.isLocalLLMEnabled = UserDefaults.standard.object(forKey: "com.neuralink.localllm.enabled") as? Bool ?? false
+        self.isVADEnabled = UserDefaults.standard.bool(forKey: "com.neuralink.openai.vadEnabled")
     }
 
     var apiKey: String {
-        get { UserDefaults.standard.string(forKey: apiKeyPrefix) ?? "" }
-        set { UserDefaults.standard.set(newValue, forKey: apiKeyPrefix) }
+        didSet { UserDefaults.standard.set(apiKey, forKey: apiKeyPrefix) }
     }
     
     var isEnabled: Bool {
-        get { UserDefaults.standard.object(forKey: enabledKey) as? Bool ?? false }
-        set { 
-            let oldValue = isEnabled
-            UserDefaults.standard.set(newValue, forKey: enabledKey)
-            if newValue {
+        didSet { 
+            UserDefaults.standard.set(isEnabled, forKey: enabledKey)
+            if isEnabled {
                 isLocalLLMEnabled = false
                 if hasValidKey {
                     OpenAIRealtimeManager.shared.connect()
@@ -52,11 +54,9 @@ final class OpenAISettings {
     }
     
     var isLocalLLMEnabled: Bool {
-        get { UserDefaults.standard.object(forKey: localLLMEnabledKey) as? Bool ?? false }
-        set {
-            let oldValue = isLocalLLMEnabled
-            UserDefaults.standard.set(newValue, forKey: localLLMEnabledKey)
-            if newValue {
+        didSet {
+            UserDefaults.standard.set(isLocalLLMEnabled, forKey: localLLMEnabledKey)
+            if isLocalLLMEnabled {
                 isEnabled = false
                 LocalLLMManager.shared.startListening()
             } else if oldValue {
@@ -66,8 +66,7 @@ final class OpenAISettings {
     }
     
     var isVADEnabled: Bool {
-        get { UserDefaults.standard.bool(forKey: vadEnabledKey) }
-        set { UserDefaults.standard.set(newValue, forKey: vadEnabledKey) }
+        didSet { UserDefaults.standard.set(isVADEnabled, forKey: vadEnabledKey) }
     }
     
     var hasValidKey: Bool {

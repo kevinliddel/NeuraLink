@@ -16,16 +16,16 @@ final class AppearanceSettings {
     // For storing the custom background image data to the app's documents directory
     private let backgroundImageFilename = "custom_background.jpg"
     
-    /// Loads the custom background image data from disk, if it exists.
-    var backgroundImageData: Data? {
-        guard let url = backgroundImageURL else { return nil }
-        return try? Data(contentsOf: url)
-    }
+    var backgroundImageData: Data?
     
     /// Returns the UI image representation of the background, if available.
-    var backgroundUIImage: UIImage? {
-        guard let data = backgroundImageData else { return nil }
-        return UIImage(data: data)
+    var backgroundUIImage: UIImage?
+    
+    private init() {
+        if let url = backgroundImageURL, let data = try? Data(contentsOf: url) {
+            self.backgroundImageData = data
+            self.backgroundUIImage = UIImage(data: data)
+        }
     }
 
     /// Saves a new custom background image to disk.
@@ -33,8 +33,12 @@ final class AppearanceSettings {
         guard let url = backgroundImageURL else { return }
         if let data = data {
             try? data.write(to: url)
+            self.backgroundImageData = data
+            self.backgroundUIImage = UIImage(data: data)
         } else {
             try? FileManager.default.removeItem(at: url)
+            self.backgroundImageData = nil
+            self.backgroundUIImage = nil
         }
     }
 
