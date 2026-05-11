@@ -23,15 +23,66 @@ enum AppFunctionTool {
     static let createNote = "create_note"
     static let openApp = "open_app"
     static let analyzeCamera = "analyze_camera"
+    static let rememberFact = "remember_fact"
+    static let poseForPhoto = "pose_for_photo"
 
     // MARK: - OpenAI tool schema array
 
     /// Returns the full `tools` array ready to embed in a session.update payload.
     static var all: [[String: Any]] {
-        [emotionTool, weatherTool, searchTool, musicTool, reminderTool, noteTool, openAppTool, cameraTool]
+        [emotionTool, weatherTool, searchTool, musicTool, reminderTool, noteTool, openAppTool, cameraTool, factTool, photoTool]
     }
 
     // MARK: - Individual schemas
+
+    private static var photoTool: [String: Any] {
+        [
+            "type": "function",
+            "name": poseForPhoto,
+            "description": "Strike a cool pose for a photo! Use this when the user wants to take a screenshot or see you posing. "
+                + "You can choose a pose name like 'peace', 'cool', 'wave', 'smile', or 'point'. "
+                + "This will hide the UI and play the animation.",
+            "parameters": [
+                "type": "object",
+                "properties": [
+                    "pose": [
+                        "type": "string",
+                        "enum": ["peace", "cool", "wave", "smile", "point", "cute"],
+                        "description": "The name of the pose to strike"
+                    ]
+                ],
+                "required": ["pose"]
+            ]
+        ]
+    }
+
+    private static var factTool: [String: Any] {
+        [
+            "type": "function",
+            "name": rememberFact,
+            "description": "Store a structured fact about the user or their preferences in your long-term memory. "
+                + "Use this when the user reveals personal details (likes, dislikes, pets, relationships, job, etc.). "
+                + "Example facts: subject='User', predicate='likes', object='Blue'.",
+            "parameters": [
+                "type": "object",
+                "properties": [
+                    "subject": [
+                        "type": "string",
+                        "description": "The entity the fact is about (usually 'User')"
+                    ],
+                    "predicate": [
+                        "type": "string",
+                        "description": "The relationship or attribute (e.g. 'likes', 'has', 'works_at')"
+                    ],
+                    "object": [
+                        "type": "string",
+                        "description": "The value or related entity (e.g. 'Sushi', 'Dog', 'Rex')"
+                    ]
+                ],
+                "required": ["subject", "predicate", "object"]
+            ]
+        ]
+    }
 
     private static var emotionTool: [String: Any] {
         [

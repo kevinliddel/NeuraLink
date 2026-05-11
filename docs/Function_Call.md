@@ -140,6 +140,34 @@ Opens a built-in iOS app by name using URL schemes.
 
 ---
 
+### 🧠 `remember_fact` — Semantic Memory
+
+Stores structured facts about the user in the local Knowledge Graph. These facts are persistent across sessions and are injected into the AI's system prompt during initialization.
+
+**Trigger phrases:**
+- *"My name is Kevin"*
+- *"I really love spicy food"*
+- *"I work as a software engineer"*
+
+```swift
+{ "subject": "User", "predicate": "likes", "object": "Spicy Food" }
+```
+
+---
+
+### 📸 `pose_for_photo` — Interactive Photoshoot
+
+Directs the character to strike a specific pose for a screenshot. The AI will crossfade to the requested animation, look at the camera lens, and hide all UI overlays for 5 seconds.
+
+**Trigger phrases:**
+- *"Strike a cool pose for a photo!"*
+- *"Give me a peace sign"*
+- *"Wave for the camera"*
+
+**Available poses:** `peace`, `cool`, `wave`, `smile`, `point`, `cute`.
+
+---
+
 ## Architecture
 
 ```

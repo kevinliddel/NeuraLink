@@ -42,6 +42,7 @@ final class VRMGestureHandler: NSObject {
     weak var state: VRMMetalState?
     private var panRecognizer: UIPanGestureRecognizer?
     private var pinchRecognizer: UIPinchGestureRecognizer?
+    private var tapRecognizer: UITapGestureRecognizer?
 
     init(state: VRMMetalState) { self.state = state }
 
@@ -55,13 +56,27 @@ final class VRMGestureHandler: NSObject {
         let pinch = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
         view.addGestureRecognizer(pinch)
         pinchRecognizer = pinch
+
+        let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
+        view.addGestureRecognizer(tap)
+        tapRecognizer = tap
     }
 
     func invalidate(from view: UIView) {
         if let pan = panRecognizer { view.removeGestureRecognizer(pan) }
         if let pinch = pinchRecognizer { view.removeGestureRecognizer(pinch) }
+        if let tap = tapRecognizer { view.removeGestureRecognizer(tap) }
         panRecognizer = nil
         pinchRecognizer = nil
+        tapRecognizer = nil
+    }
+
+    @objc private func handleTap(_ gr: UITapGestureRecognizer) {
+        guard let state, let view = gr.view else { return }
+        let location = gr.location(in: view)
+        MainActor.assumeIsolated {
+            state.handleTouch(at: location, in: view.bounds.size)
+        }
     }
 
     @objc private func handlePan(_ gr: UIPanGestureRecognizer) {

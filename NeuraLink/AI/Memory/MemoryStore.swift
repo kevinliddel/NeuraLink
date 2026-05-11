@@ -45,11 +45,18 @@ final class MemoryStore {
             vector BLOB NOT NULL,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         );
+        CREATE TABLE IF NOT EXISTS knowledge_graph (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            subject TEXT NOT NULL,
+            predicate TEXT NOT NULL,
+            object TEXT NOT NULL,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
         """
         
         if sqlite3_exec(db, createTableQuery, nil, nil, nil) != SQLITE_OK {
             let errmsg = String(cString: sqlite3_errmsg(db)!)
-            print("[MemoryStore] Error creating table: \(errmsg)")
+            print("[MemoryStore] Error creating tables: \(errmsg)")
         }
     }
     
@@ -100,8 +107,46 @@ final class MemoryStore {
     }
     
     func clear() {
-        let query = "DELETE FROM memories;"
-        sqlite3_exec(db, query, nil, nil, nil)
+        let query1 = "DELETE FROM memories;"
+        let query2 = "DELETE FROM knowledge_graph;"
+        sqlite3_exec(db, query1, nil, nil, nil)
+        sqlite3_exec(db, query2, nil, nil, nil)
+    }
+
+    // MARK: - Knowledge Graph
+    
+    func insertFact(subject: String, predicate: String, object: String) {
+        let query = "INSERT INTO knowledge_graph (subject, predicate, object) VALUES (?, ?, ?);"
+        var statement: OpaquePointer?
+        
+        if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
+            sqlite3_bind_text(statement, 1, (subject as NSString).utf8String, -1, nil)
+            sqlite3_bind_text(statement, 2, (predicate as NSString).utf8String, -1, nil)
+            sqlite3_bind_text(statement, 3, (object as NSString).utf8String, -1, nil)
+            
+            if sqlite3_step(statement) != SQLITE_DONE {
+                let errmsg = String(cString: sqlite3_errmsg(db)!)
+                print("[MemoryStore] Error inserting fact: \(errmsg)")
+            }
+        }
+        sqlite3_finalize(statement)
+    }
+    
+    func fetchAllFacts() -> [(String, String, String)] {
+        let query = "SELECT subject, predicate, object FROM knowledge_graph;"
+        var statement: OpaquePointer?
+        var facts = [(String, String, String)]()
+        
+        if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
+            while sqlite3_step(statement) == SQLITE_ROW {
+                let s = String(cString: sqlite3_column_text(statement, 0))
+                let p = String(cString: sqlite3_column_text(statement, 1))
+                let o = String(cString: sqlite3_column_text(statement, 2))
+                facts.append((s, p, o))
+            }
+        }
+        sqlite3_finalize(statement)
+        return facts
     }
     
     deinit {

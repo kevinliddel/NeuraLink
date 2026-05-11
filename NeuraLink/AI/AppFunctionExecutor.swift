@@ -30,7 +30,9 @@ final class AppFunctionExecutor {
             ReminderSkill(),
             NotesSkill(),
             OpenAppSkill(),
-            CameraSkill()
+            CameraSkill(),
+            RememberFactSkill(),
+            PhotoshootSkill()
         ]
         self.skills = Dictionary(uniqueKeysWithValues: list.map { (type(of: $0).toolName, $0) })
     }

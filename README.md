@@ -26,7 +26,10 @@ A high-performance, native iOS VRM character viewer and AI companion built from 
 - **Native Metal Engine**: Custom MToon shaders and GPU-accelerated rendering.
 - **Spring-Bone Physics**: Real-time GPU compute for hair and clothing movement.
 - **Procedural Rain System**: Fully shader-driven 3D rain streaks with synchronized 2D lens splashing and realistic weather cycles.
-- **AI Function Calling**: Native integration with iOS apps (Weather, Music, Reminders, Safari, Notes) directly via conversation.
+- **Proactive Vision**: Periodically captures frames to "see" the user's world and comment on it autonomously.
+- **Interactive Photoshoot**: The AI can strike poses, look at the camera, and hide the UI for clean screenshots.
+- **Semantic Memory (Knowledge Graph)**: Remembers structured facts about the user (likes, names, job) to maintain long-term relationships.
+- **Physical Interaction**: Direct 3D raycasting allows the user to "touch" or "pat" the character with haptic feedback.
 - **Neural Lip-Sync**: Real-time audio amplitude analysis mapped to VRM blend shapes.
 - **Advanced Camera**: Orbit controls with look-at behavior following the viewing angle.
 - **Universal Support**: Handles both VRM 0.x and 1.0 specifications.
@@ -104,13 +107,29 @@ NeuraLink uses a high-efficiency dual-VAD pipeline to minimise latency between t
 ```mermaid
 graph TD
     MIC[Microphone]
+    CAM[Device Camera]
+    TOUCH[Screen Interaction]
 
     MIC --> WebRTC[WebRTC Audio Track]
     MIC --> Tap[AVAudioEngine Tap]
+    
+    CAM --> Vision[Proactive Vision Manager]
+    Vision --> FrameUpdate[vision_update_tool]
+    FrameUpdate --> API
+
+    TOUCH --> Raycast[Haptic Raycaster]
+    Raycast --> Haptic[Core Haptics]
+    Raycast --> Interact[Interaction Event]
+    Interact --> API
 
     subgraph VAD [Dual VAD Layer]
         Tap --> Silero[Silero VAD v5\nClient-side · Local]
         WebRTC --> ServerVAD[OpenAI Server VAD\nCloud · Turn-taking]
+    end
+
+    subgraph Memory [Persistent Recall]
+        API --> Facts[Knowledge Graph\nStructured Facts]
+        API --> Vectors[Vector RAG\nSemantic Context]
     end
 
     Silero --> VoiceEvent[voiceStarted / voiceEnded]
@@ -135,6 +154,9 @@ graph TD
     style API fill:#10a37f,stroke:#fff,color:#fff
     style Metal fill:#00e676,stroke:#fff,color:#000
     style RTC fill:#2979ff,stroke:#fff,color:#fff
+    style Vision fill:#f59e0b,stroke:#fff,color:#fff
+    style Raycast fill:#ec4899,stroke:#fff,color:#fff
+    style Facts fill:#0ea5e9,stroke:#fff,color:#fff
     style VoiceEvent fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
     style Commit fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
     style WebRTCLink fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px

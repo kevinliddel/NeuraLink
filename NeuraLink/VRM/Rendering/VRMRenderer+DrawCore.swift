@@ -192,7 +192,7 @@ extension VRMRenderer {
         // Update uniforms with camera matrices
         uniforms.viewMatrix = viewMatrix
         uniforms.projectionMatrix = projectionMatrix
-
+        
         // Use stored light directions directly (world-space lighting)
         // Camera-following lights caused washout - reverting to fixed world-space
         uniforms.lightDirection = storedLightDirections.0

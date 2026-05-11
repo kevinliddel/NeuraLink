@@ -37,6 +37,11 @@ graph TD
         Llama --> D5
         D5 --> Manager
         
+        %% Model Library
+        Manager --> Lib["ModelLibraryView\nNavigation Link"]
+        Lib --> Qwen
+        Lib --> Llama
+        
         %% TTS
         Manager --> D6["Chunked Sentences"] --> TTS["LocalLLMManager+TTS\nAVSpeechSynthesizer"]
         TTS -.-> QTier{"Voice Quality"}

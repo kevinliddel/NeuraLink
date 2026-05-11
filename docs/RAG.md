@@ -10,6 +10,17 @@ The NeuraLink RAG (Retrieval-Augmented Generation) system provides the AI with a
 4.  **Retrieval**: When a new query is received, the system generates an embedding for the query and searches the database for the most similar past entries using **Cosine Similarity**.
 5.  **Augmentation**: The top relevant results are injected into the LLM's system prompt as "[Long-term Memory Context]".
 
+## Semantic Knowledge Graph
+
+In addition to vector-based memory, NeuraLink implements a **Structured Knowledge Graph**. While RAG is great for fuzzy context, the Knowledge Graph is designed for **explicit facts**.
+
+- **Structure**: (Subject, Predicate, Object) triplets stored in SQLite.
+- **Precision**: Facts like "User has a cat named Rex" are stored exactly, preventing hallucinations during recall.
+- **Integration**: The AI can explicitly store facts using the `remember_fact` tool.
+- **Recall**: All stored facts are formatted as a bulleted list and injected into the AI's system instructions at the start of every session.
+
+This dual-memory system provides both "fuzzy" situational context and "perfect" factual recall.
+
 ## System Architecture
 
 ```mermaid
@@ -32,6 +43,9 @@ graph TD
     AIModel --> D11["Response"] --> LLMManager
 
     LLMManager --> D12["Store Memory"] --> RAGManager
+    RAGManager --> D13["Store Fact"] --> KGManager["Knowledge Graph Manager"]
+    KGManager --> D14["Structured Triplet"] --> SQLite
+    LLMManager --> D15["Inject All Facts"] --> AIModel
 
     %% Core styles
     classDef core fill:#0f172a,stroke:#7c3aed,color:#a78bfa
