@@ -11,8 +11,8 @@ import SwiftUI
 struct ContentView: View {
 
     @State private var selectedModelURL: URL? = VRMModelRegistry.defaultModel?.url
-    @State private var aiState = RealtimeChatState.shared
-    @State private var camera = CameraManager.shared
+    @Bindable private var aiState = RealtimeChatState.shared
+    private var camera = CameraManager.shared
     @State private var showModelSelection = false
     @State private var isMenuExpanded = false
 
@@ -49,6 +49,7 @@ struct ContentView: View {
                 ExpandableFABMenu(
                     isExpanded: $isMenuExpanded,
                     onSettings: { aiState.showSettings = true },
+                    onUserSettings: { aiState.showUserSettings = true },
                     onModelSelection: { withAnimation { showModelSelection.toggle() } },
                     onCameraToggle: {
                         if camera.isActive {
@@ -63,9 +64,12 @@ struct ContentView: View {
                 )
             }
             .toolbar { menuToggleButton }
-            .allowsHitTesting(!aiState.showSettings)
+            .allowsHitTesting(!aiState.showSettings && !aiState.showUserSettings)
             .sheet(isPresented: $aiState.showSettings) {
                 AISettingsView()
+            }
+            .sheet(isPresented: $aiState.showUserSettings) {
+                UserSettingsView()
             }
         }
     }
@@ -83,6 +87,7 @@ struct ContentView: View {
                 Image(systemName: isMenuExpanded ? "xmark" : "square.grid.2x2")
                     .contentTransition(.symbolEffect(.replace))
             }
+            .accessibilityLabel("Menu")
         }
     }
 

@@ -49,6 +49,7 @@ final class RealtimeChatState {
 
     // UI Controls
     var showSettings: Bool = false
+    var showUserSettings: Bool = false
 
     func clearTranscripts() {
         userTranscript = ""

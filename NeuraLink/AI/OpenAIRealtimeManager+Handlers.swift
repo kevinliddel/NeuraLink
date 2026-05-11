@@ -29,6 +29,8 @@ extension OpenAIRealtimeManager {
                 if let transcript = json["transcript"] as? String {
                     print("[User Transcript]: \(transcript)")
                     state.userTranscript = transcript
+                    // RAG: Store user input in long-term memory
+                    RAGManager.shared.store(text: transcript)
                 }
 
             case "response.output_item.added":
@@ -91,6 +93,10 @@ extension OpenAIRealtimeManager {
             case "response.done":
                 print("[OpenAI] Full response: \(state.aiTranscript)")
                 state.status = .ready
+                
+                // RAG: Store AI response in long-term memory
+                RAGManager.shared.store(text: state.aiTranscript)
+
                 if let deferred = deferredFunctionCall {
                     // Execute the function immediately — for UI-opening functions
                     // (playMusic, searchWeb, openApp, openNotes) AppFunctionExecutor stores
@@ -270,29 +276,40 @@ extension OpenAIRealtimeManager: RTCDataChannelDelegate {
     }
 
     func sendInitialSessionUpdate() {
-        let persona = CharacterPersona.forCharacter(named: state.selectedCharacterName)
-        let update: [String: Any] = [
-            "type": "session.update",
-            "session": [
-                "modalities": ["text", "audio"],
-                "voice": persona.voice,
-                "instructions": persona.instructions,
-                "tools": AppFunctionTool.all,
-                "tool_choice": "auto",
-                "input_audio_transcription": [
-                    "model": "whisper-1"
-                ],
-                "turn_detection": [
-                    "type": "server_vad"
+        Task {
+            let persona = CharacterPersona.forCharacter(named: state.selectedCharacterName)
+            
+            // RAG: Fetch relevant memories for the current persona/session
+            // Since we don't have a specific query yet, we fetch general recent context
+            // or just the persona-related memories. For now, we'll fetch context
+            // based on the character's core identity to ground the session.
+            let userContext = UserSettings.shared.systemPromptContext
+            let memoryContext = await RAGManager.shared.fetchContext(for: persona.instructions, limit: 5)
+            let finalInstructions = userContext + persona.instructions + "\n" + memoryContext
+            
+            let update: [String: Any] = [
+                "type": "session.update",
+                "session": [
+                    "modalities": ["text", "audio"],
+                    "voice": persona.voice,
+                    "instructions": finalInstructions,
+                    "tools": AppFunctionTool.all,
+                    "tool_choice": "auto",
+                    "input_audio_transcription": [
+                        "model": "whisper-1"
+                    ],
+                    "turn_detection": [
+                        "type": "server_vad"
+                    ]
                 ]
             ]
-        ]
 
-        guard let data = try? JSONSerialization.data(withJSONObject: update) else { return }
+            guard let data = try? JSONSerialization.data(withJSONObject: update) else { return }
 
-        let buffer = RTCDataBuffer(data: data, isBinary: false)
-        remoteDataChannel?.sendData(buffer)
-        print("[AI]: Sent initial session.update with \(AppFunctionTool.all.count) tools and instructions: \(persona.instructions.prefix(100))...")
+            let buffer = RTCDataBuffer(data: data, isBinary: false)
+            remoteDataChannel?.sendData(buffer)
+            print("[AI]: Sent initial session.update with \(AppFunctionTool.all.count) tools and instructions: \(finalInstructions.prefix(100))...")
+        }
     }
 
     func dataChannel(_ dataChannel: RTCDataChannel, didReceiveMessageWith buffer: RTCDataBuffer) {

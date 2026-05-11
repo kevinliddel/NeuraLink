@@ -6,14 +6,12 @@
 //
 
 import SwiftUI
-import PhotosUI
 struct AISettingsView: View {
     @Bindable var settings = OpenAISettings.shared
     @Bindable var appearance = AppearanceSettings.shared
-    @State private var downloader = LocalModelDownloadManager.shared
-    @State private var personaStore = PersonaStore.shared
-    @State private var selectedPhotoItem: PhotosPickerItem?
-    @State private var backgroundImage: UIImage? = AppearanceSettings.shared.backgroundUIImage
+    private var downloader = LocalModelDownloadManager.shared
+    private var personaStore = PersonaStore.shared
+    @State private var showModelLibrary = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -22,7 +20,6 @@ struct AISettingsView: View {
                 openAISection
                 localSLMSection
                 personaSection
-                appearanceSection
                 interactionSection
 
                 Section {
@@ -35,6 +32,9 @@ struct AISettingsView: View {
             }
             .navigationTitle("AI Settings")
             .navigationBarTitleDisplayMode(.inline)
+            .sheet(isPresented: $showModelLibrary) {
+                ModelLibraryView()
+            }
         }
     }
 
@@ -61,59 +61,26 @@ struct AISettingsView: View {
     }
     private var localSLMSection: some View {
         Section {
-            // Model Selection Picker
-            Picker(
-                "Selected Model",
-                selection: Binding(
-                    get: { downloader.selectedConfig },
-                    set: { newConfig in
-                        downloader.selectConfig(newConfig)
-                        if settings.isLocalLLMEnabled {
-                            LocalLLMManager.shared.restart()
-                        }
+            Button {
+                showModelLibrary = true
+            } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Model Library")
+                            .font(.headline)
+                        Text(downloader.selectedConfig.rawValue)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
-                )
-            ) {
-                ForEach(LocalModelDownloadManager.ModelConfiguration.allCases) { config in
-                    Text(config.rawValue).tag(config)
-                }
-            }
-            .pickerStyle(.segmented)
-            .disabled(
-                downloader.state != .notDownloaded && downloader.state != .ready
-                    && !downloader.state.isFailed)
-
-            // Header row: model name + status badge
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(downloader.selectedConfig.rawValue)
-                        .font(.headline)
-                    Text(
-                        "~\(String(format: "%.1f", downloader.selectedConfig.estimatedSizeGB)) GB · \(downloader.selectedConfig.description)"
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                }
-                Spacer()
-                stateBadge
-            }
-            .padding(.vertical, 4)
-
-            // Download progress bar
-            if case .downloading(let progress) = downloader.state {
-                VStack(alignment: .leading, spacing: 6) {
-                    ProgressView(value: progress)
-                        .tint(.blue)
-                    Text(downloadPhaseLabel(progress: progress))
-                        .font(.caption)
+                    Spacer()
+                    stateBadge
+                    Image(systemName: "chevron.right")
+                        .font(.caption.bold())
                         .foregroundStyle(.secondary)
                 }
             }
+            .foregroundStyle(.primary)
 
-            // Action button
-            actionButton
-
-            // Enable toggle (only available when model is ready)
             if downloader.isAvailable {
                 Toggle("Use Local SLM (Offline)", isOn: $settings.isLocalLLMEnabled)
             }
@@ -123,17 +90,6 @@ struct AISettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-
-            // Delete option when downloaded (not bundled)
-            if case .ready = downloader.state {
-                Button(role: .destructive) {
-                    settings.isLocalLLMEnabled = false
-                    downloader.deleteDownloadedModel()
-                } label: {
-                    Label("Delete Downloaded Model", systemImage: "trash")
-                }
-            }
-
         } header: {
             Text("Local Edge LLMs")
         } footer: {
@@ -201,56 +157,6 @@ struct AISettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-            }
-        }
-    }
-
-    private var appearanceSection: some View {
-        Section("Appearance") {
-            Toggle("Show 3D Environment", isOn: $appearance.showEnvironment)
-            
-            if !appearance.showEnvironment {
-                PhotosPicker(selection: $selectedPhotoItem, matching: .images, photoLibrary: .shared()) {
-                    HStack {
-                        Text("Custom Background")
-                        Spacer()
-                        if let img = backgroundImage {
-                            Image(uiImage: img)
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: 40, height: 40)
-                                .clipShape(RoundedRectangle(cornerRadius: 6))
-                        } else {
-                            Text("None")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-                .onChange(of: selectedPhotoItem) { _, newItem in
-                    Task {
-                        guard let data = try? await newItem?.loadTransferable(type: Data.self) else { return }
-                        appearance.saveBackgroundImage(data)
-                        if let uiImage = UIImage(data: data) {
-                            await MainActor.run {
-                                backgroundImage = uiImage
-                            }
-                        }
-                    }
-                }
-                
-                if backgroundImage != nil {
-                    Button(role: .destructive) {
-                        appearance.saveBackgroundImage(nil)
-                        backgroundImage = nil
-                        selectedPhotoItem = nil
-                    } label: {
-                        Text("Clear Custom Background")
-                    }
-                }
-                
-                Text("Turn off Show 3D Environment and select a screenshot of your Home Screen to use as a Fake Home Screen background.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
         }
     }
