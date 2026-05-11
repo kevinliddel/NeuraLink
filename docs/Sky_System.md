@@ -281,6 +281,3 @@ The `RainController` manages the global `intensity` (0.0 to 1.0).
 - **Opacity**: Both the 3D streaks and 2D splashes scale their alpha based on intensity.
 - **MToon Sync**: The character's materials automatically darken and gain a specular sheen as rain intensity increases, simulating wet fabric and skin.
 
----
-
-## Integration Points
