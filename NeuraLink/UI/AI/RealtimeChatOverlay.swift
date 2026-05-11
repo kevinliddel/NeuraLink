@@ -60,7 +60,7 @@ struct RealtimeChatOverlay: View {
         case .preparing, .connecting:
             return (aiState.status.label, nil, true, nil)
 
-        case .ready:
+        case .ready, .disconnected:
             if settings.isLocalLLMEnabled {
                 return ("Apple Neural Engine Ready", "apple.intelligence", false, nil)
             }

@@ -16,15 +16,15 @@ struct CampusVertex {
     var position: SIMD3<Float>
     var normal: SIMD3<Float>
     var texCoord: SIMD2<Float>
-    var color: SIMD4<Float>   // vertex color (COLOR_0), default (1,1,1,1)
+    var color: SIMD4<Float>  // vertex color (COLOR_0), default (1,1,1,1)
 }
 
 struct CampusUniforms {
     var viewProjection: simd_float4x4
     var lightViewProjection: simd_float4x4
-    var sunDirection: SIMD4<Float>   // xyz = effective sun dir, w = sun height (signed)
-    var campusParams: SIMD4<Float>   // x = shadowSoft
-    var cameraPosition: SIMD4<Float>   // xyz = camera world position, w = 0
+    var sunDirection: SIMD4<Float>  // xyz = effective sun dir, w = sun height (signed)
+    var campusParams: SIMD4<Float>  // x = shadowSoft
+    var cameraPosition: SIMD4<Float>  // xyz = camera world position, w = 0
     var vrmLightViewProjection: simd_float4x4  // tight VRM shadow map projection
 }
 
@@ -41,8 +41,8 @@ struct CampusMeshGroup {
     let indexType: MTLIndexType
     let texture: MTLTexture?
     let baseColorFactor: SIMD4<Float>
-    let emissivePacked: SIMD4<Float>   // xyz = emissiveFactor, w = alphaCutoff
-    let materialParams: SIMD4<Float>   // x = metallic, y = roughness
+    let emissivePacked: SIMD4<Float>  // xyz = emissiveFactor, w = alphaCutoff
+    let materialParams: SIMD4<Float>  // x = metallic, y = roughness
     let transform: simd_float4x4
     let isBlend: Bool
 }
@@ -72,7 +72,9 @@ final class CampusRenderer: @unchecked Sendable {
     /// terrain rendering while the campus environment is active.
     var isLoaded: Bool { isReady }
 
-    init(device: MTLDevice, instanceConfig: InstanceConfig = (x: 0, y: 0, z: 0, rotY: 0, scale: 1.0)) {
+    init(
+        device: MTLDevice, instanceConfig: InstanceConfig = (x: 0, y: 0, z: 0, rotY: 0, scale: 1.0)
+    ) {
         self.device = device
         self.instanceConfig = instanceConfig
     }
@@ -86,19 +88,22 @@ final class CampusRenderer: @unchecked Sendable {
         clearFirst: Bool
     ) {
         guard isReady, let pipeline = shadowPipeline,
-              let ds = depthState, let shadowBuf = shadowUniformsBuffer
+            let ds = depthState, let shadowBuf = shadowUniformsBuffer
         else { return }
 
         var su = CampusShadowUniforms(lightViewProjection: lightViewProjection)
-        shadowBuf.contents().copyMemory(from: &su, byteCount: MemoryLayout<CampusShadowUniforms>.stride)
+        shadowBuf.contents().copyMemory(
+            from: &su, byteCount: MemoryLayout<CampusShadowUniforms>.stride)
 
         let passDesc = MTLRenderPassDescriptor()
-        passDesc.depthAttachment.texture     = shadowMap
-        passDesc.depthAttachment.loadAction  = clearFirst ? .clear : .load
+        passDesc.depthAttachment.texture = shadowMap
+        passDesc.depthAttachment.loadAction = clearFirst ? .clear : .load
         passDesc.depthAttachment.storeAction = .store
-        passDesc.depthAttachment.clearDepth  = 1.0
+        passDesc.depthAttachment.clearDepth = 1.0
 
-        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: passDesc) else { return }
+        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: passDesc) else {
+            return
+        }
         encoder.label = "CampusShadowPass"
         encoder.setRenderPipelineState(pipeline)
         encoder.setDepthStencilState(ds)
@@ -106,7 +111,7 @@ final class CampusRenderer: @unchecked Sendable {
         encoder.setDepthBias(0.0, slopeScale: 2.0, clamp: 0.005)
         encoder.setVertexBuffer(shadowBuf, offset: 0, index: 1)
 
-        for group in meshGroups {
+        for group in meshGroups where !group.isBlend {
             var transform = group.transform
             encoder.setVertexBuffer(group.vertexBuffer, offset: 0, index: 0)
             encoder.setVertexBytes(&transform, length: MemoryLayout<simd_float4x4>.stride, index: 2)
@@ -134,7 +139,7 @@ final class CampusRenderer: @unchecked Sendable {
         shadowSampler: MTLSamplerState
     ) {
         guard isReady, let pipeline = mainPipeline,
-              let ds = depthState, let uniBuf = uniformsBuffer
+            let ds = depthState, let uniBuf = uniformsBuffer
         else { return }
 
         var u = CampusUniforms(
@@ -157,14 +162,15 @@ final class CampusRenderer: @unchecked Sendable {
         encoder.setFragmentSamplerState(shadowSampler, index: 0)
 
         func drawGroup(_ group: CampusMeshGroup) {
-            var transform      = group.transform
-            var baseColor      = group.baseColorFactor
+            var transform = group.transform
+            var baseColor = group.baseColorFactor
             var emissivePacked = group.emissivePacked
-            var matParams      = group.materialParams
+            var matParams = group.materialParams
             encoder.setVertexBuffer(group.vertexBuffer, offset: 0, index: 0)
             encoder.setVertexBytes(&transform, length: MemoryLayout<simd_float4x4>.stride, index: 2)
             encoder.setFragmentBytes(&baseColor, length: MemoryLayout<SIMD4<Float>>.size, index: 2)
-            encoder.setFragmentBytes(&emissivePacked, length: MemoryLayout<SIMD4<Float>>.size, index: 3)
+            encoder.setFragmentBytes(
+                &emissivePacked, length: MemoryLayout<SIMD4<Float>>.size, index: 3)
             encoder.setFragmentBytes(&matParams, length: MemoryLayout<SIMD4<Float>>.size, index: 4)
             encoder.setFragmentTexture(group.texture ?? fallbackTexture, index: 0)
             encoder.drawIndexedPrimitives(

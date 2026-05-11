@@ -84,7 +84,17 @@ struct EnvironmentOptionView: View {
     let isSelected: Bool
     let action: () -> Void
     
-    private var image: UIImage? {
+    private let image: UIImage?
+
+    init(name: String, imageName: String, isSelected: Bool, action: @escaping () -> Void) {
+        self.name = name
+        self.imageName = imageName
+        self.isSelected = isSelected
+        self.action = action
+        self.image = Self.loadImage(named: imageName)
+    }
+
+    private static func loadImage(named imageName: String) -> UIImage? {
         if let path = Bundle.main.path(forResource: imageName, ofType: "png", inDirectory: "Models/Environments") {
             return UIImage(contentsOfFile: path)
         }

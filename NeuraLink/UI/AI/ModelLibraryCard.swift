@@ -15,7 +15,7 @@ struct ModelLibraryCard: View {
     let isSelected: Bool
     let status: LocalModelDownloadManager.DownloadState
     let diskUsage: Int64
-    
+
     var onSelect: () -> Void
     var onDelete: () -> Void
 
@@ -26,7 +26,7 @@ struct ModelLibraryCard: View {
                     Text(config.rawValue)
                         .font(.system(size: 18, weight: .bold, design: .rounded))
                         .foregroundColor(.white)
-                    
+
                     Text(config.quantizationLabel)
                         .font(.system(size: 12, weight: .medium, design: .monospaced))
                         .foregroundColor(.white.opacity(0.6))
@@ -35,19 +35,19 @@ struct ModelLibraryCard: View {
                         .background(Color.white.opacity(0.1))
                         .cornerRadius(4)
                 }
-                
+
                 Spacer()
-                
+
                 statusIcon
             }
-            
+
             Text(config.description)
                 .font(.system(size: 13))
                 .foregroundColor(.white.opacity(0.8))
                 .lineLimit(2)
-            
+
             Divider().background(Color.white.opacity(0.1))
-            
+
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("ESTIMATED SIZE")
@@ -57,9 +57,9 @@ struct ModelLibraryCard: View {
                         .font(.system(size: 13, weight: .medium))
                         .foregroundColor(.white)
                 }
-                
+
                 Spacer()
-                
+
                 if diskUsage > 0 {
                     VStack(alignment: .trailing, spacing: 2) {
                         Text("ON DISK")
@@ -71,13 +71,13 @@ struct ModelLibraryCard: View {
                     }
                 }
             }
-            
+
             if case .downloading(let progress) = status {
                 VStack(spacing: 6) {
                     ProgressView(value: progress)
                         .progressViewStyle(LinearProgressViewStyle(tint: .cyan))
                         .scaleEffect(x: 1, y: 1.5, anchor: .center)
-                    
+
                     Text("\(Int(progress * 100))%")
                         .font(.system(size: 10, weight: .bold, design: .monospaced))
                         .foregroundColor(.cyan)
@@ -85,7 +85,7 @@ struct ModelLibraryCard: View {
                 .transition(.opacity.combined(with: .scale))
             } else if isSelected {
                 HStack {
-                    if status == .ready || status == .bundled {
+                    if status == .ready {
                         Button(role: .destructive, action: onDelete) {
                             Label("Delete", systemImage: "trash")
                                 .font(.system(size: 12, weight: .semibold))
@@ -94,6 +94,10 @@ struct ModelLibraryCard: View {
                                 .background(Color.red.opacity(0.2))
                                 .cornerRadius(8)
                         }
+                    } else if status == .bundled {
+                        Label("Built-in", systemImage: "checkmark.seal.fill")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.green)
                     } else {
                         Button(action: onSelect) {
                             Text("Download")
@@ -105,9 +109,9 @@ struct ModelLibraryCard: View {
                                 .cornerRadius(12)
                         }
                     }
-                    
+
                     Spacer()
-                    
+
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundColor(.green)
                         .font(.system(size: 20))
@@ -129,16 +133,20 @@ struct ModelLibraryCard: View {
             ZStack {
                 Color.black.opacity(0.4)
                 RoundedRectangle(cornerRadius: 24)
-                    .stroke(isSelected ? Color.cyan.opacity(0.5) : Color.white.opacity(0.1), lineWidth: 1.5)
+                    .stroke(
+                        isSelected ? Color.cyan.opacity(0.5) : Color.white.opacity(0.1),
+                        lineWidth: 1.5)
             }
         )
         .background(.ultraThinMaterial)
         .cornerRadius(24)
-        .shadow(color: isSelected ? .cyan.opacity(0.2) : .black.opacity(0.2), radius: 10, x: 0, y: 5)
+        .shadow(
+            color: isSelected ? .cyan.opacity(0.2) : .black.opacity(0.2), radius: 10, x: 0, y: 5
+        )
         .animation(.spring(), value: status)
         .animation(.spring(), value: isSelected)
     }
-    
+
     @ViewBuilder
     private var statusIcon: some View {
         switch status {
@@ -160,7 +168,7 @@ struct ModelLibraryCard: View {
                 .foregroundColor(.red)
         }
     }
-    
+
     private func formatBytes(_ bytes: Int64) -> String {
         let formatter = ByteCountFormatter()
         formatter.allowedUnits = [.useGB, .useMB]
