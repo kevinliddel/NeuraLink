@@ -258,9 +258,26 @@ The moon is positioned exactly opposite the sun (`moonDir = −sunDir`). A `smoo
 
 ---
 
-## Integration Points
+267: 
+---
 
-The sky system integrates with the rest of the engine at two places:
+## 🌧️ Procedural Rain System
 
-1. **`SkyRenderer.update(deltaTime:)`** — called once per frame on the main thread alongside the VRM physics update.
-2. **Lighting** — the `currentEnvironment` property is read by the VRM render pass to apply `keyLight`, `fillLight`, and `rimLight` to the MToon material shader, ensuring the character is always lit consistently with the sky.
+The rain system in NeuraLink is a two-tier GPU-driven effect that simulates atmospheric depth and camera-lens proximity.
+
+### 1. 3D World Rain (Streaks)
+- **Shader**: `RainShader.metal` (vertex-driven)
+- **Technique**: Millions of tiny streaks are procedurally positioned in a 3D volume around the camera.
+- **Physics**: Falling speed and slant are controlled via `RainUniforms` to simulate wind.
+- **Efficiency**: No geometry is stored; the vertex shader uses the `vertex_id` to generate positions on-the-fly using a high-speed hash function.
+
+### 2. 2D Lens Splashing (Ripples)
+- **Shader**: `RainOverlay.metal` (fragment-driven)
+- **Technique**: A full-screen overlay that simulates raindrops hitting the "camera lens".
+- **Visuals**: Uses procedural noise to generate ripple distortions and refractive "beads" of water that drip down the screen.
+
+### 3. Weather Synchronization
+The `RainController` manages the global `intensity` (0.0 to 1.0).
+- **Opacity**: Both the 3D streaks and 2D splashes scale their alpha based on intensity.
+- **MToon Sync**: The character's materials automatically darken and gain a specular sheen as rain intensity increases, simulating wet fabric and skin.
+

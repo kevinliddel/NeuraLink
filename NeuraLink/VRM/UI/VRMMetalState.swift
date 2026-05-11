@@ -107,6 +107,7 @@ final class VRMMetalState {
         mtkView.preferredFramesPerSecond = 60
         startSkyTicker()
         setupBackgroundObservers()
+        setupPoseObserver()
     }
 
     private func setupBackgroundObservers() {
@@ -257,5 +258,36 @@ final class VRMMetalState {
         let dt: Float = lastTickTimestamp == 0 ? 0 : Float(min(now - lastTickTimestamp, 1.0 / 30.0))
         lastTickTimestamp = now
         animationTickInternal(dt: dt)
+    }
+
+    // MARK: - Interaction
+
+    func handleTouch(at point: CGPoint, in size: CGSize) {
+        guard let renderer = renderer else { return }
+        let result = renderer.hitTest(at: point, viewSize: size)
+        
+        vrmLog("[Interaction] Touch at \(point) in \(size) -> Result: \(result)")
+        
+        if case .none = result {
+            return
+        }
+        
+        // 1. Haptic Feedback
+        let generator = UIImpactFeedbackGenerator(style: .medium)
+        generator.prepare()
+        generator.impactOccurred()
+        
+        // 2. Visual Reaction (Emotion)
+        // Trigger a 'surprised' look for 1.5 seconds when touched
+        self.aiState.currentEmotion = "surprised"
+        self.aiState.emotionDuration = 1.5
+        
+        // 3. Notify AI (if enabled)
+        guard let action = result.aiAction else { return }
+        if OpenAISettings.shared.isEnabled {
+            OpenAIRealtimeManager.shared.sendInteractionEvent(action)
+        } else if OpenAISettings.shared.isLocalLLMEnabled {
+            LocalLLMManager.shared.handleInteractionEvent(action)
+        }
     }
 }

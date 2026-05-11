@@ -286,4 +286,34 @@ extension VRMMetalState {
             eye: eye, target: orbitTarget, up: SIMD3<Float>(0, 1, 0)
         )
     }
+
+    // MARK: - Pose Handling
+
+    func setupPoseObserver() {
+        NotificationCenter.default.addObserver(forName: Notification.Name("VRMPlayPoseAnimation"), object: nil, queue: .main) { [weak self] note in
+            guard let self, let pose = note.userInfo?["pose"] as? String else { return }
+            self.playPose(named: pose)
+        }
+    }
+
+    private func playPose(named name: String) {
+        guard let model = currentModel, let url = Self.findVRMA(named: name) else {
+            vrmLog("[VRMMetalState] ⚠️ Pose '\(name)' not found")
+            return
+        }
+
+        Task {
+            do {
+                let clip = try await VRMAnimationLoader.loadVRMA(from: url, model: model)
+                await MainActor.run {
+                    self.isPlayingRandomAnim = false // Interrupt random idle
+                    self.animationPlayer.isLooping = true
+                    self.animationPlayer.crossfade(to: clip, duration: 0.5, from: model)
+                    vrmLog("[Pose] Playing '\(name)'")
+                }
+            } catch {
+                vrmLog("[VRMMetalState] ⚠️ Failed to load pose '\(name)': \(error)")
+            }
+        }
+    }
 }

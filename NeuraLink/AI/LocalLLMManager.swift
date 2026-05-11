@@ -226,4 +226,11 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
 
     // MARK: - Local TTS (AVSpeechSynthesizer + AVAudioEngine)
 
+    /// Handles a physical interaction event (e.g. head pat) by triggering the local LLM.
+    func handleInteractionEvent(_ action: String) {
+        // We reuse handleUserInput but we might want to wrap the action in a way
+        // that the model understands it's a physical action, not spoken text.
+        let text = "*\(action)*"
+        handleUserInput(text)
+    }
 }

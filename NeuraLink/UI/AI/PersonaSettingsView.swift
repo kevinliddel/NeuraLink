@@ -114,29 +114,45 @@ struct PersonaSettingsView: View {
             }
 
             Section {
-                Button("Save Changes") {
-                    if isLocalLLMMode {
-                        LocalLLMPromptStore.shared.savePrompt(localPrompt, for: modelID, config: selectedConfig)
-                    } else {
-                        PersonaStore.shared.savePersona(persona, for: modelID)
+                VStack(spacing: 8) {
+                    Button {
+                        if isLocalLLMMode {
+                            LocalLLMPromptStore.shared.savePrompt(localPrompt, for: modelID, config: selectedConfig)
+                        } else {
+                            PersonaStore.shared.savePersona(persona, for: modelID)
+                        }
+                        dismiss()
+                    } label: {
+                        Text("Save Changes")
+                            .font(.system(size: 17, weight: .medium))
+                            .foregroundColor(.blue)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .background(Color(uiColor: .secondarySystemBackground))
+                            .cornerRadius(12)
                     }
-                    dismiss()
-                }
-                .frame(maxWidth: .infinity)
-                .foregroundStyle(.blue)
-                .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
 
-                Button("Reset to Default", role: .destructive) {
-                    if isLocalLLMMode {
-                        LocalLLMPromptStore.shared.resetPrompt(for: modelID, config: selectedConfig)
-                        localPrompt = LocalLLMPromptStore.shared.effectivePrompt(for: modelID, config: selectedConfig)
-                    } else {
-                        PersonaStore.shared.resetPersona(for: modelID)
-                        persona = CharacterPersona.forCharacter(named: modelID)
+                    Button {
+                        if isLocalLLMMode {
+                            LocalLLMPromptStore.shared.resetPrompt(for: modelID, config: selectedConfig)
+                            localPrompt = LocalLLMPromptStore.shared.effectivePrompt(for: modelID, config: selectedConfig)
+                        } else {
+                            PersonaStore.shared.resetPersona(for: modelID)
+                            persona = CharacterPersona.forCharacter(named: modelID)
+                        }
+                        dismiss()
+                    } label: {
+                        Text("Reset to Default")
+                            .font(.system(size: 17, weight: .medium))
+                            .foregroundColor(.red)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .background(Color(uiColor: .secondarySystemBackground))
+                            .cornerRadius(12)
                     }
-                    dismiss()
                 }
-                .frame(maxWidth: .infinity)
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets(top: 10, leading: 0, bottom: 10, trailing: 0))
             }
         }
         .navigationTitle(isLocalLLMMode ? "\(persona.name) — \(isJapaneseModel ? "JP Prompt" : "Local Prompt")" : "\(persona.name) Persona")
@@ -147,33 +163,52 @@ struct PersonaSettingsView: View {
     // MARK: - Voice Preview Section
 
     private var voicePreviewSection: some View {
-        Section {
-            HStack(alignment: .center, spacing: 12) {
-                TextField("Enter text to preview…", text: $previewText)
-                    .controlSize(.regular)
-                    .disabled(isLoadingPreview)
+                Section {
+                    ZStack(alignment: .bottom) {
+                        TextField("Enter text to preview…", text: $previewText, axis: .vertical)
+                            .font(.headline)
+                            .padding(.trailing, 60) // Space for the 40pt button + margin
+                            .padding(.vertical, 15)
+                            .padding(.horizontal, 15)
+                            .background(
+                                RoundedRectangle(cornerRadius: 25)
+                                    .stroke(lineWidth: 1.0)
+                                    .foregroundStyle(Color.clear)
+                                    .background(
+                                        Color.gray.opacity(0.12)
+                                            .clipShape(RoundedRectangle(cornerRadius: 25))
+                                    )
+                            )
+                            .disabled(isLoadingPreview)
 
-                previewButton
-            }
-        } header: {
-            Text("Voice Preview")
-        } footer: {
-            let settings = OpenAISettings.shared
-            if !settings.isEnabled || !settings.hasValidKey {
-                Label(
-                    "Add an OpenAI API key in settings to preview voices.",
-                    systemImage: "info.circle"
-                )
-                .font(.caption)
-                .foregroundStyle(.orange)
-            } else {
-                Text(
-                    "Tap the mic to hear your text spoken in \(persona.voice.capitalized)'s voice."
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            }
-        }
+                        HStack(alignment: .bottom) {
+                            Spacer()
+                            previewButton
+                                .padding(.trailing, 8)
+                                .padding(.bottom, 8)
+                        }
+                    }
+                } header: {
+                    Text("Voice Preview")
+                } footer: {
+                    let settings = OpenAISettings.shared
+                    if !settings.isEnabled || !settings.hasValidKey {
+                        Label(
+                            "Add an OpenAI API key in settings to preview voices.",
+                            systemImage: "info.circle"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                    } else {
+                        Text(
+                            "Tap the mic to hear your text spoken in \(persona.voice.capitalized)'s voice."
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                }
+                .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
+                .listRowBackground(Color.clear)
     }
 
     @ViewBuilder
@@ -204,7 +239,6 @@ struct PersonaSettingsView: View {
                     Image(systemName: isActive ? "stop.fill" : "mic.fill")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(buttonTint(isActive: isActive))
-                        .contentTransition(.symbolEffect(.replace))
                 }
             }
             .animation(.easeInOut(duration: 0.18), value: isActive)

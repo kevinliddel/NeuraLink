@@ -111,6 +111,7 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
         transcriptDoneTime = nil
         AppFunctionExecutor.shared.pendingUIAction = nil
         sileroVAD.stop()
+        ProactiveVisionManager.shared.stop()
         remoteDataChannel?.close()
         peerConnection?.close()
         peerConnection = nil

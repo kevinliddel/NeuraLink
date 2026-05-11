@@ -23,8 +23,9 @@ struct ModelLibraryView: View {
                 modelListView
             }
         }
-        .navigationBarHidden(true)
         .preferredColorScheme(.dark)
+        .navigationTitle("Model Library")
+        .navigationBarTitleDisplayMode(.inline)
     }
     
     // MARK: - Sub-views
@@ -91,35 +92,21 @@ struct ModelLibraryView: View {
     }
     
     private var headerView: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Model Library")
-                    .font(.system(size: 34, weight: .bold, design: .rounded))
-                    .foregroundColor(.white)
-                
-                Text("Select and download local AI models.")
-                    .font(.system(size: 15))
-                    .foregroundColor(.white.opacity(0.6))
-            }
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Edge Intelligence")
+                .font(.system(size: 28, weight: .bold, design: .rounded))
+                .foregroundColor(.white)
             
-            Spacer()
-            
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 30))
-                    .foregroundColor(.white.opacity(0.2))
-                    .symbolRenderingMode(.hierarchical)
-            }
+            Text("Select and download local AI models.")
+                .font(.system(size: 15))
+                .foregroundColor(.white.opacity(0.6))
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 24)
-        .padding(.top, 20)
-        .padding(.bottom, 10)
+        .padding(.vertical, 16)
         .background(
-            Color.black.opacity(0.5)
+            Color.black.opacity(0.3)
                 .background(.ultraThinMaterial)
-                .ignoresSafeArea()
         )
     }
 }

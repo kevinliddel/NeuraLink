@@ -20,8 +20,11 @@ struct ContentView: View {
         NavigationStack {
             ZStack {
                 VRMSceneView(modelURL: selectedModelURL)
-                RealtimeChatOverlay()
-                CameraOverlayView()
+                
+                if !aiState.isUIHidden {
+                    RealtimeChatOverlay()
+                    CameraOverlayView()
+                }
 
                 if showModelSelection {
                     VStack {
@@ -46,24 +49,30 @@ struct ContentView: View {
 
             }
             .overlay(alignment: .topTrailing) {
-                ExpandableFABMenu(
-                    isExpanded: $isMenuExpanded,
-                    onSettings: { aiState.showSettings = true },
-                    onUserSettings: { aiState.showUserSettings = true },
-                    onModelSelection: { withAnimation { showModelSelection.toggle() } },
-                    onCameraToggle: {
-                        if camera.isActive {
-                            camera.stop()
-                        } else {
-                            Task { await camera.requestPermissionAndStart() }
+                if !aiState.isUIHidden {
+                    ExpandableFABMenu(
+                        isExpanded: $isMenuExpanded,
+                        onSettings: { aiState.showSettings = true },
+                        onUserSettings: { aiState.showUserSettings = true },
+                        onModelSelection: { withAnimation { showModelSelection.toggle() } },
+                        onCameraToggle: {
+                            if camera.isActive {
+                                camera.stop()
+                            } else {
+                                Task { await camera.requestPermissionAndStart() }
+                            }
+                        },
+                        onPiP: {
+                            PiPManager.shared.startPiP()
                         }
-                    },
-                    onPiP: {
-                        PiPManager.shared.startPiP()
-                    }
-                )
+                    )
+                }
             }
-            .toolbar { menuToggleButton }
+            .toolbar {
+                if !aiState.isUIHidden {
+                    menuToggleButton
+                }
+            }
             .allowsHitTesting(!aiState.showSettings && !aiState.showUserSettings)
             .sheet(isPresented: $aiState.showSettings) {
                 AISettingsView()

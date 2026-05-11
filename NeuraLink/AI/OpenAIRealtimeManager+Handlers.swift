@@ -183,6 +183,50 @@ extension OpenAIRealtimeManager {
         }
         print("[AI Tools]: sent function_call_output for call_id=\(callId)")
     }
+    /// Sends a proactive vision update as a system message to the AI.
+    func sendProactiveVisionUpdate(description: String) {
+        let content = "[Vision Update: \(description)]"
+        let item: [String: Any] = [
+            "type": "conversation.item.create",
+            "item": [
+                "type": "message",
+                "role": "system",
+                "content": [
+                    ["type": "input_text", "text": content]
+                ]
+            ]
+        ]
+        let trigger: [String: Any] = ["type": "response.create"]
+
+        for payload in [item, trigger] {
+            guard let data = try? JSONSerialization.data(withJSONObject: payload) else { continue }
+            let buffer = RTCDataBuffer(data: data, isBinary: false)
+            remoteDataChannel?.sendData(buffer)
+        }
+        print("[AI Vision]: sent proactive update: \(description.prefix(50))...")
+    }
+
+    /// Sends a physical interaction event (e.g. head pat) to the AI.
+    func sendInteractionEvent(_ action: String) {
+        let item: [String: Any] = [
+            "type": "conversation.item.create",
+            "item": [
+                "type": "message",
+                "role": "system",
+                "content": [
+                    ["type": "input_text", "text": action]
+                ]
+            ]
+        ]
+        let trigger: [String: Any] = ["type": "response.create"]
+
+        for payload in [item, trigger] {
+            guard let data = try? JSONSerialization.data(withJSONObject: payload) else { continue }
+            let buffer = RTCDataBuffer(data: data, isBinary: false)
+            remoteDataChannel?.sendData(buffer)
+        }
+        print("[AI Interaction]: sent event: \(action)")
+    }
 }
 
 // MARK: - RTCPeerConnectionDelegate
@@ -272,6 +316,7 @@ extension OpenAIRealtimeManager: RTCDataChannelDelegate {
         if dataChannel.readyState == .open {
             print("[AI]: Data channel is officially OPEN")
             sendInitialSessionUpdate()
+            ProactiveVisionManager.shared.start()
         }
     }
 
@@ -285,7 +330,8 @@ extension OpenAIRealtimeManager: RTCDataChannelDelegate {
             // based on the character's core identity to ground the session.
             let userContext = UserSettings.shared.systemPromptContext
             let memoryContext = await RAGManager.shared.fetchContext(for: persona.instructions, limit: 5)
-            let finalInstructions = userContext + persona.instructions + "\n" + memoryContext
+            let kgFacts = KnowledgeGraphManager.shared.getFormattedFacts()
+            let finalInstructions = userContext + persona.instructions + "\n" + memoryContext + kgFacts
             
             let update: [String: Any] = [
                 "type": "session.update",

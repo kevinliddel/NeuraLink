@@ -18,6 +18,7 @@ final class OpenAISettings {
     private let enabledKey = "com.neuralink.openai.enabled"
     private let localLLMEnabledKey = "com.neuralink.localllm.enabled"
     private let vadEnabledKey = "com.neuralink.openai.vadEnabled"
+    private let proactiveVisionEnabledKey = "com.neuralink.openai.proactiveVisionEnabled"
     private static let migrationV2Key = "com.neuralink.migration.onDemandLLM.v1"
 
     init() {
@@ -33,6 +34,7 @@ final class OpenAISettings {
         self.isEnabled = UserDefaults.standard.object(forKey: "com.neuralink.openai.enabled") as? Bool ?? false
         self.isLocalLLMEnabled = UserDefaults.standard.object(forKey: "com.neuralink.localllm.enabled") as? Bool ?? false
         self.isVADEnabled = UserDefaults.standard.bool(forKey: "com.neuralink.openai.vadEnabled")
+        self.isProactiveVisionEnabled = UserDefaults.standard.bool(forKey: "com.neuralink.openai.proactiveVisionEnabled")
     }
 
     var apiKey: String {
@@ -67,6 +69,17 @@ final class OpenAISettings {
     
     var isVADEnabled: Bool {
         didSet { UserDefaults.standard.set(isVADEnabled, forKey: vadEnabledKey) }
+    }
+    
+    var isProactiveVisionEnabled: Bool {
+        didSet { 
+            UserDefaults.standard.set(isProactiveVisionEnabled, forKey: proactiveVisionEnabledKey) 
+            if isProactiveVisionEnabled {
+                ProactiveVisionManager.shared.start()
+            } else {
+                ProactiveVisionManager.shared.stop()
+            }
+        }
     }
     
     var hasValidKey: Bool {

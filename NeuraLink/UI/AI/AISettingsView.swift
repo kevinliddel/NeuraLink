@@ -18,9 +18,9 @@ struct AISettingsView: View {
         NavigationStack {
             Form {
                 openAISection
-                localSLMSection
-                personaSection
                 interactionSection
+                personaSection
+                localSLMSection
 
                 Section {
                     Button("Done") {
@@ -32,9 +32,6 @@ struct AISettingsView: View {
             }
             .navigationTitle("AI Settings")
             .navigationBarTitleDisplayMode(.inline)
-            .sheet(isPresented: $showModelLibrary) {
-                ModelLibraryView()
-            }
         }
     }
 
@@ -48,21 +45,12 @@ struct AISettingsView: View {
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
                 .disabled(!settings.isEnabled)
-
-            Toggle("Auto-Turn Detection (VAD)", isOn: $settings.isVADEnabled)
-                .disabled(!settings.isEnabled)
-
-            if settings.isEnabled {
-                Text("VAD lets OpenAI respond automatically when you stop speaking.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
         }
     }
     private var localSLMSection: some View {
         Section {
-            Button {
-                showModelLibrary = true
+            NavigationLink {
+                ModelLibraryView()
             } label: {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
@@ -74,9 +62,6 @@ struct AISettingsView: View {
                     }
                     Spacer()
                     stateBadge
-                    Image(systemName: "chevron.right")
-                        .font(.caption.bold())
-                        .foregroundStyle(.secondary)
                 }
             }
             .foregroundStyle(.primary)
@@ -162,7 +147,23 @@ struct AISettingsView: View {
     }
 
     private var interactionSection: some View {
-        EmptyView()  // VAD is now inline in the OpenAI section
+        Section("Autonomy") {
+            Toggle("Auto-Turn Detection (VAD)", isOn: $settings.isVADEnabled)
+                .disabled(!settings.isEnabled)
+
+            if settings.isEnabled {
+                Text("VAD lets OpenAI respond automatically when you stop speaking.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Toggle("Proactive Vision", isOn: $settings.isProactiveVisionEnabled)
+                .disabled(!settings.isEnabled)
+            
+            Text("The character will periodically look through the camera and comment on what they see without being asked.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 
     // MARK: - Sub-views
