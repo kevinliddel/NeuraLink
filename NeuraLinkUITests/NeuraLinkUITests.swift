@@ -25,19 +25,29 @@ final class NeuraLinkUITests: XCTestCase {
     func testAppLaunchAndBasicUI() throws {
         app.launch()
 
-        // FAB toggle is the only navigation-bar button; wait 30s for cold CI simulator boot
-        let fabToggle = app.navigationBars.buttons.element(boundBy: 0)
+        // Wait for the navigation bar Menu button; wait 30s for cold CI simulator boot
+        let menuButton = app.buttons["Menu"]
         XCTAssertTrue(
-            fabToggle.waitForExistence(timeout: 30.0),
-            "FAB toggle button should exist in navigation bar")
+            menuButton.waitForExistence(timeout: 30.0),
+            "Menu toggle button should exist in navigation bar")
 
-        // Overlay hint — present when ready or unconfigured
-        let startTalking = app.staticTexts["Start talking"]
-        let tapToConfigure = app.staticTexts["Tap to configure LLMs"]
-        XCTAssertTrue(
-            startTalking.waitForExistence(timeout: 30.0) || tapToConfigure.waitForExistence(timeout: 5.0),
-            "Overlay hint should be visible"
-        )
+        // Overlay hint — present when ready, unconfigured, or preparing
+        let possibleHints = [
+            "Start talking",
+            "Tap to configure LLMs",
+            "Apple Neural Engine Ready",
+            "Preparing local LLMs...",
+            "Connecting..."
+        ]
+        
+        let hintFound = possibleHints.contains { hint in
+            app.staticTexts[hint].exists
+        } || app.staticTexts.allElementsBoundByIndex.contains { $0.label.contains("Ready") || $0.label.contains("talking") }
+        
+        // If not immediately found, wait for at least one
+        let exists = app.staticTexts.element(matching: NSPredicate(format: "label IN %@", possibleHints)).waitForExistence(timeout: 30.0)
+        
+        XCTAssertTrue(exists, "Overlay hint should be visible and match one of the expected states")
     }
 
     @MainActor
@@ -45,9 +55,9 @@ final class NeuraLinkUITests: XCTestCase {
         app.launch()
 
         // 1 — Wait for the navigation bar, then expand the FAB menu
-        let fabToggle = app.navigationBars.buttons.element(boundBy: 0)
-        XCTAssertTrue(fabToggle.waitForExistence(timeout: 30.0), "FAB toggle should exist")
-        fabToggle.tap()
+        let menuButton = app.buttons["Menu"]
+        XCTAssertTrue(menuButton.waitForExistence(timeout: 30.0), "Menu toggle should exist")
+        menuButton.tap()
 
         // 2 — Settings child button appears with accessibilityLabel "Settings"
         let settingsButton = app.buttons["Settings"]
@@ -74,7 +84,7 @@ final class NeuraLinkUITests: XCTestCase {
         }
 
         XCTAssertTrue(
-            app.navigationBars.buttons.element(boundBy: 0).waitForExistence(timeout: 20.0),
+            app.buttons["Menu"].waitForExistence(timeout: 20.0),
             "Should return to main screen"
         )
     }

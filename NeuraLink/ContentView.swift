@@ -87,6 +87,7 @@ struct ContentView: View {
                 Image(systemName: isMenuExpanded ? "xmark" : "square.grid.2x2")
                     .contentTransition(.symbolEffect(.replace))
             }
+            .accessibilityLabel("Menu")
         }
     }
 
