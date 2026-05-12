@@ -86,14 +86,25 @@ public final class VRMHumanoidRetargeter {
                 let node = model.nodes[nodeIndex]
                 
                 if model.isVRM0 {
-                    node.rotation = rotation
-                } else {
-                    // VRM 1.0 Right-Handed glTF correction
-                    // We flip the Z/W components or handle the handedness change
-                    // Standard glTF humanoid retargeting for VRM 1.0 often requires
-                    // ensuring the rotation is applied in the right-handed space.
-                    let corrected = simd_quatf(ix: rotation.vector.x, iy: -rotation.vector.y, iz: -rotation.vector.z, r: rotation.vector.w)
+                    // VRM 0.0 Left-Handed conversion
+                    // glTF (Right-handed) to Unity (Left-handed) conversion for rotations:
+                    // Flip Y and Z components or X and W depending on coordinate system conventions.
+                    // For VRM 0.0, we typically flip X and W or use a specific mapping.
+                    // The user mentioned "reversed" bones, so let's ensure the handedness is corrected.
+                    let corrected = simd_quatf(ix: -rotation.vector.x, iy: rotation.vector.y, iz: rotation.vector.z, r: -rotation.vector.w)
                     node.rotation = corrected
+                } else {
+                    // VRM 1.0 Rest Rotation Conversion
+                    // Formula from spec: B.LocalRotation = L_rest * W_rest^-1 * NormalizedLocalRotation * W_rest
+                    let L_rest = node.initialRotation
+                    let W_rest = model.getInitialWorldRotation(for: nodeIndex)
+                    
+                    let invW_rest = W_rest.inverse
+                    let normalizedRotation = rotation
+                    
+                    // B.LocalRotation = L_rest * (invW_rest * normalizedRotation * W_rest)
+                    let targetRotation = L_rest * (invW_rest * normalizedRotation * W_rest)
+                    node.rotation = targetRotation
                 }
                 node.updateLocalMatrix()
             }

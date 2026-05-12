@@ -227,4 +227,18 @@ extension VRMModel {
         springBoneBuffers?.setPlaneColliders([])
         springBoneGlobalParams?.numPlanes = 0
     }
+
+    /// Computes the initial world rotation of a node (rotation in bind pose).
+    public func getInitialWorldRotation(for nodeIndex: Int) -> simd_quatf {
+        guard nodeIndex < nodes.count else { return simd_quatf(ix: 0, iy: 0, iz: 0, r: 1) }
+        let node = nodes[nodeIndex]
+        
+        var worldRot = node.initialRotation
+        var current = node.parent
+        while let p = current {
+            worldRot = p.initialRotation * worldRot
+            current = p.parent
+        }
+        return worldRot
+    }
 }
