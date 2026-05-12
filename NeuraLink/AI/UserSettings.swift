@@ -20,7 +20,6 @@ final class UserSettings {
     private let birthdayKey = "com.neuralink.user.birthday"
     private let showEnvironmentKey = "com.neuralink.user.showEnvironment"
     private let selectedEnvironmentKey = "com.neuralink.user.selectedEnvironment"
-    
     var showEnvironment: Bool {
         didSet { UserDefaults.standard.set(showEnvironment, forKey: showEnvironmentKey) }
     }
@@ -42,12 +41,13 @@ final class UserSettings {
     }
     
     private init() {
-        if UserDefaults.standard.object(forKey: "com.neuralink.user.showEnvironment") == nil {
+        if UserDefaults.standard.object(forKey: showEnvironmentKey) == nil {
             self.showEnvironment = true
         } else {
-            self.showEnvironment = UserDefaults.standard.bool(forKey: "com.neuralink.user.showEnvironment")
+            self.showEnvironment = UserDefaults.standard.bool(forKey: showEnvironmentKey)
         }
-        self.selectedEnvironment = UserDefaults.standard.string(forKey: "com.neuralink.user.selectedEnvironment") ?? "city"
+        
+        self.selectedEnvironment = UserDefaults.standard.string(forKey: selectedEnvironmentKey) ?? "city"
         self.name = UserDefaults.standard.string(forKey: "com.neuralink.user.name") ?? ""
         self.gender = UserDefaults.standard.string(forKey: "com.neuralink.user.gender") ?? "Prefer not to say"
         

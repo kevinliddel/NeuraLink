@@ -15,9 +15,10 @@
   <img src="https://custom-icon-badges.demolab.com/badge/WebRTC-gray?style=flat&logo=webrtc" alt="WebRTC" />
   <img src="https://custom-icon-badges.demolab.com/badge/WhisperKit-gray?logo=swift" alt="WhisperKit" />
   <img src="https://custom-icon-badges.demolab.com/badge/Silero-VAD-red?style=flat&logo=silero" alt="Silero VAD" />
+  <a href="https://deepwiki.com/kevinliddel/NeuraLink"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki" /></a>
 </p>
 
-A high-performance, native iOS VRM character viewer and AI companion built from the ground up using **Metal** and **SwiftUI**. NeuraLink connects to the OpenAI Realtime API via **WebSocket** with **AVAudioEngine** for mic capture and AI audio playback — fully screen-recordable and integrated with synchronized visual feedback.
+A high-performance, native iOS VRM character viewer and AI companion built from the ground up using **Metal** and **SwiftUI**. NeuraLink connects to the OpenAI Realtime API via **WebRTC** for ultra-low latency mic capture and AI audio playback.
 
 ---
 
@@ -33,7 +34,6 @@ A high-performance, native iOS VRM character viewer and AI companion built from 
 - **Neural Lip-Sync**: Real-time audio amplitude analysis mapped to VRM blend shapes.
 - **Advanced Camera**: Orbit controls with look-at behavior following the viewing angle.
 - **Universal Support**: Handles both VRM 0.x and 1.0 specifications.
-- **Advanced C++ Physics**: High-fidelity reference solver with **Verlet integration** (VRM 1.0 spec) and **KawaiiPhysics** extensions (Box colliders, Angular limits). See [Physics Documentation](./docs/physics.md).
 - **Realtime sky system**: Real-time sky with realistic lighting with dynamic sun and moon positioning.
 - **"Eyes on You" System**: Features an Arknights: Endfield-inspired camera system, where characters will maintain eye contact by turning their heads toward the camera if it remains behind them for more than 5 seconds.
 - **Dual-Layer VAD**: Client-side Silero VAD (v5 model) runs alongside OpenAI's server VAD for instant local voice detection and immediate UI feedback.

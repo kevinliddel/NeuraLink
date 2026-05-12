@@ -199,7 +199,7 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
     var temporaryGravity: SIMD3<Float>?
     var temporaryWind: SIMD3<Float>?
     var forceTimer: Float = 0
-
+    
     // OPTIMIZATION: Static zero weights array (avoids allocation per primitive)
     static let zeroMorphWeights = [Float](repeating: 0, count: 8)
 
@@ -432,14 +432,13 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
         if model.springBone != nil {
             do {
                 try springBoneComputeSystem?.populateSpringBoneData(model: model)
-
+                
                 // Warm up physics to prevent initial bounce/oscillation
-                // This zeros velocity and runs silent physics steps to settle bones
                 springBoneComputeSystem?.warmupPhysics(model: model, steps: 30)
             } catch {
             }
         }
-
+        
         // Initialize LookAt controller if model has lookAt data or eye bones
         if model.lookAt != nil || model.humanoid?.humanBones[.leftEye] != nil
             || model.humanoid?.humanBones[.rightEye] != nil {

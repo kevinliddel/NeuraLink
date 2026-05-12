@@ -13,6 +13,5 @@
 #define NeuraLink_Bridging_Header_h
 
 #include "llama_bridge.h"
-#include "vrm_physics_bridge.h"
 
 #endif /* NeuraLink_Bridging_Header_h */
