@@ -21,6 +21,7 @@ struct AISettingsView: View {
                 interactionSection
                 personaSection
                 localSLMSection
+                animationSection
 
                 Section {
                     Button("Done") {
@@ -161,6 +162,16 @@ struct AISettingsView: View {
                 .disabled(!settings.isEnabled)
             
             Text("The character will periodically look through the camera and comment on what they see without being asked.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var animationSection: some View {
+        Section("Animation") {
+            Toggle("Generative Motion", isOn: $settings.useGenerativeMotion)
+            
+            Text("Uses Neural Motion Matching (NMM) for fluid, non-looping idle and chat behaviors. When disabled, static .vrma files are used.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

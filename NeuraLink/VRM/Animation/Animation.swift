@@ -58,6 +58,21 @@ public struct AnimationClip {
     public mutating func addExpressionTrack(_ track: ExpressionTrack) {
         expressionTracks.append(track)
     }
+    
+    /// Samples the entire clip at a specific time and returns a humanoid pose.
+    public func sample(at time: Float) -> VRMHumanoidRetargeter.HumanoidMotionPose {
+        var pose = VRMHumanoidRetargeter.HumanoidMotionPose()
+        for track in jointTracks {
+            let sample = track.sample(at: time)
+            if let rot = sample.rotation {
+                pose.boneRotations[track.bone.rawValue] = rot
+            }
+            if track.bone == .hips, let trans = sample.translation {
+                pose.rootTranslation = trans
+            }
+        }
+        return pose
+    }
 }
 
 public struct JointTrack {

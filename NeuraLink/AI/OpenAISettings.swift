@@ -19,6 +19,7 @@ final class OpenAISettings {
     private let localLLMEnabledKey = "com.neuralink.localllm.enabled"
     private let vadEnabledKey = "com.neuralink.openai.vadEnabled"
     private let proactiveVisionEnabledKey = "com.neuralink.openai.proactiveVisionEnabled"
+    private let generativeMotionKey = "com.neuralink.animation.generativeMotion"
     private static let migrationV2Key = "com.neuralink.migration.onDemandLLM.v1"
 
     init() {
@@ -35,6 +36,7 @@ final class OpenAISettings {
         self.isLocalLLMEnabled = UserDefaults.standard.object(forKey: "com.neuralink.localllm.enabled") as? Bool ?? false
         self.isVADEnabled = UserDefaults.standard.bool(forKey: "com.neuralink.openai.vadEnabled")
         self.isProactiveVisionEnabled = UserDefaults.standard.bool(forKey: "com.neuralink.openai.proactiveVisionEnabled")
+        self.useGenerativeMotion = UserDefaults.standard.object(forKey: generativeMotionKey) as? Bool ?? true
     }
 
     var apiKey: String {
@@ -84,5 +86,9 @@ final class OpenAISettings {
     
     var hasValidKey: Bool {
         !apiKey.isEmpty && apiKey.starts(with: "sk-")
+    }
+
+    var useGenerativeMotion: Bool {
+        didSet { UserDefaults.standard.set(useGenerativeMotion, forKey: generativeMotionKey) }
     }
 }

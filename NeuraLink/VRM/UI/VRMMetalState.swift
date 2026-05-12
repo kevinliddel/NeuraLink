@@ -38,6 +38,14 @@ final class VRMMetalState {
     private var lastTickTimestamp: CFTimeInterval = 0
     private var isAppInBackground = false
     private var cancellables = Set<AnyCancellable>()
+    
+    // Generative Motion
+    var useGenerativeMotion: Bool {
+        get { OpenAISettings.shared.useGenerativeMotion }
+        set { OpenAISettings.shared.useGenerativeMotion = newValue }
+    }
+    let neuralMotionEngine = NeuralMotionEngine()
+    
     var isPlayingAppear = false
     var pendingDefaultClip: AnimationClip?
     var defaultClip: AnimationClip?
@@ -162,6 +170,16 @@ final class VRMMetalState {
         
         // We call the same tick logic used by CADisplayLink
         animationTickInternal(dt: dt)
+        
+        // Base animation runs uninterrupted
+        if let model = currentModel {
+            if useGenerativeMotion {
+                neuralMotionEngine.currentEmotion = aiState.currentEmotion
+                neuralMotionEngine.update(deltaTime: dt, model: model)
+            } else {
+                animationPlayer.update(deltaTime: dt, model: model)
+            }
+        }
         
         // Also tick sky/environment
         renderer?.updateSky(deltaTime: dt)

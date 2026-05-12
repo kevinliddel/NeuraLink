@@ -76,10 +76,18 @@ extension VRMMetalState {
                     await MainActor.run {
                         self.randomAnimEntries = loadedEntries
                         self.defaultClip = loadedDefault
-                        self.animationPlayer.isLooping = true
-                        self.animationPlayer.load(loadedDefault)
+                        
+                        if !self.useGenerativeMotion {
+                            self.animationPlayer.isLooping = true
+                            self.animationPlayer.load(loadedDefault)
+                            self.scheduleNextRandomAnim()
+                        } else {
+                            // Phase 2: Feed clips into C++ generative manifold
+                            var clipsToDigest = [loadedDefault]
+                            clipsToDigest.append(contentsOf: loadedEntries.map { $0.clip })
+                            self.neuralMotionEngine.load(clips: clipsToDigest)
+                        }
                         self.startAnimationTicker()
-                        self.scheduleNextRandomAnim()
                     }
                 }
             } catch {
@@ -115,8 +123,8 @@ extension VRMMetalState {
             }
         }
 
-        // Random idle animation controller
-        if !isPlayingAppear {
+        // Random idle animation controller (Deactivated when Generative Motion is on)
+        if !isPlayingAppear && !useGenerativeMotion {
             if isPlayingRandomAnim {
                 randomAnimElapsed += dt
                 if randomAnimElapsed >= randomAnimDuration {
@@ -163,7 +171,14 @@ extension VRMMetalState {
         }
 
         // Base animation runs uninterrupted
-        animationPlayer.update(deltaTime: dt, model: model)
+        if isPlayingAppear {
+            animationPlayer.update(deltaTime: dt, model: model)
+        } else if useGenerativeMotion {
+            neuralMotionEngine.currentEmotion = aiState.currentEmotion
+            neuralMotionEngine.update(deltaTime: dt, model: model)
+        } else {
+            animationPlayer.update(deltaTime: dt, model: model)
+        }
 
         // Look-back slerp overlay: blend affected bones toward peak look-back pose
         if isPlayingLookBack, let lbClip = lookBackClip {
