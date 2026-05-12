@@ -16,6 +16,7 @@ func makeRotationSampler(
     track: KeyTrack,
     animRest: simd_quatf,
     modelRest: simd_quatf?,
+    bone: VRMHumanoidBone? = nil,
     convertForVRM0: Bool = false
 ) -> (Float) -> simd_quatf {
     let normalizedAnimRest  = simd_normalize(animRest)
@@ -24,7 +25,13 @@ func makeRotationSampler(
     return { t in
         var q = sampleQuaternion(track, at: t)
         if convertForVRM0 { q = convertRotationForVRM0(q) }
+        
         guard let modelRestNorm = normalizedModelRest else { return q }
+        
+        // VRM Spec: result = modelRest * (inv(animRest) * q)
+        // This correctly handles ALL bones, including thumbs.
+        // The thumb's 45-degree T-pose orientation (per VRM spec Definition 1.8) is already
+        // encoded in `modelRest`, so no additional correction is needed or correct.
         let delta = simd_normalize(simd_inverse(normalizedAnimRest) * q)
         return simd_normalize(modelRestNorm * delta)
     }
@@ -81,4 +88,9 @@ func safeDivide(_ a: SIMD3<Float>, by b: SIMD3<Float>) -> SIMD3<Float> {
         a.x / (abs(b.x) > eps ? b.x : 1),
         a.y / (abs(b.y) > eps ? b.y : 1),
         a.z / (abs(b.z) > eps ? b.z : 1))
+}
+
+extension Float {
+    var degreesToRadians: Float { self * .pi / 180.0 }
+    var radiansToDegrees: Float { self * 180.0 / .pi }
 }

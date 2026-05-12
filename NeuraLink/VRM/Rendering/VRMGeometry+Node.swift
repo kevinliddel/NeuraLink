@@ -36,6 +36,11 @@ public class VRMNode {
         return SIMD3<Float>(worldMatrix[3][0], worldMatrix[3][1], worldMatrix[3][2])
     }
 
+    /// The forward direction of the node in world space (+Z)
+    public var worldForward: SIMD3<Float> {
+        return simd_normalize(SIMD3<Float>(worldMatrix[2][0], worldMatrix[2][1], worldMatrix[2][2]))
+    }
+
     public var localRotation: simd_quatf {
         get { return rotation }
         set {

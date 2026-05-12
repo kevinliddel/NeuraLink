@@ -272,8 +272,18 @@ final class VRMMetalState {
             return
         }
         
-        // 1. Haptic Feedback
-        let generator = UIImpactFeedbackGenerator(style: .medium)
+        // 1. Contextual Haptic Feedback
+        let feedbackStyle: UIImpactFeedbackGenerator.FeedbackStyle
+        switch result {
+        case .head: 
+            feedbackStyle = .heavy // Solid pat
+        case .face, .hand: 
+            feedbackStyle = .medium // Sensitive touch
+        default: 
+            feedbackStyle = .light // Subtle tap
+        }
+        
+        let generator = UIImpactFeedbackGenerator(style: feedbackStyle)
         generator.prepare()
         generator.impactOccurred()
         
