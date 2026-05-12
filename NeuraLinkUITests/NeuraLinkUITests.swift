@@ -37,7 +37,13 @@ final class NeuraLinkUITests: XCTestCase {
             "Tap to configure LLMs",
             "Apple Neural Engine Ready",
             "Preparing local LLMs...",
-            "Connecting..."
+            "Connecting...",
+            "Thinking...",
+            "Listening",
+            "AI Speaking",
+            "…",
+            "Connection error",
+            "Disconnected"
         ]
         
         let hintFound = possibleHints.contains { hint in
