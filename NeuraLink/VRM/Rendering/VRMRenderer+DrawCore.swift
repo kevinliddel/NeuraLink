@@ -167,10 +167,10 @@ extension VRMRenderer {
 
                 // Read back GPU positions and update node transforms
                 springBoneCompute.writeBonesToNodes(model: model)
-
-                // CRITICAL: Propagate spring bone transforms through entire hierarchy before skinning
-                model.updateNodeTransforms()
             }
+
+            // CRITICAL: Propagate spring bone transforms through entire hierarchy before skinning
+            model.updateNodeTransforms()
         }
 
         // Update all joint palettes before any draw calls to ensure consistent state.

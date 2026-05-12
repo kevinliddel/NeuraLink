@@ -59,6 +59,15 @@ extension VRMExtensionParser {
             }
         }
 
+        // Cross-version compatibility: Synthesize 'Surprise' for VRM 0.x models
+        // VRM 0.0 standard doesn't have a 'Surprise' preset, so we map it to 'Joy'
+        // (or 'Fun' in 0.0 terms) to provide a reasonable fallback for AI interactions.
+        if expressions.preset[.surprised] == nil {
+            if let joy = expressions.preset[.happy] {
+                expressions.preset[.surprised] = joy
+            }
+        }
+
         return expressions
     }
 

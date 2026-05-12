@@ -149,6 +149,17 @@ extension VRMMetalState {
             lookBackClip = VRMLookBackAnimationBuilder.makeClip(side: side)
             lookBackTime = 0
             isPlayingLookBack = true
+            
+            // AI Communication - Proactively notify AI that the character noticed the user behind them
+            let sideName = side == .left ? "left" : "right"
+            Task {
+                let action = "I noticed the user was behind me and I turned my head to look back over my \(sideName) shoulder."
+                if OpenAISettings.shared.isEnabled {
+                    OpenAIRealtimeManager.shared.sendInteractionEvent(action)
+                } else if OpenAISettings.shared.isLocalLLMEnabled {
+                    LocalLLMManager.shared.handleInteractionEvent(action)
+                }
+            }
         }
 
         // Base animation runs uninterrupted

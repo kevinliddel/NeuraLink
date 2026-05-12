@@ -113,6 +113,16 @@ public enum VRMHumanoidBone: String, CaseIterable, Sendable {
             return false
         }
     }
+
+    public var isThumb: Bool {
+        switch self {
+        case .leftThumbMetacarpal, .leftThumbProximal, .leftThumbDistal,
+             .rightThumbMetacarpal, .rightThumbProximal, .rightThumbDistal:
+            return true
+        default:
+            return false
+        }
+    }
 }
 
 // MARK: - LookAt Types

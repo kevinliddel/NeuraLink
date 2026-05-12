@@ -141,6 +141,12 @@ extension SpringBoneComputeSystem {
             let (currentNode, currentPos, globalIndex) = nodePositions[i]
             let (_, nextPos, _) = nodePositions[i + 1]
 
+            // Safety Check: Forcibly prevent structural bones from receiving physics rotations
+            let lowerName = currentNode.name?.lowercased() ?? ""
+            if lowerName.contains("chest") || lowerName.contains("spine") || lowerName.contains("hips") {
+                continue
+            }
+
             // NaN guard: skip if positions are invalid
             if currentPos.x.isNaN || currentPos.y.isNaN || currentPos.z.isNaN || nextPos.x.isNaN
                 || nextPos.y.isNaN || nextPos.z.isNaN {
@@ -200,8 +206,8 @@ extension SpringBoneComputeSystem {
             // Step 4: Calculate "swing" rotation needed to align initial axis with target
             //
             // SOFT DEADZONE: Instead of hard cutoff, smoothly blend physics influence.
-            // - Deadzone: 0.001 (1mm) - below this, use initial rotation (sleep)
-            // - Fade range: 0.005 (5mm) - smooth transition to full physics
+            // - Deadzone: 0.005 (5mm) - below this, use initial rotation (sleep)
+            // - Fade range: 0.02 (20mm) - smooth transition to full physics
             // This prevents both flutter (at rest) and popping (during transition)
             //
             // For unit vectors: distance ≈ 2*sin(θ/2) ≈ θ for small angles
@@ -209,8 +215,8 @@ extension SpringBoneComputeSystem {
             let targetDirNorm = simd_normalize(targetDirRest)
             let displacement = simd_length(targetDirNorm - initialAxisNorm)
 
-            let deadzone: Float = 0.001  // 1mm - sleep threshold
-            let fadeRange: Float = 0.005  // 5mm - smooth transition range
+            let deadzone: Float = 0.005  // 5mm - sleep threshold
+            let fadeRange: Float = 0.02  // 20mm - smooth transition range
 
             // Calculate blend weight: 0 at deadzone, 1 at deadzone+fadeRange
             let physicsWeight = min(max((displacement - deadzone) / fadeRange, 0.0), 1.0)

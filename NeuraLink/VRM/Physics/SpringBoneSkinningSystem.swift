@@ -53,9 +53,9 @@ final class SpringBoneSkinningSystem {
         }
 
         // Update root bone (first in chain)
-        let rootPosition = positions[0]
         let rootNode = nodes[0]
-        rootNode.translation = rootPosition
+        // Root bone translation is handled by the animation system; 
+        // we only update its world transform to ensure child calculations are accurate.
         rootNode.updateWorldTransform()
 
         // Update child bones with proper orientation
@@ -65,7 +65,7 @@ final class SpringBoneSkinningSystem {
             let currentNode = nodes[i]
             let parentNode = nodes[i - 1]
 
-            // Calculate direction vector
+            // Calculate direction vector from simulated positions
             let direction = simd_normalize(currentPos - parentPos)
 
             // Reconstruct rotation using swing-twist decomposition
@@ -75,8 +75,8 @@ final class SpringBoneSkinningSystem {
                 currentNode: currentNode
             )
 
-            // Update node transforms
-            currentNode.translation = parentNode.worldPosition
+            // Update node transform - ROTATION ONLY
+            // We preserve the animation/bind-pose translation to maintain skeleton integrity.
             currentNode.localRotation = rotation
             currentNode.updateWorldTransform()
         }

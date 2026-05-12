@@ -55,6 +55,10 @@ extension VRMExtensionParser {
         if let boneGroups = dict["boneGroups"] as? [[String: Any]] {
             let gltfNodes = document.nodes ?? []
 
+            // Identify core humanoid bone node indices to prevent physics being applied
+            // to skeleton bones (which causes chest/torso pulsating/vibrating artifacts).
+            let coreBoneNodes = parseVRM0HumanoidBoneNodes(from: document)
+
             for groupDict in boneGroups {
                 let sharedParams = parseBoneGroupParams(groupDict)
 
@@ -71,9 +75,10 @@ extension VRMExtensionParser {
                         }
 
                         // Build joint chain from root down through single-child descendants
-                        let chainIndices = buildChain(from: rootIndex, nodes: gltfNodes)
+                        let chainIndices = buildChain(from: rootIndex, nodes: gltfNodes, excluded: coreBoneNodes)
                         for nodeIndex in chainIndices {
-                            spring.joints.append(makeJoint(node: nodeIndex, params: sharedParams))
+                            let nodeName = gltfNodes[safe: nodeIndex]?.name
+                            spring.joints.append(makeJoint(node: nodeIndex, params: sharedParams, nodeName: nodeName))
                         }
 
                         if spring.joints.count >= 1 {
@@ -134,24 +139,84 @@ extension VRMExtensionParser {
         )
     }
 
-    private func makeJoint(node: Int, params: BoneGroupParams) -> VRMSpringJoint {
+    private func makeJoint(node: Int, params: BoneGroupParams, nodeName: String?) -> VRMSpringJoint {
         var joint = VRMSpringJoint(node: node)
-        joint.stiffness = params.stiffness
-        joint.gravityPower = params.gravityPower
+        
+        // Stabilize VRM 0.x physics:
+        // Legacy models often have extreme gravityPower or low stiffness which causes
+        // numerical instability (pulsating/vibrating) especially on mobile hardware.
+        
+        var stiffness = params.stiffness
+        var gravityPower = params.gravityPower
+        var drag = params.dragForce
+        
+        let lowerName = nodeName?.lowercased() ?? ""
+        let isBust = lowerName.contains("bust") || lowerName.contains("breast")
+        let isCore = lowerName.contains("chest") || lowerName.contains("spine") || lowerName.contains("hips") || lowerName.contains("neck")
+        
+        if isCore {
+            // FORCIBLY neutralize any core humanoid bones that accidentally ended up in physics groups.
+            // These should be static anchors to prevent torso pulsation.
+            gravityPower = 0.0
+            drag = 1.0
+            stiffness = 1.0
+        } else if isBust {
+            // Bust/Breast bones are the most common source of 'pulsating' chest artifacts.
+            // Extreme damping (high drag) and minimal gravity for stability.
+            gravityPower = min(gravityPower, 0.1) 
+            drag = max(drag, 0.8) 
+            stiffness = max(stiffness, 0.4) // Higher stiffness prevents bouncing
+        } else {
+            // General safety clamps for other secondary bones (hair, ribbons, etc.)
+            gravityPower = min(gravityPower, 0.8)
+            drag = max(drag, 0.3)
+            stiffness = max(stiffness, 0.05)
+        }
+        
+        joint.stiffness = stiffness
+        joint.gravityPower = gravityPower
         joint.gravityDir = params.gravityDir
-        joint.dragForce = params.dragForce
+        joint.dragForce = drag
         joint.hitRadius = params.hitRadius
         return joint
     }
 
     /// Traverses single-child descendants to build the full joint chain from a root.
     /// Stops when a leaf or a branching node (multiple children) is reached.
-    private func buildChain(from root: Int, nodes: [GLTFNode]) -> [Int] {
-        var chain = [root]
+    private func buildChain(from root: Int, nodes: [GLTFNode], excluded: Set<Int>) -> [Int] {
+        // Optimization: Standard humanoid bones should NEVER be spring bones.
+        // Including them causes 'pulsating' or 'vibrating' artifacts as the physics 
+        // engine tries to simulate gravity on the character's core structure.
+        let coreBones: Set<VRMHumanoidBone> = [
+            .hips, .spine, .chest, .upperChest, .neck, .head,
+            .leftUpperArm, .rightUpperArm, .leftUpperLeg, .rightUpperLeg,
+            .leftShoulder, .rightShoulder
+        ]
+        
+        var chain = [Int]()
         var current = root
-        while let children = nodes[safe: current]?.children, children.count == 1 {
-            current = children[0]
+        
+        // Safety check: if the root itself is a core bone (explicitly mapped or guessed), ignore it.
+        let rootIsCore = excluded.contains(root) || (VRMHumanoidBone.heuristic(for: nodes[safe: root]?.name ?? "").map { coreBones.contains($0) } ?? false)
+        if rootIsCore {
+            return []
+        }
+        
+        while true {
             chain.append(current)
+            
+            guard let children = nodes[safe: current]?.children, children.count == 1 else {
+                break
+            }
+            
+            let next = children[0]
+            // Stop if the NEXT bone is a core bone
+            let nextIsCore = excluded.contains(next) || (VRMHumanoidBone.heuristic(for: nodes[safe: next]?.name ?? "").map { coreBones.contains($0) } ?? false)
+            if nextIsCore {
+                break
+            }
+            
+            current = next
         }
         return chain
     }
@@ -162,5 +227,33 @@ extension VRMExtensionParser {
         let y = dict["y"] as? Float ?? 0
         let z = dict["z"] as? Float ?? 0
         return SIMD3<Float>(x, y, z)
+    }
+
+    /// Reads the VRM 0.x humanoid bone→node mapping from the model's `VRM` extension.
+    /// Returns the set of node indices that correspond to core skeleton bones.
+    /// These must be excluded from secondary animation (spring bone) physics chains
+    /// to prevent the 'pulsating torso' artifact caused by gravity on structural bones.
+    func parseVRM0HumanoidBoneNodes(from document: GLTFDocument) -> Set<Int> {
+        let coreBoneNames: Set<String> = [
+            "hips", "spine", "chest", "upperChest", "neck", "head",
+            "leftShoulder", "rightShoulder",
+            "leftUpperArm", "rightUpperArm",
+            "leftUpperLeg", "rightUpperLeg"
+        ]
+
+        guard let vrmExt     = document.extensions?["VRM"] as? [String: Any],
+              let humanoid   = vrmExt["humanoid"] as? [String: Any],
+              let humanBones = humanoid["humanBones"] as? [[String: Any]]
+        else { return [] }
+
+        var nodeIndices = Set<Int>()
+        for boneDict in humanBones {
+            guard let boneName = boneDict["bone"] as? String,
+                  coreBoneNames.contains(boneName),
+                  let nodeIndex = boneDict["node"] as? Int
+            else { continue }
+            nodeIndices.insert(nodeIndex)
+        }
+        return nodeIndices
     }
 }

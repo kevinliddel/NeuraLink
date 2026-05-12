@@ -14,16 +14,23 @@ extension VRMRenderer {
     /// Result of a hit test interaction.
     public enum HitResult {
         case head
+        case face
+        case hair
         case shoulder(isLeft: Bool)
         case torso
+        case hand(isLeft: Bool)
         case modelBody
         case none
         
         public var aiAction: String? {
             switch self {
             case .head: return "[USER_ACTION: Head Pat]"
+            case .face: return "[USER_ACTION: Touch Face]"
+            case .hair: return "[USER_ACTION: Mess with Hair]"
             case .shoulder(let isLeft): return "[USER_ACTION: Tap \(isLeft ? "Left" : "Right") Shoulder]"
-            case .torso, .modelBody: return "[USER_ACTION: Tap Torso]"
+            case .torso: return "[USER_ACTION: Poke Torso]"
+            case .hand(let isLeft): return "[USER_ACTION: Hold \(isLeft ? "Left" : "Right") Hand]"
+            case .modelBody: return "[USER_ACTION: Tap Body]"
             case .none: return nil
             }
         }
@@ -33,40 +40,60 @@ extension VRMRenderer {
     public func hitTest(at point: CGPoint, viewSize: CGSize) -> HitResult {
         guard let model = model else { return .none }
         
-        // Ensure world transforms are up to date for this frame
         model.withLock {
             for node in model.nodes where node.parent == nil {
                 node.updateWorldTransform()
             }
         }
         
-        // 1. Generate ray from screen point
         let ray = makeRay(at: point, viewSize: viewSize)
-        
-        // 2. Perform intersection tests against humanoid bones
         guard let humanoid = model.humanoid else { return .none }
         
-        // --- Head & Neck Test ---
-        // We use a slightly larger radius (0.18) and check both head and neck
-        let headIndices = [humanoid.getBoneNode(.head), humanoid.getBoneNode(.neck)].compactMap { $0 }
-        for idx in headIndices where idx < model.nodes.count {
-            let node = model.nodes[idx]
-            if intersectSphere(rayOrigin: ray.origin, rayDir: ray.direction, sphereCenter: node.worldPosition, radius: 0.18) {
+        // --- Head & Face & Hair Test ---
+        if let headIndex = humanoid.getBoneNode(.head), headIndex < model.nodes.count {
+            let headNode = model.nodes[headIndex]
+            
+            // Face: tighter sphere at the front
+            let faceCenter = headNode.worldPosition + headNode.worldForward * 0.08
+            if intersectSphere(rayOrigin: ray.origin, rayDir: ray.direction, sphereCenter: faceCenter, radius: 0.12) {
+                return .face
+            }
+            
+            // Head: larger sphere for patting
+            if intersectSphere(rayOrigin: ray.origin, rayDir: ray.direction, sphereCenter: headNode.worldPosition, radius: 0.22) {
                 return .head
+            }
+        }
+        
+        // Hair check: check descendants of head that aren't mapped bones
+        if let headIndex = humanoid.getBoneNode(.head), headIndex < model.nodes.count {
+            for childNode in model.nodes[headIndex].children {
+                if intersectSphere(rayOrigin: ray.origin, rayDir: ray.direction, sphereCenter: childNode.worldPosition, radius: 0.15) {
+                    return .hair
+                }
+            }
+        }
+        
+        // --- Hand Test ---
+        if let leftHandIdx = humanoid.getBoneNode(.leftHand), leftHandIdx < model.nodes.count {
+            if intersectSphere(rayOrigin: ray.origin, rayDir: ray.direction, sphereCenter: model.nodes[leftHandIdx].worldPosition, radius: 0.12) {
+                return .hand(isLeft: true)
+            }
+        }
+        if let rightHandIdx = humanoid.getBoneNode(.rightHand), rightHandIdx < model.nodes.count {
+            if intersectSphere(rayOrigin: ray.origin, rayDir: ray.direction, sphereCenter: model.nodes[rightHandIdx].worldPosition, radius: 0.12) {
+                return .hand(isLeft: false)
             }
         }
         
         // --- Shoulder Test ---
         if let leftShoulderIndex = humanoid.getBoneNode(.leftShoulder), leftShoulderIndex < model.nodes.count {
-            let shoulderNode = model.nodes[leftShoulderIndex]
-            if intersectSphere(rayOrigin: ray.origin, rayDir: ray.direction, sphereCenter: shoulderNode.worldPosition, radius: 0.15) {
+            if intersectSphere(rayOrigin: ray.origin, rayDir: ray.direction, sphereCenter: model.nodes[leftShoulderIndex].worldPosition, radius: 0.15) {
                 return .shoulder(isLeft: true)
             }
         }
-        
         if let rightShoulderIndex = humanoid.getBoneNode(.rightShoulder), rightShoulderIndex < model.nodes.count {
-            let shoulderNode = model.nodes[rightShoulderIndex]
-            if intersectSphere(rayOrigin: ray.origin, rayDir: ray.direction, sphereCenter: shoulderNode.worldPosition, radius: 0.15) {
+            if intersectSphere(rayOrigin: ray.origin, rayDir: ray.direction, sphereCenter: model.nodes[rightShoulderIndex].worldPosition, radius: 0.15) {
                 return .shoulder(isLeft: false)
             }
         }
@@ -74,8 +101,7 @@ extension VRMRenderer {
         // --- Torso Test ---
         let spineIndices = [humanoid.getBoneNode(.spine), humanoid.getBoneNode(.chest), humanoid.getBoneNode(.hips)].compactMap { $0 }
         for idx in spineIndices where idx < model.nodes.count {
-            let node = model.nodes[idx]
-            if intersectSphere(rayOrigin: ray.origin, rayDir: ray.direction, sphereCenter: node.worldPosition, radius: 0.3) {
+            if intersectSphere(rayOrigin: ray.origin, rayDir: ray.direction, sphereCenter: model.nodes[idx].worldPosition, radius: 0.3) {
                 return .torso
             }
         }
