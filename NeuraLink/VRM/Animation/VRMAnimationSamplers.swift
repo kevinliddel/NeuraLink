@@ -24,14 +24,25 @@ func makeRotationSampler(
 
     return { t in
         var q = sampleQuaternion(track, at: t)
-        if convertForVRM0 { q = convertRotationForVRM0(q) }
+        if convertForVRM0 { 
+            q = convertRotationForVRM0(q) 
+        } else if let bone = bone {
+            // VRM 1.0 Thumb Alignment Fix:
+            // VRM 1.0 specifies a 45-degree thumb orientation in T-pose. Standard animations 
+            // often assume a flatter thumb, which causes the thumb to 'raise up' or twist 
+            // towards the back of the hand. We apply a corrective pitch/roll to re-align them.
+            if bone == .leftThumbProximal || bone == .leftThumbMetacarpal {
+                let correction = simd_quatf(angle: -18.0 * .pi / 180.0, axis: SIMD3<Float>(0, 0, 1))
+                q = q * correction
+            } else if bone == .rightThumbProximal || bone == .rightThumbMetacarpal {
+                let correction = simd_quatf(angle: 18.0 * .pi / 180.0, axis: SIMD3<Float>(0, 0, 1))
+                q = q * correction
+            }
+        }
         
         guard let modelRestNorm = normalizedModelRest else { return q }
         
         // VRM Spec: result = modelRest * (inv(animRest) * q)
-        // This correctly handles ALL bones, including thumbs.
-        // The thumb's 45-degree T-pose orientation (per VRM spec Definition 1.8) is already
-        // encoded in `modelRest`, so no additional correction is needed or correct.
         let delta = simd_normalize(simd_inverse(normalizedAnimRest) * q)
         return simd_normalize(modelRestNorm * delta)
     }
