@@ -12,6 +12,8 @@ struct AISettingsView: View {
     private var downloader = LocalModelDownloadManager.shared
     private var personaStore = PersonaStore.shared
     @State private var showModelLibrary = false
+    @State private var showVADInfo = false
+    @State private var showProactiveVisionInfo = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -21,17 +23,17 @@ struct AISettingsView: View {
                 interactionSection
                 personaSection
                 localSLMSection
-
-                Section {
+            }
+            .navigationTitle("AI Settings")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
                         triggerConnectionIfNeeded()
                         dismiss()
                     }
-                    .frame(maxWidth: .infinity)
                 }
             }
-            .navigationTitle("AI Settings")
-            .navigationBarTitleDisplayMode(.inline)
         }
     }
 
@@ -149,30 +151,78 @@ struct AISettingsView: View {
     private var interactionSection: some View {
         Section("Autonomy") {
             Toggle(isOn: $settings.isVADEnabled) {
-                VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 8) {
                     Text("Auto-Turn Detection (VAD)")
-                    if settings.isEnabled {
-                        Text("VAD lets OpenAI respond automatically when you stop speaking.")
+                    Button {
+                        showVADInfo = true
+                    } label: {
+                        Image(systemName: "info.circle.fill")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .popover(isPresented: $showVADInfo) {
+                        Text("VAD lets OpenAI respond automatically when you stop speaking.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .padding(12)
+                            .presentationCompactAdaptation(.popover)
                     }
                 }
             }
             .disabled(!settings.isEnabled)
 
             Toggle(isOn: $settings.isProactiveVisionEnabled) {
-                VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 8) {
                     Text("Proactive Vision")
-                    if settings.isEnabled {
+                    Button {
+                        showProactiveVisionInfo = true
+                    } label: {
+                        Image(systemName: "info.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .popover(isPresented: $showProactiveVisionInfo) {
                         Text(
-                            "The character will periodically look through the camera and comment on what they see without being asked."
+                            "The character periodically looks through the camera and comments on what they see without being asked."
                         )
-                        .font(.caption)
+                        .font(.footnote)
                         .foregroundStyle(.secondary)
+                        .padding(12)
+                        .presentationCompactAdaptation(.popover)
                     }
                 }
             }
             .disabled(!settings.isEnabled)
+            .listRowSeparator(settings.isEnabled && settings.isProactiveVisionEnabled ? .hidden : .automatic)
+
+            if settings.isEnabled && settings.isProactiveVisionEnabled {
+                HStack {
+                    Text("Interval")
+                    Spacer()
+                    Picker("Interval", selection: $settings.proactiveVisionIntervalSec) {
+                        Text("10s").tag(10.0)
+                        Text("20s").tag(20.0)
+                        Text("30s").tag(30.0)
+                        Text("60s").tag(60.0)
+                    }
+                    .labelsHidden()
+                }
+                .listRowSeparator(.hidden)
+
+                HStack {
+                    Text("Cooldown after speech")
+                    Spacer()
+                    Picker("Cooldown", selection: $settings.proactiveVisionCooldownAfterSpeechSec) {
+                        Text("0s").tag(0.0)
+                        Text("8s").tag(8.0)
+                        Text("12s").tag(12.0)
+                        Text("20s").tag(20.0)
+                    }
+                    .labelsHidden()
+                }
+            }
         }
     }
 
@@ -193,6 +243,10 @@ struct AISettingsView: View {
             Label("Downloading…", systemImage: "arrow.down.circle")
                 .font(.caption.bold())
                 .foregroundStyle(.blue)
+        case .paused:
+            Label("Paused", systemImage: "pause.circle")
+                .font(.caption.bold())
+                .foregroundStyle(.secondary)
         case .notDownloaded:
             Label("Not downloaded", systemImage: "arrow.down.circle.dotted")
                 .font(.caption)
@@ -214,11 +268,24 @@ struct AISettingsView: View {
                 Label("Download Model", systemImage: "arrow.down.circle")
             }
         case .downloading:
-            Button(role: .cancel) {
-                downloader.cancelDownload()
+            Button {
+                downloader.pauseDownload()
             } label: {
-                Label("Cancel Download", systemImage: "xmark.circle")
-                    .foregroundStyle(.red)
+                Label("Pause Download", systemImage: "pause.circle")
+            }
+        case .paused:
+            HStack {
+                Button {
+                    downloader.resumeDownload()
+                } label: {
+                    Label("Resume", systemImage: "play.circle")
+                }
+                Button(role: .cancel) {
+                    downloader.cancelDownload()
+                } label: {
+                    Label("Cancel", systemImage: "xmark.circle")
+                        .foregroundStyle(.red)
+                }
             }
         case .bundled, .ready:
             EmptyView()

@@ -67,21 +67,21 @@ struct ModelLibraryView: View {
         ModelLibraryCard(
             config: config,
             isSelected: manager.selectedConfig == config,
-            status: status(for: config),
+            status: manager.downloadState(for: config),
             diskUsage: manager.diskUsageBytes(for: config),
             onSelect: { select(config) },
+            onPause: { manager.pauseDownload() },
+            onResume: { manager.resumeDownload() },
             onDelete: { delete() }
         )
-    }
-    
-    private func status(for config: LocalModelDownloadManager.ModelConfiguration) -> LocalModelDownloadManager.DownloadState {
-        (manager.selectedConfig == config) ? manager.state : .notDownloaded
     }
     
     private func select(_ config: LocalModelDownloadManager.ModelConfiguration) {
         withAnimation {
             manager.selectConfig(config)
-            if !manager.isAvailable {
+            if case .paused = manager.state {
+                manager.resumeDownload()
+            } else if !manager.isAvailable {
                 manager.startDownload()
             }
         }
@@ -92,12 +92,19 @@ struct ModelLibraryView: View {
     }
     
     private var headerView: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        let totalBytes = LocalModelDownloadManager.ModelConfiguration.allCases.reduce(Int64(0)) {
+            $0 + manager.diskUsageBytes(for: $1)
+        }
+        return VStack(alignment: .leading, spacing: 4) {
             Text("Edge Intelligence")
                 .font(.system(size: 28, weight: .bold, design: .rounded))
                 .foregroundColor(.white)
             
-            Text("Select and download local SLMs models.")
+            Text(
+                totalBytes > 0
+                    ? "On device: \(formatBytes(totalBytes))"
+                    : "Select and download local SLMs."
+            )
                 .font(.system(size: 15))
                 .foregroundColor(.white.opacity(0.6))
         }
@@ -108,5 +115,12 @@ struct ModelLibraryView: View {
             Color.black.opacity(0.3)
                 .background(.ultraThinMaterial)
         )
+    }
+
+    private func formatBytes(_ bytes: Int64) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useGB, .useMB]
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: bytes)
     }
 }

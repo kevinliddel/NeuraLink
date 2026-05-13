@@ -14,12 +14,12 @@ import NaturalLanguage
 final class EmbeddingService {
     static let shared = EmbeddingService()
     
-    private let embedding: NLEmbedding?
+    private let lock = NSLock()
+    private var embeddingCache: [NLLanguage: NLEmbedding] = [:]
+    private let fallbackLanguage: NLLanguage = .english
     
     private init() {
-        // We use the sentence embedding for English as it's well-suited for RAG context.
-        self.embedding = NLEmbedding.sentenceEmbedding(for: .english)
-        if embedding == nil {
+        if NLEmbedding.sentenceEmbedding(for: fallbackLanguage) == nil {
             print("[EmbeddingService] Warning: Failed to load sentence embedding for English.")
         }
     }
@@ -28,9 +28,9 @@ final class EmbeddingService {
     /// - Parameter text: The input string.
     /// - Returns: A float array representing the vector, or nil if generation fails.
     func generateVector(for text: String) -> [Double]? {
-        if let vector = embedding?.vector(for: text) {
-            return vector
-        }
+        let language = detectLanguage(for: text) ?? fallbackLanguage
+        let embedding = embeddingForLanguage(language) ?? embeddingForLanguage(fallbackLanguage)
+        if let vector = embedding?.vector(for: text) { return vector }
         
         // Fallback for environments without the system model (e.g. CI/Simulators)
         // This allows RAG logic to be tested even if the vector quality is zero.
@@ -39,6 +39,21 @@ final class EmbeddingService {
         #else
         return nil
         #endif
+    }
+
+    private func detectLanguage(for text: String) -> NLLanguage? {
+        let recognizer = NLLanguageRecognizer()
+        recognizer.processString(text)
+        return recognizer.dominantLanguage
+    }
+
+    private func embeddingForLanguage(_ language: NLLanguage) -> NLEmbedding? {
+        lock.lock()
+        defer { lock.unlock() }
+        if let cached = embeddingCache[language] { return cached }
+        guard let embedding = NLEmbedding.sentenceEmbedding(for: language) else { return nil }
+        embeddingCache[language] = embedding
+        return embedding
     }
     
     /// Calculates the cosine similarity between two vectors.

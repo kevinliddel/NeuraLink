@@ -61,6 +61,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     // TTS completion tracking — main thread only.
     internal var pendingTTSBuffers: Int = 0
     internal var ttsGenerationDone: Bool = false
+    internal var pendingUIActionTask: Task<Void, Never>?
 
     var voicesLogged = false
 
@@ -151,6 +152,9 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             state.aiTranscript = ""
             state.status = .thinking
         }
+        
+        ProactiveVisionManager.shared.notifyUserSpoke()
+        ChatTimelineStore.logUserMessage(text)
 
         Task {
             // RAG: Fetch relevant past memories
@@ -158,7 +162,9 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             
             let userContext = UserSettings.shared.systemPromptContext
             let basePrompt = localLLMSystemPrompt(for: state.selectedCharacterName)
+            let companion = CompanionStateManager.shared.promptContext(characterName: state.selectedCharacterName)
             let sysPrompt = userContext + basePrompt + memoryContext
+                + companion
             
             let prompt: String
             let maxTokens: Int
@@ -182,6 +188,8 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         llmEngine.stop()
         playerNode.stop()
         ttsBuffer = ""
+        pendingUIActionTask?.cancel()
+        pendingUIActionTask = nil
         Task { @MainActor in
             pendingTTSBuffers = 0
             ttsGenerationDone = false
@@ -194,6 +202,8 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         llmEngine.stop()
         playerNode.stop()
         ttsBuffer = ""
+        pendingUIActionTask?.cancel()
+        pendingUIActionTask = nil
         recordingLock.lock()
         isRecordingVoice = false
         recordingBuffer.removeAll()
@@ -212,6 +222,8 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         llmEngine.unloadModel()
         playerNode.stop()
         ttsBuffer = ""
+        pendingUIActionTask?.cancel()
+        pendingUIActionTask = nil
         recordingLock.lock()
         recordingBuffer.removeAll()
         isRecordingVoice = false
@@ -232,5 +244,24 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         // that the model understands it's a physical action, not spoken text.
         let text = "*\(action)*"
         handleUserInput(text)
+    }
+
+    @MainActor
+    func schedulePendingUIActionAfterSpeech() {
+        pendingUIActionTask?.cancel()
+        pendingUIActionTask = Task { [weak self] in
+            guard let self else { return }
+            // Wait until the queued TTS buffers drain and synthesizer finishes.
+            while !Task.isCancelled {
+                if self.pendingTTSBuffers <= 0 && !self.synthesizer.isSpeaking {
+                    break
+                }
+                try? await Task.sleep(nanoseconds: 150_000_000)
+            }
+            guard !Task.isCancelled else { return }
+            let action = AppFunctionExecutor.shared.pendingUIAction
+            AppFunctionExecutor.shared.pendingUIAction = nil
+            action?()
+        }
     }
 }

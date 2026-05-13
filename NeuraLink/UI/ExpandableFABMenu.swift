@@ -13,6 +13,7 @@ struct ExpandableFABMenu: View {
     @Binding var isExpanded: Bool
     let onSettings: () -> Void
     let onUserSettings: () -> Void
+    let onRelationship: () -> Void
     let onModelSelection: () -> Void
     let onCameraToggle: () -> Void
     let onPiP: () -> Void
@@ -39,6 +40,16 @@ struct ExpandableFABMenu: View {
                     }
                 )
                 .transition(childTransition(delay: 0.09))
+
+                FABChildButton(
+                    icon: Image(systemName: "suit.heart.fill"),
+                    label: "Relationship",
+                    action: {
+                        collapse()
+                        onRelationship()
+                    }
+                )
+                .transition(childTransition(delay: 0.067))
 
                 FABChildButton(
                     icon: Image("neuralink").renderingMode(.template),

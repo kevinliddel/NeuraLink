@@ -54,6 +54,11 @@ struct ContentView: View {
                         isExpanded: $isMenuExpanded,
                         onSettings: { aiState.showSettings = true },
                         onUserSettings: { aiState.showUserSettings = true },
+                        onRelationship: {
+                            withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+                                aiState.showRelationshipBar = true
+                            }
+                        },
                         onModelSelection: { withAnimation { showModelSelection.toggle() } },
                         onCameraToggle: {
                             if camera.isActive {
@@ -66,6 +71,14 @@ struct ContentView: View {
                             PiPManager.shared.startPiP()
                         }
                     )
+                }
+            }
+            .overlay(alignment: .topLeading) {
+                if !aiState.isUIHidden && aiState.showRelationshipBar {
+                    RelationshipMeterBarOverlay()
+                        .padding(.leading, 16)
+                        .padding(.top, 12)
+                        .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
             .toolbar {

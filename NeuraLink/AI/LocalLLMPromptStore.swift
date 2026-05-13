@@ -9,6 +9,7 @@
 //
 
 import Foundation
+import SwiftUI
 
 @Observable
 final class LocalLLMPromptStore {
@@ -81,6 +82,16 @@ final class LocalLLMPromptStore {
     }
 
     private static func defaultEnglishPrompt(for characterName: String) -> String {
+        let toolInstruction = """
+
+        If you need to use an iOS tool (reminders, notes, open apps, etc), output ONLY a single tool call in this exact format:
+        <tool name="TOOL_NAME">{ "arg": "value" }</tool>
+        Use one of these tool names: \(AppFunctionTool.getWeather), \(AppFunctionTool.searchWeb), \
+        \(AppFunctionTool.playMusic), \(AppFunctionTool.createReminder), \(AppFunctionTool.createNote), \
+        \(AppFunctionTool.openApp), \(AppFunctionTool.analyzeCamera), \
+        \(AppFunctionTool.rememberFact), \(AppFunctionTool.poseForPhoto).
+        Do not include any other text alongside the tool call.
+        """
         switch characterName.lowercased() {
         case "ekaterina":
             return CharacterPersona.emotionInstructions + """
@@ -93,7 +104,7 @@ final class LocalLLMPromptStore {
             Keep responses concise but natural, and avoid repetitive phrases. \
             Never write asterisk actions, never narrate, never use parentheses. \
             Just say the words you would actually speak.
-            """
+            """ + toolInstruction
         case "sonya":
             return CharacterPersona.emotionInstructions + """
 
@@ -106,9 +117,11 @@ final class LocalLLMPromptStore {
             Keep responses concise but natural, and avoid repetitive phrases. \
             Never write asterisk actions, never narrate, never use parentheses. \
             Just say the words you would actually speak.
-            """
+            """ + toolInstruction
         default:
-            return CharacterPersona.emotionInstructions + "Reply in one short spoken sentence. Be natural and conversational."
+            return CharacterPersona.emotionInstructions
+                + "Reply in one short spoken sentence. Be natural and conversational."
+                + toolInstruction
         }
     }
 
@@ -123,6 +136,16 @@ final class LocalLLMPromptStore {
         タグは文頭や文の合間に自然に配置してください。返答には必ず1つ以上のタグを含めること。
         ルール：感情名を声に出して言わないこと。アバターが自動的に表情を表示します。
         """
+        let toolInstruction = """
+
+        iOSのツール（リマインダー、メモ、アプリを開く等）が必要な場合は、次の形式のツール呼び出しだけを出力してください：
+        <tool name="TOOL_NAME">{ "arg": "value" }</tool>
+        使用可能なツール名：\(AppFunctionTool.getWeather), \(AppFunctionTool.searchWeb), \
+        \(AppFunctionTool.playMusic), \(AppFunctionTool.createReminder), \(AppFunctionTool.createNote), \
+        \(AppFunctionTool.openApp), \(AppFunctionTool.analyzeCamera), \
+        \(AppFunctionTool.rememberFact), \(AppFunctionTool.poseForPhoto)
+        ツール呼び出し以外の文章は出力しないでください。
+        """
         switch characterName.lowercased() {
         case "ekaterina":
             return emotionBlock + """
@@ -134,7 +157,7 @@ final class LocalLLMPromptStore {
             繰り返しのフレーズは避け、簡潔かつ自然に話してください。
             行動描写や説明文、括弧書きは使わないでください。
             実際に声に出して言う言葉だけを話してください。
-            """
+            """ + toolInstruction
         case "sonya":
             return emotionBlock + """
 
@@ -146,9 +169,9 @@ final class LocalLLMPromptStore {
             繰り返しのフレーズは避け、簡潔かつ自然に話してください。
             行動描写や説明文、括弧書きは使わないでください。
             実際に声に出して言う言葉だけを話してください。
-            """
+            """ + toolInstruction
         default:
-            return emotionBlock + "一文で自然に会話するように答えてください。"
+            return emotionBlock + "一文で自然に会話するように答えてください。" + toolInstruction
         }
     }
 }

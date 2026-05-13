@@ -83,6 +83,11 @@ extension LocalLLMManager {
         var clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         clean = clean.replacingOccurrences(of: #"\*[^*\n]+\*"#, with: "", options: .regularExpression)
         clean = clean.replacingOccurrences(of: #"\[[^\]\n]+\]"#, with: "", options: .regularExpression)
+        clean = clean.replacingOccurrences(
+            of: #"<tool[^>]*>[\s\S]*?<\/tool>"#,
+            with: "",
+            options: .regularExpression
+        )
         clean = clean.replacingOccurrences(of: #" {2,}"#, with: " ", options: .regularExpression)
         clean = clean.trimmingCharacters(in: .whitespacesAndNewlines)
 

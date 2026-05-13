@@ -29,8 +29,10 @@ extension OpenAIRealtimeManager {
                 if let transcript = json["transcript"] as? String {
                     print("[User Transcript]: \(transcript)")
                     state.userTranscript = transcript
+                    ProactiveVisionManager.shared.notifyUserSpoke()
                     // RAG: Store user input in long-term memory
-                    RAGManager.shared.store(text: transcript)
+                    RAGManager.shared.store(text: transcript, source: "user")
+                    ChatTimelineStore.logUserMessage(transcript)
                 }
 
             case "response.output_item.added":
@@ -95,7 +97,8 @@ extension OpenAIRealtimeManager {
                 state.status = .ready
                 
                 // RAG: Store AI response in long-term memory
-                RAGManager.shared.store(text: state.aiTranscript)
+                RAGManager.shared.store(text: state.aiTranscript, source: "ai")
+                ChatTimelineStore.logAIMessage(state.aiTranscript)
 
                 if let deferred = deferredFunctionCall {
                     // Execute the function immediately — for UI-opening functions
@@ -109,6 +112,7 @@ extension OpenAIRealtimeManager {
                     let result = await AppFunctionExecutor.shared.execute(
                         name: deferred.name, arguments: args)
                     print("[AI Tools]: result → \(result)")
+                    ChatTimelineStore.logToolCall(name: deferred.name, result: result)
                     sendFunctionResult(callId: deferred.id, result: result)
                 } else if AppFunctionExecutor.shared.pendingUIAction != nil {
                     // The AI just finished speaking the result of a previous function call.
@@ -331,7 +335,8 @@ extension OpenAIRealtimeManager: RTCDataChannelDelegate {
             let userContext = UserSettings.shared.systemPromptContext
             let memoryContext = await RAGManager.shared.fetchContext(for: persona.instructions, limit: 5)
             let kgFacts = KnowledgeGraphManager.shared.getFormattedFacts()
-            let finalInstructions = userContext + persona.instructions + "\n" + memoryContext + kgFacts
+            let companion = CompanionStateManager.shared.promptContext(characterName: state.selectedCharacterName)
+            let finalInstructions = userContext + persona.instructions + "\n" + memoryContext + kgFacts + companion
             
             let update: [String: Any] = [
                 "type": "session.update",

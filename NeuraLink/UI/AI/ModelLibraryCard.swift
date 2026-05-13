@@ -17,6 +17,8 @@ struct ModelLibraryCard: View {
     let diskUsage: Int64
 
     var onSelect: () -> Void
+    var onPause: () -> Void
+    var onResume: () -> Void
     var onDelete: () -> Void
 
     var body: some View {
@@ -83,6 +85,50 @@ struct ModelLibraryCard: View {
                         .foregroundColor(.cyan)
                 }
                 .transition(.opacity.combined(with: .scale))
+                
+                if isSelected {
+                    HStack {
+                        Button(action: onPause) {
+                            Label("Pause", systemImage: "pause.fill")
+                                .font(.system(size: 12, weight: .semibold))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(Color.white.opacity(0.08))
+                                .cornerRadius(8)
+                        }
+                        Spacer()
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                            .font(.system(size: 20))
+                    }
+                }
+            } else if case .paused(let progress) = status {
+                VStack(spacing: 6) {
+                    ProgressView(value: progress)
+                        .progressViewStyle(LinearProgressViewStyle(tint: .cyan))
+                        .scaleEffect(x: 1, y: 1.5, anchor: .center)
+
+                    Text("Paused")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundColor(.white.opacity(0.6))
+                }
+
+                if isSelected {
+                    HStack {
+                        Button(action: onResume) {
+                            Label("Resume", systemImage: "play.fill")
+                                .font(.system(size: 12, weight: .semibold))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(Color.white.opacity(0.08))
+                                .cornerRadius(8)
+                        }
+                        Spacer()
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                            .font(.system(size: 20))
+                    }
+                }
             } else if isSelected {
                 HStack {
                     if status == .ready {
@@ -160,6 +206,9 @@ struct ModelLibraryCard: View {
                 .frame(width: 18, height: 18)
                 .rotationEffect(.degrees(360))
                 .animation(.linear(duration: 1).repeatForever(autoreverses: false), value: true)
+        case .paused:
+            Image(systemName: "pause.circle")
+                .foregroundColor(.white.opacity(0.6))
         case .notDownloaded:
             Image(systemName: "arrow.down.circle")
                 .foregroundColor(.white.opacity(0.3))

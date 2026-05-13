@@ -19,6 +19,12 @@ final class OpenAISettings {
     private let localLLMEnabledKey = "com.neuralink.localllm.enabled"
     private let vadEnabledKey = "com.neuralink.openai.vadEnabled"
     private let proactiveVisionEnabledKey = "com.neuralink.openai.proactiveVisionEnabled"
+    private let proactiveVisionIntervalKey = "com.neuralink.openai.proactiveVisionIntervalSec"
+    private let proactiveVisionCooldownKey = "com.neuralink.openai.proactiveVisionCooldownSec"
+    private let proactiveVisionOnlyUnlockedKey = "com.neuralink.openai.proactiveVisionOnlyUnlocked"
+    private let proactiveVisionOnlyForegroundKey = "com.neuralink.openai.proactiveVisionOnlyForeground"
+    private let proactiveVisionPrivateModeKey = "com.neuralink.openai.proactiveVisionPrivateMode"
+    private let proactiveVisionAllowPiPKey = "com.neuralink.openai.proactiveVisionAllowPiP"
     private static let migrationV2Key = "com.neuralink.migration.onDemandLLM.v1"
 
     init() {
@@ -35,6 +41,12 @@ final class OpenAISettings {
         self.isLocalLLMEnabled = UserDefaults.standard.object(forKey: "com.neuralink.localllm.enabled") as? Bool ?? false
         self.isVADEnabled = UserDefaults.standard.bool(forKey: "com.neuralink.openai.vadEnabled")
         self.isProactiveVisionEnabled = UserDefaults.standard.bool(forKey: "com.neuralink.openai.proactiveVisionEnabled")
+        self.proactiveVisionIntervalSec = UserDefaults.standard.object(forKey: proactiveVisionIntervalKey) as? Double ?? 20
+        self.proactiveVisionCooldownAfterSpeechSec = UserDefaults.standard.object(forKey: proactiveVisionCooldownKey) as? Double ?? 12
+        self.proactiveVisionOnlyWhenUnlocked = UserDefaults.standard.object(forKey: proactiveVisionOnlyUnlockedKey) as? Bool ?? true
+        self.proactiveVisionOnlyInForeground = UserDefaults.standard.object(forKey: proactiveVisionOnlyForegroundKey) as? Bool ?? true
+        self.isProactiveVisionPrivateModeEnabled = UserDefaults.standard.object(forKey: proactiveVisionPrivateModeKey) as? Bool ?? false
+        self.proactiveVisionAllowInPiP = UserDefaults.standard.object(forKey: proactiveVisionAllowPiPKey) as? Bool ?? false
     }
 
     var apiKey: String {
@@ -80,6 +92,32 @@ final class OpenAISettings {
                 ProactiveVisionManager.shared.stop()
             }
         }
+    }
+
+    var proactiveVisionIntervalSec: Double {
+        didSet { UserDefaults.standard.set(proactiveVisionIntervalSec, forKey: proactiveVisionIntervalKey) }
+    }
+
+    var proactiveVisionCooldownAfterSpeechSec: Double {
+        didSet { UserDefaults.standard.set(proactiveVisionCooldownAfterSpeechSec, forKey: proactiveVisionCooldownKey) }
+    }
+
+    var proactiveVisionOnlyWhenUnlocked: Bool {
+        didSet { UserDefaults.standard.set(proactiveVisionOnlyWhenUnlocked, forKey: proactiveVisionOnlyUnlockedKey) }
+    }
+
+    var proactiveVisionOnlyInForeground: Bool {
+        didSet { UserDefaults.standard.set(proactiveVisionOnlyInForeground, forKey: proactiveVisionOnlyForegroundKey) }
+    }
+
+    /// Disables proactive vision regardless of other toggles (privacy quick-kill).
+    var isProactiveVisionPrivateModeEnabled: Bool {
+        didSet { UserDefaults.standard.set(isProactiveVisionPrivateModeEnabled, forKey: proactiveVisionPrivateModeKey) }
+    }
+
+    /// Allows proactive vision loop while PiP is active (camera frames only).
+    var proactiveVisionAllowInPiP: Bool {
+        didSet { UserDefaults.standard.set(proactiveVisionAllowInPiP, forKey: proactiveVisionAllowPiPKey) }
     }
     
     var hasValidKey: Bool {

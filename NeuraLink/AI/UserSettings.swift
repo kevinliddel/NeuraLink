@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  Manages persistent user profile information (name, gender, birthday).
-//  This data is injected into the AI's system prompt to provide personal context.
+//  Injects profile + live date/time into the AI system prompt for personalized greetings.
 //
 //  Created by Antigravity on 09/05/2026.
 //
@@ -57,26 +57,37 @@ final class UserSettings {
     
     /// Returns a formatted string to be injected into the AI's system prompt.
     var systemPromptContext: String {
-        var context = "\n[User Information]\n"
-        
+        var context = "\n[Current Context]\n"
+
+        let now = Date()
+        let dayDateFmt = DateFormatter()
+        dayDateFmt.dateFormat = "EEEE, MMMM d, yyyy"
+        context += "- Current Day & Date: \(dayDateFmt.string(from: now))\n"
+
+        let timeFmt = DateFormatter()
+        timeFmt.dateFormat = "h:mm a"
+        context += "- Current Time: \(timeFmt.string(from: now))\n"
+
+        context += "[End of Current Context]\n"
+        context += "\n[User Information]\n"
+
         if !name.isEmpty {
             context += "- User Name: \(name)\n"
         }
-        
+
         if gender != "Prefer not to say" {
             context += "- User Gender: \(gender)\n"
         }
-        
-        // Calculate age or just provide birthday
-        let formatter = DateFormatter()
-        formatter.dateStyle = .long
-        context += "- User Birthday: \(formatter.string(from: birthday))\n"
-        
-        let ageComponents = Calendar.current.dateComponents([.year], from: birthday, to: Date())
+
+        let birthdayFmt = DateFormatter()
+        birthdayFmt.dateStyle = .long
+        context += "- User Birthday: \(birthdayFmt.string(from: birthday))\n"
+
+        let ageComponents = Calendar.current.dateComponents([.year], from: birthday, to: now)
         if let age = ageComponents.year, age > 0 {
             context += "- User Age: \(age)\n"
         }
-        
+
         context += "[End of User Information]\n"
         return context
     }

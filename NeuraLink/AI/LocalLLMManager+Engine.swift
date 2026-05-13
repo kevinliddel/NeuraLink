@@ -51,10 +51,28 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
             print("[LocalLLM] Turn total latency: \(String(format: "%.1f", elapsedMs)) ms")
         }
 
+        // Local tool-calling: if a <tool name="...">{json}</tool> block is present,
+        // execute it via the same Skill system used by OpenAI realtime.
+        if let tool = LocalToolCallParser.firstToolCall(in: fullText) {
+            Task { @MainActor in
+                let result = await AppFunctionExecutor.shared.execute(name: tool.name, arguments: tool.arguments)
+                ChatTimelineStore.logToolCall(name: tool.name, result: result)
+                self.state.aiTranscript = result
+                self.speakChunk(result)
+                if AppFunctionExecutor.shared.pendingUIAction != nil {
+                    self.schedulePendingUIActionAfterSpeech()
+                }
+            }
+        }
+
         // RAG: Store the user's input and the AI's response in long-term memory
         let userText = state.userTranscript
-        RAGManager.shared.store(text: userText)
-        RAGManager.shared.store(text: fullText)
+        RAGManager.shared.store(text: userText, source: "user")
+        let stripped = LocalToolCallParser.strippedText(fullText)
+        if !stripped.isEmpty {
+            RAGManager.shared.store(text: stripped, source: "ai")
+            ChatTimelineStore.logAIMessage(stripped)
+        }
 
         if !ttsBuffer.trimmingCharacters(in: .whitespaces).isEmpty {
             speakChunk(ttsBuffer)

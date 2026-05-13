@@ -11,6 +11,7 @@
 
 import Foundation
 import Hub
+import UIKit
 
 @Observable
 final class LocalModelDownloadManager: @unchecked Sendable {
@@ -22,6 +23,7 @@ final class LocalModelDownloadManager: @unchecked Sendable {
         case bundled
         case notDownloaded
         case downloading(progress: Double)
+        case paused(progress: Double)
         case ready
         case failed(String)
 
@@ -35,6 +37,8 @@ final class LocalModelDownloadManager: @unchecked Sendable {
             case (.bundled, .bundled), (.notDownloaded, .notDownloaded), (.ready, .ready):
                 return true
             case (.downloading(let a), .downloading(let b)):
+                return abs(a - b) < 0.001
+            case (.paused(let a), .paused(let b)):
                 return abs(a - b) < 0.001
             case (.failed(let a), .failed(let b)):
                 return a == b
@@ -98,6 +102,7 @@ final class LocalModelDownloadManager: @unchecked Sendable {
     }()
 
     private var activeTask: Task<Void, Never>?
+    private var backgroundTaskId: UIBackgroundTaskIdentifier = .invalid
 
     var isAvailable: Bool {
         switch state {
@@ -149,6 +154,21 @@ final class LocalModelDownloadManager: @unchecked Sendable {
         activeTask?.cancel()
         activeTask = nil
         state = .notDownloaded
+        endBackgroundTask()
+    }
+
+    func pauseDownload() {
+        guard case .downloading(let progress) = state else { return }
+        activeTask?.cancel()
+        activeTask = nil
+        state = .paused(progress: progress)
+        endBackgroundTask()
+    }
+
+    func resumeDownload() {
+        guard case .paused = state else { return }
+        state = .notDownloaded
+        startDownload()
     }
 
     func deleteDownloadedModel() {
@@ -160,6 +180,7 @@ final class LocalModelDownloadManager: @unchecked Sendable {
         case .japaneseLlama1b: GGUFJapaneseLlamaModelAccess.clearCache()
         }
         state = .notDownloaded
+        endBackgroundTask()
     }
 
     func diskUsageBytes(for config: ModelConfiguration) -> Int64 {
@@ -177,13 +198,27 @@ final class LocalModelDownloadManager: @unchecked Sendable {
 
     // MARK: - Private helpers
 
+    func downloadState(for config: ModelConfiguration) -> DownloadState {
+        if config == selectedConfig {
+            return state
+        }
+        if isBundled() {
+            return .bundled
+        }
+        return isDownloaded(config) ? .ready : .notDownloaded
+    }
+
     private func isBundled() -> Bool {
         Bundle.main.url(forResource: "chunk_0", withExtension: "mlpackage") != nil
             || Bundle.main.url(forResource: "chunk_0", withExtension: "mlmodelc") != nil
     }
 
     private func isDownloaded() -> Bool {
-        switch selectedConfig {
+        isDownloaded(selectedConfig)
+    }
+
+    private func isDownloaded(_ config: ModelConfiguration) -> Bool {
+        switch config {
         case .qwen2b: return GGUFQwenModelAccess.isDownloaded
         case .llama1b: return GGUFModelAccess.isDownloaded
         case .japaneseLlama1b: return GGUFJapaneseLlamaModelAccess.isDownloaded
@@ -193,6 +228,7 @@ final class LocalModelDownloadManager: @unchecked Sendable {
     // MARK: - Download
 
     private func performDownload() async {
+        await beginBackgroundTask()
         let appSupport = FileManager.default.urls(
             for: .applicationSupportDirectory, in: .userDomainMask)[0]
         let api = HubApi(downloadBase: appSupport)
@@ -230,14 +266,36 @@ final class LocalModelDownloadManager: @unchecked Sendable {
             try? await Task.sleep(nanoseconds: 500_000_000)
             await MainActor.run { state = .ready }
             print("[ModelDownload] Ready: \(config.rawValue)")
+            endBackgroundTask()
 
         } catch {
             guard !Task.isCancelled else {
                 await MainActor.run { state = .notDownloaded }
+                endBackgroundTask()
                 return
             }
             print("[ModelDownload] Failed: \(error)")
             await MainActor.run { state = .failed(error.localizedDescription) }
+            endBackgroundTask()
+        }
+    }
+
+    @MainActor
+    private func beginBackgroundTask() {
+        guard backgroundTaskId == .invalid else { return }
+        backgroundTaskId = UIApplication.shared.beginBackgroundTask(withName: "LocalModelDownload") {
+            Task { @MainActor [weak self] in
+                self?.backgroundTaskId = .invalid
+            }
+        }
+    }
+
+    private func endBackgroundTask() {
+        let id = backgroundTaskId
+        guard id != .invalid else { return }
+        backgroundTaskId = .invalid
+        Task { @MainActor in
+            UIApplication.shared.endBackgroundTask(id)
         }
     }
 }

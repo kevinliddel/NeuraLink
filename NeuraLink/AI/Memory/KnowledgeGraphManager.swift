@@ -17,6 +17,7 @@ final class KnowledgeGraphManager {
     /// Stores a new fact in the structured memory.
     func remember(subject: String, predicate: String, object: String) {
         store.insertFact(subject: subject, predicate: predicate, object: object)
+        CompanionStateStore.shared.refresh()
         print("[KnowledgeGraph] Remembered: \(subject) \(predicate) \(object)")
     }
     
@@ -26,8 +27,8 @@ final class KnowledgeGraphManager {
         if facts.isEmpty { return "" }
         
         var summary = "\n[Long-term Personal Facts]:\n"
-        for (s, p, o) in facts {
-            summary += "- \(s) \(p) \(o)\n"
+        for f in facts {
+            summary += "- \(f.subject) \(f.predicate) \(f.object)\n"
         }
         return summary
     }
