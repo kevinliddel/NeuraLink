@@ -233,12 +233,13 @@ extension VRMModel {
         guard nodeIndex < nodes.count else { return simd_quatf(ix: 0, iy: 0, iz: 0, r: 1) }
         let node = nodes[nodeIndex]
         
-        var worldRot = node.initialRotation
-        var current = node.parent
-        while let p = current {
-            worldRot = p.initialRotation * worldRot
-            current = p.parent
+        // World = ParentWorld * Local
+        if let parent = node.parent {
+            // Find parent index
+            if let parentIndex = nodes.firstIndex(where: { $0 === parent }) {
+                return getInitialWorldRotation(for: parentIndex) * node.initialRotation
+            }
         }
-        return worldRot
+        return node.initialRotation
     }
 }

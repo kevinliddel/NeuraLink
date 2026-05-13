@@ -84,10 +84,12 @@ int MotionMatchingEngine::findBestMatch(const MotionFeature& currentQuery) {
             matchingScore += diff * diff;
         }
         
-        // Continuity Cost: Penalize frames that are not the next frame in the sequence
+        // Continuity Cost: Prefer frames that naturally follow the previous frame
         float continuityScore = 0;
         int dist = std::abs(static_cast<int>(i) - (lastBestIdx + 1));
-        if (dist > 1) {
+        if (dist == 0) {
+            continuityScore = -0.1f; // Bonus for sequential frames to advance time
+        } else if (dist > 1) {
             continuityScore = 0.5f; // Penalty for jumping
         }
         

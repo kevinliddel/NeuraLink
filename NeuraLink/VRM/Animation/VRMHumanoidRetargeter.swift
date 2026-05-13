@@ -61,7 +61,11 @@ public final class VRMHumanoidRetargeter {
         model.withLock {
             // 1. Apply root translation to Hips
             if let hipsIndex = model.humanoid?.getBoneNode(.hips) {
-                model.nodes[hipsIndex].translation = pose.rootTranslation
+                var translation = pose.rootTranslation
+                if model.isVRM0 {
+                    translation = SIMD3<Float>(-translation.x, translation.y, -translation.z)
+                }
+                model.nodes[hipsIndex].translation = translation
                 model.nodes[hipsIndex].updateLocalMatrix()
             }
             
@@ -85,27 +89,24 @@ public final class VRMHumanoidRetargeter {
                 
                 let node = model.nodes[nodeIndex]
                 
+                // 1. Convert normalized animation rotation to model space
+                let nRotation = rotation
+                
+                // 2. Apply the Rest Rotation Transformation Formula
+                // Formula: B.LocalRotation = L_rest * (W_rest.inverse * N * W_rest)
+                // This ensures the animation is applied relative to the bone's actual orientation in T-Pose/A-Pose.
+                let L_rest = node.initialRotation
+                var W_rest = model.getInitialWorldRotation(for: nodeIndex)
+                
                 if model.isVRM0 {
-                    // VRM 0.0 Left-Handed conversion
-                    // glTF (Right-handed) to Unity (Left-handed) conversion for rotations:
-                    // Flip Y and Z components or X and W depending on coordinate system conventions.
-                    // For VRM 0.0, we typically flip X and W or use a specific mapping.
-                    // The user mentioned "reversed" bones, so let's ensure the handedness is corrected.
-                    let corrected = simd_quatf(ix: -rotation.vector.x, iy: rotation.vector.y, iz: rotation.vector.z, r: -rotation.vector.w)
-                    node.rotation = corrected
-                } else {
-                    // VRM 1.0 Rest Rotation Conversion
-                    // Formula from spec: B.LocalRotation = L_rest * W_rest^-1 * NormalizedLocalRotation * W_rest
-                    let L_rest = node.initialRotation
-                    let W_rest = model.getInitialWorldRotation(for: nodeIndex)
-                    
-                    let invW_rest = W_rest.inverse
-                    let normalizedRotation = rotation
-                    
-                    // B.LocalRotation = L_rest * (invW_rest * normalizedRotation * W_rest)
-                    let targetRotation = L_rest * (invW_rest * normalizedRotation * W_rest)
-                    node.rotation = targetRotation
+                    // VRM 0.0 faces -Z, but VRMA (nRotation) assumes +Z.
+                    // We rotate W_rest by 180 degrees around Y to map the spaces.
+                    let y180 = simd_quatf(angle: .pi, axis: [0, 1, 0])
+                    W_rest = y180 * W_rest
                 }
+                
+                let targetRotation = L_rest * (W_rest.inverse * nRotation * W_rest)
+                node.rotation = targetRotation
                 node.updateLocalMatrix()
             }
             
