@@ -39,7 +39,7 @@ struct MemoryTests {
         let text = "Test memory"
         let vector = [0.1, 0.2, 0.3]
         
-        store.insert(text: text, vector: vector)
+        store.insert(text: text, vector: vector, source: "test")
         let memories = store.fetchAll()
         
         #expect(memories.count == 1)
