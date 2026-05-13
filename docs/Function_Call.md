@@ -164,7 +164,7 @@ Directs the character to strike a specific pose for a screenshot. The AI will cr
 - *"Give me a peace sign"*
 - *"Wave for the camera"*
 
-**Available poses:** `peace`, `cool`, `wave`, `smile`, `point`, `cute`.
+**Available poses:** `peace_sign`, `cool`, `relax`, `stretch`.
 
 ---
 

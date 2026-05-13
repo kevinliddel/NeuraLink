@@ -142,7 +142,7 @@ struct MemoryTimelineView: View {
                     }
                 }
                 .tabViewStyle(.page(indexDisplayMode: timelineTotalPages > 1 ? .automatic : .never))
-                .frame(height: timelineRowHeight * CGFloat(itemCount) + 28)
+                .frame(height: timelineRowHeight * CGFloat(itemCount) + (timelineTotalPages > 1 ? 50 : 0))
             }
         }
     }
@@ -173,7 +173,7 @@ struct MemoryTimelineView: View {
                     }
                 }
                 .tabViewStyle(.page(indexDisplayMode: factsTotalPages > 1 ? .automatic : .never))
-                .frame(height: factsRowHeight * CGFloat(itemCount) + 28)
+                .frame(height: factsRowHeight * CGFloat(itemCount) + (factsTotalPages > 1 ? 50 : 0))
             }
         }
     }

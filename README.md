@@ -24,21 +24,36 @@ A high-performance, native iOS VRM character viewer and AI companion built from 
 
 ## ✨ Features
 
-- **Native Metal Engine**: Custom MToon shaders and GPU-accelerated rendering.
-- **Spring-Bone Physics**: Real-time GPU compute for hair and clothing movement.
-- **Procedural Rain System**: Fully shader-driven 3D rain streaks with synchronized 2D lens splashing and realistic weather cycles.
-- **Proactive Vision**: Periodically captures frames to "see" the user's world and comment on it autonomously.
-- **Interactive Photoshoot**: The AI can strike poses, look at the camera, and hide the UI for clean screenshots.
-- **Semantic Memory (Knowledge Graph)**: Remembers structured facts about the user (likes, names, job) to maintain long-term relationships.
-- **Physical Interaction**: Direct 3D raycasting allows the user to "touch" or "pat" the character with haptic feedback.
-- **Neural Lip-Sync**: Real-time audio amplitude analysis mapped to VRM blend shapes.
-- **Advanced Camera**: Orbit controls with look-at behavior following the viewing angle.
-- **Universal Support**: Handles both VRM 0.x and 1.0 specifications.
-- **Realtime sky system**: Real-time sky with realistic lighting with dynamic sun and moon positioning.
-- **"Eyes on You" System**: Features an Arknights: Endfield-inspired camera system, where characters will maintain eye contact by turning their heads toward the camera if it remains behind them for more than 5 seconds.
-- **Dual-Layer VAD**: Client-side Silero VAD (v5 model) runs alongside OpenAI's server VAD for instant local voice detection and immediate UI feedback.
-- **Per-Character Personas**: Each character carries her own system prompt and voice model, hot-swapped on model selection.
-- **Offline AI & NPU**: Fully local AI pipeline featuring Whisper (Speech-to-Text) and Llama/Qwen (Language Models) accelerated by the Apple Neural Engine. See [NPU Documentation](./docs/npu.md).
+<table>
+  <tr>
+    <td><strong>Native Metal Engine</strong><br/>Custom MToon shaders and GPU-accelerated rendering.</td>
+    <td><strong>Spring-Bone Physics</strong><br/>Real-time GPU compute for hair and clothing movement.</td>
+  </tr>
+  <tr>
+    <td><strong>Procedural Rain System</strong><br/>Fully shader-driven 3D rain streaks with synchronized 2D lens splashing and realistic weather cycles.</td>
+    <td><strong>Realtime Sky System</strong><br/>Real-time sky with realistic lighting and dynamic sun and moon positioning. See <a href="./docs/Sky_System.md">Sky System Documentation</a></td>
+  </tr>
+  <tr>
+    <td><strong>Proactive Vision</strong><br/>Periodically captures frames to "see" the user's world and comment on it autonomously.</td>
+    <td><strong>Interactive Photoshoot</strong><br/>The AI can strike poses, look at the camera, and hide the UI for clean screenshots.</td>
+  </tr>
+  <tr>
+    <td><strong>Semantic Memory</strong><br/>Knowledge Graph remembers structured facts about the user (likes, names, job) to maintain long-term relationships. See <a href="./docs/RAG.md">RAG Documentation</a></td>
+    <td><strong>Neural Lip-Sync</strong><br/>Real-time audio amplitude analysis mapped to VRM blend shapes. See <a href="./docs/LipSync.md">Lip-Sync Documentation</a></td>
+  </tr>
+  <tr>
+    <td><strong>"Eyes on You" System</strong><br/>Arknights: Endfield-inspired camera tracking — characters maintain eye contact by turning their heads toward the camera after 5 seconds.</td>
+    <td><strong>Physical Interaction</strong><br/>Direct 3D raycasting lets the user "touch" or "pat" the character with haptic feedback.</td>
+  </tr>
+  <tr>
+    <td><strong>Advanced Camera</strong><br/>Orbit controls with look-at behavior following the viewing angle.</td>
+    <td><strong>Dual-Layer VAD</strong><br/>Client-side Silero VAD (v5) alongside OpenAI's server VAD for instant local voice detection and immediate UI feedback.</td>
+  </tr>
+  <tr>
+    <td><strong>Per-Character Personas</strong><br/>Each character carries her own system prompt and voice model, hot-swapped on model selection.</td>
+    <td><strong>Offline AI &amp; NPU</strong><br/>Fully local pipeline with Whisper (STT) and Llama/Qwen (LLM) accelerated by the Apple Neural Engine. See <a href="./docs/npu.md">NPU Documentation</a></td>
+  </tr>
+</table>
 
 
 ---
@@ -280,7 +295,7 @@ By default, iOS uses compact voices (`q=1`) which can sound robotic. To achieve 
 
 ### 🛠️ Implementation Details
 The orchestration of offline synthesis, including voice selection patterns and pitch modulation for local characters, is managed in:
-- [`LocalLLMManager+TTS.swift`](./NeuraLink/AI/LocalLLMManager+TTS.swift)
+- [LocalLLMManager+TTS.swift](./NeuraLink/AI/LocalLLMManager+TTS.swift)
 
 ---
 

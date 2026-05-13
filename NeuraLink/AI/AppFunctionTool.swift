@@ -39,16 +39,16 @@ enum AppFunctionTool {
         [
             "type": "function",
             "name": poseForPhoto,
-            "description": "Strike a cool pose for a photo! Use this when the user wants to take a screenshot or see you posing. "
-                + "You can choose a pose name like 'peace', 'cool', 'wave', 'smile', or 'point'. "
+            "description": "Strike a pose for a photo! Use this when the user wants to take a screenshot or see you posing. "
+                + "Pick whichever pose fits the mood: cool, peace_sign, relax, or stretch. "
                 + "This will hide the UI and play the animation.",
             "parameters": [
                 "type": "object",
                 "properties": [
                     "pose": [
                         "type": "string",
-                        "enum": ["peace", "cool", "wave", "smile", "point", "cute"],
-                        "description": "The name of the pose to strike"
+                        "enum": ["cool", "peace_sign", "relax", "stretch"],
+                        "description": "The pose animation to play"
                     ]
                 ],
                 "required": ["pose"]
