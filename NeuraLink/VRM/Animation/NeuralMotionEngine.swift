@@ -12,7 +12,7 @@ public final class NeuralMotionEngine: VRMAnimationDriver {
     
     private let retargeter = VRMHumanoidRetargeter()
     private var handle: OpaquePointer?
-    private var baseHipsHeight: Float = 0
+    private var baseHipsHeight: Float?
     private var lastModelID: ObjectIdentifier?
     private var hasDatabase: Bool = false
     private var filteredRotations: [String: simd_quatf] = [:]
@@ -57,15 +57,17 @@ public final class NeuralMotionEngine: VRMAnimationDriver {
         let modelID = ObjectIdentifier(model)
         if lastModelID != modelID {
             lastModelID = modelID
-            baseHipsHeight = 0
+            baseHipsHeight = nil
             filteredRotations.removeAll()
             filteredRootTranslation = .zero
             hasFilterState = false
         }
         
-        // Capture base height from the T-pose/Model data if not yet set
-        if baseHipsHeight == 0, let hipsNodeIndex = model.humanoid?.getBoneNode(.hips) {
-            baseHipsHeight = model.nodes[hipsNodeIndex].translation.y
+        // Capture base height from the model's bind pose (NOT current runtime pose).
+        // Using the live hips translation here creates feedback/jitter when other systems
+        // (appear.vrma root motion, neutral crossfades, etc.) temporarily move the hips.
+        if baseHipsHeight == nil, let hipsNodeIndex = model.humanoid?.getBoneNode(.hips) {
+            baseHipsHeight = model.nodes[hipsNodeIndex].initialTranslation.y
         }
         
         // 1. Update C++ simulation
@@ -88,6 +90,7 @@ public final class NeuralMotionEngine: VRMAnimationDriver {
         var pose = VRMHumanoidRetargeter.HumanoidMotionPose()
         var targetRotations: [String: simd_quatf] = [:]
         var targetRootTranslation: SIMD3<Float> = .zero
+        let hipsBaseY = baseHipsHeight ?? 0
         for transform in buffer {
             let name = String(cString: transform.bone_name)
             let q = simd_quatf(vector: [transform.rot_x, transform.rot_y, transform.rot_z, transform.rot_w])
@@ -95,7 +98,7 @@ public final class NeuralMotionEngine: VRMAnimationDriver {
             
             // Root translation: Add base height to the generative offset
             if name == "hips" {
-                targetRootTranslation = [transform.pos_x, transform.pos_y + baseHipsHeight, transform.pos_z]
+                targetRootTranslation = [transform.pos_x, transform.pos_y + hipsBaseY, transform.pos_z]
             }
         }
 

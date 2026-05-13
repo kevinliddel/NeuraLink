@@ -106,6 +106,10 @@ final class VRMMetalState {
     // Grounding (keep feet on y=0)
     var isGroundingEnabled: Bool = true
     var groundingSpeed: Float = 14
+    /// Persistent grounding offset applied on top of whatever the current animation/generative
+    /// system writes into the hips each frame. This avoids a tug-of-war where grounding is
+    /// overwritten every tick (especially during generative motion).
+    var groundingOffsetY: Float = 0
 
     private static var isPreview: Bool {
         ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
@@ -185,24 +189,10 @@ final class VRMMetalState {
         let dt: Float = lastTickTimestamp == 0 ? 0 : Float(min(now - lastTickTimestamp, 1.0 / 30.0))
         lastTickTimestamp = now
         
-        // We call the same tick logic used by CADisplayLink
+        // Use the same tick logic as CADisplayLink.
+        // IMPORTANT: animationTickInternal already updates animation/generative motion AND sky/terrain.
+        // Duplicating those updates here causes 2x-speed motion in background/PiP mode.
         animationTickInternal(dt: dt)
-        
-        // Base animation runs uninterrupted
-        if let model = currentModel {
-            if useGenerativeMotion {
-                neuralMotionEngine.currentEmotion = aiState.currentEmotion
-                neuralMotionEngine.update(deltaTime: dt, model: model)
-            } else {
-                animationPlayer.update(deltaTime: dt, model: model)
-            }
-        }
-        
-        // Also tick sky/environment
-        renderer?.updateSky(deltaTime: dt)
-        renderer?.updateRain(deltaTime: dt)
-        renderer?.applySkyLighting()
-        renderer?.updateTerrain(deltaTime: dt)
     }
 
     func clear() {
@@ -230,11 +220,13 @@ final class VRMMetalState {
         currentExpressionWeights = [:]
         targetExpressionWeights = [:]
         lastAppliedEmotion = ""
+        groundingOffsetY = 0
     }
 
     func display(_ model: VRMModel) {
         currentModel = model
         renderer?.loadModel(model)
+        groundingOffsetY = 0
 
         // Enable spring bone physics (hair only — chest/breast filtered in writeBonesToNodes)
         renderer?.enableSpringBone = model.springBone != nil

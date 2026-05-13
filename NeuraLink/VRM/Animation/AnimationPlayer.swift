@@ -134,8 +134,20 @@ public final class AnimationPlayer: @unchecked Sendable {
                 if let rotation = rotation {
                     node.rotation = rotation
                 }
-                if let translation = translation, applyRootMotion || track.bone != .hips {
-                    node.translation = translation
+                if let translation = translation {
+                    if track.bone == .hips {
+                        if applyRootMotion {
+                            // Full root motion (X/Y/Z) when enabled (e.g. appear.vrma).
+                            node.translation = translation
+                        } else {
+                            // Even when root motion is disabled, keep vertical hips motion.
+                            // This prevents the hips from being left at an out-of-date value
+                            // from a previous clip (common cause of “sink then recover”).
+                            node.translation.y = translation.y
+                        }
+                    } else {
+                        node.translation = translation
+                    }
                 }
                 if let scale = scale {
                     node.scale = scale

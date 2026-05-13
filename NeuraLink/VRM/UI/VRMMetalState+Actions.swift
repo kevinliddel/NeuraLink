@@ -24,6 +24,42 @@ extension VRMMetalState {
         }
     }
 
+    /// When we disable root motion (hips translation) we must ensure the hips are not left at an
+    /// out-of-band offset written by a previous system (appear.vrma root motion or generative motion).
+    ///
+    /// For VRM 0.x this is especially visible as a brief “sink below ground then recover” bump.
+    private func resetHipsTranslationToBindPoseIfNeeded(model: VRMModel) {
+        guard model.isVRM0,
+              let humanoid = model.humanoid,
+              let hipsIndex = humanoid.getBoneNode(.hips),
+              hipsIndex < model.nodes.count
+        else { return }
+
+        model.withLock {
+            let hips = model.nodes[hipsIndex]
+            hips.translation = hips.initialTranslation
+            hips.updateLocalMatrix()
+            model.updateNodeTransforms()
+        }
+        #if DEBUG
+        vrmLog("[VRMMetalState] VRM0 hips translation reset to bind pose (root-motion handoff)")
+        #endif
+    }
+
+    private func resetHipsTranslationYToBindPose(model: VRMModel) {
+        guard let humanoid = model.humanoid,
+              let hipsIndex = humanoid.getBoneNode(.hips),
+              hipsIndex < model.nodes.count
+        else { return }
+
+        model.withLock {
+            let hips = model.nodes[hipsIndex]
+            hips.translation.y = hips.initialTranslation.y
+            hips.updateLocalMatrix()
+            model.updateNodeTransforms()
+        }
+    }
+
     func loadAnimationSequence(for model: VRMModel) {
         let appearURL  = Self.findVRMA(named: "appear")
         let defaultURL = Self.findVRMA(named: "neutral")
@@ -166,6 +202,8 @@ extension VRMMetalState {
         if isPlayingAppear && animationPlayer.isFinished {
             isPlayingAppear = false
             animationPlayer.applyRootMotion = false
+            resetHipsTranslationToBindPoseIfNeeded(model: model)
+            resetHipsTranslationYToBindPose(model: model)
             if useGenerativeMotion {
                 // When generative motion is enabled, do NOT crossfade to a static clip
                 // (AnimationPlayer won't be ticking after appear finishes). Instead,
@@ -231,6 +269,8 @@ extension VRMMetalState {
                     scheduleNextGenerativeBurst()
                     // Return to neutral clip between bursts
                     if let clip = defaultClip {
+                        resetHipsTranslationToBindPoseIfNeeded(model: model)
+                        resetHipsTranslationYToBindPose(model: model)
                         animationPlayer.isLooping = true
                         animationPlayer.crossfade(to: clip, duration: 0.35, from: model)
                     }
@@ -310,6 +350,20 @@ extension VRMMetalState {
                     }
                     model.updateNodeTransforms()
                 }
+            }
+        }
+
+        // Grounding: keep feet on y=0 by adjusting hips translation smoothly.
+        // Apply after all animation sources (VRMA, generative, look-back overlay) have written bones.
+        if isGroundingEnabled {
+            let groundingDt: Float = dt > 0 ? dt : (1.0 / 60.0)
+            if let minY = model.minFootWorldY(), minY.isFinite {
+                let desiredOffset = -minY
+                let t = min(max(groundingSpeed * groundingDt, 0), 1)
+                groundingOffsetY = groundingOffsetY + (desiredOffset - groundingOffsetY) * t
+                // Re-apply the current offset every frame, since the animation/generative driver
+                // will typically overwrite hips translation on the next tick.
+                model.addHipsTranslationY(groundingOffsetY)
             }
         }
 
