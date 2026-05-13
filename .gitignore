@@ -36,3 +36,9 @@ DerivedData/
 # MD file
 rule.md
 
+
+# Dataset for Motion Training
+database_frames/
+
+# Generated motion datasets
+NeuraLink/VRM/Animation/Core/vrm_motion_dataset.generated.cpp

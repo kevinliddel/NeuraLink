@@ -56,22 +56,24 @@ public final class VRMHumanoidRetargeter {
     public init() {}
     
     /// Applies a standard pose to a VRM model.
-    /// This handles name mapping and ensures the rig is updated correctly.
+    /// IMPORTANT: The rotations in `pose` must already be in model-local bone space.
+    /// When poses come from AnimationClip.sample(), the VRMA sampler has already applied
+    /// convertRotationForVRM0 and the modelRest*delta retargeting — do NOT re-convert here.
     public func apply(pose: HumanoidMotionPose, to model: VRMModel) {
         model.withLock {
             // 1. Apply root translation to Hips
             if let hipsIndex = model.humanoid?.getBoneNode(.hips) {
-                var translation = pose.rootTranslation
-                if model.isVRM0 {
-                    translation = SIMD3<Float>(-translation.x, translation.y, -translation.z)
-                }
-                model.nodes[hipsIndex].translation = translation
+                // Root translation from clip.sample() is already in model space
+                // (convertTranslationForVRM0 is applied inside the VRMA sampler).
+                model.nodes[hipsIndex].translation = pose.rootTranslation
                 model.nodes[hipsIndex].updateLocalMatrix()
             }
-            
-            // 2. Apply bone rotations using the mapping
+
+            // 2. Apply bone rotations — NO coordinate conversion needed.
+            // Rotations sampled from AnimationClip are already fully retargeted
+            // for the specific model (VRM 0.x or 1.x) by the VRMA loader.
+            var appliedCount = 0
             for (name, rotation) in pose.boneRotations {
-                // Try direct enum match first, then mapping
                 let bone: VRMHumanoidBone?
                 if let b = VRMHumanoidBone(rawValue: name) {
                     bone = b
@@ -80,38 +82,25 @@ public final class VRMHumanoidRetargeter {
                 } else {
                     bone = nil
                 }
-                
+
                 guard let targetBone = bone,
                       let nodeIndex = model.humanoid?.getBoneNode(targetBone),
                       nodeIndex < model.nodes.count else {
                     continue
                 }
-                
-                let node = model.nodes[nodeIndex]
-                
-                // 1. Convert normalized animation rotation to model space
-                let nRotation = rotation
-                
-                // 2. Apply the Rest Rotation Transformation Formula
-                // Formula: B.LocalRotation = L_rest * (W_rest.inverse * N * W_rest)
-                // This ensures the animation is applied relative to the bone's actual orientation in T-Pose/A-Pose.
-                let L_rest = node.initialRotation
-                var W_rest = model.getInitialWorldRotation(for: nodeIndex)
-                
-                if model.isVRM0 {
-                    // VRM 0.0 faces -Z, but VRMA (nRotation) assumes +Z.
-                    // We rotate W_rest by 180 degrees around Y to map the spaces.
-                    let y180 = simd_quatf(angle: .pi, axis: [0, 1, 0])
-                    W_rest = y180 * W_rest
-                }
-                
-                let targetRotation = L_rest * (W_rest.inverse * nRotation * W_rest)
-                node.rotation = targetRotation
-                node.updateLocalMatrix()
+
+                model.nodes[nodeIndex].rotation = rotation
+                model.nodes[nodeIndex].updateLocalMatrix()
+                appliedCount += 1
             }
-            
+
             // 3. Propagate transforms
             model.updateNodeTransforms()
+
+            // Periodic log so we can confirm bones are being set and how many
+            if arc4random_uniform(120) == 0 {
+                vrmLog("[Retargeter] Applied \(appliedCount)/\(pose.boneRotations.count) bones. VRM0=\(model.isVRM0). HipsT=\(pose.rootTranslation)")
+            }
         }
     }
     

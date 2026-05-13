@@ -11,6 +11,8 @@
 #include <vector>
 #include <string>
 #include <map>
+#include <cstdint>
+#include <random>
 
 namespace NeuraLink {
 
@@ -68,10 +70,18 @@ public:
     /// Clears the motion database
     void clearDatabase();
 
+    /// Loads a compact binary motion database (see generator script).
+    bool loadDatabaseFromBinary(const uint8_t* data, size_t size);
+
 private:
     float m_time = 0.0f;
     float m_activity = 0.5f;
     std::string m_emotion = "neutral";
+    int m_lastBestIdx = -1; // -1 means "start of sequence"
+    int m_targetCategoryId = 0;
+    float m_frameAccumulator = 0.0f;
+    float m_databaseSampleRate = 30.0f;
+    std::mt19937 m_rng;
     
     HumanoidPose m_currentPose;
     MotionDatabase m_database;

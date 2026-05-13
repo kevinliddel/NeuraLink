@@ -45,6 +45,19 @@ final class VRMMetalState {
         set { OpenAISettings.shared.useGenerativeMotion = newValue }
     }
     let neuralMotionEngine = NeuralMotionEngine()
+    /// Tracks the state from the PREVIOUS tick so we can detect toggle transitions.
+    var wasUsingGenerativeMotion: Bool = false
+    /// Short handoff window where we keep playing a base VRMA clip before letting
+    /// generative motion take over, to avoid visible snaps/T-pose.
+    var generativeWarmupRemaining: Float = 0
+
+    // Generative burst controller (to mirror VRMA: action → neutral → wait → action)
+    var isPlayingGenerativeBurst: Bool = false
+    var generativeBurstTimer: Float = -1
+    var generativeBurstElapsed: Float = 0
+    var generativeBurstDuration: Float = 0
+    static let generativeBurstIntervalRange: ClosedRange<Float> = 6...16
+    static let generativeBurstDurationRange: ClosedRange<Float> = 2.5...6.0
     
     var isPlayingAppear = false
     var pendingDefaultClip: AnimationClip?
@@ -89,6 +102,10 @@ final class VRMMetalState {
     static let pitchMax: Float = 60 * .pi / 180
     static let rotateSensitivity: Float = 0.005
     static let zoomSensitivity: Float = 0.9
+
+    // Grounding (keep feet on y=0)
+    var isGroundingEnabled: Bool = true
+    var groundingSpeed: Float = 14
 
     private static var isPreview: Bool {
         ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"

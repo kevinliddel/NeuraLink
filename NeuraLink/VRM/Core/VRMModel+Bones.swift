@@ -228,6 +228,24 @@ extension VRMModel {
         springBoneGlobalParams?.numPlanes = 0
     }
 
+    /// Resets all humanoid bone rotations to their initial (rest/bind) pose.
+    /// Call this when switching away from generative motion so that bones
+    /// written by the retargeter are not left dirty for the AnimationPlayer.
+    public func resetToRestPose() {
+        withLock {
+            guard let humanoid = humanoid else { return }
+            for bone in VRMHumanoidBone.allCases {
+                guard let nodeIndex = humanoid.getBoneNode(bone),
+                      nodeIndex < nodes.count else { continue }
+                let node = nodes[nodeIndex]
+                // Reset full bind pose (T/R/S). Generative motion may have written hips translation.
+                node.resetToBindPose()
+            }
+            updateNodeTransforms()
+        }
+        vrmLog("[VRMModel] resetToRestPose — all humanoid bones restored to bind pose")
+    }
+
     /// Computes the initial world rotation of a node (rotation in bind pose).
     public func getInitialWorldRotation(for nodeIndex: Int) -> simd_quatf {
         guard nodeIndex < nodes.count else { return simd_quatf(ix: 0, iy: 0, iz: 0, r: 1) }

@@ -9,6 +9,7 @@
 #include "../VRM/Animation/Core/vrm_motion_core.hpp"
 #include <string>
 #include <vector>
+#include <cstdint>
 
 using namespace NeuraLink;
 
@@ -88,4 +89,9 @@ void vrm_motion_db_add_bone(VRMMotionEngineHandle* handle, const char* name, flo
 
 void vrm_motion_db_end_pose(VRMMotionEngineHandle* handle) {
     if (handle) handle->engine.addPoseToDatabase(handle->staging_pose);
+}
+
+bool vrm_motion_db_load_binary(VRMMotionEngineHandle* handle, const uint8_t* data, int32_t size) {
+    if (!handle || !data || size <= 0) return false;
+    return handle->engine.loadDatabaseFromBinary(data, static_cast<size_t>(size));
 }

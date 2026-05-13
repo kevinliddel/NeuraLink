@@ -70,6 +70,13 @@ extension VRMMetalState {
                         self.animationPlayer.isLooping = false
                         self.animationPlayer.applyRootMotion = true
                         self.animationPlayer.load(appearClip)
+
+                        // Digest clips for generative motion (even when appear.vrma exists).
+                        var clipsToDigest = [loadedDefault]
+                        clipsToDigest.append(contentsOf: loadedEntries.map { $0.clip })
+                        self.neuralMotionEngine.isCurrentModelVRM0 = model.isVRM0
+                        self.neuralMotionEngine.load(clips: clipsToDigest)
+
                         self.startAnimationTicker()
                     }
                 } else {
@@ -77,15 +84,16 @@ extension VRMMetalState {
                         self.randomAnimEntries = loadedEntries
                         self.defaultClip = loadedDefault
                         
+                        // Phase 2: Feed clips into C++ generative manifold unconditionally
+                        var clipsToDigest = [loadedDefault]
+                        clipsToDigest.append(contentsOf: loadedEntries.map { $0.clip })
+                        self.neuralMotionEngine.isCurrentModelVRM0 = model.isVRM0
+                        self.neuralMotionEngine.load(clips: clipsToDigest)
+                        
                         if !self.useGenerativeMotion {
                             self.animationPlayer.isLooping = true
                             self.animationPlayer.load(loadedDefault)
                             self.scheduleNextRandomAnim()
-                        } else {
-                            // Phase 2: Feed clips into C++ generative manifold
-                            var clipsToDigest = [loadedDefault]
-                            clipsToDigest.append(contentsOf: loadedEntries.map { $0.clip })
-                            self.neuralMotionEngine.load(clips: clipsToDigest)
                         }
                         self.startAnimationTicker()
                     }
@@ -101,22 +109,77 @@ extension VRMMetalState {
         randomAnimTimer = Float.random(in: Self.randomAnimIntervalRange)
     }
 
+    func scheduleNextGenerativeBurst() {
+        generativeBurstTimer = Float.random(in: Self.generativeBurstIntervalRange)
+    }
+
     // MARK: - Tick Internal Logic
 
     func animationTickInternal(dt: Float) {
         guard let model = currentModel else { return }
 
-        // Reveal model on first rendered frame — hides T-pose until animation is live
-        if !firstFrameApplied && dt > 0 {
-            firstFrameApplied = true
-            renderer?.isModelVisible = true
+        // Detect generative motion toggle transitions
+        let isGenerative = useGenerativeMotion
+        if wasUsingGenerativeMotion && !isGenerative {
+            // Just switched OFF — hand off cleanly to VRMA playback.
+            model.resetToRestPose()
+            generativeWarmupRemaining = 0
+
+            if let clip = defaultClip {
+                animationPlayer.isLooping = true
+                animationPlayer.applyRootMotion = false
+                animationPlayer.crossfade(to: clip, duration: 0.35, from: model)
+                scheduleNextRandomAnim()
+            } else {
+                pendingDefaultClip = nil
+            }
+
+            vrmLog("[VRMMetalState] Generative motion toggled OFF → resume VRMA idle")
+        } else if !wasUsingGenerativeMotion && isGenerative {
+            if isPlayingAppear {
+                // If we are currently playing the appear animation, do NOT interrupt it.
+                // We will hand off to generative motion once appear finishes.
+                generativeWarmupRemaining = 0
+            } else {
+                // Just switched ON — clear any lingering AnimationPlayer pose immediately.
+                model.resetToRestPose()
+                isPlayingRandomAnim = false
+                randomAnimElapsed = 0
+                randomAnimDuration = 0
+                // Briefly play the neutral clip so we never snap into a bind pose while
+                // generative motion spins up.
+                if let clip = defaultClip {
+                    generativeWarmupRemaining = 0.45
+                    animationPlayer.isLooping = true
+                    animationPlayer.applyRootMotion = false
+                    animationPlayer.crossfade(to: clip, duration: 0.25, from: model)
+                } else {
+                    generativeWarmupRemaining = 0
+                }
+            }
+            vrmLog("[VRMMetalState] Generative motion toggled ON → NeuralMotionEngine now driving")
+            scheduleNextGenerativeBurst()
         }
+        wasUsingGenerativeMotion = isGenerative
 
         // Seamless appear → neutral transition
         if isPlayingAppear && animationPlayer.isFinished {
             isPlayingAppear = false
             animationPlayer.applyRootMotion = false
-            if let clip = pendingDefaultClip {
+            if useGenerativeMotion {
+                // When generative motion is enabled, do NOT crossfade to a static clip
+                // (AnimationPlayer won't be ticking after appear finishes). Instead,
+                // use a short warmup window where we keep the base clip running, then
+                // hand off to generative motion.
+                pendingDefaultClip = nil
+                if let clip = defaultClip {
+                    generativeWarmupRemaining = 0.45
+                    animationPlayer.isLooping = true
+                    animationPlayer.crossfade(to: clip, duration: 0.25, from: model)
+                } else {
+                    model.resetToRestPose()
+                }
+            } else if let clip = pendingDefaultClip {
                 pendingDefaultClip = nil
                 animationPlayer.crossfade(to: clip, duration: 0.5, from: model)
                 scheduleNextRandomAnim()
@@ -149,6 +212,44 @@ extension VRMMetalState {
             }
         }
 
+        // Generative burst controller (only when Generative Motion is on).
+        // Mirrors VRMA behavior: burst → neutral → wait.
+        if !isPlayingAppear && useGenerativeMotion {
+            let isAISpeaking = aiState.status == .speaking
+            if isAISpeaking {
+                // While speaking, keep burst active and steer the DB toward talking motions.
+                isPlayingGenerativeBurst = true
+                generativeBurstElapsed = 0
+                generativeBurstDuration = 0
+                neuralMotionEngine.currentEmotion = "talking"
+            } else if isPlayingGenerativeBurst {
+                generativeBurstElapsed += dt
+                if generativeBurstElapsed >= generativeBurstDuration {
+                    isPlayingGenerativeBurst = false
+                    generativeBurstElapsed = 0
+                    generativeBurstDuration = 0
+                    scheduleNextGenerativeBurst()
+                    // Return to neutral clip between bursts
+                    if let clip = defaultClip {
+                        animationPlayer.isLooping = true
+                        animationPlayer.crossfade(to: clip, duration: 0.35, from: model)
+                    }
+                }
+            } else if generativeBurstTimer >= 0 {
+                generativeBurstTimer -= dt
+                if generativeBurstTimer <= 0 {
+                    isPlayingGenerativeBurst = true
+                    generativeBurstElapsed = 0
+                    generativeBurstDuration = Float.random(in: Self.generativeBurstDurationRange)
+                    // Steer by current emotion tag, but use a stable idle category when neutral.
+                    let emotion = aiState.currentEmotion.lowercased()
+                    neuralMotionEngine.currentEmotion = emotion == "neutral" ? "idle" : emotion
+                }
+            } else {
+                scheduleNextGenerativeBurst()
+            }
+        }
+
         // Look-back: always tick state machine (advances cooldown even while animating)
         let lookBackTrigger = lookBackController.update(orbitYaw: orbitYaw, deltaTime: dt)
 
@@ -174,8 +275,15 @@ extension VRMMetalState {
         if isPlayingAppear {
             animationPlayer.update(deltaTime: dt, model: model)
         } else if useGenerativeMotion {
-            neuralMotionEngine.currentEmotion = aiState.currentEmotion
-            neuralMotionEngine.update(deltaTime: dt, model: model)
+            if generativeWarmupRemaining > 0 {
+                generativeWarmupRemaining -= dt
+                animationPlayer.update(deltaTime: dt, model: model)
+            } else if isPlayingGenerativeBurst || aiState.status == .speaking {
+                neuralMotionEngine.update(deltaTime: dt, model: model)
+            } else {
+                // Between bursts, play the neutral VRMA clip.
+                animationPlayer.update(deltaTime: dt, model: model)
+            }
         } else {
             animationPlayer.update(deltaTime: dt, model: model)
         }
@@ -206,6 +314,13 @@ extension VRMMetalState {
         }
 
         animationPlayer.applyMorphWeights(to: renderer?.expressionController)
+
+        // Reveal model only after we've applied at least one animation/generative update this tick.
+        // This prevents a brief bind/T-pose flash on launch or during mode transitions.
+        if !firstFrameApplied && dt > 0 {
+            firstFrameApplied = true
+            renderer?.isModelVisible = true
+        }
 
         // Native automatic blink animation
         blinkController.update(deltaTime: dt)

@@ -171,7 +171,7 @@ struct AISettingsView: View {
         Section("Animation") {
             Toggle("Generative Motion", isOn: $settings.useGenerativeMotion)
             
-            Text("Uses Neural Motion Matching (NMM) for fluid, non-looping idle and chat behaviors. When disabled, static .vrma files are used.")
+            Text("Uses Neural Motion Matching (NMM) for fluid, non-looping idle and chat behaviors. When disabled, .vrma animations are used.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

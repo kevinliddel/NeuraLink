@@ -45,6 +45,9 @@ void vrm_motion_db_begin_pose(VRMMotionEngineHandle* handle, float root_x, float
 void vrm_motion_db_add_bone(VRMMotionEngineHandle* handle, const char* name, float rot_x, float rot_y, float rot_z, float rot_w);
 void vrm_motion_db_end_pose(VRMMotionEngineHandle* handle);
 
+// Binary database loading (preferred for large datasets)
+bool vrm_motion_db_load_binary(VRMMotionEngineHandle* handle, const uint8_t* data, int32_t size);
+
 #ifdef __cplusplus
 }
 #endif
