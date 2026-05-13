@@ -163,8 +163,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             let userContext = UserSettings.shared.systemPromptContext
             let basePrompt = localLLMSystemPrompt(for: state.selectedCharacterName)
             let companion = CompanionStateManager.shared.promptContext(characterName: state.selectedCharacterName)
-            let sysPrompt = userContext + basePrompt + memoryContext
-                + companion
+            let sysPrompt = basePrompt + userContext + memoryContext + companion
             
             let prompt: String
             let maxTokens: Int

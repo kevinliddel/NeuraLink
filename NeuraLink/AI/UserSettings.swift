@@ -60,11 +60,15 @@ final class UserSettings {
         var context = "\n[Current Context]\n"
 
         let now = Date()
+        let localZone = TimeZone.current
+
         let dayDateFmt = DateFormatter()
+        dayDateFmt.timeZone = localZone
         dayDateFmt.dateFormat = "EEEE, MMMM d, yyyy"
         context += "- Current Day & Date: \(dayDateFmt.string(from: now))\n"
 
         let timeFmt = DateFormatter()
+        timeFmt.timeZone = localZone
         timeFmt.dateFormat = "h:mm a"
         context += "- Current Time: \(timeFmt.string(from: now))\n"
 

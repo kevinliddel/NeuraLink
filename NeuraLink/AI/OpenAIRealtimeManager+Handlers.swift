@@ -336,7 +336,7 @@ extension OpenAIRealtimeManager: RTCDataChannelDelegate {
             let memoryContext = await RAGManager.shared.fetchContext(for: persona.instructions, limit: 5)
             let kgFacts = KnowledgeGraphManager.shared.getFormattedFacts()
             let companion = CompanionStateManager.shared.promptContext(characterName: state.selectedCharacterName)
-            let finalInstructions = userContext + persona.instructions + "\n" + memoryContext + kgFacts + companion
+            let finalInstructions = persona.instructions + "\n" + userContext + memoryContext + kgFacts + companion
             
             let update: [String: Any] = [
                 "type": "session.update",
