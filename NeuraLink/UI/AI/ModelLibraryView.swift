@@ -97,7 +97,7 @@ struct ModelLibraryView: View {
                 .font(.system(size: 28, weight: .bold, design: .rounded))
                 .foregroundColor(.white)
             
-            Text("Select and download local AI models.")
+            Text("Select and download local SLMs models.")
                 .font(.system(size: 15))
                 .foregroundColor(.white.opacity(0.6))
         }

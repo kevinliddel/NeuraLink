@@ -148,21 +148,31 @@ struct AISettingsView: View {
 
     private var interactionSection: some View {
         Section("Autonomy") {
-            Toggle("Auto-Turn Detection (VAD)", isOn: $settings.isVADEnabled)
-                .disabled(!settings.isEnabled)
-
-            if settings.isEnabled {
-                Text("VAD lets OpenAI respond automatically when you stop speaking.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            Toggle(isOn: $settings.isVADEnabled) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Auto-Turn Detection (VAD)")
+                    if settings.isEnabled {
+                        Text("VAD lets OpenAI respond automatically when you stop speaking.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
+            .disabled(!settings.isEnabled)
 
-            Toggle("Proactive Vision", isOn: $settings.isProactiveVisionEnabled)
-                .disabled(!settings.isEnabled)
-            
-            Text("The character will periodically look through the camera and comment on what they see without being asked.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Toggle(isOn: $settings.isProactiveVisionEnabled) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Proactive Vision")
+                    if settings.isEnabled {
+                        Text(
+                            "The character will periodically look through the camera and comment on what they see without being asked."
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .disabled(!settings.isEnabled)
         }
     }
 
