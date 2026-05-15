@@ -29,82 +29,80 @@ extension VRMRenderer {
                 // Uses lessEqual - later materials win at equal depths
                 // Depth bias: pushed back slightly to allow clothing/skin to win at seams
                 if let faceState = depthStencilStates["face"] {
-                    encoder.setDepthStencilState(faceState)
+                    setDepthStencilStateCached(faceState, encoder: encoder)
                 } else {
-                    encoder.setDepthStencilState(depthStencilStates["opaque"])
+                    setDepthStencilStateCached(depthStencilStates["opaque"], encoder: encoder)
                 }
-                encoder.setCullMode(isDoubleSided ? .none : .back)
-                encoder.setFrontFacing(.counterClockwise)
+                setCullModeCached(isDoubleSided ? .none : .back, encoder: encoder)
+                setFrontFacingCached(.counterClockwise, encoder: encoder)
                 // Z-FIGHTING FIX: Body renders first but pushed back in depth
                 // Negative bias pushes away from camera, allowing overlays to win
-                encoder.setDepthBias(-0.1, slopeScale: 4.0, clamp: 1.0)
+                setDepthBiasCached(-0.1, slopeScale: 4.0, clamp: 1.0, encoder: encoder)
 
             case "clothing":
                 // Clothing renders AFTER body - wins at overlaps via render order
                 if let faceState = depthStencilStates["face"] {
-                    encoder.setDepthStencilState(faceState)
+                    setDepthStencilStateCached(faceState, encoder: encoder)
                 } else {
-                    encoder.setDepthStencilState(depthStencilStates["opaque"])
+                    setDepthStencilStateCached(depthStencilStates["opaque"], encoder: encoder)
                 }
-                encoder.setCullMode(isDoubleSided ? .none : .back)
-                encoder.setFrontFacing(.counterClockwise)
+                setCullModeCached(isDoubleSided ? .none : .back, encoder: encoder)
+                setFrontFacingCached(.counterClockwise, encoder: encoder)
                 // Apply depth bias for clothing (overlay layer)
                 let bias = depthBiasCalculator.depthBias(for: item.materialName, isOverlay: true)
-                encoder.setDepthBias(
+                setDepthBiasCached(
                     bias, slopeScale: depthBiasCalculator.slopeScale,
-                    clamp: depthBiasCalculator.clamp)
+                    clamp: depthBiasCalculator.clamp, encoder: encoder)
 
             case "skin":
                 // Face skin renders AFTER body - wins at neck seam via render order
                 // Z-FIGHTING FIX: Use different depth states for base vs overlay materials
-                let isOverlay =
-                    item.materialNameLower.contains("mouth")
-                    || item.materialNameLower.contains("eyebrow")
+                let isOverlay = item.isMouthOrLip || item.materialNameLower.contains("eyebrow")
 
                 if isOverlay {
                     // Overlay materials (mouth, eyebrows): use faceOverlay state
                     // lessEqual allows winning at equal depth, no depth write prevents Z-fighting
                     if let overlayState = depthStencilStates["faceOverlay"] {
-                        encoder.setDepthStencilState(overlayState)
+                        setDepthStencilStateCached(overlayState, encoder: encoder)
                     } else {
-                        encoder.setDepthStencilState(depthStencilStates["face"])
+                        setDepthStencilStateCached(depthStencilStates["face"], encoder: encoder)
                     }
                 } else {
                     // Base face skin: use normal face state with depth write
                     if let faceState = depthStencilStates["face"] {
-                        encoder.setDepthStencilState(faceState)
+                        setDepthStencilStateCached(faceState, encoder: encoder)
                     } else {
-                        encoder.setDepthStencilState(depthStencilStates["opaque"])
+                        setDepthStencilStateCached(depthStencilStates["opaque"], encoder: encoder)
                     }
                 }
 
-                encoder.setCullMode(isDoubleSided ? .none : .back)
-                encoder.setFrontFacing(.counterClockwise)
+                setCullModeCached(isDoubleSided ? .none : .back, encoder: encoder)
+                setFrontFacingCached(.counterClockwise, encoder: encoder)
 
                 // Apply material-specific depth bias from calculator
                 let bias = depthBiasCalculator.depthBias(
                     for: item.materialName,
                     isOverlay: isOverlay
                 )
-                encoder.setDepthBias(
+                setDepthBiasCached(
                     bias, slopeScale: depthBiasCalculator.slopeScale,
-                    clamp: depthBiasCalculator.clamp)
+                    clamp: depthBiasCalculator.clamp, encoder: encoder)
 
             case "faceOverlay":
                 // Face mouth/lip overlays - render on top of face skin
                 // Uses face state with depth bias to win depth test
                 if let faceState = depthStencilStates["face"] {
-                    encoder.setDepthStencilState(faceState)
+                    setDepthStencilStateCached(faceState, encoder: encoder)
                 } else {
-                    encoder.setDepthStencilState(depthStencilStates["mask"])
+                    setDepthStencilStateCached(depthStencilStates["mask"], encoder: encoder)
                 }
-                encoder.setCullMode(.none)
-                encoder.setFrontFacing(.counterClockwise)
+                setCullModeCached(.none, encoder: encoder)
+                setFrontFacingCached(.counterClockwise, encoder: encoder)
                 // Apply depth bias for mouth/lip overlays
                 let bias = depthBiasCalculator.depthBias(for: item.materialName, isOverlay: true)
-                encoder.setDepthBias(
+                setDepthBiasCached(
                     bias, slopeScale: depthBiasCalculator.slopeScale,
-                    clamp: depthBiasCalculator.clamp)
+                    clamp: depthBiasCalculator.clamp, encoder: encoder)
             // Face overlays use MASK mode for proper alpha cutout
             // This allows mouth/lip shapes to be properly masked without
             // edge artifacts from OPAQUE mode blending
@@ -112,71 +110,71 @@ extension VRMRenderer {
             case "eyebrow", "eyeline":
                 // Face features render after skin - win via render order
                 if let faceState = depthStencilStates["face"] {
-                    encoder.setDepthStencilState(faceState)
+                    setDepthStencilStateCached(faceState, encoder: encoder)
                 } else {
-                    encoder.setDepthStencilState(depthStencilStates["mask"])
+                    setDepthStencilStateCached(depthStencilStates["mask"], encoder: encoder)
                 }
-                encoder.setCullMode(.none)
-                encoder.setFrontFacing(.counterClockwise)
+                setCullModeCached(.none, encoder: encoder)
+                setFrontFacingCached(.counterClockwise, encoder: encoder)
                 // Apply depth bias for eyebrow/eyeline overlays
                 let bias = depthBiasCalculator.depthBias(for: item.materialName, isOverlay: true)
-                encoder.setDepthBias(
+                setDepthBiasCached(
                     bias, slopeScale: depthBiasCalculator.slopeScale,
-                    clamp: depthBiasCalculator.clamp)
+                    clamp: depthBiasCalculator.clamp, encoder: encoder)
 
             case "eye":
                 // Eyes render after skin - win via render order
                 // Depth bias: higher bias to ensure eyes win over eyelids/face
                 if let faceState = depthStencilStates["face"] {
-                    encoder.setDepthStencilState(faceState)
+                    setDepthStencilStateCached(faceState, encoder: encoder)
                 } else {
-                    encoder.setDepthStencilState(depthStencilStates["opaque"])
+                    setDepthStencilStateCached(depthStencilStates["opaque"], encoder: encoder)
                 }
-                encoder.setCullMode(.none)
-                encoder.setFrontFacing(.counterClockwise)
+                setCullModeCached(.none, encoder: encoder)
+                setFrontFacingCached(.counterClockwise, encoder: encoder)
                 // Apply depth bias for eye overlays (highest priority)
                 let bias = depthBiasCalculator.depthBias(for: item.materialName, isOverlay: true)
-                encoder.setDepthBias(
+                setDepthBiasCached(
                     bias, slopeScale: depthBiasCalculator.slopeScale,
-                    clamp: depthBiasCalculator.clamp)
+                    clamp: depthBiasCalculator.clamp, encoder: encoder)
 
             case "highlight":
                 // Eye highlights render last - win via render order
                 if let blendDepthState = depthStencilStates["blend"] {
-                    encoder.setDepthStencilState(blendDepthState)
+                    setDepthStencilStateCached(blendDepthState, encoder: encoder)
                 } else {
-                    encoder.setDepthStencilState(depthStencilStates["opaque"])
+                    setDepthStencilStateCached(depthStencilStates["opaque"], encoder: encoder)
                 }
-                encoder.setCullMode(.none)
-                encoder.setFrontFacing(.counterClockwise)
+                setCullModeCached(.none, encoder: encoder)
+                setFrontFacingCached(.counterClockwise, encoder: encoder)
                 // Apply depth bias for highlight overlays (highest bias)
                 let bias = depthBiasCalculator.depthBias(for: item.materialName, isOverlay: true)
-                encoder.setDepthBias(
+                setDepthBiasCached(
                     bias, slopeScale: depthBiasCalculator.slopeScale,
-                    clamp: depthBiasCalculator.clamp)
+                    clamp: depthBiasCalculator.clamp, encoder: encoder)
 
             case "transparentZWrite":
                 // TransparentWithZWrite: blend with depth write ON
                 // Uses face state (.lessEqual + depth write) to occlude what's behind
                 // Key for lace, collar, and semi-transparent overlays
                 if let faceState = depthStencilStates["face"] {
-                    encoder.setDepthStencilState(faceState)
+                    setDepthStencilStateCached(faceState, encoder: encoder)
                 } else {
-                    encoder.setDepthStencilState(depthStencilStates["opaque"])
+                    setDepthStencilStateCached(depthStencilStates["opaque"], encoder: encoder)
                 }
-                encoder.setCullMode(.none)  // Often double-sided for overlays
-                encoder.setFrontFacing(.counterClockwise)
+                setCullModeCached(.none, encoder: encoder)  // Often double-sided for overlays
+                setFrontFacingCached(.counterClockwise, encoder: encoder)
                 // Apply depth bias for transparent overlays
                 let bias = depthBiasCalculator.depthBias(for: item.materialName, isOverlay: true)
-                encoder.setDepthBias(
+                setDepthBiasCached(
                     bias, slopeScale: depthBiasCalculator.slopeScale,
-                    clamp: depthBiasCalculator.clamp)
+                    clamp: depthBiasCalculator.clamp, encoder: encoder)
 
             default:
                 // Unknown face category - fallback to opaque
-                encoder.setDepthStencilState(depthStencilStates["opaque"])
-                encoder.setCullMode(isDoubleSided ? .none : .back)
-                encoder.setFrontFacing(.counterClockwise)
+                setDepthStencilStateCached(depthStencilStates["opaque"], encoder: encoder)
+                setCullModeCached(isDoubleSided ? .none : .back, encoder: encoder)
+                setFrontFacingCached(.counterClockwise, encoder: encoder)
             }
         } else {
             // NON-FACE rendering: use standard alpha mode logic
@@ -185,43 +183,43 @@ extension VRMRenderer {
 
             switch materialAlphaMode {
             case "opaque":
-                encoder.setDepthStencilState(depthStencilStates["opaque"])
+                setDepthStencilStateCached(depthStencilStates["opaque"], encoder: encoder)
                 let cullMode = isDoubleSided ? MTLCullMode.none : .back
-                encoder.setCullMode(cullMode)
-                encoder.setFrontFacing(.counterClockwise)
-                encoder.setDepthBias(
+                setCullModeCached(cullMode, encoder: encoder)
+                setFrontFacingCached(.counterClockwise, encoder: encoder)
+                setDepthBiasCached(
                     baseBias, slopeScale: depthBiasCalculator.slopeScale,
-                    clamp: depthBiasCalculator.clamp)
+                    clamp: depthBiasCalculator.clamp, encoder: encoder)
 
             case "mask":
-                encoder.setDepthStencilState(depthStencilStates["mask"])
+                setDepthStencilStateCached(depthStencilStates["mask"], encoder: encoder)
                 let cullMode = isDoubleSided ? MTLCullMode.none : .back
-                encoder.setCullMode(cullMode)
-                encoder.setFrontFacing(.counterClockwise)
+                setCullModeCached(cullMode, encoder: encoder)
+                setFrontFacingCached(.counterClockwise, encoder: encoder)
                 // Apply base depth bias for MASK materials
-                encoder.setDepthBias(
+                setDepthBiasCached(
                     baseBias, slopeScale: depthBiasCalculator.slopeScale,
-                    clamp: depthBiasCalculator.clamp)
+                    clamp: depthBiasCalculator.clamp, encoder: encoder)
 
             case "blend":
                 if let blendDepthState = depthStencilStates["blend"] {
-                    encoder.setDepthStencilState(blendDepthState)
+                    setDepthStencilStateCached(blendDepthState, encoder: encoder)
                 } else {
-                    encoder.setDepthStencilState(depthStencilStates["opaque"])
+                    setDepthStencilStateCached(depthStencilStates["opaque"], encoder: encoder)
                 }
-                encoder.setCullMode(.none)
+                setCullModeCached(.none, encoder: encoder)
                 // Apply base depth bias for BLEND materials
-                encoder.setDepthBias(
+                setDepthBiasCached(
                     baseBias, slopeScale: depthBiasCalculator.slopeScale,
-                    clamp: depthBiasCalculator.clamp)
+                    clamp: depthBiasCalculator.clamp, encoder: encoder)
 
             default:
-                encoder.setDepthStencilState(depthStencilStates["opaque"])
+                setDepthStencilStateCached(depthStencilStates["opaque"], encoder: encoder)
                 let cullMode = isDoubleSided ? MTLCullMode.none : .back
-                encoder.setCullMode(cullMode)
-                encoder.setDepthBias(
+                setCullModeCached(cullMode, encoder: encoder)
+                setDepthBiasCached(
                     baseBias, slopeScale: depthBiasCalculator.slopeScale,
-                    clamp: depthBiasCalculator.clamp)
+                    clamp: depthBiasCalculator.clamp, encoder: encoder)
             }
         }
     }
@@ -240,16 +238,7 @@ extension VRMRenderer {
 
         let primitive = item.primitive
 
-        // Check if this is a face or body material EARLY for alpha mode override
-        // OPTIMIZATION: Use cached lowercased strings from RenderItem
-        let materialNameLower = item.materialNameLower
-        let nodeName = item.nodeNameLower
-        let meshNameLower = item.meshNameLower
-
-        let isFaceMaterial =
-            materialNameLower.contains("face") || materialNameLower.contains("eye")
-            || nodeName.contains("face") || nodeName.contains("eye")
-            || meshNameLower.contains("face") || meshNameLower.contains("eye")
+        let isFaceMaterial = item.isFaceMaterial
 
         if let materialIndex = primitive.materialIndex,
             materialIndex < model.materials.count {
@@ -315,10 +304,7 @@ extension VRMRenderer {
                 mtoonUniforms.vrmVersion = material.vrmVersion == .v0_0 ? 0 : 1
 
                 // UV FIX: Shift FaceMouth UVs to lip texture area (bottom right of atlas)
-                // The mouth mesh UVs are centered at (0.4, 0.48) which is the blank face area
-                // We need to shift them to the lip texture area around (0.7, 0.7)
-                if item.materialNameLower.contains("mouth")
-                    || item.materialNameLower.contains("lip") {
+                if item.isMouthOrLip {
                     mtoonUniforms.uvOffsetX = 0.35  // Shift right to lip area
                     mtoonUniforms.uvOffsetY = 0.25  // Shift down to lip area
                     mtoonUniforms.uvScale = 0.5  // Scale down to fit lip texture

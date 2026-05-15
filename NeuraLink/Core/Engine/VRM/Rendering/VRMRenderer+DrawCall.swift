@@ -32,7 +32,10 @@ extension VRMRenderer {
         let meshUsesSkinning = primitive.hasJoints && primitive.hasWeights
         let isSkinned = ((item.node.skin != nil) || meshUsesSkinning) && hasSkinning
 
-        encoder.setRenderPipelineState(pipeline)
+        if lastPipelineState !== pipeline {
+            encoder.setRenderPipelineState(pipeline)
+            lastPipelineState = pipeline
+        }
 
         #if os(macOS)
             if debugWireframe { encoder.setTriangleFillMode(.lines) }
@@ -127,63 +130,79 @@ extension VRMRenderer {
             let material = model.materials[materialIndex]
 
             if let mtlTexture = material.baseColorTexture?.mtlTexture {
-                encoder.setFragmentTexture(mtlTexture, index: 0)
+                setFragmentTextureCached(mtlTexture, index: 0, encoder: encoder)
                 mtoonUniforms.hasBaseColorTexture = 1
+            } else {
+                setFragmentTextureCached(nil, index: 0, encoder: encoder)
             }
 
             if let mtoon = material.mtoon {
                 if let textureIndex = mtoon.shadeMultiplyTexture,
                     textureIndex < model.textures.count,
                     let mtlTexture = model.textures[textureIndex].mtlTexture {
-                    encoder.setFragmentTexture(mtlTexture, index: 1)
+                    setFragmentTextureCached(mtlTexture, index: 1, encoder: encoder)
                     mtoonUniforms.hasShadeMultiplyTexture = 1
                 } else {
-                    encoder.setFragmentTexture(nil, index: 1)
+                    setFragmentTextureCached(nil, index: 1, encoder: encoder)
                     mtoonUniforms.hasShadeMultiplyTexture = 0
                 }
+            } else {
+                setFragmentTextureCached(nil, index: 1, encoder: encoder)
             }
 
             if let mtoon = material.mtoon,
                 let shadingShift = mtoon.shadingShiftTexture,
                 shadingShift.index < model.textures.count,
                 let mtlTexture = model.textures[shadingShift.index].mtlTexture {
-                encoder.setFragmentTexture(mtlTexture, index: 2)
+                setFragmentTextureCached(mtlTexture, index: 2, encoder: encoder)
                 mtoonUniforms.hasShadingShiftTexture = 1
                 mtoonUniforms.shadingShiftTextureScale = shadingShift.scale ?? 1.0
+            } else {
+                setFragmentTextureCached(nil, index: 2, encoder: encoder)
             }
 
             if let mtlTexture = material.normalTexture?.mtlTexture {
-                encoder.setFragmentTexture(mtlTexture, index: 3)
+                setFragmentTextureCached(mtlTexture, index: 3, encoder: encoder)
                 mtoonUniforms.hasNormalTexture = 1
+            } else {
+                setFragmentTextureCached(nil, index: 3, encoder: encoder)
             }
 
             if let mtlTexture = material.emissiveTexture?.mtlTexture {
-                encoder.setFragmentTexture(mtlTexture, index: 4)
+                setFragmentTextureCached(mtlTexture, index: 4, encoder: encoder)
                 mtoonUniforms.hasEmissiveTexture = 1
+            } else {
+                setFragmentTextureCached(nil, index: 4, encoder: encoder)
             }
 
             if let mtoon = material.mtoon,
                 let textureIndex = mtoon.matcapTexture,
                 textureIndex < model.textures.count,
                 let mtlTexture = model.textures[textureIndex].mtlTexture {
-                encoder.setFragmentTexture(mtlTexture, index: 5)
+                setFragmentTextureCached(mtlTexture, index: 5, encoder: encoder)
                 mtoonUniforms.hasMatcapTexture = 1
+            } else {
+                setFragmentTextureCached(nil, index: 5, encoder: encoder)
             }
 
             if let mtoon = material.mtoon,
                 let textureIndex = mtoon.rimMultiplyTexture,
                 textureIndex < model.textures.count,
                 let mtlTexture = model.textures[textureIndex].mtlTexture {
-                encoder.setFragmentTexture(mtlTexture, index: 6)
+                setFragmentTextureCached(mtlTexture, index: 6, encoder: encoder)
                 mtoonUniforms.hasRimMultiplyTexture = 1
+            } else {
+                setFragmentTextureCached(nil, index: 6, encoder: encoder)
             }
 
             if let mtoon = material.mtoon,
                 let textureIndex = mtoon.uvAnimationMaskTexture,
                 textureIndex < model.textures.count,
                 let mtlTexture = model.textures[textureIndex].mtlTexture {
-                encoder.setFragmentTexture(mtlTexture, index: 7)
+                setFragmentTextureCached(mtlTexture, index: 7, encoder: encoder)
                 mtoonUniforms.hasUvAnimationMaskTexture = 1
+            } else {
+                setFragmentTextureCached(nil, index: 7, encoder: encoder)
             }
 
             if let cachedSampler = samplerStates["default"] {
@@ -259,10 +278,9 @@ extension VRMRenderer {
                 )
             }
 
-            // CRITICAL: Re-bind fragment uniforms after overrides
-            var materialUniforms = mtoonUniforms
-            encoder.setFragmentBytes(
-                &materialUniforms, length: MemoryLayout<MToonMaterialUniforms>.stride, index: 8)
+            // Re-bind is not needed if we didn't change it, but since we modify mtoonUniforms above,
+            // we do need to re-bind. However, we already did it at line 241/243.
+            // Let's just do it ONCE after all overrides.
 
             // Index buffer guardrails
             let indexBufferSize = indexBuffer.length

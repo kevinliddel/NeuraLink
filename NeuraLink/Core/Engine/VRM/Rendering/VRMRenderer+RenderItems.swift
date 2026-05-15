@@ -101,6 +101,7 @@ extension VRMRenderer {
                     meshNameLower: meshNameLower,
                     isFaceMaterial: isFaceMaterial,
                     isEyeMaterial: isEyeMaterial,
+                    isMouthOrLip: false,
                     renderOrder: 0,  // Will be set based on category
                     materialRenderQueue: materialRenderQueue,
                     primitiveIndex: globalPrimitiveIndex,
@@ -167,6 +168,7 @@ extension VRMRenderer {
                         || item.materialNameLower.contains("lip") {
                         // Face mouth/lip overlays - render after base face skin
                         item.faceCategory = "faceOverlay"
+                        item.isMouthOrLip = true
                         item.renderOrder = 2  // after skin (1), before eyebrow (2) - same as eyebrow but named differently
                     } else if item.materialNameLower.contains("skin")
                         || (item.materialNameLower.contains("face")
