@@ -1,7 +1,7 @@
 # Lip-Sync Matrices & Real-Time Processing
 
 <p align="center">
-    <img src="./matrices.png" alt="Matrices" width="400" />
+    <img src="./matrices.png" alt="Matrices" width="600" />
 </p>
 
 In mathematics, a matrix is a rectangular array or table of numbers, symbols, or expressions, with elements or entries arranged in rows which is used to represent a mathematical object or property of such an object.
@@ -13,7 +13,7 @@ In artificial intelligence, especially in deep learning, [*+ ] matrix multiplica
 Neural networks use matrices of numbers to make predictions and recognize patterns. Each layer in the network processes a matrix and transforms it into a new matrix through multiplication, which helps the network understand complex data relationships.
 
 <p align="center">
-    <img src="./CPU.png" alt="CPU" width="400" />
+    <img src="./CPU.png" alt="CPU" width="600" />
 </p>
 
 

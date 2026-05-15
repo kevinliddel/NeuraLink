@@ -9,6 +9,12 @@ import XCTest
 
 final class NeuraLinkUITests: XCTestCase {
 
+    // Disabled: running once per config causes flaky failures in CI because AVFoundation
+    // and WebRTC initialise differently in headless accessibility/dark-mode environments.
+    override class var runsForEachTargetApplicationUIConfiguration: Bool {
+        false
+    }
+
     var app: XCUIApplication!
 
     override func setUpWithError() throws {
