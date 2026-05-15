@@ -24,7 +24,7 @@ struct ExpandableFABMenu: View {
                 // Primary 3 — text reveals when secondary expands
                 FABButton(
                     icon: Image(systemName: "gear"),
-                    label: "AI Settings",
+                    label: "Settings",
                     showLabel: isSecondaryExpanded
                 ) { collapse(); onSettings() }
                 .transition(childTransition(delay: 0.00))
