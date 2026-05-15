@@ -4,7 +4,7 @@
 //
 //  Audio engine setup and processing split out to keep LocalLLMManager.swift lean.
 //
-//  Created by Antigravity on 09/05/2026.
+//  Created by Dedicatus on 09/05/2026.
 //
 
 import AVFoundation

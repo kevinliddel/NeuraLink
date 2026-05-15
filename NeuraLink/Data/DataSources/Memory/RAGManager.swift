@@ -5,7 +5,7 @@
 //  Orchestrates Retrieval-Augmented Generation.
 //  Coordinates embedding generation, memory storage, and similarity search.
 //
-//  Created by Antigravity on 09/05/2026.
+//  Created by Dedicatus on 09/05/2026.
 //
 
 import Foundation

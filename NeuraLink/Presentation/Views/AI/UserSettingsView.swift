@@ -4,7 +4,7 @@
 //
 //  A settings view for editing the user's profile information.
 //
-//  Created by Antigravity on 09/05/2026.
+//  Created by Dedicatus on 09/05/2026.
 //
 
 import SwiftUI
