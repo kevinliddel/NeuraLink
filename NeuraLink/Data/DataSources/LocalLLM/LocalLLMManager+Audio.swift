@@ -88,6 +88,13 @@ extension LocalLLMManager {
                 if recordingBuffer.count > maxPreRoll {
                     recordingBuffer.removeFirst(recordingBuffer.count - maxPreRoll)
                 }
+            } else {
+                let sampleRate = hardwareInputFormat?.sampleRate ?? 48000.0
+                let newSamples = recordingBuffer.count - lastPartialTranscribedCount
+                if newSamples >= Int(sampleRate * 0.8), !isTranscribingPartial {
+                    let currentBuffer = recordingBuffer
+                    triggerPartialTranscription(samples: currentBuffer)
+                }
             }
         }
     }

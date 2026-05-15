@@ -52,6 +52,10 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     var recordingBuffer = [Float]()
     var isRecordingVoice = false
     let recordingLock = NSLock()
+    
+    // Partial transcription state
+    internal var isTranscribingPartial = false
+    internal var lastPartialTranscribedCount = 0
 
     // Lightweight turn-level latency metrics (user text → token/audio)
     internal var turnStartNs: UInt64?
