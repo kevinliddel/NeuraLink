@@ -295,7 +295,7 @@ By default, iOS uses compact voices (`q=1`) which can sound robotic. To achieve 
 
 ### 🛠️ Implementation Details
 The orchestration of offline synthesis, including voice selection patterns and pitch modulation for local characters, is managed in:
-- [LocalLLMManager+TTS.swift](./NeuraLink/AI/LocalLLMManager+TTS.swift)
+- [LocalLLMManager+TTS.swift](./NeuraLink/Data/DataSources/LocalLLM/LocalLLMManager+TTS.swift)
 
 ---
 
