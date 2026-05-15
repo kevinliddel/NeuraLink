@@ -58,7 +58,7 @@ struct PersonaSettingsView: View {
     @State private var isLoadingPreview = false
 
     private let voices = [
-        "alloy", "echo", "shimmer", "ash", "ballad", "coral", "sage", "verse", "marin"
+        "alloy", "ash", "ballad", "coral", "echo", "marin", "sage", "shimmer", "verse"
     ]
 
     private var isLocalLLMMode: Bool { OpenAISettings.shared.isLocalLLMEnabled }

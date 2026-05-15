@@ -181,20 +181,31 @@ struct MemoryTimelineView: View {
     // MARK: - Rows
 
     private func timelineRow(_ e: ChatEventItem) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(e.title)
-                    .font(.headline)
-                Spacer()
-                Text(Self.timeFormatter.string(from: e.timestamp))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        HStack(alignment: .center, spacing: 10) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(e.title)
+                        .font(.headline)
+                    Spacer()
+                    Text(Self.timeFormatter.string(from: e.timestamp))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    Text(e.detail)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
             }
-            ScrollView(.horizontal, showsIndicators: false) {
-                Text(e.detail)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+            Button {
+                MemoryStore.shared.deleteChatEvent(id: e.id)
+                refreshCountsAndClampPages()
+            } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.red.opacity(0.75))
             }
+            .buttonStyle(.borderless)
         }
         .contentShape(Rectangle())
         .contextMenu {
@@ -214,14 +225,25 @@ struct MemoryTimelineView: View {
     }
 
     private func factsRow(_ f: FactItem) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                Text("\(f.subject) \(f.predicate) \(f.object)")
-                    .font(.subheadline.weight(.medium))
+        HStack(alignment: .center, spacing: 10) {
+            VStack(alignment: .leading, spacing: 4) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    Text("\(f.subject) \(f.predicate) \(f.object)")
+                        .font(.subheadline.weight(.medium))
+                }
+                Text(Self.timeFormatter.string(from: f.timestamp))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            Text(Self.timeFormatter.string(from: f.timestamp))
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Button {
+                MemoryStore.shared.deleteFact(id: f.id)
+                refreshCountsAndClampPages()
+            } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.red.opacity(0.75))
+            }
+            .buttonStyle(.borderless)
         }
         .contentShape(Rectangle())
         .contextMenu {
