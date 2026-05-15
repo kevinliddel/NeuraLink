@@ -20,6 +20,7 @@ extension LocalLLMManager: SileroVADDelegate {
             state.status = .listening
             recordingLock.lock()
             isRecordingVoice = true
+            lastPartialTranscribedCount = 0
             // Keep the pre-roll buffer intact so we don't lose the first word
             recordingLock.unlock()
         }
@@ -33,6 +34,7 @@ extension LocalLLMManager: SileroVADDelegate {
         isRecordingVoice = false
         var rawSamples = recordingBuffer
         recordingBuffer.removeAll(keepingCapacity: true)  // Clear buffer for next utterance
+        lastPartialTranscribedCount = 0
         recordingLock.unlock()
 
         Task { @MainActor in
@@ -55,8 +57,24 @@ extension LocalLLMManager: SileroVADDelegate {
 
         guard !rawSamples.isEmpty else { return }
 
+        convertAndTranscribe(rawSamples: rawSamples, isPartial: false)
+    }
+
+    func triggerPartialTranscription(samples: [Float]) {
+        isTranscribingPartial = true
+        lastPartialTranscribedCount = samples.count
+        convertAndTranscribe(rawSamples: samples, isPartial: true)
+    }
+
+    private func convertAndTranscribe(rawSamples: [Float], isPartial: Bool) {
         // Pass to WhisperKit for local transcription
         Task {
+            defer {
+                if isPartial {
+                    self.isTranscribingPartial = false
+                }
+            }
+
             guard let inputFmt = hardwareInputFormat,
                 let targetFmt = AVAudioFormat(
                     commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1,
@@ -116,7 +134,7 @@ extension LocalLLMManager: SileroVADDelegate {
             let whisperSamples = Array(
                 UnsafeBufferPointer(start: outChannelData[0], count: outLength))
 
-            await whisperManager.transcribe(samples: whisperSamples)
+            await whisperManager.transcribe(samples: whisperSamples, isPartial: isPartial)
         }
     }
 }
@@ -124,6 +142,12 @@ extension LocalLLMManager: SileroVADDelegate {
 // MARK: - LocalWhisperManagerDelegate
 
 extension LocalLLMManager: LocalWhisperManagerDelegate {
+    func whisperManager(didTranscribePartialText text: String) {
+        Task { @MainActor in
+            state.userTranscript = text
+        }
+    }
+
     func whisperManager(didTranscribeText text: String) {
         // Feed the localized transcription directly to the Local LLM
         handleUserInput(text)
@@ -132,6 +156,7 @@ extension LocalLLMManager: LocalWhisperManagerDelegate {
     func whisperManager(didFailWithError error: Error) {
         Task { @MainActor in
             state.setError("Whisper Error: \(error.localizedDescription)")
+            isTranscribingPartial = false
         }
     }
 }

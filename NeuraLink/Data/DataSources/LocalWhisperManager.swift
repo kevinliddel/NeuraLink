@@ -12,6 +12,7 @@ import WhisperKit
 
 /// A protocol to receive transcriptions from WhisperKit.
 protocol LocalWhisperManagerDelegate: AnyObject {
+    func whisperManager(didTranscribePartialText text: String)
     func whisperManager(didTranscribeText text: String)
     func whisperManager(didFailWithError error: Error)
 }
@@ -28,9 +29,10 @@ final class LocalWhisperManager: NSObject, @unchecked Sendable {
     // Guards the setupTask check-and-create so concurrent callers can't both see nil.
     private let setupLock = NSLock()
 
-    // To support iPhone 11 (4GB RAM) efficiently, "openai_whisper-tiny.en" or "tiny.en" is recommended.
-    // WhisperKit downloads the optimized CoreML model on initialization if missing.
-    private let modelName = "openai_whisper-tiny.en"
+    // To support iPhone 11 (4GB RAM) efficiently, "openai_whisper-tiny" or "tiny" is recommended.
+    // "openai_whisper-base" and "large-v3-turbo" cause the OS to kill the Metal Compiler (Jetsam) 
+    // when loaded alongside the Llama LLM due to 4GB RAM limits.
+    private let modelName = "openai_whisper-tiny"
 
     override private init() {
         super.init()
@@ -105,7 +107,10 @@ final class LocalWhisperManager: NSObject, @unchecked Sendable {
     }
 
     /// Transcribes raw PCM float samples captured natively.
-    func transcribe(samples: [Float]) async {
+    /// - Parameters:
+    ///   - samples: PCM Float samples
+    ///   - isPartial: If true, notifies the delegate as a partial transcription for streaming.
+    func transcribe(samples: [Float], isPartial: Bool = false) async {
         guard isReady, let whisper = whisperKit else {
             print("[Whisper] WhisperKit not ready.")
             return
@@ -171,9 +176,13 @@ final class LocalWhisperManager: NSObject, @unchecked Sendable {
                 in: .whitespacesAndNewlines)
 
             if !fullText.isEmpty {
-                print("[Whisper] Transcription complete: \(fullText)")
+                print("[Whisper] Transcription complete (partial=\(isPartial)): \(fullText)")
                 DispatchQueue.main.async { [weak self] in
-                    self?.delegate?.whisperManager(didTranscribeText: fullText)
+                    if isPartial {
+                        self?.delegate?.whisperManager(didTranscribePartialText: fullText)
+                    } else {
+                        self?.delegate?.whisperManager(didTranscribeText: fullText)
+                    }
                 }
             } else {
                 print("[Whisper] Transcription resulted in empty text (likely silence or noise).")

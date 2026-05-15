@@ -5,7 +5,7 @@
 //  Generates vector embeddings for text chunks using Apple's NaturalLanguage framework.
 //  Provides local, fast, and privacy-preserving vectorization.
 //
-//  Created by Antigravity on 09/05/2026.
+//  Created by Dedicatus on 09/05/2026.
 //
 
 import Foundation

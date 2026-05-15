@@ -2,7 +2,7 @@
 //  VRMRenderer+Campus.swift
 //  NeuraLink
 //
-//  Created by Antigravity on 10/05/2026.
+//  Created by Dedicatus on 10/05/2026.
 //
 
 import Metal

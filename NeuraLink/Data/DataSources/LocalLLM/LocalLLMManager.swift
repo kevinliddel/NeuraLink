@@ -47,11 +47,19 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     // Accumulate text for TTS chunking (e.g., speak sentence by sentence)
     var ttsBuffer = ""
 
+    // Buffers tokens that may be part of an [emotion:n] tag.
+    // Tag characters are intercepted here and never reach ttsBuffer or aiTranscript.
+    var tagBuffer = ""
+
     // Audio Capture State
     var hardwareInputFormat: AVAudioFormat?
     var recordingBuffer = [Float]()
     var isRecordingVoice = false
     let recordingLock = NSLock()
+    
+    // Partial transcription state
+    internal var isTranscribingPartial = false
+    internal var lastPartialTranscribedCount = 0
 
     // Lightweight turn-level latency metrics (user text → token/audio)
     internal var turnStartNs: UInt64?
@@ -157,25 +165,73 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         ChatTimelineStore.logUserMessage(text)
 
         Task {
-            // RAG: Fetch relevant past memories
-            let memoryContext = await RAGManager.shared.fetchContext(for: text)
-            
-            let userContext = UserSettings.shared.systemPromptContext
-            let basePrompt = localLLMSystemPrompt(for: state.selectedCharacterName)
-            let companion = CompanionStateManager.shared.promptContext(characterName: state.selectedCharacterName)
-            let sysPrompt = basePrompt + userContext + memoryContext + companion
-            
-            let prompt: String
-            let maxTokens: Int
             let mgr = LocalModelDownloadManager.shared
             let useQwen = mgr.isAvailable && mgr.selectedConfig == .qwen2b
+            let isJapaneseLlama = mgr.selectedConfig == .japaneseLlama1b
+
+            // For the Japanese 1B model: skip RAG and extra context entirely.
+            // Stored memories are in English/mixed language and inflate prompt size,
+            // causing latency growth and language confusion in a small model.
+            let truncatedMemory: String
+            let userContext: String
+            let companion: String
+            if isJapaneseLlama {
+                truncatedMemory = ""
+                userContext = ""
+                companion = ""
+            } else {
+                let raw = await RAGManager.shared.fetchContext(for: text)
+                truncatedMemory = String(raw.prefix(500))
+                userContext = UserSettings.shared.systemPromptContext
+                companion = CompanionStateManager.shared.promptContext(characterName: state.selectedCharacterName)
+            }
+
+            let basePrompt = localLLMSystemPrompt(for: state.selectedCharacterName)
+            var sysPrompt: String
+            if isJapaneseLlama {
+                // Put language instruction first — a 1B model attends most to early tokens.
+                sysPrompt = "必ず日本語で返答してください。\n" + basePrompt
+            } else {
+                sysPrompt = basePrompt + userContext + truncatedMemory + companion
+            }
+
+            // No history for the Japanese 1B model: with limit: 2 the dedup logic produces
+            // an orphaned AI response (no preceding user turn), which makes the model repeat
+            // itself. A 1B model also can't use history coherently — it just inflates the
+            // prompt and causes O(N) latency growth without improving response quality.
+            let historyLimit = isJapaneseLlama ? 0 : 6
+            var recentEvents = Array(MemoryStore.shared.fetchChatEvents(limit: historyLimit).reversed())
+            if let last = recentEvents.last, last.role == "user", last.detail == text {
+                recentEvents.removeLast()
+            }
+
+            var prompt: String
+            let maxTokens: Int
 
             if useQwen {
-                prompt = "<|im_start|>system\n\(sysPrompt)<|im_end|>\n<|im_start|>user\n\(text)<|im_end|>\n<|im_start|>assistant\n"
+                prompt = "<|im_start|>system\n\(sysPrompt)<|im_end|>\n"
+                var history = ""
+                for event in recentEvents {
+                    let role = event.role == "ai" ? "assistant" : "user"
+                    history += "<|im_start|>\(role)\n\(event.detail)<|im_end|>\n"
+                }
+                prompt += history + "<|im_start|>user\n\(text)<|im_end|>\n<|im_start|>assistant\n"
                 maxTokens = 160
             } else {
-                prompt = "<|start_header_id|>system<|end_header_id|>\n\n\(sysPrompt)<|eot_id|><|start_header_id|>user<|end_header_id|>\n\n\(text)<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
-                maxTokens = 100
+                prompt = "<|start_header_id|>system<|end_header_id|>\n\n\(sysPrompt)<|eot_id|>"
+                var history = ""
+                for event in recentEvents {
+                    let role = event.role == "ai" ? "assistant" : "user"
+                    history += "<|start_header_id|>\(role)<|end_header_id|>\n\n\(event.detail)<|eot_id|>"
+                }
+                // Inject a per-turn language reminder for the Japanese model: small models
+                // respond more reliably to language instructions in the user turn.
+                let userMessage = isJapaneseLlama ? "（日本語で回答）\(text)" : text
+                prompt += history + "<|start_header_id|>user<|end_header_id|>\n\n\(userMessage)<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
+                // 60-token cap for Japanese: forces 1–2 sentence responses that match the
+                // system prompt instruction, cuts generation time by ~40%, and reduces
+                // the AI response tokens that would otherwise inflate future prompts.
+                maxTokens = isJapaneseLlama ? 60 : 100
             }
 
             await llmEngine.generate(prompt: prompt, maxTokens: maxTokens)
@@ -187,6 +243,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         llmEngine.stop()
         playerNode.stop()
         ttsBuffer = ""
+        tagBuffer = ""
         pendingUIActionTask?.cancel()
         pendingUIActionTask = nil
         Task { @MainActor in
@@ -201,6 +258,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         llmEngine.stop()
         playerNode.stop()
         ttsBuffer = ""
+        tagBuffer = ""
         pendingUIActionTask?.cancel()
         pendingUIActionTask = nil
         recordingLock.lock()
@@ -221,6 +279,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         llmEngine.unloadModel()
         playerNode.stop()
         ttsBuffer = ""
+        tagBuffer = ""
         pendingUIActionTask?.cancel()
         pendingUIActionTask = nil
         recordingLock.lock()

@@ -67,17 +67,18 @@ Fix **all** reported violations before opening a Pull Request. The CI pipeline e
 
 ```
 NeuraLink/
-├── AI/              — OpenAI Realtime WebSocket manager, Silero VAD, chat state
-├── Sky/             — Realtime sky system (time provider, palette, renderer, uniforms)
-├── Terrain/         — Snow terrain renderer, shadow passes
-├── VRM/             — VRM loader, MToon shaders, Spring-Bone physics, animation
-│   └── Shaders/     — All .metal shader files
-├── UI/              — SwiftUI views, model selection, chat overlay
-└── Models/          — Bundled .vrm, .vrma, and character assets
-docs/                — Project documentation and screenshots
+├── NeuraLink/           — Main application target
+│   ├── App/             — Application entry point, root views, and global configurations
+│   ├── Core/            — Low-level rendering engines, bridges, and utilities
+│   ├── Data/            — Data sources, repository implementations, and mappers
+│   ├── Domain/          — Business logic, entities, use cases, and repository interfaces
+│   └── Presentation/    — SwiftUI views, view models, and UI components
+├── NeuraLinkTests/      — Unit tests
+├── NeuraLinkUITests/    — UI tests
+└── docs/                — Project documentation and screenshots
 ```
 
-Each module lives in its own folder. **Do not** mix concerns across folders — a change to the sky system should not touch VRM loader files, and vice versa.
+The project follows **Clean Architecture** principles. **Do not** mix concerns across layers — UI components (Presentation) should only interact with ViewModels, which coordinate with Domain UseCases.
 
 ---
 
@@ -93,7 +94,7 @@ These rules are **mandatory** and enforced by both SwiftLint and code review:
 - Keep **cognitive complexity low** — prefer early returns, named helpers, and flat logic over deeply nested conditionals.
 
 ### Architecture
-- Follow the existing module boundaries (Sky, VRM, Terrain, AI, UI).
+- Follow the Clean Architecture layer boundaries (App, Core, Data, Domain, Presentation).
 - Shared GPU data structures must have matching Swift and Metal definitions with explicit byte offsets documented in comments (see `SkyUniforms.swift` as a reference).
 
 ### Swift Style

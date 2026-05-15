@@ -13,36 +13,93 @@ import Foundation
 extension LocalLLMManager: LocalLLMEngineDelegate {
 
     func localLLM(didGenerateToken token: String) {
+        tagBuffer += token
+
+        let (cleanText, emotions) = drainTagBuffer()
+
         if !firstTokenLatencyLogged,
             let start = turnStartNs,
-            !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            !cleanText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             firstTokenLatencyLogged = true
             let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000.0
             print("[LocalLLM] First token latency: \(String(format: "%.1f", elapsedMs)) ms")
         }
 
         Task { @MainActor in
-            if state.status == .thinking {
-                state.status = .speaking
+            if state.status == .thinking { state.status = .speaking }
+            // Emotion tags are intercepted before reaching the transcript — trigger directly
+            // so they never appear in the UI or reach TTS, matching the OpenAI set_emotion() path.
+            for (emotion, duration) in emotions {
+                state.triggerEmotion(emotion, duration: duration)
             }
-            state.aiTranscript += token
-            state.parseAndTriggerEmotion(from: state.aiTranscript)
+            if !cleanText.isEmpty {
+                state.aiTranscript += cleanText
+            }
         }
 
-        ttsBuffer += token
+        guard !cleanText.isEmpty else { return }
 
-        let openBrackets  = ttsBuffer.filter { $0 == "[" }.count
-        let closeBrackets = ttsBuffer.filter { $0 == "]" }.count
-        let insideTag = openBrackets > closeBrackets
+        ttsBuffer += cleanText
 
-        if !insideTag
-            && (token.contains(".") || token.contains("!") || token.contains("?")
-                || token.contains("。") || token.contains(",") || token.contains("\n")
-                || (ttsBuffer.count >= 32 && ttsBuffer.contains(" "))) {
+        if cleanText.contains(".") || cleanText.contains("!") || cleanText.contains("?")
+            || cleanText.contains("。") || cleanText.contains(",") || cleanText.contains("\n")
+            || (ttsBuffer.count >= 32 && ttsBuffer.contains(" ")) {
             let chunkToSpeak = ttsBuffer
             ttsBuffer = ""
             speakChunk(chunkToSpeak)
         }
+    }
+
+    // Drains tagBuffer: returns (cleanText, [(emotion, duration)]).
+    // Emotion tags are extracted and returned; all other text is returned as cleanText.
+    // Leaves any partial open tag (no closing ']' yet) in tagBuffer for the next token.
+    private func drainTagBuffer() -> (String, [(String, Float)]) {
+        var clean = ""
+        var emotions: [(String, Float)] = []
+
+        while !tagBuffer.isEmpty {
+            guard let openIdx = tagBuffer.firstIndex(of: "[") else {
+                clean += tagBuffer
+                tagBuffer = ""
+                break
+            }
+            // Flush text that precedes the '['
+            clean += String(tagBuffer[..<openIdx])
+            tagBuffer = String(tagBuffer[openIdx...])
+
+            guard let closeIdx = tagBuffer.firstIndex(of: "]") else {
+                // No closing bracket yet — keep buffering if short enough for a tag
+                if tagBuffer.count > 20 {
+                    clean += tagBuffer
+                    tagBuffer = ""
+                }
+                break
+            }
+
+            let candidate = String(tagBuffer[...closeIdx])
+            tagBuffer = String(tagBuffer[tagBuffer.index(after: closeIdx)...])
+
+            if let (emotion, duration) = matchEmotionTag(candidate) {
+                emotions.append((emotion, duration))
+            } else {
+                clean += candidate
+            }
+        }
+        return (clean, emotions)
+    }
+
+    private func matchEmotionTag(_ s: String) -> (String, Float)? {
+        let pattern = #"(?i)^\[(happy|angry|sad|relaxed|surprised|shocked|shy|embarrassed|bored|confused|wink|neutral):(\d+(?:\.\d+)?)\]$"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let ns = s as NSString
+        let range = NSRange(location: 0, length: ns.length)
+        guard let m = regex.firstMatch(in: s, range: range),
+              m.numberOfRanges >= 3,
+              let r1 = Range(m.range(at: 1), in: s),
+              let r2 = Range(m.range(at: 2), in: s),
+              let duration = Float(s[r2])
+        else { return nil }
+        return (String(s[r1]).lowercased(), duration)
     }
 
     func localLLM(didFinishGeneration fullText: String) {
@@ -65,13 +122,38 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
             }
         }
 
-        // RAG: Store the user's input and the AI's response in long-term memory
+        // RAG: Store in long-term memory — skip for Japanese model because English user
+        // queries mixed with Japanese AI responses produce low-quality embeddings that
+        // degrade future RAG retrieval across all models sharing the same memory store.
         let userText = state.userTranscript
-        RAGManager.shared.store(text: userText, source: "user")
+        let isJapaneseLlama = LocalModelDownloadManager.shared.selectedConfig == .japaneseLlama1b
+        if !isJapaneseLlama {
+            RAGManager.shared.store(text: userText, source: "user")
+        }
         let stripped = LocalToolCallParser.strippedText(fullText)
         if !stripped.isEmpty {
-            RAGManager.shared.store(text: stripped, source: "ai")
+            if !isJapaneseLlama {
+                RAGManager.shared.store(text: stripped, source: "ai")
+            }
             ChatTimelineStore.logAIMessage(stripped)
+        }
+
+        // Flush any partial tag buffer (e.g. generation stopped mid-tag)
+        if !tagBuffer.isEmpty {
+            let (leftover, emotions) = drainTagBuffer()
+            let remaining = leftover + tagBuffer  // tagBuffer holds unresolvable partial '[...'
+            tagBuffer = ""
+            if !remaining.isEmpty {
+                ttsBuffer += remaining
+                Task { @MainActor in
+                    state.aiTranscript += remaining
+                }
+            }
+            Task { @MainActor in
+                for (emotion, duration) in emotions {
+                    state.triggerEmotion(emotion, duration: duration)
+                }
+            }
         }
 
         if !ttsBuffer.trimmingCharacters(in: .whitespaces).isEmpty {

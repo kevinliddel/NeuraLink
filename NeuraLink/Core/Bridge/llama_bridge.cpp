@@ -38,7 +38,9 @@ LlamaBridgeHandle* llama_bridge_create(
     const char* model_path,
     int32_t     n_ctx,
     int32_t     n_threads,
-    int32_t     n_gpu_layers)
+    int32_t     n_gpu_layers,
+    int32_t     k_type,
+    int32_t     v_type)
 {
     llama_backend_init();
 
@@ -56,6 +58,13 @@ LlamaBridgeHandle* llama_bridge_create(
     llama_context_params cp = llama_context_default_params();
     cp.n_ctx        = static_cast<uint32_t>(n_ctx);
     cp.n_threads    = static_cast<uint32_t>(n_threads);
+    
+    // KV cache quantization
+    cp.type_k = static_cast<enum ggml_type>(k_type);
+    cp.type_v = static_cast<enum ggml_type>(v_type);
+    
+    // Enable flash attention for performance on Metal if supported
+    cp.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_ENABLED;
 
     llama_context* ctx = llama_new_context_with_model(model, cp);
     if (!ctx) {

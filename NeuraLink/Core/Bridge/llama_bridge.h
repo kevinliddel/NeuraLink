@@ -37,13 +37,17 @@ typedef void (*LlamaFinishCallback)(void* context);
 ///   - n_threads:  CPU threads for ops not offloaded to Metal (4 on A13).
 ///   - n_gpu_layers: Transformer layers to offload to Metal GPU.
 ///                   Pass 999 to offload all layers.
+///   - k_type:     Quantization type for K cache (e.g. 2 for Q4_0, 8 for Q8_0).
+///   - v_type:     Quantization type for V cache (e.g. 2 for Q4_0, 8 for Q8_0).
 ///
 /// - Returns: Opaque handle, or NULL on failure (model not found / OOM).
 LlamaBridgeHandle* llama_bridge_create(
     const char* model_path,
     int32_t     n_ctx,
     int32_t     n_threads,
-    int32_t     n_gpu_layers
+    int32_t     n_gpu_layers,
+    int32_t     k_type,
+    int32_t     v_type
 );
 
 /// Destroy the context and release all memory.

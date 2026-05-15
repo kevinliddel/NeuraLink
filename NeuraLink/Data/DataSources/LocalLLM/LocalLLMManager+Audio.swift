@@ -4,7 +4,7 @@
 //
 //  Audio engine setup and processing split out to keep LocalLLMManager.swift lean.
 //
-//  Created by Antigravity on 09/05/2026.
+//  Created by Dedicatus on 09/05/2026.
 //
 
 import AVFoundation
@@ -87,6 +87,13 @@ extension LocalLLMManager {
                 let maxPreRoll = Int((hardwareInputFormat?.sampleRate ?? 48000.0) * 0.5)
                 if recordingBuffer.count > maxPreRoll {
                     recordingBuffer.removeFirst(recordingBuffer.count - maxPreRoll)
+                }
+            } else {
+                let sampleRate = hardwareInputFormat?.sampleRate ?? 48000.0
+                let newSamples = recordingBuffer.count - lastPartialTranscribedCount
+                if newSamples >= Int(sampleRate * 0.8), !isTranscribingPartial {
+                    let currentBuffer = recordingBuffer
+                    triggerPartialTranscription(samples: currentBuffer)
                 }
             }
         }

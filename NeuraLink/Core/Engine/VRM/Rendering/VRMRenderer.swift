@@ -261,6 +261,7 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
         let meshNameLower: String
         let isFaceMaterial: Bool
         let isEyeMaterial: Bool
+        var isMouthOrLip: Bool
 
         // OPTIMIZATION: Render order for single-array sorting (avoids concatenation)
         var renderOrder: Int  // 0=opaque, 1=faceSkin, 2=faceEyebrow, 3=faceEyeline, 4=mask, 5=faceEye, 6=faceHighlight, 7=blend
@@ -281,6 +282,12 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
     var samplerStates: [String: MTLSamplerState] = [:]
     var lastPipelineState: MTLRenderPipelineState?
     var lastMaterialId: Int = -1
+    // State tracking to avoid redundant Metal calls
+    var lastCullMode: MTLCullMode?
+    var lastFrontFacing: MTLWinding?
+    var lastDepthBias: (Float, Float, Float)?
+    var lastDepthStencilState: MTLDepthStencilState?
+    var lastTextureIds: [Int: MTLTexture] = [:] // index -> texture
     // Dummy buffer to satisfy Metal validation when morphs are not used
     var emptyFloat3Buffer: MTLBuffer?
 
@@ -292,180 +299,11 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
     /// Current debug mode (0 = normal, 1-16 = various debug visualizations)
     var currentDebugMode: Int = 0
 
-    public init(device: MTLDevice, config: RendererConfig = RendererConfig(strict: .off)) {
+    init(device: MTLDevice, internal: (), config: RendererConfig) {
         self.device = device
         self.commandQueue = device.makeCommandQueue()!
         self.config = config
-        self.strictValidator = StrictValidator(config: config)
-        self.skinningSystem = VRMSkinningSystem(device: device)
-
-        // Initialize morph target system (may fail if GPU compute unavailable)
-        do {
-            self.morphTargetSystem = try VRMMorphTargetSystem(device: device)
-        } catch {
-            self.morphTargetSystem = nil
-        }
-
-        self.expressionController = VRMExpressionController()
-        do {
-            self.springBoneComputeSystem = try SpringBoneComputeSystem(device: device)
-        } catch {
-            self.springBoneComputeSystem = nil
-        }
-        self.lookAtController = VRMLookAtController()
         self.inflightSemaphore = DispatchSemaphore(value: Self.maxBufferedFrames)
-
-        // Initialize sprite cache system for multi-character optimization
-        self.spriteCacheSystem = SpriteCacheSystem(device: device, commandQueue: commandQueue)
-
-        // Initialize character priority system
-        self.prioritySystem = CharacterPrioritySystem()
-
         super.init()
-
-        // Verify MToonMaterialUniforms alignment
-        validateMaterialUniformAlignment()
-
-        // Set up expression controller with morph target system
-        if let morphTargetSystem = morphTargetSystem {
-            self.expressionController?.setMorphTargetSystem(morphTargetSystem)
-        }
-
-        setupPipeline()
-        setupSkinnedPipeline()
-        setupSpritePipeline()
-        setupCachedStates()
-        setupTripleBuffering()
-        setupSkyRenderer()
-        setupTerrain()
-        setupCity()
-        setupCampus()
-    }
-
-    /// Removes the current model from the renderer so only sky and terrain are drawn.
-    func clearModel() {
-        model = nil
-        isModelVisible = false
-        cacheNeedsRebuild = true
-        cachedRenderItems = nil
-        terrainRenderer?.scheduleShadowMapClear()
-    }
-
-    /// Loads a VRM model into the renderer and initializes all subsystems.
-    public func loadModel(_ model: VRMModel) {
-        self.model = model
-        isModelVisible = false
-
-        // PERFORMANCE: Invalidate cached render items when model changes
-        cacheNeedsRebuild = true
-        cachedRenderItems = nil
-
-        if !model.skins.isEmpty {
-            skinningSystem?.setupForSkins(model.skins)
-        }
-
-        // Load expressions if available
-        if let expressions = model.expressions {
-            // VRM 1.x morphTargetBind.node is a glTF NODE index; the renderer
-            // keys weights by MESH index. Build the map once and remap before registering.
-            let nodeToMesh: [Int: Int] =
-                model.specVersion == .v0_0
-                ? [:]
-                : buildNodeToMeshMap(from: model.gltf)
-
-            for (preset, expression) in expressions.preset {
-                let expr =
-                    nodeToMesh.isEmpty
-                    ? expression : remapExpressionNodes(expression, map: nodeToMesh)
-                expressionController?.registerExpression(expr, for: preset)
-            }
-            for (name, expression) in expressions.custom {
-                let expr =
-                    nodeToMesh.isEmpty
-                    ? expression : remapExpressionNodes(expression, map: nodeToMesh)
-                expressionController?.registerCustomExpression(expr, name: name)
-            }
-        }
-
-        // Initialize base material colors for expression-driven material color binds
-        for (materialIndex, material) in model.materials.enumerated() {
-            // Store base color factor (RGBA)
-            expressionController?.setBaseMaterialColor(
-                materialIndex: materialIndex,
-                type: .color,
-                color: material.baseColorFactor
-            )
-
-            // Store emissive factor (RGB + 1.0 alpha)
-            expressionController?.setBaseMaterialColor(
-                materialIndex: materialIndex,
-                type: .emissionColor,
-                color: SIMD4<Float>(material.emissiveFactor, 1.0)
-            )
-
-            // Store MToon-specific colors if available
-            if let mtoon = material.mtoon {
-                expressionController?.setBaseMaterialColor(
-                    materialIndex: materialIndex,
-                    type: .shadeColor,
-                    color: SIMD4<Float>(mtoon.shadeColorFactor, 1.0)
-                )
-                expressionController?.setBaseMaterialColor(
-                    materialIndex: materialIndex,
-                    type: .matcapColor,
-                    color: SIMD4<Float>(mtoon.matcapFactor, 1.0)
-                )
-                expressionController?.setBaseMaterialColor(
-                    materialIndex: materialIndex,
-                    type: .rimColor,
-                    color: SIMD4<Float>(mtoon.parametricRimColorFactor, 1.0)
-                )
-                expressionController?.setBaseMaterialColor(
-                    materialIndex: materialIndex,
-                    type: .outlineColor,
-                    color: SIMD4<Float>(mtoon.outlineColorFactor, 1.0)
-                )
-            }
-        }
-
-        // Initialize SpringBone GPU compute system if available
-        if model.springBone != nil {
-            do {
-                try springBoneComputeSystem?.populateSpringBoneData(model: model)
-                
-                // Warm up physics to prevent initial bounce/oscillation
-                springBoneComputeSystem?.warmupPhysics(model: model, steps: 30)
-            } catch {
-            }
-        }
-        
-        // Initialize LookAt controller if model has lookAt data or eye bones
-        if model.lookAt != nil || model.humanoid?.humanBones[.leftEye] != nil
-            || model.humanoid?.humanBones[.rightEye] != nil {
-            lookAtController?.setup(model: model, expressionController: expressionController)
-            // Default to DISABLED to avoid misaligned eyes; can be enabled explicitly by apps
-            lookAtController?.enabled = false
-            lookAtController?.target = .camera
-        }
-    }
-
-    // MARK: - Expression Node Remapping (VRM 1.x)
-
-    private func buildNodeToMeshMap(from gltf: GLTFDocument) -> [Int: Int] {
-        var map = [Int: Int]()
-        guard let nodes = gltf.nodes else { return map }
-        for (nodeIndex, node) in nodes.enumerated() {
-            if let meshIndex = node.mesh { map[nodeIndex] = meshIndex }
-        }
-        return map
-    }
-
-    private func remapExpressionNodes(_ expression: VRMExpression, map: [Int: Int]) -> VRMExpression {
-        var resolved = expression
-        resolved.morphTargetBinds = expression.morphTargetBinds.compactMap { bind in
-            guard let meshIndex = map[bind.node] else { return nil }
-            return VRMMorphTargetBind(node: meshIndex, index: bind.index, weight: bind.weight)
-        }
-        return resolved
     }
 }

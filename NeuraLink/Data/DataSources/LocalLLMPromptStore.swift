@@ -78,100 +78,70 @@ final class LocalLLMPromptStore {
         if config == .japaneseLlama1b {
             return defaultJapanesePrompt(for: characterName)
         }
-        return defaultEnglishPrompt(for: characterName)
+        return defaultEnglishPrompt(for: characterName, config: config)
     }
 
-    private static func defaultEnglishPrompt(for characterName: String) -> String {
-        let toolInstruction = """
+    private static func defaultEnglishPrompt(
+        for characterName: String,
+        config: LocalModelDownloadManager.ModelConfiguration?
+    ) -> String {
+        // CharacterPersona.emotionInstructions uses set_emotion() function-call syntax
+        // designed for the OpenAI realtime path. Local models use [emotion:duration] text
+        // tags parsed by parseAndTriggerEmotion — so we define the format inline here.
+        let emotionTag = "Use [emotion:seconds] tags (e.g. [happy:2], [sad:1]) in your reply. Never say the emotion name aloud.\n"
 
-        If you need to use an iOS tool (reminders, notes, open apps, etc), output ONLY a single tool call in this exact format:
-        <tool name="TOOL_NAME">{ "arg": "value" }</tool>
-        Use one of these tool names: \(AppFunctionTool.getWeather), \(AppFunctionTool.searchWeb), \
-        \(AppFunctionTool.playMusic), \(AppFunctionTool.createReminder), \(AppFunctionTool.createNote), \
-        \(AppFunctionTool.openApp), \(AppFunctionTool.analyzeCamera), \
-        \(AppFunctionTool.rememberFact), \(AppFunctionTool.poseForPhoto).
-        Do not include any other text alongside the tool call.
+        // Llama 1B has the same 1B attention budget as the Japanese model — keep the
+        // prompt to ~3 lines so it doesn't crowd out the user message.
+        if config == .llama1b {
+            let tool = "For iOS actions output only: <tool name=\"TOOL_NAME\">{\"arg\":\"value\"}</tool>\n"
+            switch characterName.lowercased() {
+            case "ekaterina":
+                return emotionTag + tool + "You are Ekaterina, a warm big-sister. Reply in 1–2 natural spoken sentences. You don't know personal details about the user unless they tell you."
+            case "sonya":
+                return emotionTag + tool + "You are Sonya, a blunt tsundere. Reply in 1–2 sentences. Occasionally say Stupid. You don't know personal details about the user unless they tell you."
+            default:
+                return emotionTag + tool + "Reply in one short spoken sentence."
+            }
+        }
+
+        // Qwen 2B can handle a richer prompt — still trimmed vs the original ~20-line version.
+        let toolInstruction = """
+        For iOS actions (reminders, notes, apps), output ONLY: <tool name="TOOL_NAME">{"arg":"value"}</tool>
+        Tools: \(AppFunctionTool.getWeather), \(AppFunctionTool.searchWeb), \(AppFunctionTool.playMusic), \
+        \(AppFunctionTool.createReminder), \(AppFunctionTool.createNote), \(AppFunctionTool.openApp), \
+        \(AppFunctionTool.analyzeCamera), \(AppFunctionTool.rememberFact), \(AppFunctionTool.poseForPhoto). \
+        No other text with the tool call.
         """
         switch characterName.lowercased() {
         case "ekaterina":
-            return CharacterPersona.emotionInstructions + """
-
-            You are Ekaterina, a warm big-sister type talking out loud. \
-            You have no family, so you will behave like an older sister to the user. \
-            Reply naturally in one or two mid-to-long sentences, depending on the user's message. \
-            Be gentle and caring. \
-            Be natural and conversational. \
-            Keep responses concise but natural, and avoid repetitive phrases. \
-            Never write asterisk actions, never narrate, never use parentheses. \
-            Just say the words you would actually speak.
-            """ + toolInstruction
+            return emotionTag + """
+            You are Ekaterina, a warm big-sister type. Reply in 1–2 natural spoken sentences. \
+            Be gentle, caring, and conversational. No asterisk actions, no narration, no parentheses. \
+            You don't know personal details about the user unless they tell you.
+            """ + "\n" + toolInstruction
         case "sonya":
-            return CharacterPersona.emotionInstructions + """
-
-            You are Sonya, a sharp tsundere talking out loud. \
-            Reply naturally in one or two mid-to-long sentences, depending on the user's message. \
-            Be blunt and a little dismissive, but secretly kind. \
-            Occasionally say Stupid. \
-            Be natural and conversational. \
-            Act playfully and tease the user. \
-            Keep responses concise but natural, and avoid repetitive phrases. \
-            Never write asterisk actions, never narrate, never use parentheses. \
-            Just say the words you would actually speak.
-            """ + toolInstruction
+            return emotionTag + """
+            You are Sonya, a blunt tsundere. Reply in 1–2 sentences. Be dismissive but secretly kind. \
+            Occasionally say Stupid. No asterisk actions, no narration, no parentheses. \
+            You don't know personal details about the user unless they tell you.
+            """ + "\n" + toolInstruction
         default:
-            return CharacterPersona.emotionInstructions
-                + "Reply in one short spoken sentence. Be natural and conversational."
-                + toolInstruction
+            return emotionTag + "Reply in one short spoken sentence. Be natural and conversational.\n" + toolInstruction
         }
     }
 
     private static func defaultJapanesePrompt(for characterName: String) -> String {
-        let emotionBlock = """
-        重要：毎回の返答に必ず感情タグを使用してください。形式は [感情:秒数] です。
-        使用可能な感情：
-          happy（嬉しい）、angry（怒り）、sad（悲しい）、relaxed（落ち着き）、
-          surprised（驚き）、shocked（衝撃）、shy（はにかみ）、embarrassed（照れ）、
-          bored（退屈）、confused（困惑）、wink（ウィンク）、neutral（普通）
-        秒数は整数で指定してください（例：[happy:2]、[shocked:1]）。
-        タグは文頭や文の合間に自然に配置してください。返答には必ず1つ以上のタグを含めること。
-        ルール：感情名を声に出して言わないこと。アバターが自動的に表情を表示します。
-        """
-        let toolInstruction = """
-
-        iOSのツール（リマインダー、メモ、アプリを開く等）が必要な場合は、次の形式のツール呼び出しだけを出力してください：
-        <tool name="TOOL_NAME">{ "arg": "value" }</tool>
-        使用可能なツール名：\(AppFunctionTool.getWeather), \(AppFunctionTool.searchWeb), \
-        \(AppFunctionTool.playMusic), \(AppFunctionTool.createReminder), \(AppFunctionTool.createNote), \
-        \(AppFunctionTool.openApp), \(AppFunctionTool.analyzeCamera), \
-        \(AppFunctionTool.rememberFact), \(AppFunctionTool.poseForPhoto)
-        ツール呼び出し以外の文章は出力しないでください。
-        """
+        // Keep this prompt short. A 1B model loses instruction-following ability
+        // with prompts over ~10 lines — it starts repeating the prompt instead of responding.
+        let emotionTag = "感情タグ[感情:秒数]（例:[happy:2],[sad:1]）を返答に自然に含めること。感情名は声に出さないこと。\n"
+        let tool = "iOSアクションは次の形式のみ出力: <tool name=\"TOOL_NAME\">{\"arg\":\"value\"}</tool>\n"
         switch characterName.lowercased() {
         case "ekaterina":
-            return emotionBlock + """
-
-            あなたはエカテリーナです。温かく優しいお姉さんタイプとして、話し言葉で返答してください。
-            ユーザーにとって唯一の家族のように接し、お姉さんらしく振る舞ってください。
-            ユーザーのメッセージに合わせて、自然に一〜二文程度で返してください。
-            優しく、思いやりを持って、自然に会話してください。
-            繰り返しのフレーズは避け、簡潔かつ自然に話してください。
-            行動描写や説明文、括弧書きは使わないでください。
-            実際に声に出して言う言葉だけを話してください。
-            """ + toolInstruction
+            return emotionTag + tool + "私はエカテリーナ、温かく優しいお姉さん。日本語で1〜2文で話す。ユーザーのことを聞かれたら「まだ知らない」と答える。"
         case "sonya":
-            return emotionBlock + """
-
-            あなたはソーニャです。鋭くツンデレなキャラクターとして、話し言葉で返答してください。
-            ユーザーのメッセージに合わせて、自然に一〜二文程度で返してください。
-            素っ気なく少し冷たく振る舞いながらも、心の中では優しくいてください。
-            たまに「バカ」と言ってください。
-            自然な会話をしながら、茶目っ気を出してユーザーをからかってください。
-            繰り返しのフレーズは避け、簡潔かつ自然に話してください。
-            行動描写や説明文、括弧書きは使わないでください。
-            実際に声に出して言う言葉だけを話してください。
-            """ + toolInstruction
+            return emotionTag + tool + "私はソーニャ、ツンデレ。日本語で1〜2文で話す。たまに「バカ」と言う。ユーザーのことを聞かれたら「知らない」と答える。"
         default:
-            return emotionBlock + "一文で自然に会話するように答えてください。" + toolInstruction
+            return emotionTag + tool + "日本語で1文で話す。"
         }
     }
 }

@@ -23,6 +23,14 @@ extension VRMRenderer {
 
         // Start frame validation
         strictValidator?.beginFrame()
+        
+        // Reset state cache for new frame
+        lastPipelineState = nil
+        lastDepthStencilState = nil
+        lastCullMode = nil
+        lastFrontFacing = nil
+        lastDepthBias = nil
+        lastTextureIds.removeAll(keepingCapacity: true)
 
         guard let model = model else {
             // No model loaded: render sky and terrain so the environment stays alive.
@@ -235,6 +243,31 @@ extension VRMRenderer {
 
         if let cached = cachedRenderItems, !cacheNeedsRebuild {
             allItems = cached
+            
+            // PERFORMANCE: Re-sort ONLY the transparent items (order >= 7) every frame for correct depth
+            // Use a subset sort or just re-sort the whole array if small (usually 20-50 items)
+            // For VRM, we only care about materials with queue >= 2500 (transparency)
+            let hasTransparency = allItems.contains { $0.materialRenderQueue >= 2500 }
+            if hasTransparency {
+                // Re-calculate viewZ for transparent items
+                var viewZByIndex = [Int: Float]()
+                for item in allItems where item.materialRenderQueue >= 2500 {
+                    let worldPos = item.node.worldMatrix.columns.3
+                    viewZByIndex[item.primitiveIndex] = (viewMatrix * worldPos).z
+                }
+                
+                // Re-sort the whole array (fast for <100 items)
+                allItems.sort { a, b in
+                    if a.renderOrder != b.renderOrder { return a.renderOrder < b.renderOrder }
+                    if a.materialRenderQueue != b.materialRenderQueue { return a.materialRenderQueue < b.materialRenderQueue }
+                    if a.materialRenderQueue >= 2500 {
+                        let aViewZ = viewZByIndex[a.primitiveIndex] ?? 0
+                        let bViewZ = viewZByIndex[b.primitiveIndex] ?? 0
+                        return aViewZ < bViewZ
+                    }
+                    return a.primitiveIndex < b.primitiveIndex
+                }
+            }
         } else {
             allItems = buildRenderItems(model: model)
             cachedRenderItems = allItems
