@@ -60,22 +60,9 @@
 		AC9FBDA126D2084ED6E64CC8 /* llama.xcframework */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = wrapper.xcframework; name = llama.xcframework; path = "llama.cpp/build-apple/llama.xcframework"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		041E139C2F91FD1800D2D110 /* Exceptions for "NeuraLink" folder in "NeuraLink" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Info.plist,
-			);
-			target = 041E11DD2F8E782300D2D110 /* NeuraLink */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
-
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		041E11E02F8E782300D2D110 /* NeuraLink */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				041E139C2F91FD1800D2D110 /* Exceptions for "NeuraLink" folder in "NeuraLink" target */,
-			);
 			path = NeuraLink;
 			sourceTree = "<group>";
 		};
@@ -480,7 +467,7 @@
 				DEVELOPMENT_TEAM = 3G3WS7F2CM;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = NeuraLink/Info.plist;
+				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -498,7 +485,7 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_OBJC_BRIDGING_HEADER = "NeuraLink/Bridge/NeuraLink-Bridging-Header.h";
+				SWIFT_OBJC_BRIDGING_HEADER = "NeuraLink/Core/Bridge/NeuraLink-Bridging-Header.h";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -515,7 +502,7 @@
 				DEVELOPMENT_TEAM = 3G3WS7F2CM;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = NeuraLink/Info.plist;
+				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -533,7 +520,7 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_OBJC_BRIDGING_HEADER = "NeuraLink/Bridge/NeuraLink-Bridging-Header.h";
+				SWIFT_OBJC_BRIDGING_HEADER = "NeuraLink/Core/Bridge/NeuraLink-Bridging-Header.h";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
