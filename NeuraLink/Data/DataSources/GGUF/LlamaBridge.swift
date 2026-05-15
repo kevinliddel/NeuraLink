@@ -34,13 +34,17 @@ final class LlamaBridge {
     ///   - contextLength: KV-cache token capacity (2048 for 4 GB devices).
     ///   - threads:       CPU threads for non-Metal ops (4 on A13 Bionic).
     ///   - gpuLayers:     Transformer layers to offload to Metal (999 = all).
+    ///   - kType:         KV cache K quantization (default: .q4_0).
+    ///   - vType:         KV cache V quantization (default: .q4_0).
     init?(
         modelPath: String,
         contextLength: Int32 = 2048,
         threads: Int32 = 4,
-        gpuLayers: Int32 = 999
+        gpuLayers: Int32 = 999,
+        kType: LlamaKVType = .q4_0,
+        vType: LlamaKVType = .q4_0
     ) {
-        handle = llama_bridge_create(modelPath, contextLength, threads, gpuLayers)
+        handle = llama_bridge_create(modelPath, contextLength, threads, gpuLayers, kType.rawValue, vType.rawValue)
         guard handle != nil else { return nil }
     }
 
