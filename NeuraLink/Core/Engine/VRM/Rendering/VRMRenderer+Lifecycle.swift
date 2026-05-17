@@ -56,6 +56,7 @@ extension VRMRenderer {
         setupTerrain()
         setupCity()
         setupCampus()
+        setupGodRays()
     }
 
     /// Removes the current model from the renderer so only sky and terrain are drawn.

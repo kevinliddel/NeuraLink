@@ -14,6 +14,8 @@ extension VRMRenderer: MTKViewDelegate {
         let aspect = Float(size.width / size.height)
         projectionMatrix = makePerspective(
             fovyRadians: .pi / 3, aspectRatio: aspect, nearZ: 0.1, farZ: 100.0)
+        resizeSSAOTextures(size)
+        resizeGodRayTextures(size)
     }
 
     public func draw(in view: MTKView) {

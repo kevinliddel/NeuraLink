@@ -40,9 +40,10 @@ struct CampusMeshGroup {
     let indexCount: Int
     let indexType: MTLIndexType
     let texture: MTLTexture?
+    let normalTexture: MTLTexture?
     let baseColorFactor: SIMD4<Float>
     let emissivePacked: SIMD4<Float>  // xyz = emissiveFactor, w = alphaCutoff
-    let materialParams: SIMD4<Float>  // x = metallic, y = roughness
+    let materialParams: SIMD4<Float>  // x = metallic, y = roughness, z = hasNormalMap, w = normalScale
     let transform: simd_float4x4
     let isBlend: Bool
 }
@@ -56,6 +57,7 @@ final class CampusRenderer: @unchecked Sendable {
     let device: MTLDevice
     var meshGroups: [CampusMeshGroup] = []
     var fallbackTexture: MTLTexture?
+    var flatNormalTexture: MTLTexture?
 
     var mainPipeline: MTLRenderPipelineState?
     var blendPipeline: MTLRenderPipelineState?
@@ -173,6 +175,7 @@ final class CampusRenderer: @unchecked Sendable {
                 &emissivePacked, length: MemoryLayout<SIMD4<Float>>.size, index: 3)
             encoder.setFragmentBytes(&matParams, length: MemoryLayout<SIMD4<Float>>.size, index: 4)
             encoder.setFragmentTexture(group.texture ?? fallbackTexture, index: 0)
+            encoder.setFragmentTexture(group.normalTexture ?? flatNormalTexture, index: 3)
             encoder.drawIndexedPrimitives(
                 type: .triangle, indexCount: group.indexCount,
                 indexType: group.indexType, indexBuffer: group.indexBuffer,
