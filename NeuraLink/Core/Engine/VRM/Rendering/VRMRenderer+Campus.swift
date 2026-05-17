@@ -37,11 +37,15 @@ extension VRMRenderer {
 
     func drawCampusShadow(commandBuffer: MTLCommandBuffer) {
         guard let wideShadowMap = terrainRenderer?.exposedWideShadowMap else { return }
-        let wideLightVP = terrainRenderer?.exposedWideLightViewProjection ?? matrix_identity_float4x4
+        let rawSun      = skyRenderer?.currentEnvironment.sunDirection ?? SIMD3<Float>(0, 1, 0)
+        let effectiveSun: SIMD3<Float> = rawSun.y >= 0 ? rawSun : rawSun * -1.0
+        // Ray-cast coverage: ±300 units horizontal, up to 500 units tall (captures full canopy).
+        let campusLightVP = TerrainRenderer.makeEnvLightMatrix(
+            sunDir: effectiveSun, radius: 300, height: 500)
         campusRenderer?.drawShadow(
             commandBuffer: commandBuffer,
             shadowMap: wideShadowMap,
-            lightViewProjection: wideLightVP,
+            lightViewProjection: campusLightVP,
             clearFirst: true
         )
     }
@@ -53,17 +57,18 @@ extension VRMRenderer {
               let sampler       = terrainRenderer?.exposedShadowSampler
         else { return }
 
-        // Tight shadow map contains the VRM
         let vrmShadowMap  = terrainRenderer?.exposedShadowMap    ?? wideShadowMap
         let vrmLightVP    = terrainRenderer?.exposedLightViewProjection ?? matrix_identity_float4x4
 
         let vp          = projectionMatrix * viewMatrix
-        let wideLightVP = terrainRenderer?.exposedWideLightViewProjection ?? matrix_identity_float4x4
         let env         = skyRenderer?.currentEnvironment
         let rawSun      = env?.sunDirection ?? SIMD3<Float>(0, 1, 0)
         let sunHeight   = rawSun.y
         let effectiveSun: SIMD3<Float> = rawSun.y >= 0 ? rawSun : rawSun * -1.0
         let shadowSoft: Float = rawSun.y >= 0 ? 2.5 : 1.5
+        // Must match the matrix used in drawCampusShadow.
+        let campusLightVP = TerrainRenderer.makeEnvLightMatrix(
+            sunDir: effectiveSun, radius: 300, height: 500)
 
         let invView   = viewMatrix.inverse
         let cameraPos = SIMD3<Float>(invView[3][0], invView[3][1], invView[3][2])
@@ -71,7 +76,7 @@ extension VRMRenderer {
         campusRenderer?.draw(
             encoder: encoder,
             viewProjection: vp,
-            lightViewProjection: wideLightVP,
+            lightViewProjection: campusLightVP,
             vrmLightViewProjection: vrmLightVP,
             cameraPosition: cameraPos,
             sunDirection: effectiveSun,
