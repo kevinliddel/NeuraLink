@@ -140,10 +140,14 @@ kernel void springBonePredict(
     }
 
     // --- Drag + gravity -------------------------------------------------------
-    // DT-scaled drag: velocity *= (1 - drag * dt * 60).
-    // drag=1.0 → ~50 % velocity loss per 1/60 s frame (frame-rate independent).
+    // Exponential drag: velocity *= pow(1 - drag, dtSub * 60).
+    // This is frame-rate independent — accumulating across N substeps at dtSub = 1/(60*N)
+    // always yields (1-drag) total velocity retention per 1/60 s frame, matching the
+    // three-vrm reference behaviour (drag=0.9 → 90% velocity loss per frame regardless
+    // of substep count). The linear approximation used previously underestimated damping
+    // at high drag values and was the primary cause of bust/breast pulsation.
     float effectiveDrag = clamp(boneParams[id].drag * globalParams.dragMultiplier, 0.0, 0.99);
-    float dragFactor    = clamp(1.0 - effectiveDrag * globalParams.dtSub * 60.0, 0.01, 1.0);
+    float dragFactor    = pow(1.0 - effectiveDrag, globalParams.dtSub * 60.0);
 
     float3 effectiveGravity = boneParams[id].gravityDir
                             * length(globalParams.gravity)
