@@ -198,7 +198,7 @@ extension VRMRenderer {
         guard let compEnc = commandBuffer.makeRenderCommandEncoder(descriptor: compPass) else { return }
         compEnc.label = "GodRay Composite"
         compEnc.setRenderPipelineState(compPSO)
-        compEnc.setFragmentTexture(blurTex,  index: 0)
+        compEnc.setFragmentTexture(blurTex, index: 0)
         compEnc.setFragmentTexture(depthTex, index: 1)   // sky mask: skip depth=1 pixels
         compEnc.setFragmentBuffer(uniBuf, offset: 0, index: 0)
         compEnc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
