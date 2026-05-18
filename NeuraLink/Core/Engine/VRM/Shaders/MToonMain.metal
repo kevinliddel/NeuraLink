@@ -109,27 +109,33 @@ fragment float4 mtoon_fragment_v2(VertexOut in [[stage_in]],
     float3 lit0 = float3(0.0);
     float3 lightingForRim = float3(0.0);
     if (intensity0 > 0.0) {
-        float ndotl0  = dot(normal, -uniforms.lightDirection.xyz);
-        float shading0 = ndotl0 + shadingShift;
-        float step0   = linearstep(-1.0 + toony, 1.0 - toony, shading0);
+        float ndotl0 = dot(normal, -uniforms.lightDirection.xyz);
+        float shading0 = (material.vrmVersion == 0)
+            ? (ndotl0 * 0.5 + 0.5 + shadingShift)
+            : (ndotl0 + shadingShift);
+        float step0 = linearstep(-1.0 + toony, 1.0 - toony, shading0);
         lit0 = mix(shadeColor, baseColor.rgb, step0) * uniforms.lightColor.xyz * (intensity0 / totalIntensity);
         lightingForRim += uniforms.lightColor.xyz * max(ndotl0, 0.0) * (intensity0 / totalIntensity);
     }
 
     float3 lit1 = float3(0.0);
     if (intensity1 > 0.0) {
-        float ndotl1  = dot(normal, -uniforms.light1Direction.xyz);
-        float shading1 = ndotl1 + shadingShift;
-        float step1   = linearstep(-1.0 + toony, 1.0 - toony, shading1);
+        float ndotl1 = dot(normal, -uniforms.light1Direction.xyz);
+        float shading1 = (material.vrmVersion == 0)
+            ? (ndotl1 * 0.5 + 0.5 + shadingShift)
+            : (ndotl1 + shadingShift);
+        float step1 = linearstep(-1.0 + toony, 1.0 - toony, shading1);
         lit1 = mix(shadeColor, baseColor.rgb, step1) * uniforms.light1Color.xyz * (intensity1 / totalIntensity);
         lightingForRim += uniforms.light1Color.xyz * max(ndotl1, 0.0) * (intensity1 / totalIntensity);
     }
 
     float3 lit2 = float3(0.0);
     if (intensity2 > 0.0) {
-        float ndotl2  = dot(normal, -uniforms.light2Direction.xyz);
-        float shading2 = ndotl2 + shadingShift;
-        float step2   = linearstep(-1.0 + toony, 1.0 - toony, shading2);
+        float ndotl2 = dot(normal, -uniforms.light2Direction.xyz);
+        float shading2 = (material.vrmVersion == 0)
+            ? (ndotl2 * 0.5 + 0.5 + shadingShift)
+            : (ndotl2 + shadingShift);
+        float step2 = linearstep(-1.0 + toony, 1.0 - toony, shading2);
         lit2 = mix(shadeColor, baseColor.rgb, step2) * uniforms.light2Color.xyz * (intensity2 / totalIntensity);
         lightingForRim += uniforms.light2Color.xyz * max(ndotl2, 0.0) * (intensity2 / totalIntensity);
     }

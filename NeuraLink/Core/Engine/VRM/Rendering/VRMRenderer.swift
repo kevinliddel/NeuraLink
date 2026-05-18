@@ -291,21 +291,6 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
     // Dummy buffer to satisfy Metal validation when morphs are not used
     var emptyFloat3Buffer: MTLBuffer?
 
-    // MARK: - God Rays
-
-    var godRayMaskTexture: MTLTexture?
-    var godRayBlurTexture: MTLTexture?
-    /// Set to false to bypass god rays (useful at night or for performance).
-    public var enableGodRays: Bool = true
-    var godRayMaskPipeline: MTLRenderPipelineState?
-    var godRayBlurPipeline: MTLRenderPipelineState?
-    var godRayCompositePipeline: MTLRenderPipelineState?
-    var godRayUniformsBuffer: MTLBuffer?
-
-    // MARK: - Environment Depth (used by god rays for sky mask)
-
-    var ssaoDepthTexture: MTLTexture?
-
     // MARK: - MSAA / Drawable Size
 
     /// Current drawable size for MSAA texture management

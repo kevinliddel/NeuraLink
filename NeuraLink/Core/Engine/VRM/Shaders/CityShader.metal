@@ -96,12 +96,11 @@ fragment float4 city_fragment(
     constant float4           &baseColorFactor [[buffer(2)]],
     // xyz = emissiveFactor (capped in shader), w = alphaCutoff
     constant float4           &emissivePacked  [[buffer(3)]],
-    // x = metallic, y = roughness, z = hasNormalMap, w = normalScale
+    // x = metallicFactor, y = roughnessFactor
     constant float4           &materialParams  [[buffer(4)]],
     texture2d<float>           albedo          [[texture(0)]],
     texture2d<float>           shadowMap       [[texture(1)]],  // wide city shadow
     texture2d<float>           vrmShadowMap    [[texture(2)]],  // tight VRM shadow
-    texture2d<float>           normalMap       [[texture(3)]],  // tangent-space normal map
     sampler                    shadowSmp       [[sampler(0)]]
 ) {
     constexpr sampler smp(filter::linear, mip_filter::linear,
@@ -112,20 +111,6 @@ fragment float4 city_fragment(
     if (color.a < emissivePacked.w) discard_fragment();
 
     float3 N         = normalize(in.normal);
-
-    // Normal map — screen-space derivative TBN (no pre-computed tangents needed)
-    if (materialParams.z > 0.5f) {
-        float3 q1  = dfdx(in.worldPos);
-        float3 q2  = dfdy(in.worldPos);
-        float2 st1 = dfdx(in.texcoord);
-        float2 st2 = dfdy(in.texcoord);
-        float3 T   = normalize(q1 * st2.y - q2 * st1.y);
-        float3 B   = normalize(-q1 * st2.x + q2 * st1.x);
-        float3x3 TBN = float3x3(T, B, N);
-        float3 nmap  = normalMap.sample(smp, in.texcoord).xyz * 2.0f - 1.0f;
-        nmap.xy     *= materialParams.w;  // normalScale
-        N = normalize(TBN * nmap);
-    }
     float3 sunDir    = u.sunDirection.xyz;
     float  sunH      = u.sunDirection.w;
     float  sunStr    = saturate(sunH + 0.30f);

@@ -101,10 +101,6 @@ extension VRMRenderer {
         } else {
             terrainRenderer?.clearWideShadowMap(commandBuffer: commandBuffer)
         }
-        // SSAO depth pre-pass: environment geometry only → ssaoDepthTexture.
-        // Runs here so VRM character never appears in the depth source, keeping
-        // character shading clean regardless of model version.
-        drawEnvironmentDepthPrePass(commandBuffer: commandBuffer)
 
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor)
         else {
@@ -395,9 +391,6 @@ extension VRMRenderer {
 
         encoder.endEncoding()
 
-        // Volumetric god rays (additive, composites sun shafts onto the scene)
-        drawGodRays(commandBuffer: commandBuffer, renderPassDescriptor: renderPassDescriptor)
-
         // Rain-on-glass overlay (compute water map → transparent fragment pass)
         if UserSettings.shared.showEnvironment {
             drawRainOverlay(commandBuffer: commandBuffer, renderPassDescriptor: renderPassDescriptor)
@@ -440,7 +433,6 @@ extension VRMRenderer {
         } else {
             terrainRenderer?.clearWideShadowMap(commandBuffer: commandBuffer)
         }
-        drawEnvironmentDepthPrePass(commandBuffer: commandBuffer)
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor)
         else {
             inflightSemaphore.signal()
@@ -468,9 +460,7 @@ extension VRMRenderer {
             drawTerrain(encoder: encoder)
         }
         encoder.endEncoding()
-
-        drawGodRays(commandBuffer: commandBuffer, renderPassDescriptor: renderPassDescriptor)
-
+        
         if UserSettings.shared.showEnvironment {
             drawRainOverlay(commandBuffer: commandBuffer, renderPassDescriptor: renderPassDescriptor)
         }
