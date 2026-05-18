@@ -140,15 +140,21 @@ extension VRMRenderer {
         let camPos    = SIMD3<Float>(invView[3][0], invView[3][1], invView[3][2])
         let sunWorld  = SIMD4<Float>(camPos + effectiveSun * 50.0, 1.0)
         let sunClip   = projectionMatrix * (viewMatrix * sunWorld)
+
+        // Sun behind the camera: sunClip.w ≤ 0 flips the NDC divide, sending sunUV to the
+        // opposite side of the screen and causing the radial blur to march the wrong way.
+        // Skip the entire pass rather than render an inverted/flashing artifact.
+        guard sunClip.w > 0.01 else { return }
+
         let sunNDC    = SIMD2<Float>(sunClip.x, sunClip.y) / sunClip.w
         let sunUV     = sunNDC * SIMD2<Float>(0.5, -0.5) + SIMD2<Float>(0.5, 0.5)
 
         // Sun color from sky palette, dimmed at night.
         let rawColor  = env?.keyLightColor ?? SIMD3<Float>(1, 0.95, 0.8)
         let intensity = (env?.keyLightIntensity ?? 1.0) * max(0, sunHeight + 0.1)
-        // sunColor.w = ground Y threshold in world space.
-        // Anything below 2.0 m above the environment base (y=-0.02) is treated as ground.
-        let sunColor  = SIMD4<Float>(rawColor * min(intensity, 1.5), 2.0)
+        // sunColor.w = world-space ground base Y for the composite fade.
+        // Ground in this engine sits at Y ≈ 0; the shader fades out from there to +0.3 m.
+        let sunColor  = SIMD4<Float>(rawColor * min(intensity, 1.5), 0.0)
 
         var u = GodRayUniforms(
             inverseViewProjection: (projectionMatrix * viewMatrix).inverse,

@@ -104,8 +104,10 @@ fragment float4 godray_blur_fragment(
 // MARK: - Pass 3: composite
 //
 // Tints the blurred rays with the sun colour and additively blends into the framebuffer.
-// Only ground-level pixels (world Y < sunColor.w threshold) receive rays — this restricts
-// the effect to the campus/city floor and excludes buildings, foliage, and the sun mesh.
+// Rays are restricted to near-ground surfaces (puddles, floor tiles) via a smooth Y fade
+// that starts at the environment ground base (sunColor.w, nominally 0.0) and reaches zero
+// at +0.3 m above it. This excludes buildings, foliage, the VRM character body, and the
+// sun mesh without any hard-edge oscillation at the boundary.
 // Sky pixels (depth == 1.0 clear value) are always discarded first.
 
 fragment float4 godray_composite_fragment(
@@ -117,22 +119,27 @@ fragment float4 godray_composite_fragment(
     constexpr sampler s(filter::linear,  address::clamp_to_edge);
     constexpr sampler d(filter::nearest, address::clamp_to_edge);
 
-    // Discard sky / unrendered pixels.
+    // Discard sky / unrendered pixels (cleared to depth 1.0 in the pre-pass).
     float depth = depthTex.sample(d, in.uv);
     if (depth >= 0.9999f) discard_fragment();
 
-    // Reconstruct world-space position from depth to restrict god rays to ground surfaces.
-    // NDC xy: UV(0,0)=top-left maps to NDC(-1,+1); UV(1,1)=bottom-right maps to NDC(+1,-1).
-    float2 ndc   = in.uv * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f);
-    float4 clip  = float4(ndc, depth, 1.0f);
+    // Reconstruct world-space Y from depth.
+    // NDC xy: UV(0,0)=top-left → NDC(-1,+1); UV(1,1)=bottom-right → NDC(+1,-1).
+    float2 ndc    = in.uv * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f);
+    float4 clip   = float4(ndc, depth, 1.0f);
     float4 worldH = u.inverseViewProjection * clip;
     float  worldY = worldH.y / worldH.w;
 
-    // sunColor.w holds the ground Y threshold (set in Swift, default 2.0 m above base).
-    // Pixels above this height belong to buildings, trees, or the sun mesh — skip them.
-    if (worldY > u.sunColor.w) discard_fragment();
+    // Smooth fade: full brightness at ground level, zero at +0.3 m above.
+    // sunColor.w = ground base Y (0.0 in this engine).
+    // Range [-0.1, +0.3] covers sunken puddles and flat floor tiles while excluding
+    // anything taller than a kerb. Smooth fade eliminates the precision-boundary
+    // flicker that a hard cutoff causes near the transition height.
+    float groundBase = u.sunColor.w;
+    float fade = 1.0f - smoothstep(groundBase - 0.1f, groundBase + 0.3f, worldY);
+    if (fade <= 0.01f) discard_fragment();
 
     float  rayBrightness = raysTex.sample(s, in.uv).r;
     float3 tinted        = rayBrightness * u.sunColor.rgb;
-    return float4(tinted, rayBrightness);
+    return float4(tinted * fade, rayBrightness * fade);
 }
