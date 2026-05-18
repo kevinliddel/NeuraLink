@@ -12,12 +12,12 @@ using namespace metal;
 // MARK: - Uniform layout (must match GodRayUniforms in Swift, 96 bytes)
 
 struct GodRayUniforms {
-    float4x4 inverseProjection;  // offset  0, 64 bytes — for view-dir reconstruction
-    float2   sunScreenUV;        // offset 64,  8 bytes — sun position in [0,1] UV
-    float    sunIntensity;       // offset 72,  4 bytes
-    float    sunHeight;          // offset 76,  4 bytes — raw y component (signed)
-    float4   sunColor;           // offset 80, 16 bytes — rgb + unused w
-};                               // total: 96 bytes
+    float4x4 inverseViewProjection; // offset  0, 64 bytes — inv(P*V) for world-pos reconstruction
+    float2   sunScreenUV;           // offset 64,  8 bytes — sun position in [0,1] UV
+    float    sunIntensity;          // offset 72,  4 bytes
+    float    sunHeight;             // offset 76,  4 bytes — raw y component (signed)
+    float4   sunColor;              // offset 80, 16 bytes — rgb=sun tint, w=ground Y threshold
+};                                  // total: 96 bytes (unchanged)
 
 // MARK: - Vertex (large-triangle, reused by all three passes)
 
@@ -104,9 +104,9 @@ fragment float4 godray_blur_fragment(
 // MARK: - Pass 3: composite
 //
 // Tints the blurred rays with the sun colour and additively blends into the framebuffer.
-// Only pixels that belong to city/campus scene geometry receive rays.
-// Sky pixels (depth == 1.0 clear value) and the sun disc are excluded, which also
-// removes the dark anti-sun sphere artifact caused by contrast against the bright halo.
+// Only ground-level pixels (world Y < sunColor.w threshold) receive rays — this restricts
+// the effect to the campus/city floor and excludes buildings, foliage, and the sun mesh.
+// Sky pixels (depth == 1.0 clear value) are always discarded first.
 
 fragment float4 godray_composite_fragment(
     GodRayVert                       in       [[stage_in]],
@@ -117,9 +117,20 @@ fragment float4 godray_composite_fragment(
     constexpr sampler s(filter::linear,  address::clamp_to_edge);
     constexpr sampler d(filter::nearest, address::clamp_to_edge);
 
-    // Discard sky / unrendered pixels — only city/campus ground gets ray brightening.
+    // Discard sky / unrendered pixels.
     float depth = depthTex.sample(d, in.uv);
     if (depth >= 0.9999f) discard_fragment();
+
+    // Reconstruct world-space position from depth to restrict god rays to ground surfaces.
+    // NDC xy: UV(0,0)=top-left maps to NDC(-1,+1); UV(1,1)=bottom-right maps to NDC(+1,-1).
+    float2 ndc   = in.uv * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f);
+    float4 clip  = float4(ndc, depth, 1.0f);
+    float4 worldH = u.inverseViewProjection * clip;
+    float  worldY = worldH.y / worldH.w;
+
+    // sunColor.w holds the ground Y threshold (set in Swift, default 2.0 m above base).
+    // Pixels above this height belong to buildings, trees, or the sun mesh — skip them.
+    if (worldY > u.sunColor.w) discard_fragment();
 
     float  rayBrightness = raysTex.sample(s, in.uv).r;
     float3 tinted        = rayBrightness * u.sunColor.rgb;

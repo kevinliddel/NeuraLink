@@ -44,18 +44,16 @@ extension VRMRenderer {
         let selected = UserSettings.shared.selectedEnvironment
 
         if selected == "city" {
-            cityRenderer?.drawShadow(
+            cityRenderer?.drawDepthPrePass(
                 commandBuffer: commandBuffer,
-                shadowMap: depthTex,
-                lightViewProjection: vp,
-                clearFirst: true
+                depthTexture: depthTex,
+                cameraViewProjection: vp
             )
         } else {
-            campusRenderer?.drawShadow(
+            campusRenderer?.drawDepthPrePass(
                 commandBuffer: commandBuffer,
-                shadowMap: depthTex,
-                lightViewProjection: vp,
-                clearFirst: true
+                depthTexture: depthTex,
+                cameraViewProjection: vp
             )
         }
     }

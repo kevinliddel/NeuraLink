@@ -13,11 +13,11 @@ import simd
 // MARK: - GPU uniform layout (must mirror GodRayUniforms in GodRayShader.metal, 96 bytes)
 
 struct GodRayUniforms {
-    var inverseProjection: simd_float4x4  // offset  0, 64 bytes
-    var sunScreenUV: SIMD2<Float>         // offset 64,  8 bytes
-    var sunIntensity: Float               // offset 72,  4 bytes
-    var sunHeight: Float                  // offset 76,  4 bytes
-    var sunColor: SIMD4<Float>            // offset 80, 16 bytes
+    var inverseViewProjection: simd_float4x4  // offset  0, 64 bytes — inv(P*V) for world-pos
+    var sunScreenUV: SIMD2<Float>             // offset 64,  8 bytes
+    var sunIntensity: Float                   // offset 72,  4 bytes
+    var sunHeight: Float                      // offset 76,  4 bytes
+    var sunColor: SIMD4<Float>                // offset 80, 16 bytes — rgb=tint, w=ground Y threshold
 }
 
 // MARK: - God rays extension
@@ -146,10 +146,12 @@ extension VRMRenderer {
         // Sun color from sky palette, dimmed at night.
         let rawColor  = env?.keyLightColor ?? SIMD3<Float>(1, 0.95, 0.8)
         let intensity = (env?.keyLightIntensity ?? 1.0) * max(0, sunHeight + 0.1)
-        let sunColor  = SIMD4<Float>(rawColor * min(intensity, 1.5), 0)
+        // sunColor.w = ground Y threshold in world space.
+        // Anything below 2.0 m above the environment base (y=-0.02) is treated as ground.
+        let sunColor  = SIMD4<Float>(rawColor * min(intensity, 1.5), 2.0)
 
         var u = GodRayUniforms(
-            inverseProjection: projectionMatrix.inverse,
+            inverseViewProjection: (projectionMatrix * viewMatrix).inverse,
             sunScreenUV: sunUV,
             sunIntensity: 1.0,
             sunHeight: sunHeight,

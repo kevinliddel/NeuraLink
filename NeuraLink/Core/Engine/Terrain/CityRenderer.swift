@@ -120,6 +120,48 @@ final class CityRenderer: @unchecked Sendable {
         encoder.endEncoding()
     }
 
+    // MARK: - God ray depth pre-pass
+
+    /// Renders ALL mesh groups (opaque and blend) to a depth-only texture using the
+    /// camera VP. Used by the god ray composite to distinguish sky from ground geometry.
+    /// No depth bias — we want accurate camera-perspective depths for world-space reconstruction.
+    func drawDepthPrePass(
+        commandBuffer: MTLCommandBuffer,
+        depthTexture: MTLTexture,
+        cameraViewProjection: simd_float4x4
+    ) {
+        guard isReady, let pipeline = shadowPipeline,
+              let ds = depthState, let shadowBuf = shadowUniformsBuffer
+        else { return }
+
+        var su = CityShadowUniforms(lightViewProjection: cameraViewProjection)
+        shadowBuf.contents().copyMemory(from: &su, byteCount: MemoryLayout<CityShadowUniforms>.stride)
+
+        let passDesc = MTLRenderPassDescriptor()
+        passDesc.depthAttachment.texture     = depthTexture
+        passDesc.depthAttachment.loadAction  = .clear
+        passDesc.depthAttachment.storeAction = .store
+        passDesc.depthAttachment.clearDepth  = 1.0
+
+        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: passDesc) else { return }
+        encoder.label = "CityDepthPrePass"
+        encoder.setRenderPipelineState(pipeline)
+        encoder.setDepthStencilState(ds)
+        encoder.setCullMode(.none)
+        encoder.setVertexBuffer(shadowBuf, offset: 0, index: 1)
+
+        for group in meshGroups {
+            var transform = group.transform
+            encoder.setVertexBuffer(group.vertexBuffer, offset: 0, index: 0)
+            encoder.setVertexBytes(&transform, length: MemoryLayout<simd_float4x4>.stride, index: 2)
+            encoder.drawIndexedPrimitives(
+                type: .triangle, indexCount: group.indexCount,
+                indexType: group.indexType, indexBuffer: group.indexBuffer,
+                indexBufferOffset: 0)
+        }
+        encoder.endEncoding()
+    }
+
     // MARK: - Main draw
 
     func draw(
