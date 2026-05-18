@@ -40,9 +40,10 @@ struct CampusMeshGroup {
     let indexCount: Int
     let indexType: MTLIndexType
     let texture: MTLTexture?
+    let normalTexture: MTLTexture?
     let baseColorFactor: SIMD4<Float>
     let emissivePacked: SIMD4<Float>  // xyz = emissiveFactor, w = alphaCutoff
-    let materialParams: SIMD4<Float>  // x = metallic, y = roughness
+    let materialParams: SIMD4<Float>  // x = metallic, y = roughness, z = hasNormalMap, w = normalScale
     let transform: simd_float4x4
     let isBlend: Bool
 }
@@ -56,6 +57,7 @@ final class CampusRenderer: @unchecked Sendable {
     let device: MTLDevice
     var meshGroups: [CampusMeshGroup] = []
     var fallbackTexture: MTLTexture?
+    var flatNormalTexture: MTLTexture?
 
     var mainPipeline: MTLRenderPipelineState?
     var blendPipeline: MTLRenderPipelineState?
@@ -123,6 +125,51 @@ final class CampusRenderer: @unchecked Sendable {
         encoder.endEncoding()
     }
 
+    // MARK: - God ray depth pre-pass
+
+    /// Renders ALL mesh groups (opaque and blend) to a depth-only texture using the
+    /// camera VP. Used by the god ray composite to distinguish sky from ground geometry.
+    /// No depth bias — we want accurate camera-perspective depths for world-space reconstruction.
+    func drawDepthPrePass(
+        commandBuffer: MTLCommandBuffer,
+        depthTexture: MTLTexture,
+        cameraViewProjection: simd_float4x4
+    ) {
+        guard isReady, let pipeline = shadowPipeline,
+            let ds = depthState, let shadowBuf = shadowUniformsBuffer
+        else { return }
+
+        var su = CampusShadowUniforms(lightViewProjection: cameraViewProjection)
+        shadowBuf.contents().copyMemory(
+            from: &su, byteCount: MemoryLayout<CampusShadowUniforms>.stride)
+
+        let passDesc = MTLRenderPassDescriptor()
+        passDesc.depthAttachment.texture     = depthTexture
+        passDesc.depthAttachment.loadAction  = .clear
+        passDesc.depthAttachment.storeAction = .store
+        passDesc.depthAttachment.clearDepth  = 1.0
+
+        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: passDesc) else {
+            return
+        }
+        encoder.label = "CampusDepthPrePass"
+        encoder.setRenderPipelineState(pipeline)
+        encoder.setDepthStencilState(ds)
+        encoder.setCullMode(.none)
+        encoder.setVertexBuffer(shadowBuf, offset: 0, index: 1)
+
+        for group in meshGroups {
+            var transform = group.transform
+            encoder.setVertexBuffer(group.vertexBuffer, offset: 0, index: 0)
+            encoder.setVertexBytes(&transform, length: MemoryLayout<simd_float4x4>.stride, index: 2)
+            encoder.drawIndexedPrimitives(
+                type: .triangle, indexCount: group.indexCount,
+                indexType: group.indexType, indexBuffer: group.indexBuffer,
+                indexBufferOffset: 0)
+        }
+        encoder.endEncoding()
+    }
+
     // MARK: - Main draw
 
     func draw(
@@ -173,6 +220,7 @@ final class CampusRenderer: @unchecked Sendable {
                 &emissivePacked, length: MemoryLayout<SIMD4<Float>>.size, index: 3)
             encoder.setFragmentBytes(&matParams, length: MemoryLayout<SIMD4<Float>>.size, index: 4)
             encoder.setFragmentTexture(group.texture ?? fallbackTexture, index: 0)
+            encoder.setFragmentTexture(group.normalTexture ?? flatNormalTexture, index: 3)
             encoder.drawIndexedPrimitives(
                 type: .triangle, indexCount: group.indexCount,
                 indexType: group.indexType, indexBuffer: group.indexBuffer,

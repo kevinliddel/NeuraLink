@@ -37,11 +37,15 @@ extension VRMRenderer {
 
     func drawCityShadow(commandBuffer: MTLCommandBuffer) {
         guard let wideShadowMap = terrainRenderer?.exposedWideShadowMap else { return }
-        let wideLightVP = terrainRenderer?.exposedWideLightViewProjection ?? matrix_identity_float4x4
+        let rawSun      = skyRenderer?.currentEnvironment.sunDirection ?? SIMD3<Float>(0, 1, 0)
+        let effectiveSun: SIMD3<Float> = rawSun.y >= 0 ? rawSun : rawSun * -1.0
+        // Ray-cast coverage: ±150 m horizontal, up to 120 m tall (captures all city buildings).
+        let cityLightVP = TerrainRenderer.makeEnvLightMatrix(
+            sunDir: effectiveSun, radius: 150, height: 120)
         cityRenderer?.drawShadow(
             commandBuffer: commandBuffer,
             shadowMap: wideShadowMap,
-            lightViewProjection: wideLightVP,
+            lightViewProjection: cityLightVP,
             clearFirst: true
         )
     }
@@ -53,18 +57,19 @@ extension VRMRenderer {
               let sampler       = terrainRenderer?.exposedShadowSampler
         else { return }
 
-        // Tight shadow map contains the VRM — used so the character casts a shadow
-        // on the city ground. Falls back to the wide map when unavailable.
+        // Tight shadow map contains the VRM — character casts shadow on city ground.
         let vrmShadowMap  = terrainRenderer?.exposedShadowMap    ?? wideShadowMap
         let vrmLightVP    = terrainRenderer?.exposedLightViewProjection ?? matrix_identity_float4x4
 
         let vp          = projectionMatrix * viewMatrix
-        let wideLightVP = terrainRenderer?.exposedWideLightViewProjection ?? matrix_identity_float4x4
         let env         = skyRenderer?.currentEnvironment
         let rawSun      = env?.sunDirection ?? SIMD3<Float>(0, 1, 0)
         let sunHeight   = rawSun.y
         let effectiveSun: SIMD3<Float> = rawSun.y >= 0 ? rawSun : rawSun * -1.0
         let shadowSoft: Float = rawSun.y >= 0 ? 2.5 : 1.5
+        // Must match the matrix used in drawCityShadow.
+        let cityLightVP = TerrainRenderer.makeEnvLightMatrix(
+            sunDir: effectiveSun, radius: 150, height: 120)
 
         let invView   = viewMatrix.inverse
         let cameraPos = SIMD3<Float>(invView[3][0], invView[3][1], invView[3][2])
@@ -72,7 +77,7 @@ extension VRMRenderer {
         cityRenderer?.draw(
             encoder: encoder,
             viewProjection: vp,
-            lightViewProjection: wideLightVP,
+            lightViewProjection: cityLightVP,
             vrmLightViewProjection: vrmLightVP,
             cameraPosition: cameraPos,
             sunDirection: effectiveSun,

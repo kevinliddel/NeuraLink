@@ -470,4 +470,23 @@ extension TerrainRenderer {
             return proj * view
         }
     }
+
+    /// Environment-scale shadow matrix that covers the full scene extent.
+    /// `radius` = half-width of the horizontal frustum in scene units.
+    /// `height` = vertical coverage from ground to top of tallest caster.
+    static func makeEnvLightMatrix(
+        sunDir: SIMD3<Float>, radius: Float, height: Float
+    ) -> simd_float4x4 {
+        let centre = SIMD3<Float>(0, height * 0.5, 0)
+        let up: SIMD3<Float> = abs(sunDir.y) > 0.98 ? SIMD3<Float>(1, 0, 0) : SIMD3<Float>(0, 1, 0)
+        let eyeDist = radius + height
+        let eyePos  = centre + sunDir * eyeDist
+        let view = OrthographicCamera.makeLookAt(eye: eyePos, target: centre, up: up)
+        let proj = OrthographicCamera.makeOrthographic(
+            left: -radius, right: radius,
+            bottom: -(radius * 0.1), top: height,
+            near: 0.1, far: eyeDist * 2.5
+        )
+        return proj * view
+    }
 }
