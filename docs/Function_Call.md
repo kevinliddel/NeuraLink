@@ -145,7 +145,7 @@ Opens a built-in iOS app by name using URL schemes.
 Stores structured facts about the user in the local Knowledge Graph. These facts are persistent across sessions and are injected into the AI's system prompt during initialization.
 
 **Trigger phrases:**
-- *"My name is Kevin"*
+- *"My name is Dedicatus"*
 - *"I really love spicy food"*
 - *"I work as a software engineer"*
 

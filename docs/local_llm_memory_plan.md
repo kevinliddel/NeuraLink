@@ -80,7 +80,7 @@ The prompt sent to the LLM at every turn is composed of three tiers:
 4. Resulting facts are stored in `RAGManager` with metadata `{ source: "fact", ts, turn_ids }`.
 5. The compacted turns are removed from the Tier 2 window. Next turn's prompt has Tier 3 retrieval re-running, surfacing the new facts (and old) if they're relevant to the new user input.
 
-Result: at turn 30, the prompt contains the system prompt + ~6 verbatim recent turns + 3 retrieved facts that may date back to turn 1. The model "remembers" Kevin's allergy, Tokyo address, and pet name even though those exchanges fell out of the verbatim window 25 turns ago.
+Result: at turn 30, the prompt contains the system prompt + ~6 verbatim recent turns + 3 retrieved facts that may date back to turn 1. The model "remembers" Dedicatus's allergy, Tokyo address, and pet name even though those exchanges fell out of the verbatim window 25 turns ago.
 
 ### 3.3 What doesn't change
 
