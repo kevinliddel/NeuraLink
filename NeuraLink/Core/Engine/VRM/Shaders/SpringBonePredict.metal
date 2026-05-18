@@ -73,18 +73,36 @@ kernel void springBonePredict(
     if (isnan(velocity.x) || isnan(velocity.y) || isnan(velocity.z)) velocity = float3(0.0);
 
     // --- Inertia compensation -------------------------------------------------
-    // When the parent (head) moves upward, the distance constraint correction from
-    // the previous frame becomes upward velocity here, causing a snap/jerk.
-    // Subtracting the parent's upward delta cancels that synthetic velocity so hair
-    // trails naturally. Lateral compensation is skipped to avoid pushing bangs
-    // into the face on head tilts. Disabled during settling so gravity can settle
-    // bones to their natural hanging position.
+    // When the kinematic parent moves, the distance constraint drags child bones
+    // along, creating synthetic velocity in the tip bone. We subtract the parent
+    // delta to prevent this from causing oscillation.
+    //
+    // HIGH-DRAG bones (drag ≥ 0.7, e.g. bust/breast): compensate ALL directions
+    // with a very low threshold so that even slow idle-breathing motion (~0.5mm/step)
+    // is cancelled. These bones should track the chest closely; uncancelled
+    // constraint velocity at slow animation speeds is the root cause of pulsation.
+    //
+    // LOW-DRAG bones (hair, cloth): upward-only compensation at the original
+    // threshold preserves natural draping and prevents bangs from pushing forward.
+    //
+    // Disabled during settling so gravity can pull bones to their rest hang.
     if (globalParams.settlingFrames == 0) {
         float3 parentDelta = bonePosCurr[parentIndex] - bonePosPrev[parentIndex];
-        float3 upwardDelta = float3(0.0, max(0.0, parentDelta.y), 0.0);
-        float upSpeed = length(upwardDelta);
-        float compensationFactor = smoothstep(0.001, 0.015, upSpeed);
-        velocity -= upwardDelta * compensationFactor;
+        float  dragVal     = boneParams[id].drag;
+
+        if (dragVal >= 0.7f) {
+            // Full-directional compensation for bust/breast and other high-drag bones.
+            // Threshold range 0.05 mm – 0.5 mm: fully active at typical breathing speed.
+            float speed  = length(parentDelta);
+            float factor = smoothstep(0.00005f, 0.0005f, speed);
+            velocity -= parentDelta * factor;
+        } else {
+            // Upward-only compensation for hair and low-drag secondary bones.
+            float3 upwardDelta = float3(0.0f, max(0.0f, parentDelta.y), 0.0f);
+            float  upSpeed = length(upwardDelta);
+            float  compensationFactor = smoothstep(0.001f, 0.015f, upSpeed);
+            velocity -= upwardDelta * compensationFactor;
+        }
     }
 
     // Snapshot current position as previous before we mutate it.

@@ -151,9 +151,9 @@ extension VRMExtensionParser {
         var drag = params.dragForce
         
         let lowerName = nodeName?.lowercased() ?? ""
-        let isBust = lowerName.contains("bust") || lowerName.contains("breast")
+        let isBust = lowerName.contains("bust") || lowerName.contains("breast") || lowerName.contains("mune")
         let isCore = lowerName.contains("chest") || lowerName.contains("spine") || lowerName.contains("hips") || lowerName.contains("neck")
-        
+
         if isCore {
             // FORCIBLY neutralize any core humanoid bones that accidentally ended up in physics groups.
             // These should be static anchors to prevent torso pulsation.
@@ -161,11 +161,12 @@ extension VRMExtensionParser {
             drag = 1.0
             stiffness = 1.0
         } else if isBust {
-            // Bust/Breast bones are the most common source of 'pulsating' chest artifacts.
-            // Extreme damping (high drag) and minimal gravity for stability.
-            gravityPower = min(gravityPower, 0.1) 
-            drag = max(drag, 0.8) 
-            stiffness = max(stiffness, 0.4) // Higher stiffness prevents bouncing
+            // Bust/breast bones (VRM 0.x: "bust", "breast", "mune") are the primary source of
+            // pulsation artifacts. High drag (≥0.9) and high stiffness (≥1.0) ensure the Metal
+            // inertia-compensation threshold (0.00005–0.0005m) fires on even slow breathing motion.
+            gravityPower = min(gravityPower, 0.1)
+            drag = max(drag, 0.9)
+            stiffness = max(stiffness, 1.0)
         } else {
             // General safety clamps for other secondary bones (hair, ribbons, etc.)
             gravityPower = min(gravityPower, 0.8)
