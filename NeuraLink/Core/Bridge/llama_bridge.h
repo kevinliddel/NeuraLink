@@ -31,16 +31,8 @@ typedef void (*LlamaFinishCallback)(void* context);
 
 /// Create an inference context from a GGUF model file.
 ///
-/// - Parameters:
-///   - model_path: Absolute path to the `.gguf` file.
-///   - n_ctx:      KV-cache token capacity. Use 256 on 4 GB devices.
-///   - n_threads:  CPU threads for ops not offloaded to Metal (4 on A13).
-///   - n_gpu_layers: Transformer layers to offload to Metal GPU.
-///                   Pass 999 to offload all layers.
-///   - k_type:     Quantization type for K cache (e.g. 2 for Q4_0, 8 for Q8_0).
-///   - v_type:     Quantization type for V cache (e.g. 2 for Q4_0, 8 for Q8_0).
-///
-/// - Returns: Opaque handle, or NULL on failure (model not found / OOM).
+/// The sampler chain is built with sensible defaults
+/// (top_k=40, top_p=0.9, temp=0.7, rep_penalty=1.1 over last 64 tokens).
 LlamaBridgeHandle* llama_bridge_create(
     const char* model_path,
     int32_t     n_ctx,
@@ -51,20 +43,54 @@ LlamaBridgeHandle* llama_bridge_create(
 );
 
 /// Destroy the context and release all memory.
-/// Safe to call from any thread after generation finishes.
 void llama_bridge_free(LlamaBridgeHandle* handle);
+
+// MARK: - Chat template
+
+/// Apply the model's built-in chat template to format messages into a single
+/// prompt string. Avoids hand-rolled template strings that drift between
+/// model versions (Llama 3 vs Qwen 2.5 vs Qwen 3, etc.).
+///
+/// Returns bytes written (excluding null), or negative on error. If the
+/// return value is >= out_buf_size, the buffer was too small.
+int32_t llama_bridge_apply_chat_template(
+    LlamaBridgeHandle* handle,
+    const char* const* roles,
+    const char* const* contents,
+    int32_t            n_messages,
+    bool               add_generation_prompt,
+    char*              out_buf,
+    int32_t            out_buf_size
+);
+
+// MARK: - Prompt-Lookup Decoding (PLD)
+
+/// Enable or disable prompt-lookup speculative decoding.
+///
+/// PLD is speculative decoding without a separate draft model: each round,
+/// the bridge looks for an n-gram match between the last `n` decoded tokens
+/// and any prior position in the current context. If found, the next
+/// `n_draft` tokens following that match are used as the draft and verified
+/// in one batch decode. Gives 1.5–2× tok/s on conversations with repeated
+/// phrasing — persona stock phrases, user names, command prefixes.
+///
+/// Pass `n <= 0` or `n_draft <= 0` to use defaults (n=3, n_draft=5).
+void llama_bridge_set_prompt_lookup(
+    LlamaBridgeHandle* handle,
+    bool               enabled,
+    int32_t            n,
+    int32_t            n_draft
+);
 
 // MARK: - Inference
 
-/// Generate tokens for `prompt`. Blocks the calling thread until done or cancelled.
+/// Generate tokens for `prompt`. Blocks the calling thread until done or
+/// cancelled.
 ///
-/// - Parameters:
-///   - handle:         Context returned by `llama_bridge_create`.
-///   - prompt:         Full prompt string (UTF-8, null-terminated).
-///   - max_new_tokens: Maximum number of new tokens to generate.
-///   - on_token:       Callback invoked per token. Return false to stop early.
-///   - on_finish:      Callback invoked once when generation ends.
-///   - context:        Opaque pointer forwarded to both callbacks.
+/// Reuses the KV cache across calls: tokens shared with the previous prompt
+/// are not re-prefilled, cutting first-token latency on multi-turn chats.
+/// When PLD is enabled, the decode loop also runs prompt-lookup speculative
+/// decoding for additional speedup.
 void llama_bridge_generate(
     LlamaBridgeHandle*  handle,
     const char*         prompt,
@@ -80,7 +106,7 @@ void llama_bridge_cancel(LlamaBridgeHandle* handle);
 
 // MARK: - Diagnostics
 
-/// Returns the llama.cpp build commit string (e.g. "b5200").
+/// Returns the llama.cpp build commit string.
 const char* llama_bridge_version(void);
 
 #ifdef __cplusplus

@@ -4,13 +4,15 @@
 //
 //  C++ implementation of the llama_bridge public API.
 //  Integrates llama.cpp via its public C API (llama.h).
-//  Drives Metal GPU inference with a greedy decode loop.
 //
-//  Section layout (each section ≤ 150 lines):
+//  Section layout:
 //    §1  Includes and internal struct
 //    §2  Context lifecycle (create / free / version)
-//    §3  Sampler helpers
-//    §4  Generation loop
+//    §3  Chat template helper
+//    §4  Generation helpers (token_to_str, common_prefix_len, n-gram scan)
+//    §5  Standard generate loop (KV-prefix reuse + sampler chain)
+//    §6  Prompt-lookup decoding (PLD) generate loop
+//    §7  Public dispatcher + cancel
 //
 //  Created by Dedicatus on 29/04/2026.
 //
@@ -24,15 +26,45 @@
 #include <vector>
 #include <algorithm>
 #include <cstring>
+#include <cstdlib>
 
-/// Internal state bundled behind the opaque pointer.
 struct LlamaBridgeHandle {
-    llama_model*          model       = nullptr;
-    llama_context*        ctx         = nullptr;
-    std::atomic<bool>     cancel_flag { false };
+    llama_model*             model       = nullptr;
+    llama_context*           ctx         = nullptr;
+    llama_sampler*           sampler     = nullptr;
+    std::atomic<bool>        cancel_flag { false };
+
+    /// Tokens currently materialised in the KV cache for sequence 0.
+    /// Used to compute the common prefix with the next prompt so we only
+    /// re-prefill the suffix that actually changed.
+    std::vector<llama_token> kv_tokens;
+
+    /// Prompt-Lookup Decoding config. See `llama_bridge_set_prompt_lookup`.
+    bool                     pld_enabled = false;
+    int32_t                  pld_n       = 3;
+    int32_t                  pld_n_draft = 5;
 };
 
 // MARK: - §2 Context lifecycle
+
+/// Build the default sampler chain: penalties → top_k → top_p → temp → dist.
+/// Tuned for conversational quality without runaway randomness.
+static llama_sampler* build_default_sampler() {
+    auto sparams = llama_sampler_chain_default_params();
+    llama_sampler* chain = llama_sampler_chain_init(sparams);
+    if (!chain) { return nullptr; }
+
+    llama_sampler_chain_add(chain, llama_sampler_init_penalties(
+        /*penalty_last_n=*/64,
+        /*penalty_repeat=*/1.1f,
+        /*penalty_freq=*/0.0f,
+        /*penalty_present=*/0.0f));
+    llama_sampler_chain_add(chain, llama_sampler_init_top_k(40));
+    llama_sampler_chain_add(chain, llama_sampler_init_top_p(0.9f, 1));
+    llama_sampler_chain_add(chain, llama_sampler_init_temp(0.7f));
+    llama_sampler_chain_add(chain, llama_sampler_init_dist(0));
+    return chain;
+}
 
 LlamaBridgeHandle* llama_bridge_create(
     const char* model_path,
@@ -44,45 +76,42 @@ LlamaBridgeHandle* llama_bridge_create(
 {
     llama_backend_init();
 
-    // ── Model load ──────────────────────────────────────────────────────────
-    llama_model_params mp  = llama_model_default_params();
-    mp.n_gpu_layers        = static_cast<int32_t>(n_gpu_layers);
+    llama_model_params mp = llama_model_default_params();
+    mp.n_gpu_layers       = static_cast<int32_t>(n_gpu_layers);
 
     llama_model* model = llama_model_load_from_file(model_path, mp);
-    if (!model) {
-        llama_backend_free();
-        return nullptr;
-    }
+    if (!model) { llama_backend_free(); return nullptr; }
 
-    // ── Context creation ────────────────────────────────────────────────────
     llama_context_params cp = llama_context_default_params();
-    cp.n_ctx        = static_cast<uint32_t>(n_ctx);
-    cp.n_threads    = static_cast<uint32_t>(n_threads);
-    
-    // KV cache quantization
-    cp.type_k = static_cast<enum ggml_type>(k_type);
-    cp.type_v = static_cast<enum ggml_type>(v_type);
-    
-    // Enable flash attention for performance on Metal if supported
+    cp.n_ctx           = static_cast<uint32_t>(n_ctx);
+    cp.n_threads       = static_cast<uint32_t>(n_threads);
+    cp.type_k          = static_cast<enum ggml_type>(k_type);
+    cp.type_v          = static_cast<enum ggml_type>(v_type);
     cp.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_ENABLED;
 
     llama_context* ctx = llama_new_context_with_model(model, cp);
     if (!ctx) {
-        llama_free_model(model);
-        llama_backend_free();
+        llama_free_model(model); llama_backend_free(); return nullptr;
+    }
+
+    llama_sampler* sampler = build_default_sampler();
+    if (!sampler) {
+        llama_free(ctx); llama_free_model(model); llama_backend_free();
         return nullptr;
     }
 
     auto* handle    = new LlamaBridgeHandle();
     handle->model   = model;
     handle->ctx     = ctx;
+    handle->sampler = sampler;
     return handle;
 }
 
 void llama_bridge_free(LlamaBridgeHandle* handle) {
     if (!handle) { return; }
-    if (handle->ctx)   { llama_free(handle->ctx);        }
-    if (handle->model) { llama_free_model(handle->model); }
+    if (handle->sampler) { llama_sampler_free(handle->sampler); }
+    if (handle->ctx)     { llama_free(handle->ctx); }
+    if (handle->model)   { llama_free_model(handle->model); }
     llama_backend_free();
     delete handle;
 }
@@ -91,33 +120,301 @@ const char* llama_bridge_version(void) {
     return llama_print_system_info();
 }
 
-// MARK: - §3 Sampler helpers
-
-/// Greedy argmax over logits for the last decoded position.
-static llama_token greedy_sample(llama_context* ctx, llama_model* model) {
-    const auto* vocab  = llama_model_get_vocab(model);
-    const int   n_vocab = static_cast<int>(llama_vocab_n_tokens(vocab));
-    float*      logits  = llama_get_logits_ith(ctx, -1);
-
-    llama_token best  = 0;
-    float       best_v = logits[0];
-    for (int i = 1; i < n_vocab; ++i) {
-        if (logits[i] > best_v) {
-            best_v = logits[i];
-            best   = static_cast<llama_token>(i);
-        }
-    }
-    return best;
+void llama_bridge_set_prompt_lookup(
+    LlamaBridgeHandle* handle, bool enabled, int32_t n, int32_t n_draft)
+{
+    if (!handle) { return; }
+    handle->pld_enabled = enabled;
+    if (n > 0)       { handle->pld_n = n; }
+    if (n_draft > 0) { handle->pld_n_draft = n_draft; }
 }
 
-/// Converts a token id to its string piece (may be multiple bytes for UTF-8).
+// MARK: - §3 Chat template
+
+int32_t llama_bridge_apply_chat_template(
+    LlamaBridgeHandle* handle,
+    const char* const* roles,
+    const char* const* contents,
+    int32_t            n_messages,
+    bool               add_generation_prompt,
+    char*              out_buf,
+    int32_t            out_buf_size)
+{
+    if (!handle || !handle->model || !roles || !contents || n_messages <= 0 ||
+        !out_buf || out_buf_size <= 0) {
+        return -1;
+    }
+    const char* tmpl = llama_model_chat_template(handle->model, nullptr);
+
+    std::vector<llama_chat_message> messages;
+    messages.reserve(static_cast<size_t>(n_messages));
+    for (int32_t i = 0; i < n_messages; ++i) {
+        messages.push_back({ roles[i], contents[i] });
+    }
+    return llama_chat_apply_template(
+        tmpl, messages.data(), messages.size(),
+        add_generation_prompt, out_buf, out_buf_size);
+}
+
+// MARK: - §4 Generation helpers
+
 static int token_to_str(llama_model* model, llama_token tok,
                          char* buf, int buf_size) {
     const auto* vocab = llama_model_get_vocab(model);
     return llama_token_to_piece(vocab, tok, buf, buf_size, 0, true);
 }
 
-// MARK: - §4 Generation loop (cyclomatic complexity = 7)
+static size_t common_prefix_len(const std::vector<llama_token>& a,
+                                const std::vector<llama_token>& b) {
+    const size_t n = std::min(a.size(), b.size());
+    size_t i = 0;
+    while (i < n && a[i] == b[i]) { ++i; }
+    return i;
+}
+
+/// Tokenises `prompt` into `out`. Resizes on retry. Returns true on success.
+static bool tokenise_into(llama_model* model, const char* prompt,
+                          std::vector<llama_token>& out) {
+    const auto* vocab = llama_model_get_vocab(model);
+    out.resize(2048);
+    int n = llama_tokenize(vocab, prompt,
+                           static_cast<int32_t>(strlen(prompt)),
+                           out.data(),
+                           static_cast<int32_t>(out.size()),
+                           /*add_special=*/true, /*parse_special=*/true);
+    if (n < 0) {
+        out.resize(static_cast<size_t>(-n));
+        n = llama_tokenize(vocab, prompt,
+                           static_cast<int32_t>(strlen(prompt)),
+                           out.data(),
+                           static_cast<int32_t>(out.size()),
+                           true, true);
+    }
+    if (n <= 0) { return false; }
+    out.resize(static_cast<size_t>(n));
+    return true;
+}
+
+/// Sets up the KV cache via prefix reuse and re-prefills only the suffix
+/// that wasn't already cached. Returns true on success; on failure both
+/// caches are wiped to leave the handle in a clean state.
+static bool sync_kv_for_prompt(LlamaBridgeHandle* h,
+                               const std::vector<llama_token>& new_tokens) {
+    if (new_tokens.empty()) { return false; }
+
+    size_t common = common_prefix_len(h->kv_tokens, new_tokens);
+    if (common >= new_tokens.size()) { common = new_tokens.size() - 1; }
+
+    auto* memory = llama_get_memory(h->ctx);
+    if (h->kv_tokens.empty() || common == 0) {
+        llama_memory_clear(memory, true);
+        common = 0;
+    } else if (common < h->kv_tokens.size()) {
+        llama_memory_seq_rm(memory, 0, static_cast<llama_pos>(common), -1);
+    }
+
+    const size_t suffix_len = new_tokens.size() - common;
+    if (suffix_len > 0) {
+        llama_batch batch = llama_batch_get_one(
+            const_cast<llama_token*>(new_tokens.data() + common),
+            static_cast<int32_t>(suffix_len));
+        if (llama_decode(h->ctx, batch) != 0) {
+            llama_memory_clear(memory, true);
+            h->kv_tokens.clear();
+            return false;
+        }
+    }
+    h->kv_tokens = new_tokens;
+    return true;
+}
+
+/// Looks for the most recent n-gram match of the trailing `n` tokens of
+/// `tokens` and returns the position immediately AFTER that match (i.e. the
+/// start of the speculative draft). Returns size_t-max on no match.
+///
+/// Scans from end-of-context backwards so we prefer recent matches (more
+/// likely to extend the same phrase the model is currently generating).
+static constexpr size_t kNoMatch = static_cast<size_t>(-1);
+
+static size_t find_pld_match(const std::vector<llama_token>& tokens,
+                             int32_t n) {
+    if (n <= 0) { return kNoMatch; }
+    const size_t un = static_cast<size_t>(n);
+    if (tokens.size() < un + 1) { return kNoMatch; }
+
+    const llama_token* needle = tokens.data() + tokens.size() - un;
+    // Range to search: positions where a length-n subsequence fits,
+    // excluding the trailing copy of `needle` itself.
+    const size_t last_start = tokens.size() - un;
+    for (size_t i = last_start; i > 0; --i) {
+        const size_t start = i - 1;
+        if (start + un >= tokens.size()) { continue; }
+        if (std::memcmp(tokens.data() + start, needle,
+                        un * sizeof(llama_token)) == 0) {
+            return start + un;
+        }
+    }
+    return kNoMatch;
+}
+
+// MARK: - §5 Standard generate loop
+
+static void generate_standard(LlamaBridgeHandle* h,
+                              std::vector<llama_token>& new_tokens,
+                              int32_t max_new_tokens,
+                              LlamaTokenCallback on_token,
+                              LlamaFinishCallback on_finish,
+                              void* user_ctx) {
+    const auto* vocab = llama_model_get_vocab(h->model);
+    char piece_buf[512] = {};
+
+    for (int step = 0; step < max_new_tokens; ++step) {
+        if (h->cancel_flag.load()) { break; }
+
+        llama_token next = llama_sampler_sample(h->sampler, h->ctx, -1);
+        llama_sampler_accept(h->sampler, next);
+
+        if (llama_vocab_is_eog(vocab, next)) { break; }
+
+        int piece_len = token_to_str(h->model, next, piece_buf, sizeof(piece_buf));
+        if (piece_len > 0) {
+            piece_buf[piece_len] = '\0';
+            if (on_token && !on_token(piece_buf, user_ctx)) { break; }
+        }
+        h->kv_tokens.push_back(next);
+
+        llama_batch nb = llama_batch_get_one(&next, 1);
+        if (llama_decode(h->ctx, nb) != 0) { break; }
+    }
+    (void)on_finish;
+}
+
+// MARK: - §6 Prompt-lookup decoding loop
+
+/// Emits `tok` via the token callback. Returns true to keep going,
+/// false to stop (EOG or callback returned false).
+static bool pld_emit(LlamaBridgeHandle* h, llama_token tok,
+                     LlamaTokenCallback on_token, void* user_ctx,
+                     char* piece_buf, int buf_size) {
+    const auto* vocab = llama_model_get_vocab(h->model);
+    if (llama_vocab_is_eog(vocab, tok)) { return false; }
+    int piece_len = token_to_str(h->model, tok, piece_buf, buf_size);
+    if (piece_len > 0) {
+        piece_buf[piece_len] = '\0';
+        if (on_token && !on_token(piece_buf, user_ctx)) { return false; }
+    }
+    return true;
+}
+
+static void generate_pld(LlamaBridgeHandle* h,
+                         std::vector<llama_token>& new_tokens,
+                         int32_t max_new_tokens,
+                         LlamaTokenCallback on_token,
+                         LlamaFinishCallback on_finish,
+                         void* user_ctx) {
+    char piece_buf[512] = {};
+    int generated = 0;
+    auto* memory = llama_get_memory(h->ctx);
+
+    while (generated < max_new_tokens && !h->cancel_flag.load()) {
+        // Sample one token normally; this seeds the next n-gram lookup.
+        llama_token first = llama_sampler_sample(h->sampler, h->ctx, -1);
+        llama_sampler_accept(h->sampler, first);
+        if (!pld_emit(h, first, on_token, user_ctx, piece_buf, sizeof(piece_buf))) {
+            h->kv_tokens.push_back(first);
+            break;
+        }
+        h->kv_tokens.push_back(first);
+        ++generated;
+
+        llama_batch fb = llama_batch_get_one(&first, 1);
+        if (llama_decode(h->ctx, fb) != 0) { break; }
+
+        // Look for an n-gram match to seed a speculative draft.
+        const size_t match_pos = find_pld_match(h->kv_tokens, h->pld_n);
+        if (match_pos == kNoMatch || generated >= max_new_tokens) {
+            continue;
+        }
+
+        const int32_t budget = std::min(
+            h->pld_n_draft, max_new_tokens - generated);
+        const size_t available = h->kv_tokens.size() > match_pos
+            ? h->kv_tokens.size() - match_pos : 0;
+        const int32_t n_draft = std::min(
+            budget, static_cast<int32_t>(available));
+        if (n_draft <= 0) { continue; }
+
+        // Copy the draft tokens into a buffer (kv_tokens may reallocate
+        // as we push back; we cannot hold an iterator into it).
+        std::vector<llama_token> drafts(
+            h->kv_tokens.begin() + match_pos,
+            h->kv_tokens.begin() + match_pos + n_draft);
+
+        // Batch-decode the drafts through the target.
+        llama_batch db = llama_batch_get_one(
+            drafts.data(), static_cast<int32_t>(drafts.size()));
+        if (llama_decode(h->ctx, db) != 0) {
+            llama_memory_clear(memory, true);
+            h->kv_tokens.clear();
+            break;
+        }
+
+        // Verify token-by-token. The target's prediction for draft[i] sits
+        // at logits row i-1 of the batch; for i=0 we use the previous
+        // logits already at position -1.
+        int accepted = 0;
+        bool stop = false;
+        for (int i = 0; i < n_draft; ++i) {
+            const int row = (i == 0) ? -1 : i - 1;
+            llama_token t = llama_sampler_sample(h->sampler, h->ctx, row);
+            if (t == drafts[i]) {
+                llama_sampler_accept(h->sampler, t);
+                if (!pld_emit(h, t, on_token, user_ctx, piece_buf, sizeof(piece_buf))) {
+                    h->kv_tokens.insert(h->kv_tokens.end(),
+                                        drafts.begin(),
+                                        drafts.begin() + accepted + 1);
+                    generated += accepted + 1;
+                    stop = true;
+                    break;
+                }
+                ++accepted;
+            } else {
+                // Reject. Rewind target KV to the mismatch position and
+                // commit target's choice instead.
+                const llama_pos rewind = static_cast<llama_pos>(
+                    h->kv_tokens.size()) + static_cast<llama_pos>(accepted);
+                llama_memory_seq_rm(memory, 0, rewind, -1);
+
+                llama_batch tb = llama_batch_get_one(&t, 1);
+                if (llama_decode(h->ctx, tb) != 0) { stop = true; break; }
+                llama_sampler_accept(h->sampler, t);
+
+                h->kv_tokens.insert(h->kv_tokens.end(),
+                                    drafts.begin(),
+                                    drafts.begin() + accepted);
+                h->kv_tokens.push_back(t);
+                generated += accepted + 1;
+
+                if (!pld_emit(h, t, on_token, user_ctx, piece_buf, sizeof(piece_buf))) {
+                    stop = true;
+                }
+                accepted = -1;  // signal: handled the mismatch path
+                break;
+            }
+        }
+        if (stop) { break; }
+
+        if (accepted == n_draft) {
+            // All drafts accepted. Commit and continue from new state.
+            h->kv_tokens.insert(h->kv_tokens.end(),
+                                drafts.begin(), drafts.end());
+            generated += accepted;
+        }
+    }
+    (void)on_finish;
+}
+
+// MARK: - §7 Public dispatcher
 
 void llama_bridge_generate(
     LlamaBridgeHandle*  handle,
@@ -127,65 +424,29 @@ void llama_bridge_generate(
     LlamaFinishCallback on_finish,
     void*               user_ctx)
 {
-    if (!handle || !handle->model || !handle->ctx) {
+    if (!handle || !handle->model || !handle->ctx || !handle->sampler) {
         if (on_finish) { on_finish(user_ctx); }
         return;
     }
-
     handle->cancel_flag.store(false);
 
-    // ── Tokenise ─────────────────────────────────────────────────────────────
-    const auto* vocab = llama_model_get_vocab(handle->model);
-
-    std::vector<llama_token> tokens(2048);
-    int n = llama_tokenize(vocab, prompt,
-                            static_cast<int32_t>(strlen(prompt)),
-                            tokens.data(),
-                            static_cast<int32_t>(tokens.size()),
-                            /*add_special=*/true,
-                            /*parse_special=*/true);
-    if (n < 0) {
-        // Buffer too small — resize and retry once
-        tokens.resize(static_cast<size_t>(-n));
-        n = llama_tokenize(vocab, prompt,
-                            static_cast<int32_t>(strlen(prompt)),
-                            tokens.data(),
-                            static_cast<int32_t>(tokens.size()),
-                            true, true);
-    }
-    if (n <= 0) {
+    std::vector<llama_token> new_tokens;
+    if (!tokenise_into(handle->model, prompt, new_tokens)) {
         if (on_finish) { on_finish(user_ctx); }
         return;
     }
-    tokens.resize(static_cast<size_t>(n));
-
-    // ── Prefill ──────────────────────────────────────────────────────────────
-    llama_memory_clear(llama_get_memory(handle->ctx), true);
-    llama_batch batch = llama_batch_get_one(tokens.data(), static_cast<int32_t>(n));
-    if (llama_decode(handle->ctx, batch) != 0) {
+    if (!sync_kv_for_prompt(handle, new_tokens)) {
         if (on_finish) { on_finish(user_ctx); }
         return;
     }
 
-    // ── Decode loop ───────────────────────────────────────────────────────────
-    char piece_buf[512] = {};
-    for (int step = 0; step < max_new_tokens; ++step) {
-        if (handle->cancel_flag.load()) { break; }
-
-        llama_token next = greedy_sample(handle->ctx, handle->model);
-
-        if (llama_vocab_is_eog(vocab, next)) { break; }
-
-        int piece_len = token_to_str(handle->model, next, piece_buf, sizeof(piece_buf));
-        if (piece_len > 0) {
-            piece_buf[piece_len] = '\0';
-            if (on_token && !on_token(piece_buf, user_ctx)) { break; }
-        }
-
-        llama_batch next_batch = llama_batch_get_one(&next, 1);
-        if (llama_decode(handle->ctx, next_batch) != 0) { break; }
+    if (handle->pld_enabled) {
+        generate_pld(handle, new_tokens, max_new_tokens,
+                     on_token, on_finish, user_ctx);
+    } else {
+        generate_standard(handle, new_tokens, max_new_tokens,
+                          on_token, on_finish, user_ctx);
     }
-
     if (on_finish) { on_finish(user_ctx); }
 }
 

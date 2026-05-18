@@ -42,10 +42,17 @@ final class LlamaBridge {
         threads: Int32 = 4,
         gpuLayers: Int32 = 999,
         kType: LlamaKVType = .q4_0,
-        vType: LlamaKVType = .q4_0
+        vType: LlamaKVType = .q4_0,
+        promptLookup: Bool = true
     ) {
         handle = llama_bridge_create(modelPath, contextLength, threads, gpuLayers, kType.rawValue, vType.rawValue)
         guard handle != nil else { return nil }
+        // Prompt-Lookup Decoding is on by default for every engine: it's a
+        // free 1.5–2× tok/s win on conversational repetition and gracefully
+        // no-ops when no n-gram match is found.
+        if promptLookup {
+            llama_bridge_set_prompt_lookup(handle, true, 0, 0)
+        }
     }
 
     deinit {
@@ -96,16 +103,69 @@ final class LlamaBridge {
         llama_bridge_cancel(handle)
     }
 
+    // MARK: - Prompt-lookup decoding
+
+    /// Toggle prompt-lookup speculative decoding. Passing `n` or `nDraft`
+    /// non-positive keeps the C-side defaults (n=3, nDraft=5).
+    func enablePromptLookup(_ enabled: Bool, n: Int32 = 0, nDraft: Int32 = 0) {
+        llama_bridge_set_prompt_lookup(handle, enabled, n, nDraft)
+    }
+
     // MARK: - Chat template
 
-    /// Currently returns `nil` so callers fall back to the hand-rolled chat
-    /// template in `LocalLLMManager.fallbackChatPrompt`. The bridge-side
-    /// `llama_bridge_apply_chat_template` path is temporarily removed while
-    /// we investigate a Metal-compile regression on iPhone 11.
+    /// Formats `messages` into a single prompt string using the model's own
+    /// chat template (read from GGUF metadata). Returns `nil` if the model
+    /// has no template or the formatting failed — callers should then fall
+    /// back to a hand-rolled template.
     func applyChatTemplate(
         messages: [LLMChatMessage],
         addGenerationPrompt: Bool = true
     ) -> String? {
+        guard let handle, !messages.isEmpty else { return nil }
+
+        // Pin the UTF-8 storage for the duration of the call so the C-side
+        // pointers stay valid across nested closures.
+        var cStrings: [UnsafeMutablePointer<CChar>?] = []
+        cStrings.reserveCapacity(messages.count * 2)
+        for msg in messages {
+            cStrings.append(strdup(msg.role))
+            cStrings.append(strdup(msg.content))
+        }
+        defer { cStrings.forEach { if let p = $0 { free(p) } } }
+
+        var roles: [UnsafePointer<CChar>?]    = []
+        var contents: [UnsafePointer<CChar>?] = []
+        roles.reserveCapacity(messages.count)
+        contents.reserveCapacity(messages.count)
+        for i in 0..<messages.count {
+            roles.append(cStrings[i * 2].map { UnsafePointer($0) })
+            contents.append(cStrings[i * 2 + 1].map { UnsafePointer($0) })
+        }
+
+        let totalChars = messages.reduce(0) { $0 + $1.role.count + $1.content.count }
+        var bufSize = max(512, totalChars * 2 + 256)
+
+        for _ in 0..<3 {
+            var buffer = [CChar](repeating: 0, count: bufSize)
+            let written = buffer.withUnsafeMutableBufferPointer { bufPtr -> Int32 in
+                roles.withUnsafeMutableBufferPointer { rolesPtr in
+                    contents.withUnsafeMutableBufferPointer { contentsPtr in
+                        llama_bridge_apply_chat_template(
+                            handle,
+                            rolesPtr.baseAddress,
+                            contentsPtr.baseAddress,
+                            Int32(messages.count),
+                            addGenerationPrompt,
+                            bufPtr.baseAddress,
+                            Int32(bufSize)
+                        )
+                    }
+                }
+            }
+            if written < 0 { return nil }
+            if Int(written) < bufSize { return String(cString: buffer) }
+            bufSize = Int(written) + 1
+        }
         return nil
     }
 }
