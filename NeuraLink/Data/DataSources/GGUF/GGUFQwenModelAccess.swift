@@ -23,8 +23,8 @@ enum GGUFQwenModelAccess {
 
     /// The full URL to the downloaded `.gguf` file, or `nil` if not present.
     static func modelURL() -> URL? {
-        if let stored = UserDefaults.standard.string(forKey: pathKey) {
-            let url = URL(fileURLWithPath: stored)
+        if let relative = UserDefaults.standard.string(forKey: pathKey) {
+            let url = appSupport.appendingPathComponent(relative)
             if FileManager.default.fileExists(atPath: url.path) { return url }
         }
         return scanHubCache()
@@ -35,7 +35,8 @@ enum GGUFQwenModelAccess {
     static var isDownloaded: Bool { modelURL() != nil }
 
     static func setModelPath(_ url: URL) {
-        UserDefaults.standard.set(url.path, forKey: pathKey)
+        let relative = url.path.replacingOccurrences(of: appSupport.path, with: "")
+        UserDefaults.standard.set(relative, forKey: pathKey)
     }
 
     static func clearCache() {

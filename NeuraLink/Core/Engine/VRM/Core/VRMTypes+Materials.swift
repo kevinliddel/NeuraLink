@@ -50,8 +50,11 @@ public struct VRM0MaterialProperty {
                 sRGBToLinear(shadeColor[2])
             )
         } else {
-            // VRM 1.0 spec defaults shadeColorFactor to white if unspecified
-            mtoon.shadeColorFactor = SIMD3<Float>(1.0, 1.0, 1.0)
+            // VRM 0.x models without _ShadeColor get a neutral 30% dark shadow.
+            // The original MToon spec defaults to white, but white * mainTex = mainTex
+            // which makes mix(shadeColor, baseColor, step) flat regardless of lighting.
+            // 0.7 linear gives visibly darker shadow side while preserving material colour.
+            mtoon.shadeColorFactor = SIMD3<Float>(0.7, 0.7, 0.7)
         }
 
         // VRM 0.x -> VRM 1.0 shading transformation (from three-vrm)

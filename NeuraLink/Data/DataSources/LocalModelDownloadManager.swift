@@ -49,9 +49,9 @@ final class LocalModelDownloadManager: @unchecked Sendable {
     }
 
     enum ModelConfiguration: String, CaseIterable, Identifiable {
-        case qwen2b = "Qwen3-VL 2B"
-        case qwen3b = "Qwen2.5 3B"
         case qwen7b = "Qwen2.5 7B"
+        case qwen3b = "Qwen2.5 3B"
+        case qwen2b = "Qwen3-VL 2B"
         case llama1b = "Llama-3.2 1B"
         case japaneseLlama1b = "Llama-3.2 1B (JP)"
 
@@ -87,15 +87,15 @@ final class LocalModelDownloadManager: @unchecked Sendable {
         var description: String {
             switch self {
             case .qwen2b:
-                return "High performance, stateful. Recommended for 6 GB+ devices."
+                return "High performance, stateful. Recommended for iPhone 13 Pro Max, 14, 15 families (6 GB RAM)."
             case .qwen3b:
-                return "Strong reasoning. Recommended for iPhone 14 / 15 base (6 GB RAM)."
+                return "Strong reasoning. Recommended for iPhone 14, 15, 16 families (6 GB+ RAM)."
             case .qwen7b:
-                return "Top quality. Recommended for iPhone 15 Pro+ / 16 family (8 GB RAM)."
+                return "Top quality. Recommended for iPhone 15 Pro Max, 16, 17 families (8 GB RAM)."
             case .llama1b:
-                return "Memory efficient. Recommended for iPhone 11, 12 or 13 (4 GB RAM)."
+                return "Memory efficient. Recommended for iPhone 11, 12 or 13 families (4 GB+ RAM)."
             case .japaneseLlama1b:
-                return "Japanese-oriented Llama-3.2 1B. Best for Japanese conversation on 4 GB+ devices."
+                return "Japanese-oriented Llama-3.2 1B. Best for Japanese conversation on iPhone 11, 12 or 13 (4 GB RAM)."
             }
         }
     }

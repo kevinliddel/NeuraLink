@@ -61,6 +61,10 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     var isRecordingVoice = false
     let recordingLock = NSLock()
     
+    // Concurrency guard for startListening
+    let stateLock = NSLock()
+    var isPreparingOrActive = false
+    
     // Partial transcription state
     internal var isTranscribingPartial = false
     internal var lastPartialTranscribedCount = 0
@@ -114,9 +118,11 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     }
 
     func startListening() {
-        // Prevent redundant start attempts if already active or preparing.
-        guard state.status != .preparing && state.status != .ready && state.status != .listening && 
-              state.status != .thinking && state.status != .speaking else {
+        guard stateLock.withLock({
+            if isPreparingOrActive { return false }
+            isPreparingOrActive = true
+            return true
+        }) else {
             print("[LocalAI]: Already listening or preparing, skipping.")
             return
         }
@@ -144,7 +150,8 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
                 try await llmEngine.loadModel()
             } catch {
                 print("[LocalLLM] Error loading model: \(error)")
-                state.setError("Failed to initialize Core ML LLM.")
+                stateLock.withLock { isPreparingOrActive = false }
+                state.setError("Failed to initialize Local LLM (\(error.localizedDescription)).")
                 return
             }
 
@@ -154,6 +161,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
                 await MainActor.run { state.status = .ready }
                 sileroVAD.start(externalSampleRate: hardwareInputFormat?.sampleRate)
             } else {
+                stateLock.withLock { isPreparingOrActive = false }
                 state.setError("Failed to initialize WhisperKit.")
             }
         }
@@ -275,6 +283,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     }
 
     func restart() {
+        stateLock.withLock { isPreparingOrActive = false }
         sileroVAD.stop()
         llmEngine.stop()
         playerNode.stop()
@@ -295,6 +304,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     }
 
     func unload() {
+        stateLock.withLock { isPreparingOrActive = false }
         sileroVAD.stop()
         llmEngine.stop()
         llmEngine.unloadModel()

@@ -45,7 +45,27 @@ final class LlamaBridge {
         vType: LlamaKVType = .q4_0,
         promptLookup: Bool = true
     ) {
-        handle = llama_bridge_create(modelPath, contextLength, threads, gpuLayers, kType.rawValue, vType.rawValue)
+        var layers = gpuLayers
+        #if targetEnvironment(simulator)
+        layers = 0 // CPU-only in Simulator to avoid MTLCompilerService crashes
+        #else
+        // On real older devices with < 5.0 GB of RAM (like iPhone 11/12/13), Metal shader compilation
+        // spikes memory usage and triggers jetsam/compiler daemon crashes. Force CPU-only to guarantee stability.
+        let gb = Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824.0
+        if gb < 5.0 {
+            print("[LlamaBridge] Device RAM (\(String(format: "%.1f", gb)) GB) is under 5.0 GB. Forcing CPU-only execution for rock-solid stability.")
+            layers = 0
+        }
+        #endif
+        handle = llama_bridge_create(modelPath, contextLength, threads, layers, kType.rawValue, vType.rawValue)
+        
+        // If Metal/GPU initialization fails on real hardware (e.g. pre-A14 devices or MTLCompilerService XPC error),
+        // gracefully fall back to CPU-only execution.
+        if handle == nil && layers > 0 {
+            print("[LlamaBridge] Metal/GPU initialization failed. Retrying with CPU-only (gpuLayers = 0)...")
+            handle = llama_bridge_create(modelPath, contextLength, threads, 0, kType.rawValue, vType.rawValue)
+        }
+        
         guard handle != nil else { return nil }
         // Prompt-Lookup Decoding is on by default for every engine: it's a
         // free 1.5–2× tok/s win on conversational repetition and gracefully

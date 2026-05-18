@@ -29,10 +29,10 @@ final class LocalWhisperManager: NSObject, @unchecked Sendable {
     // Guards the setupTask check-and-create so concurrent callers can't both see nil.
     private let setupLock = NSLock()
 
-    // To support iPhone 11 (4GB RAM) efficiently, "openai_whisper-tiny" or "tiny" is recommended.
+    // To support iPhone 11 (4GB RAM) efficiently, "openai_whisper-tiny.en" or "tiny.en" is recommended.
     // "openai_whisper-base" and "large-v3-turbo" cause the OS to kill the Metal Compiler (Jetsam) 
     // when loaded alongside the Llama LLM due to 4GB RAM limits.
-    private let modelName = "openai_whisper-tiny"
+    private let modelName = "openai_whisper-tiny.en"
 
     override private init() {
         super.init()
