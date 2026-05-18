@@ -104,15 +104,24 @@ fragment float4 godray_blur_fragment(
 // MARK: - Pass 3: composite
 //
 // Tints the blurred rays with the sun colour and additively blends into the framebuffer.
+// Only pixels that belong to city/campus scene geometry receive rays.
+// Sky pixels (depth == 1.0 clear value) and the sun disc are excluded, which also
+// removes the dark anti-sun sphere artifact caused by contrast against the bright halo.
 
 fragment float4 godray_composite_fragment(
-    GodRayVert                       in      [[stage_in]],
-    texture2d<float, access::sample> raysTex [[texture(0)]],
-    constant GodRayUniforms&         u       [[buffer(0)]]
+    GodRayVert                       in       [[stage_in]],
+    texture2d<float, access::sample> raysTex  [[texture(0)]],
+    depth2d<float>                   depthTex [[texture(1)]],
+    constant GodRayUniforms&         u        [[buffer(0)]]
 ) {
-    constexpr sampler s(filter::linear, address::clamp_to_edge);
+    constexpr sampler s(filter::linear,  address::clamp_to_edge);
+    constexpr sampler d(filter::nearest, address::clamp_to_edge);
+
+    // Discard sky / unrendered pixels — only city/campus ground gets ray brightening.
+    float depth = depthTex.sample(d, in.uv);
+    if (depth >= 0.9999f) discard_fragment();
+
     float  rayBrightness = raysTex.sample(s, in.uv).r;
     float3 tinted        = rayBrightness * u.sunColor.rgb;
-    // Alpha drives additive blend weight (allows caller to control per-frame strength).
     return float4(tinted, rayBrightness);
 }
