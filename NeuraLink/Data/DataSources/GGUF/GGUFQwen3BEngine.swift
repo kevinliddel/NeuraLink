@@ -1,30 +1,41 @@
 //
-//  GGUFQwenEngine.swift
+//  GGUFQwen3BEngine.swift
 //  NeuraLink
 //
-//  Drop-in replacement for StatefulQwenEngine that uses llama.cpp via Metal GPU.
+//  LLMEngineProtocol implementation for Qwen-2.5-3B-Instruct.
+//  Targets the 6 GB tier (iPhone 14 / 15 base / Plus).
 //
-//  Created by Dedicatus on 29/04/2026.
+//  Created by Dedicatus on 18/05/2026.
 //
 
 import Foundation
 
-final class GGUFQwenEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
+final class GGUFQwen3BEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
 
-    static let shared = GGUFQwenEngine()
+    // MARK: - Singleton
+
+    static let shared = GGUFQwen3BEngine()
+
+    // MARK: - Protocol properties
 
     weak var delegate: LocalLLMEngineDelegate?
     private(set) var isLoaded = false
+
+    // MARK: - Internal state
 
     internal var bridge: LlamaBridge?
     internal var loadTask: Task<Void, Error>?
     internal let loadLock = NSLock()
 
-    // Same concurrency guard as GGUFLlamaEngine — see comment there.
+    // Same concurrency guard as GGUFLlamaEngine — llama.cpp is NOT thread-safe.
     internal let generationLock = NSLock()
     internal var _isGenerating = false
 
+    // MARK: - Init
+
     override private init() { super.init() }
+
+    // MARK: - LLMEngineProtocol — load / unload
 
     func loadModel() async throws {
         if isLoaded { return }
@@ -32,15 +43,13 @@ final class GGUFQwenEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
         let task: Task<Void, Error> = loadLock.withLock {
             if let existing = loadTask { return existing }
             let t = Task<Void, Error> {
-                guard let url = GGUFQwenModelAccess.modelURL() else {
+                guard let url = GGUFQwen3BModelAccess.modelURL() else {
                     throw LLMError.modelNotFound
                 }
-                print("[GGUFQwen] Loading \(url.lastPathComponent)…")
+                print("[GGUFQwen3B] Loading \(url.lastPathComponent)…")
 
                 let loaded: LlamaBridge = try await withCheckedThrowingContinuation { cont in
                     DispatchQueue.global(qos: .userInitiated).async {
-                        // Qwen models generally have longer context windows. 
-                        // Using 2048 to support slightly longer conversations.
                         if let b = LlamaBridge(
                             modelPath: url.path,
                             contextLength: 2048,
@@ -56,7 +65,7 @@ final class GGUFQwenEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
 
                 self.bridge   = loaded
                 self.isLoaded = true
-                print("[GGUFQwen] Ready. llama.cpp \(loaded.version)")
+                print("[GGUFQwen3B] Ready. llama.cpp \(loaded.version)")
             }
             self.loadTask = t
             return t
@@ -74,7 +83,7 @@ final class GGUFQwenEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
         bridge   = nil
         isLoaded = false
         loadLock.withLock { loadTask = nil }
-        print("[GGUFQwen] Unloaded.")
+        print("[GGUFQwen3B] Unloaded.")
     }
 
     func stop() {

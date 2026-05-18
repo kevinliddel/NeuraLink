@@ -95,6 +95,19 @@ final class LlamaBridge {
     func cancel() {
         llama_bridge_cancel(handle)
     }
+
+    // MARK: - Chat template
+
+    /// Currently returns `nil` so callers fall back to the hand-rolled chat
+    /// template in `LocalLLMManager.fallbackChatPrompt`. The bridge-side
+    /// `llama_bridge_apply_chat_template` path is temporarily removed while
+    /// we investigate a Metal-compile regression on iPhone 11.
+    func applyChatTemplate(
+        messages: [LLMChatMessage],
+        addGenerationPrompt: Bool = true
+    ) -> String? {
+        return nil
+    }
 }
 
 // MARK: - CallbackBox

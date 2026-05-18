@@ -81,12 +81,9 @@ struct AISettingsView: View {
             Text("Local Edge LLMs")
         } footer: {
             VStack(alignment: .leading, spacing: 8) {
-                if ProcessInfo.processInfo.physicalMemory < 6 * 1024 * 1024 * 1024
-                    && downloader.selectedConfig == .qwen2b {
+                if let warning = ramWarning(for: downloader.selectedConfig) {
                     Label {
-                        Text(
-                            "This device (4GB RAM) is under the 6GB requirement for Qwen 2B. The 1B model is recommended to prevent crashes."
-                        )
+                        Text(warning)
                     } icon: {
                         Image(systemName: "exclamationmark.triangle.fill")
                     }
@@ -100,6 +97,22 @@ struct AISettingsView: View {
                         .foregroundStyle(.red)
                 }
             }
+        }
+    }
+
+    /// Returns a warning string when the selected tier exceeds the device's
+    /// safe RAM headroom, or nil otherwise.
+    private func ramWarning(for config: LocalModelDownloadManager.ModelConfiguration) -> String? {
+        let gb = Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824.0
+        switch config {
+        case .qwen7b where gb < 7.0:
+            return "This device (\(Int(gb)) GB RAM) is under the 8 GB recommendation for Qwen 7B. Pick a smaller model to prevent crashes."
+        case .qwen3b where gb < 5.0:
+            return "This device (\(Int(gb)) GB RAM) is under the 6 GB recommendation for Qwen 3B. Pick a smaller model to prevent crashes."
+        case .qwen2b where gb < 5.0:
+            return "This device (\(Int(gb)) GB RAM) is under the 6 GB requirement for Qwen 2B. The 1B model is recommended to prevent crashes."
+        default:
+            return nil
         }
     }
 

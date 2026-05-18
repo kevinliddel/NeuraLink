@@ -31,6 +31,15 @@ enum LLMError: LocalizedError, Equatable {
     }
 }
 
+// MARK: - Chat message
+
+/// A single conversation turn fed to a local LLM. Mirrors the OpenAI/HF
+/// chat-completions shape so the same role names work across every engine.
+struct LLMChatMessage {
+    let role: String       // "system" / "user" / "assistant"
+    let content: String
+}
+
 // MARK: - Delegate
 
 protocol LocalLLMEngineDelegate: AnyObject {
@@ -48,4 +57,10 @@ protocol LLMEngineProtocol: AnyObject {
     func generate(prompt: String, maxTokens: Int) async
     func stop()
     func unloadModel()
+
+    /// Formats `messages` into a single prompt string using the loaded model's
+    /// own chat template (read from GGUF metadata). Returns `nil` if the model
+    /// is not loaded or has no embedded template — callers should then fall
+    /// back to a hand-rolled template.
+    func applyChatTemplate(messages: [LLMChatMessage]) -> String?
 }

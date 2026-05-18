@@ -102,4 +102,8 @@ final class GGUFLlamaEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
     func stop() {
         bridge?.cancel()
     }
+
+    func applyChatTemplate(messages: [LLMChatMessage]) -> String? {
+        bridge?.applyChatTemplate(messages: messages)
+    }
 }

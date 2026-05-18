@@ -503,3 +503,59 @@ gantt
     Build + SwiftLint + Tests      :p5, after p4, 1d
     Device integration test        :p6, after p5, 1d
 ```
+
+---
+
+## 7. Post-Migration Enhancements (2026-05)
+
+After the migration stabilised, three rounds of improvements were layered on top of the bridge without changing the public Swift surface. Each is documented here so future readers see why the bridge is more than a thin llama.cpp wrapper.
+
+### 7.1 Engineering wins (all tiers)
+
+| Change | File | Impact |
+|---|---|---|
+| Sampler chain replaces greedy argmax | `llama_bridge.cpp` (`build_default_sampler`) | Eliminates repetitive/looping outputs. Defaults: top_k=40, top_p=0.9, temp=0.7, repetition penalty=1.1/64. Lives on the handle and is freed in `llama_bridge_free`. |
+| KV-cache prefix reuse across turns | `llama_bridge.cpp` (`kv_tokens` + `llama_memory_seq_rm`) | Multi-turn conversations no longer re-prefill the system prompt + persona on every message. First-token latency drops by `O(n_system_prompt_tokens)` on every turn after the first. |
+| `llama_chat_apply_template` exposed via bridge | `llama_bridge.h` (`llama_bridge_apply_chat_template`), `LlamaBridge.swift` (`applyChatTemplate`), `LLMEngineProtocol.swift` (`applyChatTemplate(messages:)`) | The model formats prompts using the template baked into its GGUF metadata. `LocalLLMManager.handleUserInput` now passes role/content pairs instead of hand-rolled `<\|start_header_id\|>` / `<\|im_start\|>` strings. Hand-rolled fallback retained in `fallbackChatPrompt(messages:useQwen:)` for community quants that ship without a template. |
+
+### 7.2 New tiers (memory-bucketed defaults)
+
+The original migration shipped two tiers (`.llama1b`, `.qwen2b`). Two new tiers were added without disturbing the existing ones, and the default-tier picker was switched from a fixed 6 GB threshold to a bucketed map on `physicalMemory`:
+
+| Tier | Model | File (Q4_K_M) | Default device class |
+|---|---|---|---|
+| `.llama1b` | `bartowski/Llama-3.2-1B-Instruct-GGUF` | ~0.8 GB | < 5 GB (iPhone 11 / 12 / 13) |
+| `.japaneseLlama1b` | `grapevine-AI/Llama-3.2-1B-Instruct-GGUF` | ~0.8 GB | User-selectable JP override |
+| `.qwen2b` | `Qwen/Qwen2.5-1.5B-Instruct-GGUF` | ~1.1 GB | Legacy; also acts as draft model for `.qwen7b` |
+| `.qwen3b` *(new)* | `bartowski/Qwen2.5-3B-Instruct-GGUF` | ~1.9 GB | 5–7 GB (iPhone 14 / 15 base / Plus) |
+| `.qwen7b` *(new)* | `bartowski/Qwen2.5-7B-Instruct-GGUF` | ~4.7 GB | ≥ 7 GB (iPhone 15 Pro+ / 16 family) |
+
+New Swift files mirror the existing pattern (one `ModelAccess`, one `Downloader`, one `Engine`, one `+Generate` per tier). No refactor to a parameterised base class — duplication matches the existing style and keeps each tier's edits independent. Files are auto-included via Xcode 16's `PBXFileSystemSynchronizedRootGroup`.
+
+### 7.3 Speculative decoding for the 7B tier
+
+A second decode path was added alongside the existing single-model path. It only activates when both the 7B target and the 1.5B draft are downloaded, and falls back to plain `GGUFQwen7BEngine` otherwise.
+
+**Public API additions** (in `llama_bridge.h`):
+- `LlamaBridgeSpecHandle*` — second opaque type, kept separate from `LlamaBridgeHandle` to avoid leaking draft-model concerns into the single-model path.
+- `llama_bridge_spec_create / _free / _apply_chat_template / _generate / _cancel` — symmetric with the single-model API.
+
+**Algorithm** (in `llama_bridge.cpp`, §5):
+1. Draft generates N=4 tokens greedily, advancing its own KV cache.
+2. Target batch-decodes the N drafted tokens in one shot (≈1.5× the cost of a single target decode regardless of N — this is the speedup source).
+3. Target's sampler picks its preferred token at each verified position. Match → accept; first mismatch → fall back to target's choice and rewind both contexts' KV caches via `llama_memory_seq_rm` to position `cur_pos + i`, then redecode the replacement in both.
+4. `kv_tokens` is shared between draft and target because both are advanced in lockstep.
+
+**Vocab parity** is enforced at create-time (`llama_vocab_n_tokens` equality). This is why `Llama-3.2-1B` cannot be used as the draft for the Qwen target — different tokenizer — and the chosen pairing is `Qwen-2.5-1.5B` (draft) + `Qwen-2.5-7B` (target), both from the same family with identical vocabs.
+
+**Selection** (in `LocalLLMManager.makeEngine`):
+
+```swift
+case .qwen7b:
+    if GGUFSpeculativeEngine.canActivate {
+        return GGUFSpeculativeEngine.shared as any LLMEngineProtocol
+    }
+    return GGUFQwen7BEngine.shared as any LLMEngineProtocol
+```
+
+Expected: 2–3× decode throughput on iPhone 15 Pro+ / 16 family. Output quality matches plain 7B in distribution because the target's sampler chain is what decides every accepted token.

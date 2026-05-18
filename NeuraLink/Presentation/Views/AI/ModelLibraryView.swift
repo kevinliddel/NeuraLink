@@ -13,11 +13,12 @@ import SwiftUI
 struct ModelLibraryView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var manager = LocalModelDownloadManager.shared
-    
+    @State private var showCleanAllConfirmation = false
+
     var body: some View {
         ZStack {
             backgroundView
-            
+
             VStack(spacing: 0) {
                 headerView
                 modelListView
@@ -26,6 +27,19 @@ struct ModelLibraryView: View {
         .preferredColorScheme(.dark)
         .navigationTitle("Model Library")
         .navigationBarTitleDisplayMode(.inline)
+        .confirmationDialog(
+            "Delete all cached models?",
+            isPresented: $showCleanAllConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete All (\(formatBytes(manager.totalCacheBytes)))",
+                   role: .destructive) {
+                deleteAll()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Frees \(formatBytes(manager.totalCacheBytes)) of storage. You'll need to re-download any model you want to use again.")
+        }
     }
     
     // MARK: - Sub-views
@@ -72,10 +86,10 @@ struct ModelLibraryView: View {
             onSelect: { select(config) },
             onPause: { manager.pauseDownload() },
             onResume: { manager.resumeDownload() },
-            onDelete: { delete() }
+            onDelete: { delete(config) }
         )
     }
-    
+
     private func select(_ config: LocalModelDownloadManager.ModelConfiguration) {
         withAnimation {
             manager.selectConfig(config)
@@ -86,29 +100,61 @@ struct ModelLibraryView: View {
             }
         }
     }
-    
-    private func delete() {
-        manager.deleteDownloadedModel()
-    }
-    
-    private var headerView: some View {
-        let totalBytes = LocalModelDownloadManager.ModelConfiguration.allCases.reduce(Int64(0)) {
-            $0 + manager.diskUsageBytes(for: $1)
+
+    private func delete(_ config: LocalModelDownloadManager.ModelConfiguration) {
+        // If we're deleting the currently loaded model, drop the engine first
+        // so its mmap'd file handle is released — otherwise iOS defers disk
+        // reclamation until the process unmaps the file (typically next launch).
+        if config == manager.selectedConfig {
+            LocalLLMManager.shared.unload()
         }
-        return VStack(alignment: .leading, spacing: 4) {
-            Text("Edge Intelligence")
-                .font(.system(size: 28, weight: .bold, design: .rounded))
-                .foregroundColor(.white)
-            
-            Text(
-                totalBytes > 0
-                    ? "On device: \(formatBytes(totalBytes))"
-                    : "Select and download local SLMs."
-            )
+        withAnimation {
+            manager.deleteModel(config)
+        }
+    }
+
+    private func deleteAll() {
+        // Always unload — at most one engine is active and we don't know which.
+        LocalLLMManager.shared.unload()
+        withAnimation {
+            manager.deleteAllModels()
+        }
+    }
+
+    private var headerView: some View {
+        let totalBytes = manager.totalCacheBytes
+        return HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Edge Intelligence")
+                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
+
+                Text(
+                    totalBytes > 0
+                        ? "On device: \(formatBytes(totalBytes))"
+                        : "Select and download local SLMs."
+                )
                 .font(.system(size: 15))
                 .foregroundColor(.white.opacity(0.6))
+            }
+
+            Spacer()
+
+            if totalBytes > 0 {
+                Button {
+                    showCleanAllConfirmation = true
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.red.opacity(0.9))
+                        .frame(width: 40, height: 40)
+                        .background(Color.red.opacity(0.15))
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(Color.red.opacity(0.4), lineWidth: 1))
+                }
+                .accessibilityLabel("Clean all cached models")
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 24)
         .padding(.vertical, 16)
         .background(
