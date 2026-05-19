@@ -26,7 +26,10 @@ enum GGUFQwen3BDownloader {
         progressHandler: @escaping (Double) -> Void
     ) async throws {
         let repo = Hub.Repo(id: GGUFQwen3BModelAccess.repoID)
-        let snapshotDir = try await api.snapshot(from: repo) { progress in
+        // Fetch only the one quant we use — see GGUFLlamaDownloader.
+        let snapshotDir = try await api.snapshot(
+            from: repo, matching: [GGUFQwen3BModelAccess.filename]
+        ) { progress in
             progressHandler(progress.fractionCompleted * 0.95)
         }
         try verifyAndSave(snapshotDir: snapshotDir)

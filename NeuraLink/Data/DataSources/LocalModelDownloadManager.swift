@@ -192,13 +192,21 @@ final class LocalModelDownloadManager: @unchecked Sendable {
     }
 
     /// Wipes the on-disk cache for `config`. If `config` is the currently
-    /// selected model, also cancels any in-progress download and resets
-    /// `state` to `.notDownloaded`.
+    /// selected model, also cancels any in-progress download, drops the
+    /// engine's mmap'd file handle, and resets `state` to `.notDownloaded`.
+    ///
+    /// The `LocalLLMManager.unload()` call is critical for disk reclaim.
+    /// Every engine `mmap`s its GGUF weights via llama.cpp. iOS only
+    /// reclaims the bytes when the LAST process unmaps the file, so a
+    /// delete without unload leaves the kernel holding the file open
+    /// (the Documents & Data figure stays at the pre-delete value until
+    /// the next app launch).
     func deleteModel(_ config: ModelConfiguration) {
         let isSelected = (config == selectedConfig)
         if isSelected {
             activeTask?.cancel()
             activeTask = nil
+            LocalLLMManager.shared.unload()
         }
         switch config {
         case .qwen2b: GGUFQwenModelAccess.clearCache()

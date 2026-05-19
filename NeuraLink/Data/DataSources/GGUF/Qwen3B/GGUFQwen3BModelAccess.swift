@@ -1,24 +1,25 @@
 //
-//  GGUFJapaneseLlamaModelAccess.swift
+//  GGUFQwen3BModelAccess.swift
 //  NeuraLink
 //
-//  Resolves the on-disk path of the Japanese-oriented Llama-3.2-1B GGUF model.
-//  Model: grapevine-AI/Llama-3.2-1B-Instruct-GGUF (Q4_K_M, ~808 MB)
+//  Resolves the on-disk path of the Qwen-2.5-3B-Instruct GGUF model.
+//  Targets the 6 GB tier (iPhone 14 / 15 base / Plus).
+//  Model: bartowski/Qwen2.5-3B-Instruct-GGUF (Q4_K_M, ~1.93 GB)
 //
-//  Created by Dedicatus on 06/05/2026.
+//  Created by Dedicatus on 18/05/2026.
 //
 
 import Foundation
 
-enum GGUFJapaneseLlamaModelAccess {
+enum GGUFQwen3BModelAccess {
 
     // MARK: - Constants
 
-    static let repoID   = "grapevine-AI/Llama-3.2-1B-Instruct-GGUF"
-    static let filename = "Llama-3.2-1B-Instruct-Q4_K_M.gguf"
+    static let repoID   = "bartowski/Qwen2.5-3B-Instruct-GGUF"
+    static let filename = "Qwen2.5-3B-Instruct-Q4_K_M.gguf"
 
-    private static let pathKey = "LocalModel_GGUFJapaneseLlamaPath"
-    private static let hubSlug = "models--grapevine-AI--Llama-3.2-1B-Instruct-GGUF"
+    private static let pathKey = "LocalModel_GGUFQwen3BPath"
+    private static let hubSlug = "models--bartowski--Qwen2.5-3B-Instruct-GGUF"
 
     // MARK: - URL resolution
 
@@ -40,9 +41,7 @@ enum GGUFJapaneseLlamaModelAccess {
     }
 
     static func clearCache() {
-        let hub = appSupport.appendingPathComponent("hub/\(hubSlug)")
-        try? FileManager.default.removeItem(at: hub)
-        UserDefaults.standard.removeObject(forKey: pathKey)
+        HubCacheUtils.clear(hubSlug: hubSlug, pathKey: pathKey)
     }
 
     // MARK: - Internals

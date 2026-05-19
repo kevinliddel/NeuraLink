@@ -31,7 +31,11 @@ enum GGUFJapaneseLlamaDownloader {
         progressHandler: @escaping (Double) -> Void
     ) async throws {
         let repo = Hub.Repo(id: GGUFJapaneseLlamaModelAccess.repoID)
-        let snapshotDir = try await api.snapshot(from: repo) { progress in
+        // Fetch only the one quant we use — see GGUFLlamaDownloader for the
+        // full rationale (multi-quant repos balloon to 4–8 GB without this).
+        let snapshotDir = try await api.snapshot(
+            from: repo, matching: [GGUFJapaneseLlamaModelAccess.filename]
+        ) { progress in
             progressHandler(progress.fractionCompleted * 0.95)
         }
         try verifyAndSave(snapshotDir: snapshotDir)

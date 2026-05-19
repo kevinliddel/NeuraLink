@@ -39,7 +39,13 @@ enum GGUFLlamaDownloader {
         progressHandler: @escaping (Double) -> Void
     ) async throws {
         let repo = Hub.Repo(id: GGUFModelAccess.repoID)
-        let snapshotDir = try await api.snapshot(from: repo) { progress in
+        // CRITICAL: pass `matching:` so HubApi fetches ONLY the one quant we
+        // use (Q4_K_M). Without this, snapshot pulls every file in the repo —
+        // for bartowski's GGUF repos that's 6–10 quantization variants
+        // totalling 4–8 GB per "download" of a 0.8 GB model.
+        let snapshotDir = try await api.snapshot(
+            from: repo, matching: [GGUFModelAccess.filename]
+        ) { progress in
             progressHandler(progress.fractionCompleted * 0.95)
         }
         try verifyAndSave(snapshotDir: snapshotDir)

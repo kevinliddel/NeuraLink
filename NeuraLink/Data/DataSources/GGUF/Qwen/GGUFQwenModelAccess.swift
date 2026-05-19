@@ -1,28 +1,27 @@
 //
-//  GGUFQwen3BModelAccess.swift
+//  GGUFQwenModelAccess.swift
 //  NeuraLink
 //
-//  Resolves the on-disk path of the Qwen-2.5-3B-Instruct GGUF model.
-//  Targets the 6 GB tier (iPhone 14 / 15 base / Plus).
-//  Model: bartowski/Qwen2.5-3B-Instruct-GGUF (Q4_K_M, ~1.93 GB)
+//  Resolves the on-disk path of the downloaded Qwen GGUF model file.
 //
-//  Created by Dedicatus on 18/05/2026.
+//  Created by Dedicatus on 29/04/2026.
 //
 
 import Foundation
 
-enum GGUFQwen3BModelAccess {
+enum GGUFQwenModelAccess {
 
     // MARK: - Constants
 
-    static let repoID   = "bartowski/Qwen2.5-3B-Instruct-GGUF"
-    static let filename = "Qwen2.5-3B-Instruct-Q4_K_M.gguf"
+    static let repoID   = "Qwen/Qwen2.5-1.5B-Instruct-GGUF"
+    static let filename = "qwen2.5-1.5b-instruct-q4_k_m.gguf"
 
-    private static let pathKey = "LocalModel_GGUFQwen3BPath"
-    private static let hubSlug = "models--bartowski--Qwen2.5-3B-Instruct-GGUF"
+    private static let pathKey  = "LocalModel_QwenGGUFPath"
+    private static let hubSlug  = "models--Qwen--Qwen2.5-1.5B-Instruct-GGUF"
 
     // MARK: - URL resolution
 
+    /// The full URL to the downloaded `.gguf` file, or `nil` if not present.
     static func modelURL() -> URL? {
         if let relative = UserDefaults.standard.string(forKey: pathKey) {
             let url = appSupport.appendingPathComponent(relative)
@@ -41,9 +40,7 @@ enum GGUFQwen3BModelAccess {
     }
 
     static func clearCache() {
-        let hub = appSupport.appendingPathComponent("hub/\(hubSlug)")
-        try? FileManager.default.removeItem(at: hub)
-        UserDefaults.standard.removeObject(forKey: pathKey)
+        HubCacheUtils.clear(hubSlug: hubSlug, pathKey: pathKey)
     }
 
     // MARK: - Internals

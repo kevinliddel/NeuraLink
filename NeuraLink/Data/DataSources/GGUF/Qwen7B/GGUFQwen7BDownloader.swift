@@ -26,7 +26,12 @@ enum GGUFQwen7BDownloader {
         progressHandler: @escaping (Double) -> Void
     ) async throws {
         let repo = Hub.Repo(id: GGUFQwen7BModelAccess.repoID)
-        let snapshotDir = try await api.snapshot(from: repo) { progress in
+        // Fetch only the one quant we use — see GGUFLlamaDownloader. This
+        // matters most for the 7B repo where the f16 variant alone is
+        // ~14 GB and the full repo can exceed 50 GB across quants.
+        let snapshotDir = try await api.snapshot(
+            from: repo, matching: [GGUFQwen7BModelAccess.filename]
+        ) { progress in
             progressHandler(progress.fractionCompleted * 0.95)
         }
         try verifyAndSave(snapshotDir: snapshotDir)
