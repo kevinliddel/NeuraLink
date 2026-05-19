@@ -72,6 +72,53 @@ final class LocalWhisperManager: NSObject, @unchecked Sendable {
         }
     }
 
+    private func precreateDirectories() {
+        guard let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
+        let fileManager = FileManager.default
+        
+        let paths = [
+            docs.appendingPathComponent("huggingface/models/openai/whisper-tiny.en/.cache/huggingface/download"),
+            docs.appendingPathComponent("huggingface/models/openai/whisper-tiny.en"),
+            docs.appendingPathComponent("huggingface/models/argmaxinc/whisperkit-coreml/openai_whisper-tiny.en/.cache/huggingface/download"),
+            docs.appendingPathComponent("huggingface/models/argmaxinc/whisperkit-coreml/openai_whisper-tiny.en")
+        ]
+        
+        for url in paths {
+            do {
+                if !fileManager.fileExists(atPath: url.path) {
+                    try fileManager.createDirectory(at: url, withIntermediateDirectories: true, attributes: nil)
+                    print("[Whisper] Pre-created directory: \(url.path)")
+                }
+            } catch {
+                print("[Whisper] Failed to create directory \(url.path): \(error)")
+            }
+        }
+    }
+
+    private func cleanStaleCacheFiles() {
+        guard let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
+        let fileManager = FileManager.default
+        let searchDirectories = [
+            docs.appendingPathComponent("huggingface/models/openai/whisper-tiny.en/.cache/huggingface/download"),
+            docs.appendingPathComponent("huggingface/models/argmaxinc/whisperkit-coreml/openai_whisper-tiny.en/.cache/huggingface/download")
+        ]
+        
+        for dir in searchDirectories {
+            guard fileManager.fileExists(atPath: dir.path) else { continue }
+            do {
+                let files = try fileManager.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
+                for file in files {
+                    if file.pathExtension == "incomplete" || file.lastPathComponent.contains("incomplete") {
+                        try fileManager.removeItem(at: file)
+                        print("[Whisper] Removed stale incomplete file: \(file.lastPathComponent)")
+                    }
+                }
+            } catch {
+                print("[Whisper] Error cleaning directory \(dir.path): \(error)")
+            }
+        }
+    }
+
     /// Initializes WhisperKit. Concurrent callers share one Task — WhisperKit is only loaded once.
     @discardableResult
     func setup() async -> Bool {
@@ -83,6 +130,12 @@ final class LocalWhisperManager: NSObject, @unchecked Sendable {
             if let existing = setupTask { return existing }
             let t = Task<Bool, Never> {
                 print("[Whisper] Initializing WhisperKit with recommended model...")
+                
+                // Pre-create directory paths and purge incomplete download caches
+                // to prevent Cocoa move error code 4 / POSIX file missing error code 2.
+                self.precreateDirectories()
+                self.cleanStaleCacheFiles()
+                
                 do {
                     // GPU encoder competes with the Metal VRM renderer and triggers Cast-op
                     // timeouts on the shared command buffer. CPU-only encoder is stable.
@@ -97,6 +150,9 @@ final class LocalWhisperManager: NSObject, @unchecked Sendable {
                     return true
                 } catch {
                     print("[Whisper] Failed to initialize WhisperKit: \(error)")
+                    self.setupLock.withLock {
+                        self.setupTask = nil
+                    }
                     return false
                 }
             }
