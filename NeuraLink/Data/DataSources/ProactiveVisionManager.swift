@@ -38,7 +38,7 @@ final class ProactiveVisionManager {
                 await performAnalysis()
             }
         }
-        print("[ProactiveVision] Started")
+        nlLog("[ProactiveVision] Started", level: .info)
     }
     
     /// Stops the proactive vision loop.
@@ -48,7 +48,7 @@ final class ProactiveVisionManager {
         lastAnalysisAt = nil
         lastUserSpeechAt = nil
         lastSummaryNormalized = ""
-        print("[ProactiveVision] Stopped")
+        nlLog("[ProactiveVision] Stopped", level: .info)
     }
 
     func notifyUserSpoke() {
@@ -105,7 +105,7 @@ final class ProactiveVisionManager {
         
         guard let image = image else { return }
         
-        print("[ProactiveVision] Capturing frame for analysis...")
+        nlLog("[ProactiveVision] Capturing frame for analysis...", level: .info)
         
         // Perform analysis using GPT-4o Vision
         let prompt = "Describe the user's current environment and what they are doing in a single, natural sentence. Focus on details that would be interesting for a companion to comment on."
@@ -116,13 +116,13 @@ final class ProactiveVisionManager {
         )
         
         guard !description.isEmpty && !description.contains("error") && !description.contains("Could not parse") else {
-            print("[ProactiveVision] Analysis failed or returned error: \(description)")
+            nlLog("[ProactiveVision] Analysis failed or returned error: \(description)", level: .error)
             return
         }
         
         let normalized = Self.normalize(description)
         guard normalized != lastSummaryNormalized else {
-            print("[ProactiveVision] Skipping duplicate summary")
+            nlLog("[ProactiveVision] Skipping duplicate summary", level: .info)
             return
         }
         lastSummaryNormalized = normalized

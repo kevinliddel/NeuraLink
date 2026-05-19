@@ -25,6 +25,17 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         switch manager.selectedConfig {
         case .qwen2b:
             return GGUFQwenEngine.shared as any LLMEngineProtocol
+        case .qwen3b:
+            return GGUFQwen3BEngine.shared as any LLMEngineProtocol
+        case .qwen7b:
+            // Speculative decoding (1.5B draft + 7B target) auto-activates
+            // when the 1.5B Qwen is also on disk — typically 2–3× decode
+            // throughput at identical output quality. Falls back to the
+            // plain 7B engine when the draft model isn't available.
+            if GGUFSpeculativeEngine.canActivate {
+                return GGUFSpeculativeEngine.shared as any LLMEngineProtocol
+            }
+            return GGUFQwen7BEngine.shared as any LLMEngineProtocol
         case .llama1b:
             return GGUFLlamaEngine.shared
         case .japaneseLlama1b:
@@ -56,6 +67,10 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     var recordingBuffer = [Float]()
     var isRecordingVoice = false
     let recordingLock = NSLock()
+    
+    // Concurrency guard for startListening
+    let stateLock = NSLock()
+    var isPreparingOrActive = false
     
     // Partial transcription state
     internal var isTranscribingPartial = false
@@ -110,10 +125,12 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     }
 
     func startListening() {
-        // Prevent redundant start attempts if already active or preparing.
-        guard state.status != .preparing && state.status != .ready && state.status != .listening && 
-              state.status != .thinking && state.status != .speaking else {
-            print("[LocalAI]: Already listening or preparing, skipping.")
+        guard stateLock.withLock({
+            if isPreparingOrActive { return false }
+            isPreparingOrActive = true
+            return true
+        }) else {
+            nlLog("[LocalAI]: Already listening or preparing, skipping.", level: .info)
             return
         }
 
@@ -130,20 +147,28 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             }
 
             await MainActor.run { state.status = .preparing }
-            let success = await whisperManager.setup()
 
+            // LLM first, Whisper second: on 4 GB devices (iPhone 11/12/13)
+            // WhisperKit reserves enough GPU/ANE memory to push llama.cpp's
+            // Metal compile over the jetsam edge. Loading the LLM first means
+            // it gets the full ~2.7 GB jetsam budget for Metal kernel
+            // compilation; Whisper's CoreML model fits comfortably afterwards.
             do {
                 try await llmEngine.loadModel()
             } catch {
-                print("[LocalLLM] Error loading model: \(error)")
-                state.setError("Failed to initialize Core ML LLM.")
+                nlLog("[LocalLLM] Error loading model: \(error)", level: .info)
+                stateLock.withLock { isPreparingOrActive = false }
+                state.setError("Failed to initialize Local LLM (\(error.localizedDescription)).")
                 return
             }
+
+            let success = await whisperManager.setup()
 
             if success {
                 await MainActor.run { state.status = .ready }
                 sileroVAD.start(externalSampleRate: hardwareInputFormat?.sampleRate)
             } else {
+                stateLock.withLock { isPreparingOrActive = false }
                 state.setError("Failed to initialize WhisperKit.")
             }
         }
@@ -166,76 +191,56 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
 
         Task {
             let mgr = LocalModelDownloadManager.shared
-            let useQwen = mgr.isAvailable && mgr.selectedConfig == .qwen2b
+            let isQwenFamily: Set<LocalModelDownloadManager.ModelConfiguration> = [.qwen2b, .qwen3b, .qwen7b]
+            let useQwen = mgr.isAvailable && isQwenFamily.contains(mgr.selectedConfig)
             let isJapaneseLlama = mgr.selectedConfig == .japaneseLlama1b
 
-            // For the Japanese 1B model: skip RAG and extra context entirely.
-            // Stored memories are in English/mixed language and inflate prompt size,
-            // causing latency growth and language confusion in a small model.
-            let truncatedMemory: String
-            let userContext: String
-            let companion: String
-            if isJapaneseLlama {
-                truncatedMemory = ""
-                userContext = ""
-                companion = ""
-            } else {
-                let raw = await RAGManager.shared.fetchContext(for: text)
-                truncatedMemory = String(raw.prefix(500))
-                userContext = UserSettings.shared.systemPromptContext
-                companion = CompanionStateManager.shared.promptContext(characterName: state.selectedCharacterName)
-            }
-
+            // Build the 3-tier prompt via LocalLLMMemoryHierarchy:
+            //   Tier 1: system + persona + (English-only: user context + companion)
+            //   Tier 3: relevant facts from RAG (English-only)
+            //   Tier 2: verbatim recent dialogue turns (English-only)
+            //   + user turn, then budget-evict oldest pairs if needed.
             let basePrompt = localLLMSystemPrompt(for: state.selectedCharacterName)
-            var sysPrompt: String
-            if isJapaneseLlama {
-                // Put language instruction first — a 1B model attends most to early tokens.
-                sysPrompt = "必ず日本語で返答してください。\n" + basePrompt
-            } else {
-                sysPrompt = basePrompt + userContext + truncatedMemory + companion
-            }
+            let messages = await LocalLLMMemoryHierarchy.shared.buildMessages(
+                userInput: text,
+                config: mgr.selectedConfig,
+                characterName: state.selectedCharacterName,
+                baseSystemPrompt: basePrompt
+            )
 
-            // No history for the Japanese 1B model: with limit: 2 the dedup logic produces
-            // an orphaned AI response (no preceding user turn), which makes the model repeat
-            // itself. A 1B model also can't use history coherently — it just inflates the
-            // prompt and causes O(N) latency growth without improving response quality.
-            let historyLimit = isJapaneseLlama ? 0 : 6
-            var recentEvents = Array(MemoryStore.shared.fetchChatEvents(limit: historyLimit).reversed())
-            if let last = recentEvents.last, last.role == "user", last.detail == text {
-                recentEvents.removeLast()
-            }
+            // Engine formats via the model's own GGUF chat template; falls
+            // back to a hand-rolled template if the model has none.
+            let prompt = llmEngine.applyChatTemplate(messages: messages)
+                ?? fallbackChatPrompt(messages: messages, useQwen: useQwen)
 
-            var prompt: String
-            let maxTokens: Int
-
-            if useQwen {
-                prompt = "<|im_start|>system\n\(sysPrompt)<|im_end|>\n"
-                var history = ""
-                for event in recentEvents {
-                    let role = event.role == "ai" ? "assistant" : "user"
-                    history += "<|im_start|>\(role)\n\(event.detail)<|im_end|>\n"
-                }
-                prompt += history + "<|im_start|>user\n\(text)<|im_end|>\n<|im_start|>assistant\n"
-                maxTokens = 160
-            } else {
-                prompt = "<|start_header_id|>system<|end_header_id|>\n\n\(sysPrompt)<|eot_id|>"
-                var history = ""
-                for event in recentEvents {
-                    let role = event.role == "ai" ? "assistant" : "user"
-                    history += "<|start_header_id|>\(role)<|end_header_id|>\n\n\(event.detail)<|eot_id|>"
-                }
-                // Inject a per-turn language reminder for the Japanese model: small models
-                // respond more reliably to language instructions in the user turn.
-                let userMessage = isJapaneseLlama ? "（日本語で回答）\(text)" : text
-                prompt += history + "<|start_header_id|>user<|end_header_id|>\n\n\(userMessage)<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
-                // 60-token cap for Japanese: forces 1–2 sentence responses that match the
-                // system prompt instruction, cuts generation time by ~40%, and reduces
-                // the AI response tokens that would otherwise inflate future prompts.
-                maxTokens = isJapaneseLlama ? 60 : 100
-            }
+            // 60-token cap for Japanese: forces 1–2 sentence responses that
+            // match the system prompt instruction, cuts generation time by
+            // ~40%, and reduces the AI tokens that would otherwise inflate
+            // future prompts.
+            let maxTokens: Int = useQwen ? 160 : (isJapaneseLlama ? 60 : 100)
 
             await llmEngine.generate(prompt: prompt, maxTokens: maxTokens)
         }
+    }
+
+    /// Hand-rolled chat template used when the model's GGUF has no embedded
+    /// template (rare but possible with community quants). Llama-3 and ChatML
+    /// formats cover every model we ship today.
+    private func fallbackChatPrompt(messages: [LLMChatMessage], useQwen: Bool) -> String {
+        if useQwen {
+            var s = ""
+            for m in messages {
+                s += "<|im_start|>\(m.role)\n\(m.content)<|im_end|>\n"
+            }
+            s += "<|im_start|>assistant\n"
+            return s
+        }
+        var s = ""
+        for m in messages {
+            s += "<|start_header_id|>\(m.role)<|end_header_id|>\n\n\(m.content)<|eot_id|>"
+        }
+        s += "<|start_header_id|>assistant<|end_header_id|>\n\n"
+        return s
     }
 
     func stop() {
@@ -254,6 +259,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     }
 
     func restart() {
+        stateLock.withLock { isPreparingOrActive = false }
         sileroVAD.stop()
         llmEngine.stop()
         playerNode.stop()
@@ -274,6 +280,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     }
 
     func unload() {
+        stateLock.withLock { isPreparingOrActive = false }
         sileroVAD.stop()
         llmEngine.stop()
         llmEngine.unloadModel()
@@ -291,7 +298,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             ttsGenerationDone = false
             state.status = .disconnected
         }
-        print("[LocalLLM] Manager unloaded — all models freed.")
+        nlLog("[LocalLLM] Manager unloaded — all models freed.", level: .info)
     }
 
     // MARK: - Local TTS (AVSpeechSynthesizer + AVAudioEngine)

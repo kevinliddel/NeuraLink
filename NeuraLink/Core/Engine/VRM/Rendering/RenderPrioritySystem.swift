@@ -137,19 +137,19 @@ public class CharacterPrioritySystem {
             displayName: displayName,
             position: position
         )
-        vrmLog("[CharacterPriority] Registered character '\(displayName)' (ID: \(characterID))")
+        nlLog("[CharacterPriority] Registered character '\(displayName)' (ID: \(characterID))")
     }
 
     /// Unregister a character
     public func unregisterCharacter(characterID: String) {
         characters.removeValue(forKey: characterID)
-        vrmLog("[CharacterPriority] Unregistered character (ID: \(characterID))")
+        nlLog("[CharacterPriority] Unregistered character (ID: \(characterID))")
     }
 
     /// Update character role
     public func updateCharacterRole(characterID: String, role: CharacterRole) {
         guard var character = characters[characterID] else {
-            vrmLog("[CharacterPriority] Warning: Character '\(characterID)' not registered")
+            nlLog("[CharacterPriority] Warning: Character '\(characterID)' not registered")
             return
         }
 
@@ -157,7 +157,7 @@ public class CharacterPrioritySystem {
             character.role = role
             character.timeSinceRoleChange = 0
             characters[characterID] = character
-            vrmLog("[CharacterPriority] Updated '\(character.displayName)' role to \(role)")
+            nlLog("[CharacterPriority] Updated '\(character.displayName)' role to \(role)")
         }
     }
 
@@ -364,7 +364,7 @@ public class CharacterPrioritySystem {
             updateCharacterRole(characterID: listenerID, role: .listener)
         }
 
-        vrmLog(
+        nlLog(
             "[CharacterPriority] Applied dialogue preset: speaker=\(mainSpeakerID), listeners=\(listenerIDs)"
         )
     }
@@ -393,6 +393,6 @@ public class CharacterPrioritySystem {
             updateCharacterRole(characterID: character.characterID, role: .background)
         }
 
-        vrmLog("[CharacterPriority] Applied crowd preset")
+        nlLog("[CharacterPriority] Applied crowd preset")
     }
 }

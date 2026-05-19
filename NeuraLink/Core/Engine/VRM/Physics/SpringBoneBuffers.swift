@@ -69,7 +69,7 @@ public final class SpringBoneBuffers: @unchecked Sendable {
 
     func updateBoneParameters(_ parameters: [BoneParams]) {
         guard parameters.count == numBones else {
-            vrmLogPhysics(
+            nlLogPhysics(
                 "⚠️ [SpringBoneBuffers] Parameter count mismatch: expected \(numBones), got \(parameters.count)"
             )
             return
@@ -83,7 +83,7 @@ public final class SpringBoneBuffers: @unchecked Sendable {
 
     func updateRestLengths(_ lengths: [Float]) {
         guard lengths.count == numBones else {
-            vrmLogPhysics(
+            nlLogPhysics(
                 "⚠️ [SpringBoneBuffers] Rest length count mismatch: expected \(numBones), got \(lengths.count)"
             )
             return
@@ -97,7 +97,7 @@ public final class SpringBoneBuffers: @unchecked Sendable {
 
     func updateBindDirections(_ directions: [SIMD3<Float>]) {
         guard directions.count == numBones else {
-            vrmLogPhysics(
+            nlLogPhysics(
                 "⚠️ [SpringBoneBuffers] Bind direction count mismatch: expected \(numBones), got \(directions.count)"
             )
             return
@@ -122,7 +122,7 @@ public final class SpringBoneBuffers: @unchecked Sendable {
 
     func updateSphereColliders(_ colliders: [SphereCollider]) {
         guard colliders.count == numSpheres else {
-            vrmLogPhysics(
+            nlLogPhysics(
                 "⚠️ [SpringBoneBuffers] Sphere collider count mismatch: expected \(numSpheres), got \(colliders.count)"
             )
             return
@@ -137,7 +137,7 @@ public final class SpringBoneBuffers: @unchecked Sendable {
 
     func updateCapsuleColliders(_ colliders: [CapsuleCollider]) {
         guard colliders.count == numCapsules else {
-            vrmLogPhysics(
+            nlLogPhysics(
                 "⚠️ [SpringBoneBuffers] Capsule collider count mismatch: expected \(numCapsules), got \(colliders.count)"
             )
             return
@@ -152,7 +152,7 @@ public final class SpringBoneBuffers: @unchecked Sendable {
 
     func updatePlaneColliders(_ colliders: [PlaneCollider]) {
         guard colliders.count == numPlanes else {
-            vrmLogPhysics(
+            nlLogPhysics(
                 "⚠️ [SpringBoneBuffers] Plane collider count mismatch: expected \(numPlanes), got \(colliders.count)"
             )
             return

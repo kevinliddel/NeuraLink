@@ -66,9 +66,9 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
             try rtcSession.setMode(.videoChat)
             try rtcSession.setActive(true)
             rtcSession.isAudioEnabled = true
-            print("[AI]: RTCAudioSession configured for speaker output")
+            nlLog("[AI]: RTCAudioSession configured for speaker output", level: .info)
         } catch {
-            print("[AI]: Failed to configure RTCAudioSession: \(error)")
+            nlLog("[AI]: Failed to configure RTCAudioSession: \(error)", level: .error)
         }
         rtcSession.unlockForConfiguration()
     }
@@ -77,7 +77,7 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
         do {
             try AVAudioSession.sharedInstance().overrideOutputAudioPort(.speaker)
         } catch {
-            print("[AI]: Failed to override output port: \(error)")
+            nlLog("[AI]: Failed to override output port: \(error)", level: .error)
         }
     }
 
@@ -90,12 +90,12 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
         
         // Prevent redundant connection attempts if already active or connecting.
         guard state.status != .connecting && state.status != .ready && state.status != .speaking && state.status != .thinking else {
-            print("[AI]: Already connected or connecting, skipping.")
+            nlLog("[AI]: Already connected or connecting, skipping.", level: .info)
             return
         }
 
         state.status = .connecting
-        print("[AI]: Connecting to OpenAI Realtime...")
+        nlLog("[AI]: Connecting to OpenAI Realtime...", level: .info)
         Task.detached(priority: .userInitiated) { [weak self] in
             self?.setupAudioSession()
             self?.setupPeerConnection()
@@ -160,7 +160,7 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
             ], optionalConstraints: nil)
 
         peerConnection?.offer(for: constraints) { [weak self] offer, error in
-            print("[AI]: Creating SDP offer...")
+            nlLog("[AI]: Creating SDP offer...", level: .info)
             guard let self = self, let offer = offer else {
                 self?.state.setError(
                     "Failed to create offer: \(error?.localizedDescription ?? "unknown")")
@@ -173,7 +173,7 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
                     self.state.setError("Failed to set local desc: \(error.localizedDescription)")
                     return
                 }
-                print("[AI]: SDP offer set, gathering ICE candidates (timeout in 1.5s)...")
+                nlLog("[AI]: SDP offer set, gathering ICE candidates (timeout in 1.5s)...", level: .info)
                 self.pendingOffer = offer
 
                 // Fallback timeout: Send what we have if gathering takes too long
@@ -181,7 +181,7 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
                 self.iceGatheringTimeout = Task {
                     try? await Task.sleep(nanoseconds: 1_500_000_000)
                     if !Task.isCancelled {
-                        print("[AI]: ICE gathering timeout reached, sending available candidates")
+                        nlLog("[AI]: ICE gathering timeout reached, sending available candidates", level: .info)
                         self.sendOfferIfPossible()
                     }
                 }
@@ -206,7 +206,7 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
         request.setValue("application/sdp", forHTTPHeaderField: "Content-Type")
         request.httpBody = offer.sdp.data(using: .utf8)
 
-        print("[AI]: Sending SDP offer to OpenAI...")
+        nlLog("[AI]: Sending SDP offer to OpenAI...", level: .info)
         URLSession.shared.dataTask(with: request) { [weak self] data, _, error in
             guard let self = self else { return }
 
@@ -222,22 +222,22 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
                 return
             }
 
-            print("[AI]: Received answer length: \(sdpAnswer.count)")
+            nlLog("[AI]: Received answer length: \(sdpAnswer.count)", level: .info)
             if sdpAnswer.contains("m=audio") {
-                print("[AI]: Answer contains audio track")
+                nlLog("[AI]: Answer contains audio track", level: .info)
             } else {
-                print("[AI]: WARNING - Answer does NOT contain audio track")
+                nlLog("[AI]: WARNING - Answer does NOT contain audio track", level: .warning)
             }
 
             let answer = RTCSessionDescription(type: .answer, sdp: sdpAnswer)
-            print("[AI]: Received SDP answer from OpenAI")
+            nlLog("[AI]: Received SDP answer from OpenAI", level: .info)
             self.peerConnection?.setRemoteDescription(answer) { error in
                 Task { @MainActor in
                     if let error = error {
                         self.state.setError(
                             "Failed to set remote desc: \(error.localizedDescription)")
                     } else {
-                        print("[AI]: Connection established and ready")
+                        nlLog("[AI]: Connection established and ready", level: .info)
                         self.state.status = .ready
                         self.forceAudioToSpeaker()
                         self.startStatsPolling()
@@ -261,7 +261,7 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
                             let audioLevelValue = stats.values["audioLevel"] {
                             let level = (audioLevelValue as? NSNumber)?.floatValue ?? 0.0
                             if level > 0.01 {
-                                print("[AI]: Incoming audio level detected: \(level)")
+                                nlLog("[AI]: Incoming audio level detected: \(level)", level: .info)
                             }
                             Task { @MainActor in
                                 RealtimeChatState.shared.audioLevel = level

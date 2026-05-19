@@ -170,7 +170,7 @@ final class RainRenderer {
             let lib = try VRMPipelineCache.shared.getLibrary(device: device)
 
             guard let computeFn = lib.makeFunction(name: "rain_watermap") else {
-                vrmLog("[RainRenderer] rain_watermap not found")
+                nlLog("[RainRenderer] rain_watermap not found")
                 return
             }
             computePipeline = try device.makeComputePipelineState(function: computeFn)
@@ -178,7 +178,7 @@ final class RainRenderer {
             guard let vertFn = lib.makeFunction(name: "rain_vertex"),
                 let fragFn = lib.makeFunction(name: "rain_fragment")
             else {
-                vrmLog("[RainRenderer] rain_vertex / rain_fragment not found")
+                nlLog("[RainRenderer] rain_vertex / rain_fragment not found")
                 return
             }
             let desc = MTLRenderPipelineDescriptor()
@@ -199,7 +199,7 @@ final class RainRenderer {
             renderPipeline = try VRMPipelineCache.shared.getPipelineState(
                 device: device, descriptor: desc, key: "rain_overlay")
         } catch {
-            vrmLog("[RainRenderer] Pipeline setup failed: \(error)")
+            nlLog("[RainRenderer] Pipeline setup failed: \(error)")
         }
     }
 

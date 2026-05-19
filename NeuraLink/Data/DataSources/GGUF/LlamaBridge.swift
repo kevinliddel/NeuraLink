@@ -42,10 +42,37 @@ final class LlamaBridge {
         threads: Int32 = 4,
         gpuLayers: Int32 = 999,
         kType: LlamaKVType = .q4_0,
-        vType: LlamaKVType = .q4_0
+        vType: LlamaKVType = .q4_0,
+        promptLookup: Bool = true
     ) {
-        handle = llama_bridge_create(modelPath, contextLength, threads, gpuLayers, kType.rawValue, vType.rawValue)
+        var layers = gpuLayers
+        #if targetEnvironment(simulator)
+        layers = 0 // CPU-only in Simulator to avoid MTLCompilerService crashes
+        #else
+        // On real older devices with < 5.0 GB of RAM (like iPhone 11/12/13), Metal shader compilation
+        // spikes memory usage and triggers jetsam/compiler daemon crashes. Force CPU-only to guarantee stability.
+        let gb = Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824.0
+        if gb < 5.0 {
+            nlLog("[LlamaBridge] Device RAM (\(String(format: "%.1f", gb)) GB) is under 5.0 GB. Forcing CPU-only execution for rock-solid stability.", level: .info)
+            layers = 0
+        }
+        #endif
+        handle = llama_bridge_create(modelPath, contextLength, threads, layers, kType.rawValue, vType.rawValue)
+        
+        // If Metal/GPU initialization fails on real hardware (e.g. pre-A14 devices or MTLCompilerService XPC error),
+        // gracefully fall back to CPU-only execution.
+        if handle == nil && layers > 0 {
+            nlLog("[LlamaBridge] Metal/GPU initialization failed. Retrying with CPU-only (gpuLayers = 0)...", level: .error)
+            handle = llama_bridge_create(modelPath, contextLength, threads, 0, kType.rawValue, vType.rawValue)
+        }
+        
         guard handle != nil else { return nil }
+        // Prompt-Lookup Decoding is on by default for every engine: it's a
+        // free 1.5–2× tok/s win on conversational repetition and gracefully
+        // no-ops when no n-gram match is found.
+        if promptLookup {
+            llama_bridge_set_prompt_lookup(handle, true, 0, 0)
+        }
     }
 
     deinit {
@@ -94,6 +121,72 @@ final class LlamaBridge {
     /// Signals the in-progress generation to stop after the current token.
     func cancel() {
         llama_bridge_cancel(handle)
+    }
+
+    // MARK: - Prompt-lookup decoding
+
+    /// Toggle prompt-lookup speculative decoding. Passing `n` or `nDraft`
+    /// non-positive keeps the C-side defaults (n=3, nDraft=5).
+    func enablePromptLookup(_ enabled: Bool, n: Int32 = 0, nDraft: Int32 = 0) {
+        llama_bridge_set_prompt_lookup(handle, enabled, n, nDraft)
+    }
+
+    // MARK: - Chat template
+
+    /// Formats `messages` into a single prompt string using the model's own
+    /// chat template (read from GGUF metadata). Returns `nil` if the model
+    /// has no template or the formatting failed — callers should then fall
+    /// back to a hand-rolled template.
+    func applyChatTemplate(
+        messages: [LLMChatMessage],
+        addGenerationPrompt: Bool = true
+    ) -> String? {
+        guard let handle, !messages.isEmpty else { return nil }
+
+        // Pin the UTF-8 storage for the duration of the call so the C-side
+        // pointers stay valid across nested closures.
+        var cStrings: [UnsafeMutablePointer<CChar>?] = []
+        cStrings.reserveCapacity(messages.count * 2)
+        for msg in messages {
+            cStrings.append(strdup(msg.role))
+            cStrings.append(strdup(msg.content))
+        }
+        defer { cStrings.forEach { if let p = $0 { free(p) } } }
+
+        var roles: [UnsafePointer<CChar>?]    = []
+        var contents: [UnsafePointer<CChar>?] = []
+        roles.reserveCapacity(messages.count)
+        contents.reserveCapacity(messages.count)
+        for i in 0..<messages.count {
+            roles.append(cStrings[i * 2].map { UnsafePointer($0) })
+            contents.append(cStrings[i * 2 + 1].map { UnsafePointer($0) })
+        }
+
+        let totalChars = messages.reduce(0) { $0 + $1.role.count + $1.content.count }
+        var bufSize = max(512, totalChars * 2 + 256)
+
+        for _ in 0..<3 {
+            var buffer = [CChar](repeating: 0, count: bufSize)
+            let written = buffer.withUnsafeMutableBufferPointer { bufPtr -> Int32 in
+                roles.withUnsafeMutableBufferPointer { rolesPtr in
+                    contents.withUnsafeMutableBufferPointer { contentsPtr in
+                        llama_bridge_apply_chat_template(
+                            handle,
+                            rolesPtr.baseAddress,
+                            contentsPtr.baseAddress,
+                            Int32(messages.count),
+                            addGenerationPrompt,
+                            bufPtr.baseAddress,
+                            Int32(bufSize)
+                        )
+                    }
+                }
+            }
+            if written < 0 { return nil }
+            if Int(written) < bufSize { return String(cString: buffer) }
+            bufSize = Int(written) + 1
+        }
+        return nil
     }
 }
 

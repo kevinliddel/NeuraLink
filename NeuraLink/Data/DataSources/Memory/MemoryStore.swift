@@ -55,7 +55,7 @@ final class MemoryStore {
 
     private func setupDatabase() {
         if sqlite3_open(dbPath, &db) != SQLITE_OK {
-            print("[MemoryStore] Error: Could not open database.")
+            nlLog("[MemoryStore] Error: Could not open database.", level: .error)
             return
         }
 
@@ -86,7 +86,7 @@ final class MemoryStore {
 
         if sqlite3_exec(db, createTableQuery, nil, nil, nil) != SQLITE_OK {
             let errmsg = String(cString: sqlite3_errmsg(db)!)
-            print("[MemoryStore] Error creating tables: \(errmsg)")
+            nlLog("[MemoryStore] Error creating tables: \(errmsg)", level: .info)
         }
     }
 

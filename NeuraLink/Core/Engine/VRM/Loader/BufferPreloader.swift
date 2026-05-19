@@ -57,7 +57,7 @@ public final class BufferPreloader: @unchecked Sendable {
                             results.set(data, for: index)
                         }
                     } catch {
-                        vrmLog("[BufferPreloader] Failed to load buffer \(index): \(error)")
+                        nlLog("[BufferPreloader] Failed to load buffer \(index): \(error)")
                     }
 
                     progressBox.increment()

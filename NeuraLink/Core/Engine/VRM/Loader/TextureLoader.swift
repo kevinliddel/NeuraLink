@@ -35,17 +35,17 @@ public class TextureLoader {
     ///   - sRGB: If true, texture is treated as sRGB color data (default). If false, treated as linear data (normal maps, etc.)
     public func loadTexture(at index: Int, sRGB: Bool = true, maxSize: Int = Int.max, withMipmaps: Bool = false) async throws -> MTLTexture? {
         guard let gltfTexture = document.textures?[safe: index] else {
-            vrmLog("[TextureLoader] Warning: No texture at index \(index)")
+            nlLog("[TextureLoader] Warning: No texture at index \(index)")
             return nil
         }
 
         guard let sourceIndex = gltfTexture.source else {
-            vrmLog("[TextureLoader] Warning: Texture \(index) has no source")
+            nlLog("[TextureLoader] Warning: Texture \(index) has no source")
             return nil
         }
 
         guard let images = document.images, sourceIndex < images.count else {
-            vrmLog(
+            nlLog(
                 "[TextureLoader] Error: Source index \(sourceIndex) out of bounds for images array (count: \(document.images?.count ?? 0))"
             )
             return nil
@@ -131,7 +131,7 @@ public class TextureLoader {
 
     private func loadImageFromExternalFile(_ uri: String, textureIndex: Int) throws -> Data {
         guard let baseURL = baseURL else {
-            vrmLog("[TextureLoader] Warning: Cannot load external file without base URL: \(uri)")
+            nlLog("[TextureLoader] Warning: Cannot load external file without base URL: \(uri)")
             throw VRMError.missingTexture(
                 textureIndex: textureIndex,
                 materialName: nil,
@@ -154,7 +154,7 @@ public class TextureLoader {
         let basePath = baseURL.standardized.path
         let filePath = fileURL.standardized.path
         guard filePath.hasPrefix(basePath) else {
-            vrmLog("[TextureLoader] Security: Refusing to load file outside base directory: \(uri)")
+            nlLog("[TextureLoader] Security: Refusing to load file outside base directory: \(uri)")
             throw VRMError.invalidPath(
                 path: uri,
                 reason:
@@ -165,7 +165,7 @@ public class TextureLoader {
 
         // Check if file exists
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
-            vrmLog("[TextureLoader] Warning: External image file not found: \(fileURL.path)")
+            nlLog("[TextureLoader] Warning: External image file not found: \(fileURL.path)")
             throw VRMError.missingTexture(
                 textureIndex: textureIndex,
                 materialName: nil,
@@ -177,10 +177,10 @@ public class TextureLoader {
         // Load the image data
         do {
             let data = try Data(contentsOf: fileURL)
-            vrmLog("[TextureLoader] Loaded external image: \(uri) (\(data.count) bytes)")
+            nlLog("[TextureLoader] Loaded external image: \(uri) (\(data.count) bytes)")
             return data
         } catch {
-            vrmLog("[TextureLoader] Error loading external image: \(error)")
+            nlLog("[TextureLoader] Error loading external image: \(error)")
             throw VRMError.invalidImageData(
                 textureIndex: textureIndex,
                 reason:
@@ -202,7 +202,7 @@ public class TextureLoader {
                     withMipmaps: withMipmaps)
                 return texture
             } catch {
-                vrmLog("[TextureLoader] Failed to create texture from CGImage: \(error)")
+                nlLog("[TextureLoader] Failed to create texture from CGImage: \(error)")
             }
         }
 
@@ -217,7 +217,7 @@ public class TextureLoader {
             let texture = try await textureLoader.newTexture(data: imageData, options: options)
             return texture
         } catch {
-            vrmLog("[TextureLoader] Failed to create texture: \(error)")
+            nlLog("[TextureLoader] Failed to create texture: \(error)")
             throw VRMError.invalidImageData(
                 textureIndex: textureIndex,
                 reason:
@@ -238,12 +238,12 @@ public class TextureLoader {
 
     private func createTexture(from cgImage: CGImage, textureIndex: Int, sRGB: Bool,
                                maxSize: Int = Int.max, withMipmaps: Bool = false) throws -> MTLTexture? {
-        vrmLog("[TextureLoader] createTexture(from CGImage) called, sRGB=\(sRGB)")
+        nlLog("[TextureLoader] createTexture(from CGImage) called, sRGB=\(sRGB)")
 
         // MTKTextureLoader seems to crash when called from background async context
         // Let's create the texture manually instead
 
-        vrmLog("[TextureLoader] Getting image dimensions...")
+        nlLog("[TextureLoader] Getting image dimensions...")
         let srcWidth = cgImage.width
         let srcHeight = cgImage.height
 
@@ -252,11 +252,11 @@ public class TextureLoader {
         let width  = max(1, Int(Double(srcWidth)  * scale))
         let height = max(1, Int(Double(srcHeight) * scale))
         if scale < 1.0 {
-            vrmLog("[TextureLoader] Downscaled \(srcWidth)x\(srcHeight) → \(width)x\(height)")
+            nlLog("[TextureLoader] Downscaled \(srcWidth)x\(srcHeight) → \(width)x\(height)")
         }
-        vrmLog("[TextureLoader] Image size: \(width)x\(height)")
+        nlLog("[TextureLoader] Image size: \(width)x\(height)")
 
-        vrmLog("[TextureLoader] Creating texture descriptor...")
+        nlLog("[TextureLoader] Creating texture descriptor...")
         let pixelFormat: MTLPixelFormat = sRGB ? .rgba8Unorm_srgb : .rgba8Unorm
 
         // Upload to a shared staging texture (CPU-writable)
@@ -265,17 +265,17 @@ public class TextureLoader {
         stagingDesc.usage       = [.shaderRead]
         stagingDesc.storageMode = .shared
 
-        vrmLog("[TextureLoader] Creating Metal texture...")
+        nlLog("[TextureLoader] Creating Metal texture...")
         guard let stagingTexture = device.makeTexture(descriptor: stagingDesc) else {
-            vrmLog("[TextureLoader] Failed to create staging texture")
+            nlLog("[TextureLoader] Failed to create staging texture")
             return nil
         }
-        vrmLog("[TextureLoader] Metal texture created")
+        nlLog("[TextureLoader] Metal texture created")
 
         // Pass data:nil and bytesPerRow:0 so CG allocates its own buffer with the alignment
         // vImage requires. When we provide our own malloc'd buffer CG's internal vImage
         // scaling path fires an alignment assertion for any non-identity scale factor.
-        vrmLog("[TextureLoader] Creating CGContext...")
+        nlLog("[TextureLoader] Creating CGContext...")
         let colorSpace = CGColorSpaceCreateDeviceRGB()
         guard let context = CGContext(
             data: nil,
@@ -286,30 +286,30 @@ public class TextureLoader {
             space: colorSpace,
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ) else {
-            vrmLog("[TextureLoader] Failed to create bitmap context")
+            nlLog("[TextureLoader] Failed to create bitmap context")
             return nil
         }
-        vrmLog("[TextureLoader] CGContext created")
+        nlLog("[TextureLoader] CGContext created")
 
-        vrmLog("[TextureLoader] Drawing image to context...")
+        nlLog("[TextureLoader] Drawing image to context...")
         context.setBlendMode(.copy)
         context.draw(cgImage, in: CGRect(x: 0, y: 0, width: CGFloat(width), height: CGFloat(height)))
-        vrmLog("[TextureLoader] Image drawn")
+        nlLog("[TextureLoader] Image drawn")
 
         guard let bitmapData = context.data else {
-            vrmLog("[TextureLoader] CGContext has no backing data")
+            nlLog("[TextureLoader] CGContext has no backing data")
             return nil
         }
         let bytesPerRow = context.bytesPerRow
 
-        vrmLog("[TextureLoader] Replacing texture data...")
+        nlLog("[TextureLoader] Replacing texture data...")
         stagingTexture.replace(
             region: MTLRegionMake2D(0, 0, width, height),
             mipmapLevel: 0,
             withBytes: bitmapData,
             bytesPerRow: bytesPerRow
         )
-        vrmLog("[TextureLoader] Texture data replaced")
+        nlLog("[TextureLoader] Texture data replaced")
 
         // Mipmap path: blit staging → private mipmapped texture, then generate all mip levels.
         // Requires .renderTarget usage on the private texture (Metal requirement for generateMipmaps).
@@ -333,7 +333,7 @@ public class TextureLoader {
                 blit.endEncoding()
                 cmdBuf.commit()
                 cmdBuf.waitUntilCompleted()
-                vrmLog("[TextureLoader] Mipmaps generated (\(mipTex.mipmapLevelCount) levels)")
+                nlLog("[TextureLoader] Mipmaps generated (\(mipTex.mipmapLevelCount) levels)")
                 return mipTex
             }
         }
@@ -345,15 +345,15 @@ public class TextureLoader {
             let g = Float(firstPixel[1]) / 255.0
             let b = Float(firstPixel[2]) / 255.0
             let a = Float(firstPixel[3]) / 255.0
-            vrmLog(
+            nlLog(
                 "[TextureLoader] First pixel RGBA: (\(String(format: "%.3f", r)), \(String(format: "%.3f", g)), \(String(format: "%.3f", b)), \(String(format: "%.3f", a)))"
             )
             if r > 1.0 || g > 1.0 || b > 1.0 {
-                vrmLog("  ⚠️ WARNING: Pixel values exceed 1.0!")
+                nlLog("  ⚠️ WARNING: Pixel values exceed 1.0!")
             }
         #endif
 
-        vrmLog("[TextureLoader] Texture created successfully")
+        nlLog("[TextureLoader] Texture created successfully")
         return stagingTexture
     }
 

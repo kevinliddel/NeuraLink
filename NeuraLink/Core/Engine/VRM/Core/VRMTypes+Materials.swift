@@ -72,9 +72,9 @@ public struct VRM0MaterialProperty {
         mtoon.shadingToonyFactor = shadingToonyFactor
         mtoon.shadingShiftFactor = shadingShiftFactor
 
-        // Shade texture from texture properties.
-        // When _ShadeTexture is absent, fall back to _MainTex so the shadow side
-        // retains the material's texture detail (just darkened by shadeColorFactor).
+        // Shade texture from texture properties
+        // In VRM 0.0, if _ShadeTexture is not defined, _MainTex is implicitly used for shadows.
+        // We must bind it so the shader can multiply the shade color with the texture.
         if let shadeTexIndex = textureProperties["_ShadeTexture"] {
             mtoon.shadeMultiplyTexture = shadeTexIndex
         } else if let mainTexIndex = textureProperties["_MainTex"] {

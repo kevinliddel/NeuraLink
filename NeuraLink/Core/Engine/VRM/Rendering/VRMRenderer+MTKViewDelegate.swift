@@ -14,8 +14,6 @@ extension VRMRenderer: MTKViewDelegate {
         let aspect = Float(size.width / size.height)
         projectionMatrix = makePerspective(
             fovyRadians: .pi / 3, aspectRatio: aspect, nearZ: 0.1, farZ: 100.0)
-        resizeSSAOTextures(size)
-        resizeGodRayTextures(size)
     }
 
     public func draw(in view: MTKView) {
@@ -34,9 +32,9 @@ extension VRMRenderer: MTKViewDelegate {
         // Add comprehensive error handler for debugging
         commandBuffer.addCompletedHandler { [weak self] cb in
             if cb.status == .error {
-                vrmLog("[VRMRenderer] ❌ METAL ERROR: Command buffer failed!")
+                nlLog("[VRMRenderer] ❌ METAL ERROR: Command buffer failed!")
                 if let error = cb.error {
-                    vrmLog("[VRMRenderer] ❌ Error details: \(error)")
+                    nlLog("[VRMRenderer] ❌ Error details: \(error)")
                 }
                 // Log additional debug info
                 if let model = self?.model {
@@ -48,7 +46,7 @@ extension VRMRenderer: MTKViewDelegate {
                             maxMorphs = max(maxMorphs, prim.morphTargets.count)
                         }
                     }
-                    vrmLog(
+                    nlLog(
                         "[VRMRenderer] ❌ Model stats: \(totalPrimitives) primitives, max \(maxMorphs) morphs per primitive"
                     )
                 }
@@ -61,7 +59,7 @@ extension VRMRenderer: MTKViewDelegate {
                             totalPrimitives += mesh.primitives.count
                         }
                         if totalPrimitives > 50 {
-                            vrmLog(
+                            nlLog(
                                 "[VRMRenderer] ✅ Frame \(frameCounter): Successfully rendered \(totalPrimitives) primitives"
                             )
                         }
@@ -79,7 +77,7 @@ extension VRMRenderer: MTKViewDelegate {
 extension VRMRenderer {
     public func resetSpringBone() {
         // GPU system resets automatically on model load
-        vrmLog("[VRMRenderer] SpringBone reset (GPU system resets on model load)")
+        nlLog("[VRMRenderer] SpringBone reset (GPU system resets on model load)")
     }
 
     public func applySpringBoneForce(

@@ -1,28 +1,20 @@
 //
-//  GGUFLlamaEngine.swift
+//  GGUFQwen3BEngine.swift
 //  NeuraLink
 //
-//  Drop-in replacement for LocalLLMEngine that uses llama.cpp via Metal GPU.
-//  Conforms to LLMEngineProtocol — LocalLLMManager.makeEngine() returns this
-//  when the user selects the Llama-3.2-1B model configuration.
+//  LLMEngineProtocol implementation for Qwen-2.5-3B-Instruct.
+//  Targets the 6 GB tier (iPhone 14 / 15 base / Plus).
 //
-//  Responsibilities (this file):
-//    - Protocol conformance surface
-//    - Model loading / unloading lifecycle
-//    - Shared singleton
-//
-//  See GGUFLlamaEngine+Generate.swift for the token generation loop.
-//
-//  Created by Dedicatus on 29/04/2026.
+//  Created by Dedicatus on 18/05/2026.
 //
 
 import Foundation
 
-final class GGUFLlamaEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
+final class GGUFQwen3BEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
 
     // MARK: - Singleton
 
-    static let shared = GGUFLlamaEngine()
+    static let shared = GGUFQwen3BEngine()
 
     // MARK: - Protocol properties
 
@@ -35,9 +27,7 @@ final class GGUFLlamaEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
     internal var loadTask: Task<Void, Error>?
     internal let loadLock = NSLock()
 
-    // Prevents concurrent llama_decode calls on the same context.
-    // llama.cpp is NOT thread-safe: two simultaneous decode calls corrupt
-    // internal buffers and crash with GGML_ASSERT(buffer) failed.
+    // Same concurrency guard as GGUFLlamaEngine — llama.cpp is NOT thread-safe.
     internal let generationLock = NSLock()
     internal var _isGenerating = false
 
@@ -53,16 +43,13 @@ final class GGUFLlamaEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
         let task: Task<Void, Error> = loadLock.withLock {
             if let existing = loadTask { return existing }
             let t = Task<Void, Error> {
-                guard let url = GGUFModelAccess.modelURL() else {
+                guard let url = GGUFQwen3BModelAccess.modelURL() else {
                     throw LLMError.modelNotFound
                 }
-                print("[GGUFEngine] Loading \(url.lastPathComponent)…")
+                nlLog("[GGUFQwen3B] Loading \(url.lastPathComponent)…", level: .info)
 
-                // llama_bridge_create is synchronous and potentially slow (~3-5 s).
-                // Run on a dedicated thread so the Swift cooperative pool stays free.
                 let loaded: LlamaBridge = try await withCheckedThrowingContinuation { cont in
                     DispatchQueue.global(qos: .userInitiated).async {
-                        // 4 GB devices: n_ctx=2048, 4 threads, all layers on Metal GPU.
                         if let b = LlamaBridge(
                             modelPath: url.path,
                             contextLength: 2048,
@@ -78,7 +65,7 @@ final class GGUFLlamaEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
 
                 self.bridge   = loaded
                 self.isLoaded = true
-                print("[GGUFEngine] Ready. llama.cpp \(loaded.version)")
+                nlLog("[GGUFQwen3B] Ready. llama.cpp \(loaded.version)", level: .info)
             }
             self.loadTask = t
             return t
@@ -96,10 +83,14 @@ final class GGUFLlamaEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
         bridge   = nil
         isLoaded = false
         loadLock.withLock { loadTask = nil }
-        print("[GGUFEngine] Unloaded.")
+        nlLog("[GGUFQwen3B] Unloaded.", level: .info)
     }
 
     func stop() {
         bridge?.cancel()
+    }
+
+    func applyChatTemplate(messages: [LLMChatMessage]) -> String? {
+        bridge?.applyChatTemplate(messages: messages)
     }
 }

@@ -27,7 +27,7 @@ extension GGUFJapaneseLlamaEngine {
         generationLock.unlock()
 
         guard !alreadyRunning else {
-            print("[GGUFJapaneseLlama] Dropped generate — already in progress")
+            nlLog("[GGUFJapaneseLlama] Dropped generate — already in progress", level: .info)
             Task { @MainActor [weak self] in
                 self?.delegate?.localLLM(didFinishGeneration: "")
             }

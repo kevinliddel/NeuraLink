@@ -363,7 +363,7 @@ extension TerrainRenderer {
             guard let vertFn = lib.makeFunction(name: "shadow_vertex"),
                 let skinnedFn = lib.makeFunction(name: "shadow_skinned_vertex")
             else {
-                vrmLog("[TerrainRenderer] shadow_vertex / shadow_skinned_vertex not found")
+                nlLog("[TerrainRenderer] shadow_vertex / shadow_skinned_vertex not found")
                 return false
             }
 
@@ -409,7 +409,7 @@ extension TerrainRenderer {
             shadowSkinnedPipeline = try VRMPipelineCache.shared.getPipelineState(
                 device: device, descriptor: skinnedDesc, key: "shadow_skinned")
         } catch {
-            vrmLog("[TerrainRenderer] Shadow pipeline setup failed: \(error)")
+            nlLog("[TerrainRenderer] Shadow pipeline setup failed: \(error)")
             return false
         }
         return true
@@ -421,7 +421,7 @@ extension TerrainRenderer {
             guard let vertFn = lib.makeFunction(name: "terrain_vertex"),
                 let fragFn = lib.makeFunction(name: "terrain_fragment")
             else {
-                vrmLog("[TerrainRenderer] terrain_vertex / terrain_fragment not found")
+                nlLog("[TerrainRenderer] terrain_vertex / terrain_fragment not found")
                 return false
             }
             let desc = MTLRenderPipelineDescriptor()
@@ -436,7 +436,7 @@ extension TerrainRenderer {
             terrainPipeline = try VRMPipelineCache.shared.getPipelineState(
                 device: device, descriptor: desc, key: "terrain")
         } catch {
-            vrmLog("[TerrainRenderer] Terrain pipeline setup failed: \(error)")
+            nlLog("[TerrainRenderer] Terrain pipeline setup failed: \(error)")
             return false
         }
         return true
@@ -469,24 +469,5 @@ extension TerrainRenderer {
             )
             return proj * view
         }
-    }
-
-    /// Environment-scale shadow matrix that covers the full scene extent.
-    /// `radius` = half-width of the horizontal frustum in scene units.
-    /// `height` = vertical coverage from ground to top of tallest caster.
-    static func makeEnvLightMatrix(
-        sunDir: SIMD3<Float>, radius: Float, height: Float
-    ) -> simd_float4x4 {
-        let centre = SIMD3<Float>(0, height * 0.5, 0)
-        let up: SIMD3<Float> = abs(sunDir.y) > 0.98 ? SIMD3<Float>(1, 0, 0) : SIMD3<Float>(0, 1, 0)
-        let eyeDist = radius + height
-        let eyePos  = centre + sunDir * eyeDist
-        let view = OrthographicCamera.makeLookAt(eye: eyePos, target: centre, up: up)
-        let proj = OrthographicCamera.makeOrthographic(
-            left: -radius, right: radius,
-            bottom: -(radius * 0.1), top: height,
-            near: 0.1, far: eyeDist * 2.5
-        )
-        return proj * view
     }
 }

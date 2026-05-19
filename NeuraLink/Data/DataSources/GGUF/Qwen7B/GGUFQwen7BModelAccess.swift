@@ -1,30 +1,31 @@
 //
-//  GGUFQwenModelAccess.swift
+//  GGUFQwen7BModelAccess.swift
 //  NeuraLink
 //
-//  Resolves the on-disk path of the downloaded Qwen GGUF model file.
+//  Resolves the on-disk path of the Qwen-2.5-7B-Instruct GGUF model.
+//  Targets the 8 GB tier (iPhone 15 Pro / 15 Pro Max / 16 family).
+//  Model: bartowski/Qwen2.5-7B-Instruct-GGUF (Q4_K_M, ~4.68 GB)
 //
-//  Created by Dedicatus on 29/04/2026.
+//  Created by Dedicatus on 18/05/2026.
 //
 
 import Foundation
 
-enum GGUFQwenModelAccess {
+enum GGUFQwen7BModelAccess {
 
     // MARK: - Constants
 
-    static let repoID   = "Qwen/Qwen2.5-1.5B-Instruct-GGUF"
-    static let filename = "qwen2.5-1.5b-instruct-q4_k_m.gguf"
+    static let repoID   = "bartowski/Qwen2.5-7B-Instruct-GGUF"
+    static let filename = "Qwen2.5-7B-Instruct-Q4_K_M.gguf"
 
-    private static let pathKey  = "LocalModel_QwenGGUFPath"
-    private static let hubSlug  = "models--Qwen--Qwen2.5-1.5B-Instruct-GGUF"
+    private static let pathKey = "LocalModel_GGUFQwen7BPath"
+    private static let hubSlug = "models--bartowski--Qwen2.5-7B-Instruct-GGUF"
 
     // MARK: - URL resolution
 
-    /// The full URL to the downloaded `.gguf` file, or `nil` if not present.
     static func modelURL() -> URL? {
-        if let stored = UserDefaults.standard.string(forKey: pathKey) {
-            let url = URL(fileURLWithPath: stored)
+        if let relative = UserDefaults.standard.string(forKey: pathKey) {
+            let url = appSupport.appendingPathComponent(relative)
             if FileManager.default.fileExists(atPath: url.path) { return url }
         }
         return scanHubCache()
@@ -35,13 +36,12 @@ enum GGUFQwenModelAccess {
     static var isDownloaded: Bool { modelURL() != nil }
 
     static func setModelPath(_ url: URL) {
-        UserDefaults.standard.set(url.path, forKey: pathKey)
+        let relative = url.path.replacingOccurrences(of: appSupport.path, with: "")
+        UserDefaults.standard.set(relative, forKey: pathKey)
     }
 
     static func clearCache() {
-        let hub = appSupport.appendingPathComponent("hub/\(hubSlug)")
-        try? FileManager.default.removeItem(at: hub)
-        UserDefaults.standard.removeObject(forKey: pathKey)
+        HubCacheUtils.clear(hubSlug: hubSlug, pathKey: pathKey)
     }
 
     // MARK: - Internals

@@ -39,7 +39,7 @@ final class PiPManager: NSObject, ObservableObject, AVPictureInPictureController
             try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.mixWithOthers, .allowBluetooth, .defaultToSpeaker])
             try session.setActive(true)
         } catch {
-            print("[PiPManager] Failed to set audio session for PiP: \(error)")
+            nlLog("[PiPManager] Failed to set audio session for PiP: \(error)", level: .error)
         }
     }
 

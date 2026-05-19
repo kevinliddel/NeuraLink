@@ -21,13 +21,13 @@ extension OpenAIRealtimeManager {
 
             case "response.audio_transcript.delta":
                 if let delta = json["delta"] as? String {
-                    print("[AI Text Delta]: \(delta)")
+                    nlLog("[AI Text Delta]: \(delta)", level: .info)
                     state.aiTranscript += delta
                 }
 
             case "conversation.item.input_audio_transcription.completed":
                 if let transcript = json["transcript"] as? String {
-                    print("[User Transcript]: \(transcript)")
+                    nlLog("[User Transcript]: \(transcript)", level: .info)
                     state.userTranscript = transcript
                     ProactiveVisionManager.shared.notifyUserSpoke()
                     // RAG: Store user input in long-term memory
@@ -43,7 +43,7 @@ extension OpenAIRealtimeManager {
                     pendingFunctionCallId = item["call_id"] as? String ?? ""
                     pendingFunctionName = item["name"] as? String ?? ""
                     pendingFunctionArgsJSON = ""
-                    print("[AI Tools]: function_call started — \(pendingFunctionName)")
+                    nlLog("[AI Tools]: function_call started — \(pendingFunctionName)", level: .info)
                 } else {
                     state.aiTranscript = ""
                     state.status = .speaking
@@ -55,7 +55,7 @@ extension OpenAIRealtimeManager {
             // In real-time streaming this timestamp closely tracks actual audio completion.
             case "response.audio_transcript.done":
                 transcriptDoneTime = Date()
-                print("[AI Tools]: transcript done at \(Date())")
+                nlLog("[AI Tools]: transcript done at \(Date())", level: .info)
 
             // Function call argument streaming
             case "response.function_call_arguments.delta":
@@ -74,7 +74,7 @@ extension OpenAIRealtimeManager {
                     if let emotion = args["emotion"] as? String,
                        let duration = args["duration"] as? Double {
                         state.triggerEmotion(emotion, duration: Float(duration))
-                        print("[Emotion] \(emotion) for \(duration)s")
+                        nlLog("[Emotion] \(emotion) for \(duration)s", level: .info)
                     }
                     sendFunctionResult(callId: pendingFunctionCallId, result: "ok")
                 } else if !pendingFunctionName.isEmpty {
@@ -83,9 +83,9 @@ extension OpenAIRealtimeManager {
                         name: pendingFunctionName,
                         args: pendingFunctionArgsJSON
                     )
-                    print(
-                        "[AI Tools]: Arguments complete for \(pendingFunctionName). Deferring execution until response.done"
-                    )
+                    nlLog(
+                        "[AI Tools]: Arguments complete for \(pendingFunctionName). Deferring execution until response.done",
+                        level: .info)
                 }
                 pendingFunctionCallId = ""
                 pendingFunctionName = ""
@@ -93,7 +93,7 @@ extension OpenAIRealtimeManager {
 
             // Response lifecycle
             case "response.done":
-                print("[OpenAI] Full response: \(state.aiTranscript)")
+                nlLog("[OpenAI] Full response: \(state.aiTranscript)", level: .info)
                 state.status = .ready
                 
                 // RAG: Store AI response in long-term memory
@@ -111,7 +111,7 @@ extension OpenAIRealtimeManager {
                             with: Data(deferred.args.utf8)) as? [String: Any]) ?? [:]
                     let result = await AppFunctionExecutor.shared.execute(
                         name: deferred.name, arguments: args)
-                    print("[AI Tools]: result → \(result)")
+                    nlLog("[AI Tools]: result → \(result)", level: .info)
                     ChatTimelineStore.logToolCall(name: deferred.name, result: result)
                     sendFunctionResult(callId: deferred.id, result: result)
                 } else if AppFunctionExecutor.shared.pendingUIAction != nil {
@@ -153,9 +153,9 @@ extension OpenAIRealtimeManager {
                 let target = max(targetA, targetB)
                 let remaining = target.timeIntervalSinceNow
                 if remaining > 0 {
-                    print(
-                        "[AI Tools]: Waiting \(String(format: "%.2f", remaining))s for audio before opening app"
-                    )
+                    nlLog(
+                        "[AI Tools]: Waiting \(String(format: "%.2f", remaining))s for audio before opening app",
+                        level: .info)
                     try? await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000))
                     if Task.isCancelled { return }
                 }
@@ -164,7 +164,7 @@ extension OpenAIRealtimeManager {
             let action = AppFunctionExecutor.shared.pendingUIAction
             AppFunctionExecutor.shared.pendingUIAction = nil
             action?()
-            print("[AI Tools]: App opened after audio finished")
+            nlLog("[AI Tools]: App opened after audio finished", level: .info)
         }
     }
 
@@ -185,7 +185,7 @@ extension OpenAIRealtimeManager {
             let buffer = RTCDataBuffer(data: data, isBinary: false)
             remoteDataChannel?.sendData(buffer)
         }
-        print("[AI Tools]: sent function_call_output for call_id=\(callId)")
+        nlLog("[AI Tools]: sent function_call_output for call_id=\(callId)", level: .info)
     }
     /// Sends a proactive vision update as a system message to the AI.
     func sendProactiveVisionUpdate(description: String) {
@@ -207,7 +207,7 @@ extension OpenAIRealtimeManager {
             let buffer = RTCDataBuffer(data: data, isBinary: false)
             remoteDataChannel?.sendData(buffer)
         }
-        print("[AI Vision]: sent proactive update: \(description.prefix(50))...")
+        nlLog("[AI Vision]: sent proactive update: \(description.prefix(50))...", level: .info)
     }
 
     /// Sends a physical interaction event (e.g. head pat) to the AI.
@@ -229,7 +229,7 @@ extension OpenAIRealtimeManager {
             let buffer = RTCDataBuffer(data: data, isBinary: false)
             remoteDataChannel?.sendData(buffer)
         }
-        print("[AI Interaction]: sent event: \(action)")
+        nlLog("[AI Interaction]: sent event: \(action)", level: .info)
     }
 }
 
@@ -239,59 +239,59 @@ extension OpenAIRealtimeManager: RTCPeerConnectionDelegate {
     func peerConnection(
         _ peerConnection: RTCPeerConnection, didChange stateChanged: RTCSignalingState
     ) {
-        print("[AI]: Signaling state changed: \(stateChanged.rawValue)")
+        nlLog("[AI]: Signaling state changed: \(stateChanged.rawValue)", level: .info)
     }
 
     func peerConnection(_ peerConnection: RTCPeerConnection, didAdd stream: RTCMediaStream) {
-        print("[AI]: Stream added with \(stream.audioTracks.count) audio tracks")
+        nlLog("[AI]: Stream added with \(stream.audioTracks.count) audio tracks", level: .info)
         for track in stream.audioTracks {
             track.isEnabled = true
-            print("[AI]: Audio track \(track.trackId) enabled")
+            nlLog("[AI]: Audio track \(track.trackId) enabled", level: .info)
         }
     }
 
     func peerConnection(_ peerConnection: RTCPeerConnection, didRemove stream: RTCMediaStream) {
-        print("[AI]: Stream removed")
+        nlLog("[AI]: Stream removed", level: .info)
     }
 
     func peerConnectionShouldNegotiate(_ peerConnection: RTCPeerConnection) {
-        print("[AI]: PeerConnection should negotiate")
+        nlLog("[AI]: PeerConnection should negotiate", level: .info)
     }
 
     func peerConnection(
         _ peerConnection: RTCPeerConnection, didChange newState: RTCIceConnectionState
     ) {
-        print("[AI]: ICE connection state changed: \(newState.rawValue)")
+        nlLog("[AI]: ICE connection state changed: \(newState.rawValue)", level: .info)
     }
 
     func peerConnection(
         _ peerConnection: RTCPeerConnection, didChange newState: RTCIceGatheringState
     ) {
-        print("[AI]: ICE gathering state changed: \(newState.rawValue)")
+        nlLog("[AI]: ICE gathering state changed: \(newState.rawValue)", level: .info)
         if newState == .complete {
-            print("[AI]: ICE gathering complete via delegate")
+            nlLog("[AI]: ICE gathering complete via delegate", level: .info)
             sendOfferIfPossible()
         }
     }
 
     func peerConnection(_ peerConnection: RTCPeerConnection, didGenerate candidate: RTCIceCandidate) {
-        print("[AI]: Generated ICE candidate: \(candidate.sdpMid ?? "none")")
+        nlLog("[AI]: Generated ICE candidate: \(candidate.sdpMid ?? "none")", level: .info)
     }
 
     func peerConnection(
         _ peerConnection: RTCPeerConnection, didRemove candidates: [RTCIceCandidate]
     ) {
-        print("[AI]: Removed ICE candidates")
+        nlLog("[AI]: Removed ICE candidates", level: .info)
     }
 
     func peerConnection(_ peerConnection: RTCPeerConnection, didOpen dataChannel: RTCDataChannel) {
-        print("[AI]: Data channel opened")
+        nlLog("[AI]: Data channel opened", level: .info)
     }
 
     func peerConnection(
         _ peerConnection: RTCPeerConnection, didChange newState: RTCPeerConnectionState
     ) {
-        print("[AI]: PeerConnection state changed: \(newState.rawValue)")
+        nlLog("[AI]: PeerConnection state changed: \(newState.rawValue)", level: .info)
     }
 
     func peerConnection(
@@ -299,10 +299,10 @@ extension OpenAIRealtimeManager: RTCPeerConnectionDelegate {
         streams: [RTCMediaStream]
     ) {
         let kind = receiver.track?.kind ?? "unknown"
-        print("[AI]: Started receiver for \(kind) track")
+        nlLog("[AI]: Started receiver for \(kind) track", level: .info)
         if let audioTrack = receiver.track as? RTCAudioTrack {
             audioTrack.isEnabled = true
-            print("[AI]: Remote audio track enabled: \(audioTrack.trackId)")
+            nlLog("[AI]: Remote audio track enabled: \(audioTrack.trackId)", level: .info)
             let rtcSession = RTCAudioSession.sharedInstance()
             rtcSession.lockForConfiguration()
             try? rtcSession.setActive(true)
@@ -316,9 +316,9 @@ extension OpenAIRealtimeManager: RTCPeerConnectionDelegate {
 
 extension OpenAIRealtimeManager: RTCDataChannelDelegate {
     func dataChannelDidChangeState(_ dataChannel: RTCDataChannel) {
-        print("[AI]: Data channel state changed: \(dataChannel.readyState.rawValue)")
+        nlLog("[AI]: Data channel state changed: \(dataChannel.readyState.rawValue)", level: .info)
         if dataChannel.readyState == .open {
-            print("[AI]: Data channel is officially OPEN")
+            nlLog("[AI]: Data channel is officially OPEN", level: .info)
             sendInitialSessionUpdate()
             ProactiveVisionManager.shared.start()
         }
@@ -359,7 +359,7 @@ extension OpenAIRealtimeManager: RTCDataChannelDelegate {
 
             let buffer = RTCDataBuffer(data: data, isBinary: false)
             remoteDataChannel?.sendData(buffer)
-            print("[AI]: Sent initial session.update with \(AppFunctionTool.all.count) tools and instructions: \(finalInstructions.prefix(100))...")
+            nlLog("[AI]: Sent initial session.update with \(AppFunctionTool.all.count) tools and instructions: \(finalInstructions.prefix(100))...", level: .info)
         }
     }
 
@@ -369,7 +369,7 @@ extension OpenAIRealtimeManager: RTCDataChannelDelegate {
         else { return }
 
         if let type = json["type"] as? String {
-            print("[AI Event Received]: \(type)")
+            nlLog("[AI Event Received]: \(type)", level: .info)
         }
 
         handleIncomingJSON(json)
@@ -382,12 +382,12 @@ extension OpenAIRealtimeManager: SileroVADDelegate {
     func sileroVADDidDetectVoiceStart() {
         guard state.status == .ready else { return }
         state.status = .listening
-        print("[SileroVAD]: Voice detected → listening")
+        nlLog("[SileroVAD]: Voice detected → listening", level: .info)
     }
 
     func sileroVADDidDetectVoiceEnd(wavData: Data?) {
         guard state.status == .listening else { return }
         state.status = .ready
-        print("[SileroVAD]: Voice ended → ready")
+        nlLog("[SileroVAD]: Voice ended → ready", level: .info)
     }
 }

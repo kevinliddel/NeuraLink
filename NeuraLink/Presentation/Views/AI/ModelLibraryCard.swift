@@ -21,6 +21,8 @@ struct ModelLibraryCard: View {
     var onResume: () -> Void
     var onDelete: () -> Void
 
+    @State private var isRotating = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top) {
@@ -204,8 +206,15 @@ struct ModelLibraryCard: View {
                 .trim(from: 0, to: 0.7)
                 .stroke(Color.cyan, lineWidth: 2)
                 .frame(width: 18, height: 18)
-                .rotationEffect(.degrees(360))
-                .animation(.linear(duration: 1).repeatForever(autoreverses: false), value: true)
+                .rotationEffect(.degrees(isRotating ? 360 : 0))
+                .onAppear {
+                    withAnimation(.linear(duration: 1.2).repeatForever(autoreverses: false)) {
+                        isRotating = true
+                    }
+                }
+                .onDisappear {
+                    isRotating = false
+                }
         case .paused:
             Image(systemName: "pause.circle")
                 .foregroundColor(.white.opacity(0.6))

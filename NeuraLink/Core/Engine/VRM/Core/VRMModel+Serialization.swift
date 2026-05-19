@@ -17,7 +17,7 @@ extension VRMModel {
     ///
     /// - Parameter url: The file URL to write to
     public func serialize(to url: URL) throws {
-        vrmLog("[VRMModel] Serializing VRM to: \(url.path)")
+        nlLog("[VRMModel] Serializing VRM to: \(url.path)")
 
         // Build the complete glTF/VRM JSON
         let vrmJSON = try buildVRMJSON()
@@ -31,7 +31,7 @@ extension VRMModel {
         // Write to file
         try glbData.write(to: url)
 
-        vrmLog(
+        nlLog(
             "[VRMModel] VRM file written successfully: \(glbData.count) bytes (\(binaryData.count) bytes binary data)"
         )
     }

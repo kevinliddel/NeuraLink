@@ -1,22 +1,23 @@
 //
-//  GGUFQwenDownloader.swift
+//  GGUFQwen3BDownloader.swift
 //  NeuraLink
 //
-//  Downloads the single-file Qwen GGUF model from HuggingFace.
+//  Downloads the single-file Qwen-2.5-3B-Instruct GGUF from HuggingFace.
+//  File: Qwen2.5-3B-Instruct-Q4_K_M.gguf (~1.93 GB)
 //
-//  Created by Dedicatus on 29/04/2026.
+//  Created by Dedicatus on 18/05/2026.
 //
 
 import Foundation
 import Hub
 
-enum GGUFQwenDownloader {
+enum GGUFQwen3BDownloader {
 
     enum DownloadError: LocalizedError {
         case fileMissing
 
         var errorDescription: String? {
-            "The GGUF model file was not found in the downloaded repository."
+            "The Qwen-2.5-3B GGUF model file was not found in the downloaded repository."
         }
     }
 
@@ -24,17 +25,20 @@ enum GGUFQwenDownloader {
         api: HubApi,
         progressHandler: @escaping (Double) -> Void
     ) async throws {
-        let repo = Hub.Repo(id: GGUFQwenModelAccess.repoID)
-        let snapshotDir = try await api.snapshot(from: repo) { progress in
+        let repo = Hub.Repo(id: GGUFQwen3BModelAccess.repoID)
+        // Fetch only the one quant we use — see GGUFLlamaDownloader.
+        let snapshotDir = try await api.snapshot(
+            from: repo, matching: [GGUFQwen3BModelAccess.filename]
+        ) { progress in
             progressHandler(progress.fractionCompleted * 0.95)
         }
         try verifyAndSave(snapshotDir: snapshotDir)
     }
 
     private static func verifyAndSave(snapshotDir: URL) throws {
-        let direct = snapshotDir.appendingPathComponent(GGUFQwenModelAccess.filename)
+        let direct = snapshotDir.appendingPathComponent(GGUFQwen3BModelAccess.filename)
         if FileManager.default.fileExists(atPath: direct.path) {
-            GGUFQwenModelAccess.setModelPath(direct)
+            GGUFQwen3BModelAccess.setModelPath(direct)
             return
         }
 
@@ -42,9 +46,9 @@ enum GGUFQwenDownloader {
             at: snapshotDir, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
 
         for entry in entries {
-            let candidate = entry.appendingPathComponent(GGUFQwenModelAccess.filename)
+            let candidate = entry.appendingPathComponent(GGUFQwen3BModelAccess.filename)
             if FileManager.default.fileExists(atPath: candidate.path) {
-                GGUFQwenModelAccess.setModelPath(candidate)
+                GGUFQwen3BModelAccess.setModelPath(candidate)
                 return
             }
         }

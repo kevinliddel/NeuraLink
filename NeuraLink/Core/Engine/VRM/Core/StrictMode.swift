@@ -298,10 +298,10 @@ public class StrictValidator {
         switch config.strict {
         case .off:
             // Log only
-            vrmLog(error.localizedDescription)
+            nlLog(error.localizedDescription)
         case .warn:
             // Log and track
-            vrmLog("⚠️ [StrictMode.warn] \(error.localizedDescription)")
+            nlLog("⚠️ [StrictMode.warn] \(error.localizedDescription)")
             frameErrors.append(error)
         case .fail:
             // Fail immediately
@@ -324,7 +324,7 @@ public class StrictValidator {
 
         // In warn mode, report all collected errors
         if config.strict == .warn && !frameErrors.isEmpty {
-            vrmLog("⚠️ [StrictMode] Frame completed with \(frameErrors.count) errors")
+            nlLog("⚠️ [StrictMode] Frame completed with \(frameErrors.count) errors")
         }
     }
 

@@ -29,10 +29,10 @@ final class LocalWhisperManager: NSObject, @unchecked Sendable {
     // Guards the setupTask check-and-create so concurrent callers can't both see nil.
     private let setupLock = NSLock()
 
-    // To support iPhone 11 (4GB RAM) efficiently, "openai_whisper-tiny" or "tiny" is recommended.
+    // To support iPhone 11 (4GB RAM) efficiently, "openai_whisper-tiny.en" or "tiny.en" is recommended.
     // "openai_whisper-base" and "large-v3-turbo" cause the OS to kill the Metal Compiler (Jetsam) 
     // when loaded alongside the Llama LLM due to 4GB RAM limits.
-    private let modelName = "openai_whisper-tiny"
+    private let modelName = "openai_whisper-tiny.en"
 
     override private init() {
         super.init()
@@ -63,12 +63,60 @@ final class LocalWhisperManager: NSObject, @unchecked Sendable {
         do {
             let file = try AVAudioFile(forWriting: url, settings: format.settings)
             try file.write(from: buffer)
-            print(
-                "[Whisper] Debug audio saved → \(url.lastPathComponent) (\(samples.count) samples)")
+            nlLog(
+                "[Whisper] Debug audio saved → \(url.lastPathComponent) (\(samples.count) samples)",
+                level: .info)
             return url
         } catch {
-            print("[Whisper] saveDebugAudio failed: \(error)")
+            nlLog("[Whisper] saveDebugAudio failed: \(error)", level: .error)
             return nil
+        }
+    }
+
+    private func precreateDirectories() {
+        guard let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
+        let fileManager = FileManager.default
+        
+        let paths = [
+            docs.appendingPathComponent("huggingface/models/openai/whisper-tiny.en/.cache/huggingface/download"),
+            docs.appendingPathComponent("huggingface/models/openai/whisper-tiny.en"),
+            docs.appendingPathComponent("huggingface/models/argmaxinc/whisperkit-coreml/openai_whisper-tiny.en/.cache/huggingface/download"),
+            docs.appendingPathComponent("huggingface/models/argmaxinc/whisperkit-coreml/openai_whisper-tiny.en")
+        ]
+        
+        for url in paths {
+            do {
+                if !fileManager.fileExists(atPath: url.path) {
+                    try fileManager.createDirectory(at: url, withIntermediateDirectories: true, attributes: nil)
+                    nlLog("[Whisper] Pre-created directory: \(url.path)", level: .info)
+                }
+            } catch {
+                nlLog("[Whisper] Failed to create directory \(url.path): \(error)", level: .error)
+            }
+        }
+    }
+
+    private func cleanStaleCacheFiles() {
+        guard let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
+        let fileManager = FileManager.default
+        let searchDirectories = [
+            docs.appendingPathComponent("huggingface/models/openai/whisper-tiny.en/.cache/huggingface/download"),
+            docs.appendingPathComponent("huggingface/models/argmaxinc/whisperkit-coreml/openai_whisper-tiny.en/.cache/huggingface/download")
+        ]
+        
+        for dir in searchDirectories {
+            guard fileManager.fileExists(atPath: dir.path) else { continue }
+            do {
+                let files = try fileManager.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
+                for file in files {
+                    if file.pathExtension == "incomplete" || file.lastPathComponent.contains("incomplete") {
+                        try fileManager.removeItem(at: file)
+                        nlLog("[Whisper] Removed stale incomplete file: \(file.lastPathComponent)", level: .info)
+                    }
+                }
+            } catch {
+                nlLog("[Whisper] Error cleaning directory \(dir.path): \(error)", level: .info)
+            }
         }
     }
 
@@ -82,7 +130,13 @@ final class LocalWhisperManager: NSObject, @unchecked Sendable {
         let task: Task<Bool, Never> = setupLock.withLock {
             if let existing = setupTask { return existing }
             let t = Task<Bool, Never> {
-                print("[Whisper] Initializing WhisperKit with recommended model...")
+                nlLog("[Whisper] Initializing WhisperKit with recommended model...", level: .info)
+                
+                // Pre-create directory paths and purge incomplete download caches
+                // to prevent Cocoa move error code 4 / POSIX file missing error code 2.
+                self.precreateDirectories()
+                self.cleanStaleCacheFiles()
+                
                 do {
                     // GPU encoder competes with the Metal VRM renderer and triggers Cast-op
                     // timeouts on the shared command buffer. CPU-only encoder is stable.
@@ -93,10 +147,13 @@ final class LocalWhisperManager: NSObject, @unchecked Sendable {
                     self.whisperKit = try await WhisperKit(
                         model: self.modelName, computeOptions: computeOptions)
                     self.isReady = true
-                    print("[Whisper] WhisperKit initialized successfully.")
+                    nlLog("[Whisper] WhisperKit initialized successfully.", level: .info)
                     return true
                 } catch {
-                    print("[Whisper] Failed to initialize WhisperKit: \(error)")
+                    nlLog("[Whisper] Failed to initialize WhisperKit: \(error)", level: .error)
+                    self.setupLock.withLock {
+                        self.setupTask = nil
+                    }
                     return false
                 }
             }
@@ -112,7 +169,7 @@ final class LocalWhisperManager: NSObject, @unchecked Sendable {
     ///   - isPartial: If true, notifies the delegate as a partial transcription for streaming.
     func transcribe(samples: [Float], isPartial: Bool = false) async {
         guard isReady, let whisper = whisperKit else {
-            print("[Whisper] WhisperKit not ready.")
+            nlLog("[Whisper] WhisperKit not ready.", level: .info)
             return
         }
 
@@ -123,18 +180,18 @@ final class LocalWhisperManager: NSObject, @unchecked Sendable {
 
             // 2. Normalize amplitude to 0.5 to prevent Float16 quantization loss in the CPU log-mel encoder
             let maxAmp = centeredSamples.reduce(0) { max($0, abs($1)) }
-            print(
-                "[Whisper] Samples: \(samples.count), maxAmp: \(String(format: "%.4f", maxAmp)), DC Offset: \(String(format: "%.4f", mean))"
-            )
+            nlLog(
+                "[Whisper] Samples: \(samples.count), maxAmp: \(String(format: "%.4f", maxAmp)), DC Offset: \(String(format: "%.4f", mean))",
+                level: .info)
 
             // Reject clips that are almost certainly room noise (VAD false-positive).
             // Real speech at arm's length from an iPhone mic peaks above 0.05; below
             // that the clip is either silence or ambient noise and amplifying it only
             // sends loud noise to the Whisper encoder.
             guard maxAmp >= 0.05 else {
-                print(
-                    "[Whisper] Skipping: maxAmp \(String(format: "%.4f", maxAmp)) below speech threshold."
-                )
+                nlLog(
+                    "[Whisper] Skipping: maxAmp \(String(format: "%.4f", maxAmp)) below speech threshold.",
+                    level: .info)
                 return
             }
 
@@ -142,14 +199,14 @@ final class LocalWhisperManager: NSObject, @unchecked Sendable {
             if maxAmp < 0.3 {
                 let gain = Float(0.3) / maxAmp
                 normalizedSamples = centeredSamples.map { $0 * gain }
-                print("[Whisper] Normalized: gain \(String(format: "%.2f", gain))×")
+                nlLog("[Whisper] Normalized: gain \(String(format: "%.2f", gain))×", level: .info)
             }
 
             // Save to WAV so WhisperKit can load via its own audio pipeline.
             // transcribe(audioPath:) uses AVAudioFile internally which handles
             // Int16 PCM conversion — a different code path from transcribe(audioArray:).
             guard let audioURL = saveDebugAudio(samples: normalizedSamples) else {
-                print("[Whisper] Could not save audio for transcription.")
+                nlLog("[Whisper] Could not save audio for transcription.", level: .info)
                 return
             }
 
@@ -167,16 +224,16 @@ final class LocalWhisperManager: NSObject, @unchecked Sendable {
 
             let allSegments = result.flatMap { $0.segments }
             for (i, seg) in allSegments.enumerated() {
-                print(
-                    "[Whisper] Segment[\(i)]: '\(seg.text)' noSpeechProb=\(String(format: "%.3f", seg.noSpeechProb)) avgLogprob=\(String(format: "%.3f", seg.avgLogprob)) temp=\(seg.temperature)"
-                )
+                nlLog(
+                    "[Whisper] Segment[\(i)]: '\(seg.text)' noSpeechProb=\(String(format: "%.3f", seg.noSpeechProb)) avgLogprob=\(String(format: "%.3f", seg.avgLogprob)) temp=\(seg.temperature)",
+                    level: .info)
             }
 
             let fullText = result.map { $0.text }.joined(separator: " ").trimmingCharacters(
                 in: .whitespacesAndNewlines)
 
             if !fullText.isEmpty {
-                print("[Whisper] Transcription complete (partial=\(isPartial)): \(fullText)")
+                nlLog("[Whisper] Transcription complete (partial=\(isPartial)): \(fullText)", level: .info)
                 DispatchQueue.main.async { [weak self] in
                     if isPartial {
                         self?.delegate?.whisperManager(didTranscribePartialText: fullText)
@@ -185,11 +242,11 @@ final class LocalWhisperManager: NSObject, @unchecked Sendable {
                     }
                 }
             } else {
-                print("[Whisper] Transcription resulted in empty text (likely silence or noise).")
+                nlLog("[Whisper] Transcription resulted in empty text (likely silence or noise).", level: .info)
             }
 
         } catch {
-            print("[Whisper] Transcription error: \(error)")
+            nlLog("[Whisper] Transcription error: \(error)", level: .error)
             DispatchQueue.main.async { [weak self] in
                 self?.delegate?.whisperManager(didFailWithError: error)
             }

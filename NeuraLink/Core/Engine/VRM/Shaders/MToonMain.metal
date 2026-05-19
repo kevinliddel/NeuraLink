@@ -115,7 +115,7 @@ fragment float4 mtoon_fragment_v2(VertexOut in [[stage_in]],
         lit0 = mix(shadeColor, baseColor.rgb, step0) * uniforms.lightColor.xyz * (intensity0 / totalIntensity);
         lightingForRim += uniforms.lightColor.xyz * max(ndotl0, 0.0) * (intensity0 / totalIntensity);
     }
-
+ 
     float3 lit1 = float3(0.0);
     if (intensity1 > 0.0) {
         float ndotl1  = dot(normal, -uniforms.light1Direction.xyz);
@@ -124,7 +124,7 @@ fragment float4 mtoon_fragment_v2(VertexOut in [[stage_in]],
         lit1 = mix(shadeColor, baseColor.rgb, step1) * uniforms.light1Color.xyz * (intensity1 / totalIntensity);
         lightingForRim += uniforms.light1Color.xyz * max(ndotl1, 0.0) * (intensity1 / totalIntensity);
     }
-
+ 
     float3 lit2 = float3(0.0);
     if (intensity2 > 0.0) {
         float ndotl2  = dot(normal, -uniforms.light2Direction.xyz);

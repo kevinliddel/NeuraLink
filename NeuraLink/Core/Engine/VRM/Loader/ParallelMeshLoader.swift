@@ -55,7 +55,7 @@ public final class ParallelMeshLoader: @unchecked Sendable {
                         )
                         results.set(mesh, for: meshIndex)
                     } catch {
-                        vrmLog("[ParallelMeshLoader] Failed to load mesh \(meshIndex): \(error)")
+                        nlLog("[ParallelMeshLoader] Failed to load mesh \(meshIndex): \(error)")
                     }
 
                     progressBox.increment()

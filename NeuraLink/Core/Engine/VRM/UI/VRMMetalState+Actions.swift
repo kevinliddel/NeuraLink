@@ -29,7 +29,7 @@ extension VRMMetalState {
         let defaultURL = Self.findVRMA(named: "neutral")
 
         guard let defaultURL else {
-            vrmLog("[VRMMetalState] No neutral.vrma found — showing bind pose")
+            nlLog("[VRMMetalState] No neutral.vrma found — showing bind pose")
             renderer?.isModelVisible = true
             return
         }
@@ -84,7 +84,7 @@ extension VRMMetalState {
                 }
             } catch {
                 await MainActor.run { self.renderer?.isModelVisible = true }
-                vrmLog("[VRMMetalState] ⚠️ Failed to load animation: \(error)")
+                nlLog("[VRMMetalState] ⚠️ Failed to load animation: \(error)")
             }
         }
     }
@@ -126,7 +126,7 @@ extension VRMMetalState {
                         animationPlayer.crossfade(to: clip, duration: 0.5, from: model)
                     }
                     scheduleNextRandomAnim()
-                    vrmLog("[RandomAnim] ↩ neutral — next random in \(String(format: "%.1f", randomAnimTimer))s")
+                    nlLog("[RandomAnim] ↩ neutral — next random in \(String(format: "%.1f", randomAnimTimer))s")
                 }
             } else if randomAnimTimer >= 0 {
                 randomAnimTimer -= dt
@@ -136,7 +136,7 @@ extension VRMMetalState {
                     randomAnimDuration = Float.random(in: Self.randomAnimDurationRange)
                     animationPlayer.isLooping = true
                     animationPlayer.crossfade(to: entry.clip, duration: 0.5, from: model)
-                    vrmLog("[RandomAnim] ▶ '\(entry.name)' — duration: \(String(format: "%.1f", randomAnimDuration))s")
+                    nlLog("[RandomAnim] ▶ '\(entry.name)' — duration: \(String(format: "%.1f", randomAnimDuration))s")
                 }
             }
         }
@@ -309,7 +309,7 @@ extension VRMMetalState {
 
     private func playPose(named name: String) {
         guard let model = currentModel, let url = Self.findVRMA(named: name) else {
-            vrmLog("[VRMMetalState] ⚠️ Pose '\(name)' not found")
+            nlLog("[VRMMetalState] ⚠️ Pose '\(name)' not found")
             return
         }
 
@@ -320,10 +320,10 @@ extension VRMMetalState {
                     self.isPlayingRandomAnim = false // Interrupt random idle
                     self.animationPlayer.isLooping = true
                     self.animationPlayer.crossfade(to: clip, duration: 0.5, from: model)
-                    vrmLog("[Pose] Playing '\(name)'")
+                    nlLog("[Pose] Playing '\(name)'")
                 }
             } catch {
-                vrmLog("[VRMMetalState] ⚠️ Failed to load pose '\(name)': \(error)")
+                nlLog("[VRMMetalState] ⚠️ Failed to load pose '\(name)': \(error)")
             }
         }
     }

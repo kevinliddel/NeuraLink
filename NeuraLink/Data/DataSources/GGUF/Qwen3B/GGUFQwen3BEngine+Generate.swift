@@ -1,13 +1,15 @@
 //
-//  GGUFQwenEngine+Generate.swift
+//  GGUFQwen3BEngine+Generate.swift
 //  NeuraLink
 //
-//  Created by Dedicatus on 29/04/2026.
+//  Token generation loop for GGUFQwen3BEngine.
+//
+//  Created by Dedicatus on 18/05/2026.
 //
 
 import Foundation
 
-extension GGUFQwenEngine {
+extension GGUFQwen3BEngine {
 
     func generate(prompt: String, maxTokens: Int) async {
         guard isLoaded, let bridge else {
@@ -21,7 +23,7 @@ extension GGUFQwenEngine {
         generationLock.unlock()
 
         guard !alreadyRunning else {
-            print("[GGUFQwen] Dropped generate — already in progress")
+            nlLog("[GGUFQwen3B] Dropped generate — already in progress", level: .info)
             Task { @MainActor [weak self] in
                 self?.delegate?.localLLM(didFinishGeneration: "")
             }

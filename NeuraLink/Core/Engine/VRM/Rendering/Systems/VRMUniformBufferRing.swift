@@ -25,13 +25,13 @@ final class VRMUniformBufferRing {
                 buffer.label = "Uniform Buffer #\(frame)"
                 createdBuffers.append(buffer)
             } else {
-                vrmLog(
+                nlLog(
                     "[VRMUniformBufferRing] ⚠️ Failed to create uniform buffer for frame #\(frame)")
             }
         }
 
         if createdBuffers.count != maxFramesInFlight {
-            vrmLog(
+            nlLog(
                 "[VRMUniformBufferRing] Created \(createdBuffers.count)/\(maxFramesInFlight) uniform buffers"
             )
         }
@@ -45,7 +45,7 @@ final class VRMUniformBufferRing {
 
         guard !buffers.isEmpty else {
             semaphore.signal()
-            vrmLog("[VRMUniformBufferRing] ❌ No uniform buffers available")
+            nlLog("[VRMUniformBufferRing] ❌ No uniform buffers available")
             return nil
         }
 

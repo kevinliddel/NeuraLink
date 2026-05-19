@@ -109,7 +109,7 @@ final class SkyRenderer {
             let lib = try VRMPipelineCache.shared.getLibrary(device: device)
             guard let vertFn = lib.makeFunction(name: "sky_vertex"),
                   let fragFn = lib.makeFunction(name: "sky_fragment") else {
-                vrmLog("[SkyRenderer] sky_vertex / sky_fragment not found in library")
+                nlLog("[SkyRenderer] sky_vertex / sky_fragment not found in library")
                 return
             }
             let desc = MTLRenderPipelineDescriptor()
@@ -123,7 +123,7 @@ final class SkyRenderer {
             pipeline = try VRMPipelineCache.shared.getPipelineState(
                 device: device, descriptor: desc, key: "sky")
         } catch {
-            vrmLog("[SkyRenderer] Pipeline setup failed: \(error)")
+            nlLog("[SkyRenderer] Pipeline setup failed: \(error)")
         }
     }
 

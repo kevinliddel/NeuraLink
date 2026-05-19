@@ -131,17 +131,28 @@ final class LocalLLMPromptStore {
     }
 
     private static func defaultJapanesePrompt(for characterName: String) -> String {
-        // Keep this prompt short. A 1B model loses instruction-following ability
-        // with prompts over ~10 lines — it starts repeating the prompt instead of responding.
+        // Keep this prompt short. A 1B model loses instruction-following
+        // ability with prompts over ~10 lines — it starts repeating the
+        // prompt instead of responding.
+        //
+        // `selfBoundary` is critical: without it, the 1B model conflates
+        // "who I am" (its own persona description) with "who the user is"
+        // and answers questions like "私について教えて" by reading off bits
+        // of its own system prompt as if they were the user's attributes.
+        // Repeating the rule twice in slightly different forms gives the
+        // 1B model enough redundancy to actually follow it.
         let emotionTag = "感情タグ[感情:秒数]（例:[happy:2],[sad:1]）を返答に自然に含めること。感情名は声に出さないこと。\n"
         let tool = "iOSアクションは次の形式のみ出力: <tool name=\"TOOL_NAME\">{\"arg\":\"value\"}</tool>\n"
+        let selfBoundary = "以下は私（AI）自身の説明であり、ユーザー情報ではない。ユーザーについて聞かれたら必ず「まだ知らない」と答え、私自身の説明をユーザーのことのように話してはいけない。\n"
         switch characterName.lowercased() {
         case "ekaterina":
-            return emotionTag + tool + "私はエカテリーナ、温かく優しいお姉さん。日本語で1〜2文で話す。ユーザーのことを聞かれたら「まだ知らない」と答える。"
+            return emotionTag + tool + selfBoundary
+                + "私はエカテリーナ、温かく優しいお姉さん。日本語で1〜2文で話す。"
         case "sonya":
-            return emotionTag + tool + "私はソーニャ、ツンデレ。日本語で1〜2文で話す。たまに「バカ」と言う。ユーザーのことを聞かれたら「知らない」と答える。"
+            return emotionTag + tool + selfBoundary
+                + "私はソーニャ、ツンデレ。日本語で1〜2文で話す。たまに「バカ」と言う。"
         default:
-            return emotionTag + tool + "日本語で1文で話す。"
+            return emotionTag + tool + selfBoundary + "日本語で1文で話す。"
         }
     }
 }

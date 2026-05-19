@@ -18,7 +18,6 @@ extension CampusRenderer {
         setupPipelines(config: config)
         setupUniformBuffers()
         setupFallbackTexture()
-        setupFlatNormalTexture()
     }
 
     // MARK: - Async load
@@ -49,7 +48,7 @@ extension CampusRenderer {
                 document: document, into: &meshInstances)
         }
 
-        vrmLog(
+        nlLog(
             "[CampusRenderer] Scene graph: \(meshInstances.count) mesh instance(s) across all nodes"
         )
 
@@ -75,7 +74,7 @@ extension CampusRenderer {
                     // Fallback: emit upright normals so lighting doesn't NaN out.
                     // (Ideally compute flat per-face normals from POSITION/indices.)
                     for i in 0..<vertCount { norF[i * 3 + 1] = 1.0 }
-                    vrmLog("[CampusRenderer] Primitive missing NORMAL; using fallback (0,1,0)")
+                    nlLog("[CampusRenderer] Primitive missing NORMAL; using fallback (0,1,0)")
                 }
                 var texF = [Float](repeating: 0, count: vertCount * 2)
                 if let i = primitive.attributes["TEXCOORD_0"] {
@@ -126,14 +125,12 @@ extension CampusRenderer {
                 vb.label = "Campus_VB_\(groups.count)"
                 ib.label = "Campus_IB_\(groups.count)"
 
-                var texture: MTLTexture?       = nil
-                var normalTexture: MTLTexture? = nil
-                var normalScale: Float         = 1.0
-                var baseColorFactor            = SIMD4<Float>(1, 1, 1, 1)
-                var emissive                   = SIMD3<Float>(0, 0, 0)
-                var alphaCutoff: Float         = 0.01
-                var metallic: Float            = 0.0
-                var roughness: Float           = 1.0
+                var texture: MTLTexture? = nil
+                var baseColorFactor = SIMD4<Float>(1, 1, 1, 1)
+                var emissive = SIMD3<Float>(0, 0, 0)
+                var alphaCutoff: Float = 0.01
+                var metallic: Float = 0.0
+                var roughness: Float = 1.0
 
                 let matIdx = primitive.material
                 let mat = matIdx.flatMap { document.materials?[safe: $0] }
@@ -159,26 +156,10 @@ extension CampusRenderer {
                                     at: texIdx, sRGB: true, withMipmaps: true)
                                 if let tex = texture { textureCache[texIdx] = tex }
                             } catch {
-                                vrmLog("[CampusRenderer] Texture \(texIdx) load error: \(error)")
+                                nlLog("[CampusRenderer] Texture \(texIdx) load error: \(error)")
                             }
                         }
                     }
-
-                    if let nti = mat.normalTexture {
-                        normalScale = nti.scale ?? 1.0
-                        if let cached = textureCache[nti.index] {
-                            normalTexture = cached
-                        } else {
-                            do {
-                                normalTexture = try await texLoader.loadTexture(
-                                    at: nti.index, sRGB: false, withMipmaps: true)
-                                if let tex = normalTexture { textureCache[nti.index] = tex }
-                            } catch {
-                                vrmLog("[CampusRenderer] Normal texture \(nti.index) load error: \(error)")
-                            }
-                        }
-                    }
-
                     if let ef = mat.emissiveFactor, ef.count >= 3 {
                         emissive = SIMD3<Float>(ef[0], ef[1], ef[2])
                     }
@@ -191,7 +172,6 @@ extension CampusRenderer {
                     baseColorFactor.w = 1.0
                 }
 
-                let hasNormalMap: Float = normalTexture != nil ? 1.0 : 0.0
                 groups.append(
                     CampusMeshGroup(
                         vertexBuffer: vb,
@@ -199,11 +179,10 @@ extension CampusRenderer {
                         indexCount: indices.count,
                         indexType: .uint32,
                         texture: texture,
-                        normalTexture: normalTexture,
                         baseColorFactor: baseColorFactor,
                         emissivePacked: SIMD4<Float>(
                             emissive.x, emissive.y, emissive.z, alphaCutoff),
-                        materialParams: SIMD4<Float>(metallic, roughness, hasNormalMap, normalScale),
+                        materialParams: SIMD4<Float>(metallic, roughness, 0, 0),
                         transform: worldTransform,
                         isBlend: isBlend
                     ))
@@ -212,7 +191,7 @@ extension CampusRenderer {
 
         meshGroups = groups
         isReady = !groups.isEmpty
-        vrmLog(
+        nlLog(
             "[CampusRenderer] Loaded \(groups.count) mesh group(s) (\(textureCache.count) unique texture(s))"
         )
     }
@@ -237,7 +216,7 @@ extension CampusRenderer {
             let mainVert = lib.makeFunction(name: "campus_vertex"),
             let mainFrag = lib.makeFunction(name: "campus_fragment")
         else {
-            vrmLog("[CampusRenderer] Shader functions not found")
+            nlLog("[CampusRenderer] Shader functions not found")
             return
         }
 
@@ -302,11 +281,11 @@ extension CampusRenderer {
             shadowPipeline = try VRMPipelineCache.shared.getPipelineState(
                 device: device, descriptor: shadowDesc, key: "campus_shadow_v1")
             mainPipeline = try VRMPipelineCache.shared.getPipelineState(
-                device: device, descriptor: mainDesc, key: "campus_main_v2")
+                device: device, descriptor: mainDesc, key: "campus_main_v1")
             blendPipeline = try VRMPipelineCache.shared.getPipelineState(
-                device: device, descriptor: blendDesc, key: "campus_blend_v2")
+                device: device, descriptor: blendDesc, key: "campus_blend_v1")
         } catch {
-            vrmLog("[CampusRenderer] Pipeline creation failed: \(error)")
+            nlLog("[CampusRenderer] Pipeline creation failed: \(error)")
         }
     }
 
@@ -330,20 +309,6 @@ extension CampusRenderer {
             region: MTLRegionMake2D(0, 0, 1, 1),
             mipmapLevel: 0, withBytes: &pixel, bytesPerRow: 4)
         fallbackTexture = tex
-    }
-
-    private func setupFlatNormalTexture() {
-        let desc = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: .rgba8Unorm, width: 1, height: 1, mipmapped: false)
-        desc.usage = [.shaderRead]
-        desc.storageMode = .shared
-        guard let tex = device.makeTexture(descriptor: desc) else { return }
-        // Flat normal: (128, 128, 255, 255) decodes to tangent-space (0, 0, 1)
-        var pixel: UInt32 = 0xFF_FF_80_80  // little-endian: r=0x80, g=0x80, b=0xFF, a=0xFF
-        tex.replace(
-            region: MTLRegionMake2D(0, 0, 1, 1),
-            mipmapLevel: 0, withBytes: &pixel, bytesPerRow: 4)
-        flatNormalTexture = tex
     }
 
     private func collectMeshInstances(

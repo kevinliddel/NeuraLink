@@ -1,19 +1,15 @@
 //
-//  GGUFLlamaEngine+Generate.swift
+//  GGUFQwen7BEngine+Generate.swift
 //  NeuraLink
 //
-//  Token generation loop for GGUFLlamaEngine.
-//  Runs llama.cpp inference on a GCD thread so the Swift cooperative pool
-//  is never blocked during a potentially long-running synchronous C call.
+//  Token generation loop for GGUFQwen7BEngine.
 //
-//  Created by Dedicatus on 29/04/2026.
+//  Created by Dedicatus on 18/05/2026.
 //
 
 import Foundation
 
-extension GGUFLlamaEngine {
-
-    // MARK: - LLMEngineProtocol — generate
+extension GGUFQwen7BEngine {
 
     func generate(prompt: String, maxTokens: Int) async {
         guard isLoaded, let bridge else {
@@ -21,14 +17,13 @@ extension GGUFLlamaEngine {
             return
         }
 
-        // Reject concurrent calls — llama.cpp crashes if two generate calls run simultaneously.
         generationLock.lock()
         let alreadyRunning = _isGenerating
         if !alreadyRunning { _isGenerating = true }
         generationLock.unlock()
 
         guard !alreadyRunning else {
-            print("[GGUFEngine] Dropped generate — already in progress")
+            nlLog("[GGUFQwen7B] Dropped generate — already in progress", level: .info)
             Task { @MainActor [weak self] in
                 self?.delegate?.localLLM(didFinishGeneration: "")
             }
@@ -43,10 +38,7 @@ extension GGUFLlamaEngine {
 
         var fullText = ""
 
-        // llama_bridge_generate blocks the calling thread.
-        // We suspend the async context and resume it in the on_finish callback.
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            // Dispatch to a background thread — never call blocking C from the cooperative pool.
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 guard let self else {
                     continuation.resume()
@@ -62,7 +54,7 @@ extension GGUFLlamaEngine {
                         Task { @MainActor [weak self] in
                             self?.delegate?.localLLM(didGenerateToken: token)
                         }
-                        return true   // returning false would stop generation
+                        return true
                     },
                     onFinish: { [weak self] in
                         Task { @MainActor [weak self] in

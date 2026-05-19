@@ -223,14 +223,14 @@ public struct MToonMaterialUniforms {
             // Additional debug checks
             let epsilon: Float = 0.001
             if parametricRimLiftFactor < -epsilon || parametricRimLiftFactor > 1 + epsilon {
-                vrmLog("Warning: Rim lift factor unusual value: \(parametricRimLiftFactor)")
+                nlLog("Warning: Rim lift factor unusual value: \(parametricRimLiftFactor)")
             }
             if uvAnimationRotationSpeedFactor > 10 {
-                vrmLog(
+                nlLog(
                     "Warning: Very high UV rotation speed: \(uvAnimationRotationSpeedFactor) rad/s")
             }
             if outlineWidthFactor > 0.1 {
-                vrmLog("Warning: Very large outline width: \(outlineWidthFactor)")
+                nlLog("Warning: Very large outline width: \(outlineWidthFactor)")
             }
         #endif
     }

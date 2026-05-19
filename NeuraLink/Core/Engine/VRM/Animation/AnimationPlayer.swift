@@ -162,7 +162,7 @@ public final class AnimationPlayer: @unchecked Sendable {
                     updatedCount += 1
 
                     if debugFirstFrame {
-                        vrmLogAnimation(
+                        nlLogAnimation(
                             "[NON-HUMANOID] Animated '\(track.nodeName)' -> node '\(node.name ?? "unnamed")'"
                         )
                     }
@@ -209,7 +209,7 @@ public final class AnimationPlayer: @unchecked Sendable {
             model.updateNodeTransforms()
 
             if debugFirstFrame {
-                vrmLogAnimation("[AnimationPlayer] Updated \(updatedCount) node matrices")
+                nlLogAnimation("[AnimationPlayer] Updated \(updatedCount) node matrices")
                 hasLoggedFirstFrame = true
             }
         }

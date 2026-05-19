@@ -23,7 +23,7 @@ extension LocalLLMManager {
                 try? session.setPreferredInput(builtInMic)
             }
         } catch {
-            print("[LocalAI]: Failed to configure audio session: \(error)")
+            nlLog("[LocalAI]: Failed to configure audio session: \(error)", level: .error)
         }
 
         audioEngine.attach(playerNode)
@@ -49,9 +49,9 @@ extension LocalLLMManager {
 
         do {
             try audioEngine.start()
-            print("[LocalAI]: AVAudioEngine started for local TTS & Input Capture.")
+            nlLog("[LocalAI]: AVAudioEngine started for local TTS & Input Capture.", level: .info)
         } catch {
-            print("[LocalAI]: Failed to start audio engine: \(error)")
+            nlLog("[LocalAI]: Failed to start audio engine: \(error)", level: .error)
         }
     }
 

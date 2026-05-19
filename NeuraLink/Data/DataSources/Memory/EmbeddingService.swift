@@ -20,7 +20,7 @@ final class EmbeddingService {
     
     private init() {
         if NLEmbedding.sentenceEmbedding(for: fallbackLanguage) == nil {
-            print("[EmbeddingService] Warning: Failed to load sentence embedding for English.")
+            nlLog("[EmbeddingService] Warning: Failed to load sentence embedding for English.", level: .error)
         }
     }
     

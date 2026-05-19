@@ -1,35 +1,32 @@
 //
-//  GGUFModelAccess.swift
+//  GGUFQwenModelAccess.swift
 //  NeuraLink
 //
-//  Resolves the on-disk path of the downloaded GGUF model file.
-//  Mirrors the LlamaModelAccess pattern — one responsibility: path resolution.
+//  Resolves the on-disk path of the downloaded Qwen GGUF model file.
 //
 //  Created by Dedicatus on 29/04/2026.
 //
 
 import Foundation
 
-enum GGUFModelAccess {
+enum GGUFQwenModelAccess {
 
     // MARK: - Constants
 
-    static let repoID   = "bartowski/Llama-3.2-1B-Instruct-GGUF"
-    static let filename = "Llama-3.2-1B-Instruct-Q4_K_M.gguf"
+    static let repoID   = "Qwen/Qwen2.5-1.5B-Instruct-GGUF"
+    static let filename = "qwen2.5-1.5b-instruct-q4_k_m.gguf"
 
-    private static let pathKey  = "LocalModel_GGUFPath"
-    private static let hubSlug  = "models--bartowski--Llama-3.2-1B-Instruct-GGUF"
+    private static let pathKey  = "LocalModel_QwenGGUFPath"
+    private static let hubSlug  = "models--Qwen--Qwen2.5-1.5B-Instruct-GGUF"
 
     // MARK: - URL resolution
 
     /// The full URL to the downloaded `.gguf` file, or `nil` if not present.
     static func modelURL() -> URL? {
-        // 1. Persisted path from a previous download.
         if let relative = UserDefaults.standard.string(forKey: pathKey) {
             let url = appSupport.appendingPathComponent(relative)
             if FileManager.default.fileExists(atPath: url.path) { return url }
         }
-        // 2. Scan the Hub cache directory (downloaded via HubApi).
         return scanHubCache()
     }
 
@@ -37,17 +34,13 @@ enum GGUFModelAccess {
 
     static var isDownloaded: Bool { modelURL() != nil }
 
-    /// Persists the relative path after a successful download.
     static func setModelPath(_ url: URL) {
         let relative = url.path.replacingOccurrences(of: appSupport.path, with: "")
         UserDefaults.standard.set(relative, forKey: pathKey)
     }
 
-    /// Removes the cached file and clears the stored path.
     static func clearCache() {
-        let hub = appSupport.appendingPathComponent("hub/\(hubSlug)")
-        try? FileManager.default.removeItem(at: hub)
-        UserDefaults.standard.removeObject(forKey: pathKey)
+        HubCacheUtils.clear(hubSlug: hubSlug, pathKey: pathKey)
     }
 
     // MARK: - Internals
