@@ -195,59 +195,28 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             let useQwen = mgr.isAvailable && isQwenFamily.contains(mgr.selectedConfig)
             let isJapaneseLlama = mgr.selectedConfig == .japaneseLlama1b
 
-            // For the Japanese 1B model: skip RAG and extra context entirely.
-            // Stored memories are in English/mixed language and inflate prompt size,
-            // causing latency growth and language confusion in a small model.
-            let truncatedMemory: String
-            let userContext: String
-            let companion: String
-            if isJapaneseLlama {
-                truncatedMemory = ""
-                userContext = ""
-                companion = ""
-            } else {
-                let raw = await RAGManager.shared.fetchContext(for: text)
-                truncatedMemory = String(raw.prefix(500))
-                userContext = UserSettings.shared.systemPromptContext
-                companion = CompanionStateManager.shared.promptContext(characterName: state.selectedCharacterName)
-            }
-
+            // Build the 3-tier prompt via LocalLLMMemoryHierarchy:
+            //   Tier 1: system + persona + (English-only: user context + companion)
+            //   Tier 3: relevant facts from RAG (English-only)
+            //   Tier 2: verbatim recent dialogue turns (English-only)
+            //   + user turn, then budget-evict oldest pairs if needed.
             let basePrompt = localLLMSystemPrompt(for: state.selectedCharacterName)
-            var sysPrompt: String
-            if isJapaneseLlama {
-                // Put language instruction first — a 1B model attends most to early tokens.
-                sysPrompt = "必ず日本語で返答してください。\n" + basePrompt
-            } else {
-                sysPrompt = basePrompt + userContext + truncatedMemory + companion
-            }
+            let messages = await LocalLLMMemoryHierarchy.shared.buildMessages(
+                userInput: text,
+                config: mgr.selectedConfig,
+                characterName: state.selectedCharacterName,
+                baseSystemPrompt: basePrompt
+            )
 
-            // No history for the Japanese 1B model: with limit: 2 the dedup logic produces
-            // an orphaned AI response (no preceding user turn), which makes the model repeat
-            // itself. A 1B model also can't use history coherently — it just inflates the
-            // prompt and causes O(N) latency growth without improving response quality.
-            let historyLimit = isJapaneseLlama ? 0 : 6
-            var recentEvents = Array(MemoryStore.shared.fetchChatEvents(limit: historyLimit).reversed())
-            if let last = recentEvents.last, last.role == "user", last.detail == text {
-                recentEvents.removeLast()
-            }
-
-            // Build the conversation as role/content pairs; the engine formats
-            // it with the model's own chat template (read from GGUF metadata).
-            // Falls back to a hand-rolled template if the model has none.
-            let userMessage = isJapaneseLlama ? "（日本語で回答）\(text)" : text
-            var messages: [LLMChatMessage] = [.init(role: "system", content: sysPrompt)]
-            for event in recentEvents {
-                let role = event.role == "ai" ? "assistant" : "user"
-                messages.append(.init(role: role, content: event.detail))
-            }
-            messages.append(.init(role: "user", content: userMessage))
-
+            // Engine formats via the model's own GGUF chat template; falls
+            // back to a hand-rolled template if the model has none.
             let prompt = llmEngine.applyChatTemplate(messages: messages)
                 ?? fallbackChatPrompt(messages: messages, useQwen: useQwen)
 
-            // 60-token cap for Japanese: forces 1–2 sentence responses that match the
-            // system prompt instruction, cuts generation time by ~40%, and reduces
-            // the AI response tokens that would otherwise inflate future prompts.
+            // 60-token cap for Japanese: forces 1–2 sentence responses that
+            // match the system prompt instruction, cuts generation time by
+            // ~40%, and reduces the AI tokens that would otherwise inflate
+            // future prompts.
             let maxTokens: Int = useQwen ? 160 : (isJapaneseLlama ? 60 : 100)
 
             await llmEngine.generate(prompt: prompt, maxTokens: maxTokens)

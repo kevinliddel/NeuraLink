@@ -167,6 +167,13 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
                 ttsGenerationDone = true
             }
         }
+
+        // Memory hierarchy: after each user-facing turn, see if any chat
+        // events have aged out of the verbatim window. If so, kick off
+        // background fact extraction so the next prompt's Tier 3 surfaces
+        // them via RAG. No-ops when there's nothing new to compact or a
+        // previous compaction is still running.
+        maybeRunCompaction()
     }
 
     func localLLM(didFailWithError error: Error) {

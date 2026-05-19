@@ -112,16 +112,14 @@ gantt
     LocalLLMContextBudget + Extractor + facts + tests :done, p2a, 2026-05-18, 1d
 
     section Phase 2B — Hierarchy + compaction
-    LocalLLMMemoryHierarchy                       :p2b1, 2026-06-01, 1d
-    handleUserInput refactor                      :p2b2, after p2b1, 1d
-    Compaction trigger wiring                     :p2b3, after p2b2, 1d
+    Hierarchy + compaction + tests + swiftlint    :done, p2b, 2026-05-19, 1d
 
     section Phase 3 — Validation & tuning
     Device tests across all tiers                 :p3a, 2026-06-04, 1d
     swiftlint strict + docs update + merge        :p3b, after p3a, 1d
 ```
 
-**Final deadline: 2026-06-05.** Phases 0, 1, 1.5 and 2A finished ahead of plan (1, 1.5 and 2A completed before their planned windows; iPhone 11 stability fix unblocked Phase 1.5 by removing the heavy God-Rays render pass that had been forcing the MTLCompilerService into jetsam at LLM-load time). Buffer: every phase has a half-day buffer baked in; if a phase slips by ≥1 day the next phase compresses or the deadline moves to 2026-06-08 (Monday).
+**Final deadline: 2026-06-05.** Phases 0, 1, 1.5, 2A and 2B finished ahead of plan (each completed before its planned window; iPhone 11 stability fix unblocked Phase 1.5 by removing the heavy God-Rays render pass that had been forcing the MTLCompilerService into jetsam at LLM-load time). Buffer: every phase has a half-day buffer baked in; only Phase 3 (device tests + docs update) remains before the 2026-06-05 deadline.
 
 > **Phase 1.5 scope:** restore the speculative-decoding work (1.5B draft + 7B target) that had been removed during the iPhone 11 debug. Implemented as an additive layer — new `llama_bridge_spec.cpp`, `LlamaSpeculativeBridge.swift`, `GGUFSpeculativeEngine[+Generate].swift` — so the working bridge.cpp / `LlamaBridge.swift` stay untouched (rule 5). Auto-activates only when `.qwen7b` is selected AND the 1.5B draft is also on disk; otherwise routes to plain `GGUFQwen7BEngine`. iPhone 11/12/13 default tier (`.llama1b`) never sees this path.
 
