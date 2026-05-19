@@ -102,9 +102,43 @@ final class LocalLLMFactExtractor {
 
     // MARK: - Output parsing
 
+    /// Minimum useful fact length. Below this is almost always echo
+    /// fragments like "Facts:" or "Explanation:" from a 1B model that
+    /// half-answered the prompt structure instead of producing content.
+    private let minFactLength = 12
+
+    /// Maximum fact length. Above this is almost always a hallucinated
+    /// paragraph rather than an atomic statement — the previous output
+    /// was a 310-char essay about "the user's mother is very kind".
+    private let maxFactLength = 120
+
+    /// Prefixes that indicate the model echoed the prompt structure rather
+    /// than producing a fact. Compared case-insensitively at line start.
+    private let rejectedPrefixes: [String] = [
+        "facts",          // "Facts:" / "Facts the user..."
+        "explanation",    // "Explanation: ..."
+        "summary",        // "Summary: ..."
+        "the assistant",  // "The assistant states that ..."
+        "assistant:",     // ChatML role echo
+        "user:",          // ChatML role echo
+        "i ",             // First-person — wrong subject
+        "i'",             // "I'm", "I've", "I'll"
+        "my ",            // First-person possessive
+        "we "             // First-person plural
+    ]
+
+    /// Subject prefixes a *valid* fact line must start with. Anything that
+    /// doesn't begin one of these is rejected — even if it looks like a
+    /// reasonable sentence, it's almost certainly not user-about-self.
+    private let acceptedSubjectPrefixes: [String] = [
+        "user ", "user'", "users ",
+        "the user "
+    ]
+
     /// Parses LLM output into a clean list of facts. Tolerates bullet
     /// prefixes (`- `, `* `, `1. `), trailing punctuation noise, and the
-    /// `NONE` sentinel in any casing.
+    /// `NONE` sentinel in any casing. Applies the quality gates above so
+    /// 1B-class hallucinations don't reach RAGManager.
     func parseFacts(_ raw: String) -> [String] {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
@@ -120,11 +154,27 @@ final class LocalLLMFactExtractor {
         for line in trimmed.split(separator: "\n") {
             let cleaned = stripLeadingMarker(String(line))
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            guard cleaned.count >= 4 else { continue }
-            if cleaned.lowercased() == nullSentinel.lowercased() { continue }
+            guard isAcceptableFact(cleaned) else { continue }
             facts.append(cleaned)
         }
         return facts
+    }
+
+    /// Quality gate: returns true only if `line` looks like a valid
+    /// user-stated fact rather than an echo / boilerplate / first-person
+    /// hallucination / over-long paragraph.
+    private func isAcceptableFact(_ line: String) -> Bool {
+        if line.count < minFactLength { return false }
+        if line.count > maxFactLength { return false }
+        let lower = line.lowercased()
+        if lower == nullSentinel.lowercased() { return false }
+        for prefix in rejectedPrefixes where lower.hasPrefix(prefix) {
+            return false
+        }
+        for prefix in acceptedSubjectPrefixes where lower.hasPrefix(prefix) {
+            return true
+        }
+        return false
     }
 
     /// Removes common list-marker prefixes (`- foo`, `* foo`, `1. foo`,

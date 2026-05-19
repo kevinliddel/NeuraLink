@@ -42,7 +42,7 @@ extension VRMRenderer {
     /// Generates a diagnostic report of all materials in the loaded model.
     public func generateMaterialReport() -> MaterialReport? {
         guard let model = model else {
-            vrmLog("[VRMRenderer] No model loaded for material report")
+            nlLog("[VRMRenderer] No model loaded for material report")
             return nil
         }
 

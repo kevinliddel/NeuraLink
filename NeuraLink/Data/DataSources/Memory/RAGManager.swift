@@ -29,7 +29,9 @@ final class RAGManager {
         Task.detached(priority: .background) {
             if let vector = self.embedder.generateVector(for: text) {
                 self.store.insert(text: text, vector: vector, source: source)
-                print("[RAGManager] Stored new memory: \"\(text.prefix(30))...\"")
+                nlLog(
+                    "[RAGManager] Stored new memory (source=\(source), \(text.count) chars): \(text)",
+                    level: .info)
             }
             
             let days = self.settings.autoForgetDays

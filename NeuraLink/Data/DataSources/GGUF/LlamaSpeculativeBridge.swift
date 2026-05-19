@@ -56,7 +56,7 @@ final class LlamaSpeculativeBridge {
         )
         // Retry CPU-only if Metal init failed on real hardware.
         if handle == nil && layers > 0 {
-            print("[SpecBridge] Metal init failed for target+draft. Retrying with CPU-only…")
+            nlLog("[SpecBridge] Metal init failed for target+draft. Retrying with CPU-only…", level: .error)
             handle = llama_bridge_spec_create(
                 targetPath, draftPath,
                 contextLength, threads, 0,

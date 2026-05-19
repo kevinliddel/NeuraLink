@@ -53,7 +53,7 @@ final class LlamaBridge {
         // spikes memory usage and triggers jetsam/compiler daemon crashes. Force CPU-only to guarantee stability.
         let gb = Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824.0
         if gb < 5.0 {
-            print("[LlamaBridge] Device RAM (\(String(format: "%.1f", gb)) GB) is under 5.0 GB. Forcing CPU-only execution for rock-solid stability.")
+            nlLog("[LlamaBridge] Device RAM (\(String(format: "%.1f", gb)) GB) is under 5.0 GB. Forcing CPU-only execution for rock-solid stability.", level: .info)
             layers = 0
         }
         #endif
@@ -62,7 +62,7 @@ final class LlamaBridge {
         // If Metal/GPU initialization fails on real hardware (e.g. pre-A14 devices or MTLCompilerService XPC error),
         // gracefully fall back to CPU-only execution.
         if handle == nil && layers > 0 {
-            print("[LlamaBridge] Metal/GPU initialization failed. Retrying with CPU-only (gpuLayers = 0)...")
+            nlLog("[LlamaBridge] Metal/GPU initialization failed. Retrying with CPU-only (gpuLayers = 0)...", level: .error)
             handle = llama_bridge_create(modelPath, contextLength, threads, 0, kType.rawValue, vType.rawValue)
         }
         

@@ -35,7 +35,7 @@ final class GGUFQwenEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
                 guard let url = GGUFQwenModelAccess.modelURL() else {
                     throw LLMError.modelNotFound
                 }
-                print("[GGUFQwen] Loading \(url.lastPathComponent)…")
+                nlLog("[GGUFQwen] Loading \(url.lastPathComponent)…", level: .info)
 
                 let loaded: LlamaBridge = try await withCheckedThrowingContinuation { cont in
                     DispatchQueue.global(qos: .userInitiated).async {
@@ -56,7 +56,7 @@ final class GGUFQwenEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
 
                 self.bridge   = loaded
                 self.isLoaded = true
-                print("[GGUFQwen] Ready. llama.cpp \(loaded.version)")
+                nlLog("[GGUFQwen] Ready. llama.cpp \(loaded.version)", level: .info)
             }
             self.loadTask = t
             return t
@@ -74,7 +74,7 @@ final class GGUFQwenEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
         bridge   = nil
         isLoaded = false
         loadLock.withLock { loadTask = nil }
-        print("[GGUFQwen] Unloaded.")
+        nlLog("[GGUFQwen] Unloaded.", level: .info)
     }
 
     func stop() {

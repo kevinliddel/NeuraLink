@@ -62,7 +62,7 @@ final class GGUFSpeculativeEngine: NSObject, @unchecked Sendable, LLMEngineProto
                       let draftURL  = GGUFQwenModelAccess.modelURL() else {
                     throw LLMError.modelNotFound
                 }
-                print("[GGUFSpec] Loading target=\(targetURL.lastPathComponent), draft=\(draftURL.lastPathComponent)…")
+                nlLog("[GGUFSpec] Loading target=\(targetURL.lastPathComponent), draft=\(draftURL.lastPathComponent)…", level: .info)
 
                 let loaded: LlamaSpeculativeBridge = try await withCheckedThrowingContinuation { cont in
                     DispatchQueue.global(qos: .userInitiated).async {
@@ -83,7 +83,7 @@ final class GGUFSpeculativeEngine: NSObject, @unchecked Sendable, LLMEngineProto
 
                 self.bridge   = loaded
                 self.isLoaded = true
-                print("[GGUFSpec] Ready (1.5B draft + 7B target).")
+                nlLog("[GGUFSpec] Ready (1.5B draft + 7B target).", level: .info)
             }
             self.loadTask = t
             return t
@@ -101,7 +101,7 @@ final class GGUFSpeculativeEngine: NSObject, @unchecked Sendable, LLMEngineProto
         bridge   = nil
         isLoaded = false
         loadLock.withLock { loadTask = nil }
-        print("[GGUFSpec] Unloaded.")
+        nlLog("[GGUFSpec] Unloaded.", level: .info)
     }
 
     func stop() {

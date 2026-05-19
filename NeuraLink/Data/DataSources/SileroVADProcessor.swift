@@ -31,7 +31,7 @@ final class SileroVADProcessor: NSObject {
     func start(externalSampleRate: Double? = nil) {
         guard vadWrapper == nil else { return }
         guard let wrapper = VADWrapper() else {
-            print("[SileroVAD]: VADWrapper init failed")
+            nlLog("[SileroVAD]: VADWrapper init failed", level: .error)
             return
         }
         wrapper.delegate = self
@@ -40,7 +40,7 @@ final class SileroVADProcessor: NSObject {
 
         if let rate = externalSampleRate {
             wrapper.setSamplerate(mappedSampleRate(rate))
-            print("[SileroVAD]: Started at \(Int(rate)) Hz")
+            nlLog("[SileroVAD]: Started at \(Int(rate)) Hz", level: .info)
         } else {
             startAudioCapture()
         }
@@ -60,7 +60,7 @@ final class SileroVADProcessor: NSObject {
         audioEngine = nil
         vadWrapper = nil
         isVoiceActive = false
-        print("[SileroVAD]: Stopped")
+        nlLog("[SileroVAD]: Stopped", level: .info)
     }
 
     // MARK: - Audio Capture
@@ -82,11 +82,11 @@ final class SileroVADProcessor: NSObject {
         do {
             try engine.start()
             audioEngine = engine
-            print("[SileroVAD]: Started at \(Int(inputFormat.sampleRate)) Hz")
+            nlLog("[SileroVAD]: Started at \(Int(inputFormat.sampleRate)) Hz", level: .info)
         } catch {
             // Non-fatal: server_vad remains the fallback when AVAudioEngine
             // cannot coexist with WebRTC's VoiceProcessingIO audio unit.
-            print("[SileroVAD]: Engine start failed, server_vad handles detection: \(error)")
+            nlLog("[SileroVAD]: Engine start failed, server_vad handles detection: \(error)", level: .error)
             inputNode.removeTap(onBus: 0)
             vadWrapper = nil
         }

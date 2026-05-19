@@ -30,7 +30,7 @@ public final class VRMPipelineCache: @unchecked Sendable {
 
             // Return cached library if available
             if let cached = libraries[key] {
-                vrmLog("[VRMPipelineCache] ✅ Using cached shader library")
+                nlLog("[VRMPipelineCache] ✅ Using cached shader library")
                 return cached
             }
 
@@ -48,12 +48,12 @@ public final class VRMPipelineCache: @unchecked Sendable {
                     libraries[key] = library
                     return library
                 } catch {
-                    vrmLog(
+                    nlLog(
                         "[VRMPipelineCache] ❌ Failed to load NeuraLinkShaders.metallib: \(error)")
                 }
             }
 
-            vrmLog("[VRMPipelineCache] ❌ Shader library not found and default library unavailable")
+            nlLog("[VRMPipelineCache] ❌ Shader library not found and default library unavailable")
             throw PipelineCacheError.shaderLibraryNotFound
         }
     }
@@ -67,18 +67,18 @@ public final class VRMPipelineCache: @unchecked Sendable {
         return try lock.withLock {
             // Return cached pipeline state if available
             if let cached = pipelineStates[key] {
-                vrmLog("[VRMPipelineCache] ✅ Using cached pipeline state: \(key)")
+                nlLog("[VRMPipelineCache] ✅ Using cached pipeline state: \(key)")
                 return cached
             }
 
             // Create new pipeline state
-            vrmLog("[VRMPipelineCache] 🔨 Creating new pipeline state: \(key)")
+            nlLog("[VRMPipelineCache] 🔨 Creating new pipeline state: \(key)")
             let startTime = CACurrentMediaTime()
 
             let state = try device.makeRenderPipelineState(descriptor: descriptor)
 
             let elapsed = (CACurrentMediaTime() - startTime) * 1000
-            vrmLog(
+            nlLog(
                 "[VRMPipelineCache] ✅ Pipeline state created in \(String(format: "%.2f", elapsed))ms"
             )
 
@@ -101,7 +101,7 @@ public final class VRMPipelineCache: @unchecked Sendable {
             libraries.removeAll()
             pipelineStates.removeAll()
 
-            vrmLog(
+            nlLog(
                 "[VRMPipelineCache] 🗑️ Cache cleared: \(libraryCount) libraries, \(pipelineCount) pipeline states"
             )
         }

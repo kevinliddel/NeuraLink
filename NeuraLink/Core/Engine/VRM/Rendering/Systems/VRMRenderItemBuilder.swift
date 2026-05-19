@@ -55,13 +55,13 @@ final class VRMRenderItemBuilder {
     func buildItems(model: VRMModel, frameCounter: Int) -> Result {
         if let cached = cachedRenderItems, !cacheInvalidated {
             if frameCounter % 300 == 0 {
-                vrmLog("[RenderItemBuilder] Using cached render items (")
+                nlLog("[RenderItemBuilder] Using cached render items (")
             }
             return Result(items: cached, totalMeshesWithNodes: cachedTotalMeshes)
         }
 
         if frameCounter % 60 == 0 {
-            vrmLog("[RenderItemBuilder] Rebuilding render items...")
+            nlLog("[RenderItemBuilder] Rebuilding render items...")
         }
 
         var totalMeshes = 0
@@ -81,7 +81,7 @@ final class VRMRenderItemBuilder {
 
         for (nodeIndex, node) in model.nodes.enumerated() {
             if frameCounter <= 2 {
-                vrmLog(
+                nlLog(
                     "[NODE SCAN] Node \(nodeIndex) '\(node.name ?? "unnamed")': mesh=\(node.mesh ?? -1)"
                 )
             }
@@ -94,7 +94,7 @@ final class VRMRenderItemBuilder {
 
             let mesh = model.meshes[meshIndex]
             if frameCounter <= 2 {
-                vrmLog(
+                nlLog(
                     "[DRAW LIST] Node[\(nodeIndex)] '\(node.name ?? "?")' → mesh[\(meshIndex)] '\(mesh.name ?? "?")' skin=\(node.skin ?? -1)"
                 )
             }
@@ -225,7 +225,7 @@ final class VRMRenderItemBuilder {
                     } ?? 0.5
                 if effectiveAlphaMode == "opaque"
                     && (faceCategory == "eyebrow" || faceCategory == "eyelash") {
-                    vrmLog(
+                    nlLog(
                         "[FACE FIX] Forcing \(faceCategory!) material '\(materialName)' to MASK mode"
                     )
                     effectiveAlphaMode = "mask"
@@ -289,16 +289,16 @@ final class VRMRenderItemBuilder {
         }
 
         if frameCounter % 60 == 0 {
-            vrmLog(
+            nlLog(
                 "[RenderItemBuilder] Sorted render items: opaque=\(opaqueCount) mask=\(maskCount) blend=\(blendCount) faceSkin=\(faceSkinCount)"
             )
         }
 
         // One-time diagnostic log for all materials
         if frameCounter == 0 {
-            vrmLog("[MATERIAL DIAGNOSTIC] All materials in model:")
+            nlLog("[MATERIAL DIAGNOSTIC] All materials in model:")
             for item in allItems {
-                vrmLog(
+                nlLog(
                     "  - '\(item.materialName)' alpha=\(item.alphaMode) effective=\(item.effectiveAlphaMode) category=\(item.faceCategory ?? "none")"
                 )
             }
@@ -315,20 +315,20 @@ final class VRMRenderItemBuilder {
         nodeName: String, meshName: String, materialName: String, alpha: String,
         primitive: VRMPrimitive, material: VRMMaterial?
     ) {
-        vrmLog("[FACE MATERIAL DEBUG] Potential face material detected:")
-        vrmLog("  - Node: '\(nodeName)'")
-        vrmLog("  - Mesh: '\(meshName)'")
-        vrmLog("  - Material: '\(materialName)'")
-        vrmLog("  - Alpha mode: \(alpha)")
-        vrmLog("  - IndexCount: \(primitive.indexCount)")
+        nlLog("[FACE MATERIAL DEBUG] Potential face material detected:")
+        nlLog("  - Node: '\(nodeName)'")
+        nlLog("  - Mesh: '\(meshName)'")
+        nlLog("  - Material: '\(materialName)'")
+        nlLog("  - Alpha mode: \(alpha)")
+        nlLog("  - IndexCount: \(primitive.indexCount)")
         if let mat = material {
-            vrmLog("  - VRM Properties:")
-            vrmLog("    - transparentWithZWrite: \(mat.transparentWithZWrite)")
-            vrmLog("    - zWriteEnabled: \(mat.zWriteEnabled)")
-            vrmLog("    - blendMode: \(mat.blendMode)")
-            vrmLog("    - isTransparentWithZWrite: \(mat.isTransparentWithZWrite)")
-            vrmLog("    - renderQueue: \(mat.renderQueue)")
-            vrmLog("    - renderQueueOffset: \(mat.renderQueueOffset)")
+            nlLog("  - VRM Properties:")
+            nlLog("    - transparentWithZWrite: \(mat.transparentWithZWrite)")
+            nlLog("    - zWriteEnabled: \(mat.zWriteEnabled)")
+            nlLog("    - blendMode: \(mat.blendMode)")
+            nlLog("    - isTransparentWithZWrite: \(mat.isTransparentWithZWrite)")
+            nlLog("    - renderQueue: \(mat.renderQueue)")
+            nlLog("    - renderQueueOffset: \(mat.renderQueueOffset)")
         }
     }
 }

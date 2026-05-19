@@ -78,10 +78,73 @@ final class LocalLLMFactExtractorTests: XCTestCase {
     }
 
     func testParseFactsSkipsVeryShortLines() {
-        // Three-character lines are noise (model echoing punctuation, etc.).
+        // Lines below the minFactLength threshold are noise (model echoing
+        // punctuation or fragments).
         let raw = "ok\nUser likes cats.\n.\nUser drinks tea."
         let facts = LocalLLMFactExtractor.shared.parseFacts(raw)
         XCTAssertEqual(facts, ["User likes cats.", "User drinks tea."])
+    }
+
+    // MARK: - Quality gates (1B-model hallucination resistance)
+
+    func testParseFactsRejectsBoilerplatePrefixes() {
+        // 1B models frequently echo the prompt structure rather than producing
+        // facts. None of these should reach the store.
+        let raw = """
+        Facts:
+        Facts the user mentioned in this exchange
+        Explanation: this exchange contains nothing
+        Summary: nothing was said
+        The assistant states that the user is named Dedicatus.
+        Assistant: I think the user likes cats.
+        User: My name is Dedicatus.
+        User drinks coffee in the morning.
+        """
+        let facts = LocalLLMFactExtractor.shared.parseFacts(raw)
+        XCTAssertEqual(facts, ["User drinks coffee in the morning."],
+            "Only the genuine 'User …' line should survive; every echo / boilerplate prefix must be filtered out")
+    }
+
+    func testParseFactsRejectsFirstPersonHallucinations() {
+        // The model gets confused and starts producing first-person lines
+        // about itself instead of third-person facts about the user.
+        let raw = """
+        I am a user who has stated that I live in Tokyo.
+        I'm under the care of my mother.
+        My name is Dedicatus and I like cats.
+        We had a great conversation.
+        User lives in Osaka.
+        """
+        let facts = LocalLLMFactExtractor.shared.parseFacts(raw)
+        XCTAssertEqual(facts, ["User lives in Osaka."],
+            "All first-person 'I'/'My'/'We' lines must be rejected; only third-person 'User …' survives")
+    }
+
+    func testParseFactsRejectsOverLongLines() {
+        // The previous output included a 310-char hallucinated paragraph
+        // ("The assistant states that the user's mother is very kind…").
+        // A line that long is essay-style, not an atomic fact.
+        let longHallucination = "User " + String(repeating: "is a person who likes many things ", count: 8)
+        let raw = "\(longHallucination)\nUser likes cats."
+        let facts = LocalLLMFactExtractor.shared.parseFacts(raw)
+        XCTAssertEqual(facts, ["User likes cats."],
+            "Lines beyond maxFactLength must be dropped even if they otherwise match the User-prefix rule")
+    }
+
+    func testParseFactsAcceptsCommonSubjectVariants() {
+        let raw = """
+        User likes cats.
+        The user lives in Tokyo.
+        User's allergy is to peanuts.
+        Users drink tea sometimes.
+        """
+        let facts = LocalLLMFactExtractor.shared.parseFacts(raw)
+        XCTAssertEqual(facts, [
+            "User likes cats.",
+            "The user lives in Tokyo.",
+            "User's allergy is to peanuts.",
+            "Users drink tea sometimes."
+        ])
     }
 
     // MARK: - End-to-end with a stub generator

@@ -159,14 +159,40 @@ final class LocalLLMMemoryHierarchy {
         isJapaneseLlama: Bool
     ) -> String {
         if isJapaneseLlama {
-            // Language instruction first: a 1B model attends most to the
-            // first ~30 tokens, so placing the directive there gives it
-            // the strongest signal.
-            return "必ず日本語で返答してください。\n" + base
+            // 1B model attends most to the first ~30 tokens. Order: (1)
+            // language directive — strongest signal, (2) one-line user
+            // context if the user has set their name — gives the model
+            // enough to answer "what do you know about me?" without
+            // hallucinating, (3) persona description in `base`.
+            var sys = "必ず日本語で返答してください。\n"
+            sys += Self.buildJPUserContextLine()
+            sys += base
+            return sys
         }
         return base
             + UserSettings.shared.systemPromptContext
             + CompanionStateManager.shared.promptContext(characterName: characterName)
+    }
+
+    /// Returns a single-line JP user context block (`ユーザーの名前は{name}、{age}歳。\n`)
+    /// when the user has set their display name in Settings; empty string
+    /// otherwise. Kept short on purpose because the JP path runs on the
+    /// 4 GB iPhone 11/12/13 tier where every system-prompt token eats
+    /// into the 1B model's already-thin attention budget. Surface area
+    /// is intentionally `name + age` only — the structured English
+    /// `[User Information]` block stays out of JP because it would add
+    /// ~80 tokens of mixed-language text and degrade response quality.
+    private static func buildJPUserContextLine() -> String {
+        let settings = UserSettings.shared
+        let name = settings.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return "" }
+
+        let ageComponents = Calendar.current.dateComponents(
+            [.year], from: settings.birthday, to: Date())
+        if let age = ageComponents.year, age > 0 {
+            return "ユーザーの名前は\(name)、\(age)歳。\n"
+        }
+        return "ユーザーの名前は\(name)。\n"
     }
 
     private func buildFactsBlock(relevantTo input: String) -> String {

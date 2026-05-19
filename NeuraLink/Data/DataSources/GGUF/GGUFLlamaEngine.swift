@@ -56,7 +56,7 @@ final class GGUFLlamaEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
                 guard let url = GGUFModelAccess.modelURL() else {
                     throw LLMError.modelNotFound
                 }
-                print("[GGUFEngine] Loading \(url.lastPathComponent)…")
+                nlLog("[GGUFEngine] Loading \(url.lastPathComponent)…", level: .info)
 
                 // llama_bridge_create is synchronous and potentially slow (~3-5 s).
                 // Run on a dedicated thread so the Swift cooperative pool stays free.
@@ -78,7 +78,7 @@ final class GGUFLlamaEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
 
                 self.bridge   = loaded
                 self.isLoaded = true
-                print("[GGUFEngine] Ready. llama.cpp \(loaded.version)")
+                nlLog("[GGUFEngine] Ready. llama.cpp \(loaded.version)", level: .info)
             }
             self.loadTask = t
             return t
@@ -96,7 +96,7 @@ final class GGUFLlamaEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
         bridge   = nil
         isLoaded = false
         loadLock.withLock { loadTask = nil }
-        print("[GGUFEngine] Unloaded.")
+        nlLog("[GGUFEngine] Unloaded.", level: .info)
     }
 
     func stop() {

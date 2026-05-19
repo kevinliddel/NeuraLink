@@ -47,7 +47,7 @@ extension CityRenderer {
                                  document: document, into: &meshInstances)
         }
 
-        vrmLog("[CityRenderer] Scene graph: \(meshInstances.count) mesh instance(s) across all nodes")
+        nlLog("[CityRenderer] Scene graph: \(meshInstances.count) mesh instance(s) across all nodes")
 
         var textureCache: [Int: MTLTexture] = [:]
         var groups: [CityMeshGroup] = []
@@ -144,7 +144,7 @@ extension CityRenderer {
                                     at: texIdx, sRGB: true, withMipmaps: true)
                                 if let tex = texture { textureCache[texIdx] = tex }
                             } catch {
-                                vrmLog("[CityRenderer] Texture \(texIdx) load error: \(error)")
+                                nlLog("[CityRenderer] Texture \(texIdx) load error: \(error)")
                             }
                         }
                     }
@@ -175,7 +175,7 @@ extension CityRenderer {
                 let bcf         = baseColorFactor
                 let emf         = emissive
                 let flags       = "N:\(hasNormal ? "Y":"N") UV:\(hasTexCoord ? "Y":"N") C:\(hasColor0 ? "Y":"N")"
-                vrmLog("[CityMat] mesh:\(meshName) mat:\(matName) alpha:\(alphaMode) cut:\(cutoffStr)"
+                nlLog("[CityMat] mesh:\(meshName) mat:\(matName) alpha:\(alphaMode) cut:\(cutoffStr)"
                      + " bcf:(\(f2(bcf.x)),\(f2(bcf.y)),\(f2(bcf.z)),\(f2(bcf.w)))"
                      + " M:\(f2(metallic)) R:\(f2(roughness))"
                      + " emissive:(\(f3(emf.x)),\(f3(emf.y)),\(f3(emf.z)))"
@@ -198,7 +198,7 @@ extension CityRenderer {
 
         meshGroups = groups
         isReady    = !groups.isEmpty
-        vrmLog("[CityRenderer] Loaded \(groups.count) mesh group(s) (\(textureCache.count) unique texture(s))")
+        nlLog("[CityRenderer] Loaded \(groups.count) mesh group(s) (\(textureCache.count) unique texture(s))")
     }
 
     // MARK: - Private setup
@@ -222,7 +222,7 @@ extension CityRenderer {
               let shadowVert = lib.makeFunction(name: "city_shadow_vertex"),
               let mainVert   = lib.makeFunction(name: "city_vertex"),
               let mainFrag   = lib.makeFunction(name: "city_fragment")
-        else { vrmLog("[CityRenderer] Shader functions not found"); return }
+        else { nlLog("[CityRenderer] Shader functions not found"); return }
 
         let posOff   = MemoryLayout<CityVertex>.offset(of: \.position)!
         let norOff   = MemoryLayout<CityVertex>.offset(of: \.normal)!
@@ -279,7 +279,7 @@ extension CityRenderer {
             blendPipeline  = try VRMPipelineCache.shared.getPipelineState(
                 device: device, descriptor: blendDesc, key: "city_blend_v1")
         } catch {
-            vrmLog("[CityRenderer] Pipeline creation failed: \(error)")
+            nlLog("[CityRenderer] Pipeline creation failed: \(error)")
         }
     }
 

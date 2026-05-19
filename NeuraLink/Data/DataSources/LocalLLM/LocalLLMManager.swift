@@ -130,7 +130,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             isPreparingOrActive = true
             return true
         }) else {
-            print("[LocalAI]: Already listening or preparing, skipping.")
+            nlLog("[LocalAI]: Already listening or preparing, skipping.", level: .info)
             return
         }
 
@@ -156,7 +156,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             do {
                 try await llmEngine.loadModel()
             } catch {
-                print("[LocalLLM] Error loading model: \(error)")
+                nlLog("[LocalLLM] Error loading model: \(error)", level: .info)
                 stateLock.withLock { isPreparingOrActive = false }
                 state.setError("Failed to initialize Local LLM (\(error.localizedDescription)).")
                 return
@@ -298,7 +298,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             ttsGenerationDone = false
             state.status = .disconnected
         }
-        print("[LocalLLM] Manager unloaded — all models freed.")
+        nlLog("[LocalLLM] Manager unloaded — all models freed.", level: .info)
     }
 
     // MARK: - Local TTS (AVSpeechSynthesizer + AVAudioEngine)

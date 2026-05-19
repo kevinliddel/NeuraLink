@@ -28,7 +28,7 @@ final class PersonaStore {
         if let encoded = try? JSONEncoder().encode(allPersonas) {
             userDefaults.set(encoded, forKey: cacheKey)
             lastUpdated = Date()
-            print("[PersonaStore] Saved persona for \(modelID)")
+            nlLog("[PersonaStore] Saved persona for \(modelID)", level: .info)
         }
     }
 
@@ -54,7 +54,7 @@ final class PersonaStore {
         if let encoded = try? JSONEncoder().encode(allPersonas) {
             userDefaults.set(encoded, forKey: cacheKey)
             lastUpdated = Date()
-            print("[PersonaStore] Reset persona for \(modelID)")
+            nlLog("[PersonaStore] Reset persona for \(modelID)", level: .info)
         }
     }
 

@@ -1,10 +1,11 @@
 //
-// VRMLogger.swift
+// NeuraLinkLogger.swift
 // NeuraLink
 //
-// Structured logging routed through `os.Logger` so the Xcode Debug area
-// (15+) and Console.app both render different log levels in distinct
-// colors. Each level also carries a leading emoji so the level is scannable
+// Project-wide structured logging routed through `os.Logger`. Xcode 15+
+// renders different levels in distinct colors in the Debug area, and
+// Console.app supports full filter chains over subsystem / category /
+// level. Each level also carries a leading emoji so the level is scannable
 // in plain-text log dumps where OSLog level color isn't applied:
 //
 //   trace    🔍 — gray (debug stream)
@@ -15,34 +16,36 @@
 //   error    ❌ — yellow caution (error stream)
 //   critical 🚨 — red (fault stream)
 //
-// Call sites are unchanged from the previous Swift.print-based version:
+// Console.app users can filter by `subsystem == "com.dedicatus.NeuraLink"`
+// and then narrow on `category` (one entry per source file).
 //
-//   vrmLog("message", level: .warning)
-//   vrmLogAnimation("frame ticked")
-//   vrmLogPhysics("collision")
-//   vrmLogLoader("loaded model")
+// API:
+//   nlLog("message")                                // .debug default
+//   nlLog("message", level: .info)
+//   nlLog("message", level: .error)
+//   nlLogAnimation("frame ticked")                  // compile-gated
+//   nlLogPhysics("collision")                       // compile-gated
+//   nlLogLoader("loaded model")                     // compile-gated
 //
-// Console.app users can filter by `subsystem == "com.neuralink.app"` and
-// then narrow on `category` (one entry per source file).
-//
-// Created by Dedicatus on 14/04/2026.
+// Created by Dedicatus on 14/04/2026. Generalised on 19/05/2026 (renamed
+// from VRMLogger; relocated from Core/Engine/VRM/Core/ to Core/Utils/).
 //
 
 import Foundation
 import os
 
-// MARK: - Build configuration validation (unchanged)
+// MARK: - Build configuration validation
 
 #if DEBUG && !VRM_METALKIT_ENABLE_LOGS && !VRM_METALKIT_ENABLE_DEBUG_ANIMATION && !VRM_METALKIT_ENABLE_DEBUG_PHYSICS && !VRM_METALKIT_ENABLE_DEBUG_LOADER
-    private let __vrmLoggerDebugNotice: Void = {
+    private let __nlLoggerDebugNotice: Void = {
         fputs(
-            "⚠️ NeuraLink: Debug build without logging. Define VRM_METALKIT_ENABLE_LOGS to re-enable debug output.\n",
+            "⚠️ NeuraLink: Debug build without VRM logging flags. Define VRM_METALKIT_ENABLE_LOGS to re-enable VRM-specific debug output.\n",
             stderr)
     }()
 #endif
 
 #if !DEBUG && (VRM_METALKIT_ENABLE_LOGS || VRM_METALKIT_ENABLE_DEBUG_ANIMATION || VRM_METALKIT_ENABLE_DEBUG_PHYSICS || VRM_METALKIT_ENABLE_DEBUG_LOADER)
-    private let __vrmLoggerReleaseNotice: Void = {
+    private let __nlLoggerReleaseNotice: Void = {
         fputs(
             "⚠️ NeuraLink: Release build with debug logging enabled. Disable VRM_METALKIT_ENABLE_* flags for best performance.\n",
             stderr)
@@ -51,7 +54,7 @@ import os
 
 // MARK: - Levels
 
-enum VRMLogLevel: String {
+enum NLLogLevel: String {
     case trace = "TRACE"
     case debug = "DEBUG"
     case info = "INFO"
@@ -74,17 +77,16 @@ enum VRMLogLevel: String {
         }
     }
 
-    /// OSLog level used to gate emission. We map seven app-level levels
-    /// onto OSLog's five physical streams; the emoji disambiguates within
-    /// the same OSLog level (warning/error share `.error`, trace/debug
-    /// share `.debug`).
+    /// Maps the seven app-level levels onto OSLog's five physical streams.
+    /// Emoji disambiguates within streams (warning/error both go to
+    /// `.error`; trace/debug both to `.debug`).
     fileprivate var osLogType: OSLogType {
         switch self {
-        case .trace, .debug:  return .debug
-        case .info:           return .info
-        case .notice:         return .default
-        case .warning, .error: return .error
-        case .critical:       return .fault
+        case .trace, .debug:    return .debug
+        case .info:             return .info
+        case .notice:           return .default
+        case .warning, .error:  return .error
+        case .critical:         return .fault
         }
     }
 }
@@ -92,9 +94,8 @@ enum VRMLogLevel: String {
 // MARK: - Logger cache
 
 private enum LoggerHub {
-    /// Subsystem identifier shown in Console.app filtering. Anchored to
-    /// the bundle identifier so subsystem entries don't proliferate as we
-    /// add categories.
+    /// Subsystem shown in Console.app filtering. Anchored to the bundle
+    /// identifier so the entry doesn't proliferate as we add categories.
     static let subsystem = "com.dedicatus.NeuraLink"
 
     private struct Pair {
@@ -107,7 +108,7 @@ private enum LoggerHub {
 
     /// Returns a cached `Logger` + raw `OSLog` for `category`. The raw
     /// `OSLog` is used for the `isEnabled(type:)` gate before we evaluate
-    /// the message autoclosure — without that check Logger's string
+    /// the message autoclosure — without that check, Logger's string
     /// interpolation would still call into the autoclosure even when the
     /// level is disabled at the OS, defeating the perf benefit.
     static func get(_ category: String) -> (Logger, OSLog) {
@@ -126,7 +127,7 @@ private enum LoggerHub {
 private func deriveCategory(from fileID: StaticString) -> String {
     // `#fileID` is "ModuleName/RelativePath.swift". Strip module prefix
     // and `.swift` suffix so the category in Console.app is a clean
-    // identifier like "VRMPipelineCache".
+    // identifier like "LocalLLMManager+Engine".
     let raw = String(describing: fileID)
     let afterSlash = raw.split(separator: "/").last.map(String.init) ?? raw
     return afterSlash.replacingOccurrences(of: ".swift", with: "")
@@ -134,12 +135,12 @@ private func deriveCategory(from fileID: StaticString) -> String {
 
 /// Dispatches `body` to the level-specific Logger method so each level
 /// flows through the right stream (debug/info/default/error/fault). The
-/// only reason this isn't `logger.log(level:_:)` is that Logger's
-/// level-specific methods are what Xcode's Debug area uses for color.
+/// reason this isn't `logger.log(level:_:)` is that Logger's level-specific
+/// methods are what Xcode's Debug area uses for color.
 @inline(__always)
 private func emit(
     _ body: String,
-    level: VRMLogLevel,
+    level: NLLogLevel,
     logger: Logger,
     function: String,
     line: UInt
@@ -159,12 +160,12 @@ private func emit(
     }
 }
 
-// MARK: - Public API (signatures unchanged from the previous print-based version)
+// MARK: - Public API
 
 @inline(__always)
-func vrmLog(
+func nlLog(
     _ message: @autoclosure () -> String,
-    level: VRMLogLevel = .debug,
+    level: NLLogLevel = .debug,
     category: StaticString = #fileID,
     function: StaticString = #function,
     line: UInt = #line
@@ -185,7 +186,7 @@ func vrmLog(
 
 /// Animation-specific debug logging (gated by VRM_METALKIT_ENABLE_DEBUG_ANIMATION).
 @inline(__always)
-func vrmLogAnimation(
+func nlLogAnimation(
     _ message: @autoclosure () -> String,
     category: StaticString = #fileID,
     function: StaticString = #function,
@@ -206,7 +207,7 @@ func vrmLogAnimation(
 
 /// Physics/SpringBone-specific debug logging (gated by VRM_METALKIT_ENABLE_DEBUG_PHYSICS).
 @inline(__always)
-func vrmLogPhysics(
+func nlLogPhysics(
     _ message: @autoclosure () -> String,
     category: StaticString = #fileID,
     function: StaticString = #function,
@@ -227,7 +228,7 @@ func vrmLogPhysics(
 
 /// Loader-specific debug logging (gated by VRM_METALKIT_ENABLE_DEBUG_LOADER).
 @inline(__always)
-func vrmLogLoader(
+func nlLogLoader(
     _ message: @autoclosure () -> String,
     category: StaticString = #fileID,
     function: StaticString = #function,

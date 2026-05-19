@@ -335,7 +335,7 @@ private final class CallbackBox {
 }
 ```
 
-#### `AI/GGUF/GGUFLlamaEngine.swift`
+#### `Data/DataSources/GGUF/GGUFLlamaEngine.swift`
 
 ```swift
 final class GGUFLlamaEngine: LLMEngineProtocol {
@@ -350,7 +350,7 @@ final class GGUFLlamaEngine: LLMEngineProtocol {
               GGUFModelAccess.isAvailable() else {
             throw LLMError.modelNotFound
         }
-        print("[GGUFEngine] Loading \(url.lastPathComponent)…")
+        nlLog("[GGUFEngine] Loading \(url.lastPathComponent)…")
         bridge = try await Task.detached(priority: .userInitiated) {
             guard let b = LlamaBridge(modelPath: url.path) else {
                 throw LLMError.initializationFailed
@@ -358,7 +358,7 @@ final class GGUFLlamaEngine: LLMEngineProtocol {
             return b
         }.value
         isLoaded = true
-        print("[GGUFEngine] Ready. llama.cpp \(bridge?.version ?? "unknown")")
+        nlLog("[GGUFEngine] Ready. llama.cpp \(bridge?.version ?? "unknown")")
     }
 
     func unloadModel() { bridge = nil; isLoaded = false }

@@ -49,7 +49,7 @@ final class GGUFJapaneseLlamaEngine: NSObject, @unchecked Sendable, LLMEnginePro
                 guard let url = GGUFJapaneseLlamaModelAccess.modelURL() else {
                     throw LLMError.modelNotFound
                 }
-                print("[GGUFJapaneseLlama] Loading \(url.lastPathComponent)…")
+                nlLog("[GGUFJapaneseLlama] Loading \(url.lastPathComponent)…", level: .info)
 
                 let loaded: LlamaBridge = try await withCheckedThrowingContinuation { cont in
                     DispatchQueue.global(qos: .userInitiated).async {
@@ -68,7 +68,7 @@ final class GGUFJapaneseLlamaEngine: NSObject, @unchecked Sendable, LLMEnginePro
 
                 self.bridge   = loaded
                 self.isLoaded = true
-                print("[GGUFJapaneseLlama] Ready. llama.cpp \(loaded.version)")
+                nlLog("[GGUFJapaneseLlama] Ready. llama.cpp \(loaded.version)", level: .info)
             }
             self.loadTask = t
             return t
@@ -86,7 +86,7 @@ final class GGUFJapaneseLlamaEngine: NSObject, @unchecked Sendable, LLMEnginePro
         bridge   = nil
         isLoaded = false
         loadLock.withLock { loadTask = nil }
-        print("[GGUFJapaneseLlama] Unloaded.")
+        nlLog("[GGUFJapaneseLlama] Unloaded.", level: .info)
     }
 
     func stop() {

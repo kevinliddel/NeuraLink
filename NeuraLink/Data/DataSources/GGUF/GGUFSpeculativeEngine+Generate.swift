@@ -27,7 +27,7 @@ extension GGUFSpeculativeEngine {
         generationLock.unlock()
 
         guard !alreadyRunning else {
-            print("[GGUFSpec] Dropped generate — already in progress")
+            nlLog("[GGUFSpec] Dropped generate — already in progress", level: .info)
             Task { @MainActor [weak self] in
                 self?.delegate?.localLLM(didFinishGeneration: "")
             }

@@ -82,7 +82,7 @@ final class RealtimeChatState {
         guard nsString.length > lastParsedIndex else { return }
         
         let remainingRange = NSRange(location: lastParsedIndex, length: nsString.length - lastParsedIndex)
-        // print("[EmotionManager] Parsing: \(nsString.substring(with: remainingRange))")
+        // nlLog("[EmotionManager] Parsing: \(nsString.substring(with: remainingRange))", level: .info)
         
         let pattern = #"(?i)\[(happy|angry|sad|relaxed|surprised|shocked|shy|embarrassed|bored|confused|wink|neutral):(\d+(?:\.\d+)?)\]"#
         guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else { return }
@@ -93,7 +93,7 @@ final class RealtimeChatState {
             let emotion = nsString.substring(with: result.range(at: 1))
             let durationString = nsString.substring(with: result.range(at: 2))
             if let duration = Float(durationString) {
-                print("[EmotionManager] Found tag: [\(emotion):\(duration)] in text")
+                nlLog("[EmotionManager] Found tag: [\(emotion):\(duration)] in text", level: .info)
                 triggerEmotion(emotion, duration: duration)
             }
             lastParsedIndex = result.range.upperBound

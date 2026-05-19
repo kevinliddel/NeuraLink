@@ -28,7 +28,7 @@ extension GGUFLlamaEngine {
         generationLock.unlock()
 
         guard !alreadyRunning else {
-            print("[GGUFEngine] Dropped generate — already in progress")
+            nlLog("[GGUFEngine] Dropped generate — already in progress", level: .info)
             Task { @MainActor [weak self] in
                 self?.delegate?.localLLM(didFinishGeneration: "")
             }

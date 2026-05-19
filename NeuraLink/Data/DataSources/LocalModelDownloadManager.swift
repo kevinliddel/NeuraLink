@@ -326,7 +326,7 @@ final class LocalModelDownloadManager: @unchecked Sendable {
             await MainActor.run { state = .downloading(progress: 1.0) }
             try? await Task.sleep(nanoseconds: 500_000_000)
             await MainActor.run { state = .ready }
-            print("[ModelDownload] Ready: \(config.rawValue)")
+            nlLog("[ModelDownload] Ready: \(config.rawValue)", level: .info)
             endBackgroundTask()
 
         } catch {
@@ -335,7 +335,7 @@ final class LocalModelDownloadManager: @unchecked Sendable {
                 endBackgroundTask()
                 return
             }
-            print("[ModelDownload] Failed: \(error)")
+            nlLog("[ModelDownload] Failed: \(error)", level: .error)
             await MainActor.run { state = .failed(error.localizedDescription) }
             endBackgroundTask()
         }

@@ -134,7 +134,7 @@ final class RainWorldRenderer {
             }
 
         } catch {
-            print("[RainWorldRenderer] Pipeline setup failed: \(error)")
+            nlLog("[RainWorldRenderer] Pipeline setup failed: \(error)", level: .error)
         }
     }
 

@@ -28,7 +28,7 @@ extension MemoryStore {
             sqlite3_bind_int(statement, 4, pinned ? 1 : 0)
             if sqlite3_step(statement) != SQLITE_DONE {
                 let errmsg = String(cString: sqlite3_errmsg(db)!)
-                print("[MemoryStore] Error inserting memory: \(errmsg)")
+                nlLog("[MemoryStore] Error inserting memory: \(errmsg)", level: .info)
             }
         }
         sqlite3_finalize(statement)
@@ -237,7 +237,7 @@ extension MemoryStore {
             sqlite3_bind_text(statement, 3, (object as NSString).utf8String, -1, nil)
             if sqlite3_step(statement) != SQLITE_DONE {
                 let errmsg = String(cString: sqlite3_errmsg(db)!)
-                print("[MemoryStore] Error inserting fact: \(errmsg)")
+                nlLog("[MemoryStore] Error inserting fact: \(errmsg)", level: .info)
             }
         }
         sqlite3_finalize(statement)

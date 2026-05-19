@@ -101,7 +101,7 @@ These rules are **mandatory** and enforced by both SwiftLint and code review:
 - Use `// MARK: -` sections to organise code within files.
 - Prefer `private` / `fileprivate` over `internal` wherever possible.
 - Avoid force-unwraps (`!`). Use `guard let` or `if let` with a logged fallback.
-- No `print()` in production paths — use `vrmLog()` so log lines can be toggled off.
+- No `print()` in production paths — use `nlLog()` so log lines can be toggled off.
 
 ### Metal Shaders
 - Every shader file must open with a comment block explaining its purpose and the coordinate conventions used.

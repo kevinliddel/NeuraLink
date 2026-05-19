@@ -363,7 +363,7 @@ extension TerrainRenderer {
             guard let vertFn = lib.makeFunction(name: "shadow_vertex"),
                 let skinnedFn = lib.makeFunction(name: "shadow_skinned_vertex")
             else {
-                vrmLog("[TerrainRenderer] shadow_vertex / shadow_skinned_vertex not found")
+                nlLog("[TerrainRenderer] shadow_vertex / shadow_skinned_vertex not found")
                 return false
             }
 
@@ -409,7 +409,7 @@ extension TerrainRenderer {
             shadowSkinnedPipeline = try VRMPipelineCache.shared.getPipelineState(
                 device: device, descriptor: skinnedDesc, key: "shadow_skinned")
         } catch {
-            vrmLog("[TerrainRenderer] Shadow pipeline setup failed: \(error)")
+            nlLog("[TerrainRenderer] Shadow pipeline setup failed: \(error)")
             return false
         }
         return true
@@ -421,7 +421,7 @@ extension TerrainRenderer {
             guard let vertFn = lib.makeFunction(name: "terrain_vertex"),
                 let fragFn = lib.makeFunction(name: "terrain_fragment")
             else {
-                vrmLog("[TerrainRenderer] terrain_vertex / terrain_fragment not found")
+                nlLog("[TerrainRenderer] terrain_vertex / terrain_fragment not found")
                 return false
             }
             let desc = MTLRenderPipelineDescriptor()
@@ -436,7 +436,7 @@ extension TerrainRenderer {
             terrainPipeline = try VRMPipelineCache.shared.getPipelineState(
                 device: device, descriptor: desc, key: "terrain")
         } catch {
-            vrmLog("[TerrainRenderer] Terrain pipeline setup failed: \(error)")
+            nlLog("[TerrainRenderer] Terrain pipeline setup failed: \(error)")
             return false
         }
         return true

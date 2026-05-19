@@ -48,7 +48,7 @@ extension CampusRenderer {
                 document: document, into: &meshInstances)
         }
 
-        vrmLog(
+        nlLog(
             "[CampusRenderer] Scene graph: \(meshInstances.count) mesh instance(s) across all nodes"
         )
 
@@ -74,7 +74,7 @@ extension CampusRenderer {
                     // Fallback: emit upright normals so lighting doesn't NaN out.
                     // (Ideally compute flat per-face normals from POSITION/indices.)
                     for i in 0..<vertCount { norF[i * 3 + 1] = 1.0 }
-                    vrmLog("[CampusRenderer] Primitive missing NORMAL; using fallback (0,1,0)")
+                    nlLog("[CampusRenderer] Primitive missing NORMAL; using fallback (0,1,0)")
                 }
                 var texF = [Float](repeating: 0, count: vertCount * 2)
                 if let i = primitive.attributes["TEXCOORD_0"] {
@@ -156,7 +156,7 @@ extension CampusRenderer {
                                     at: texIdx, sRGB: true, withMipmaps: true)
                                 if let tex = texture { textureCache[texIdx] = tex }
                             } catch {
-                                vrmLog("[CampusRenderer] Texture \(texIdx) load error: \(error)")
+                                nlLog("[CampusRenderer] Texture \(texIdx) load error: \(error)")
                             }
                         }
                     }
@@ -191,7 +191,7 @@ extension CampusRenderer {
 
         meshGroups = groups
         isReady = !groups.isEmpty
-        vrmLog(
+        nlLog(
             "[CampusRenderer] Loaded \(groups.count) mesh group(s) (\(textureCache.count) unique texture(s))"
         )
     }
@@ -216,7 +216,7 @@ extension CampusRenderer {
             let mainVert = lib.makeFunction(name: "campus_vertex"),
             let mainFrag = lib.makeFunction(name: "campus_fragment")
         else {
-            vrmLog("[CampusRenderer] Shader functions not found")
+            nlLog("[CampusRenderer] Shader functions not found")
             return
         }
 
@@ -285,7 +285,7 @@ extension CampusRenderer {
             blendPipeline = try VRMPipelineCache.shared.getPipelineState(
                 device: device, descriptor: blendDesc, key: "campus_blend_v1")
         } catch {
-            vrmLog("[CampusRenderer] Pipeline creation failed: \(error)")
+            nlLog("[CampusRenderer] Pipeline creation failed: \(error)")
         }
     }
 

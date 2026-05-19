@@ -104,6 +104,8 @@ final class NeuraLinkUITests: XCTestCase {
 
 extension XCUIApplication {
     func printHierarchy() {
+        // UI tests run in their own target which doesn't link the app's
+        // NeuraLinkLogger, so this diagnostic helper stays on plain print.
         print(self.debugDescription)
     }
 }

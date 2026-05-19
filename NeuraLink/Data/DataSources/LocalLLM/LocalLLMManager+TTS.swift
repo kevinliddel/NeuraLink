@@ -29,9 +29,9 @@ extension LocalLLMManager {
 
         if !voicesLogged {
             voicesLogged = true
-            print("[TTS] Installed voices (\(all.count)):")
+            nlLog("[TTS] Installed voices (\(all.count)):", level: .info)
             for v in all.sorted(by: { $0.language < $1.language }) {
-                print("  [\(v.language) q=\(v.quality.rawValue)] \(v.name) — \(v.identifier)")
+                nlLog("  [\(v.language) q=\(v.quality.rawValue)] \(v.name) — \(v.identifier)", level: .info)
             }
         }
 
@@ -77,7 +77,7 @@ extension LocalLLMManager {
             !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             firstAudioLatencyLogged = true
             let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000.0
-            print("[LocalLLM] First TTS chunk latency: \(String(format: "%.1f", elapsedMs)) ms")
+            nlLog("[LocalLLM] First TTS chunk latency: \(String(format: "%.1f", elapsedMs)) ms", level: .info)
         }
         
         var clean = text.trimmingCharacters(in: .whitespacesAndNewlines)

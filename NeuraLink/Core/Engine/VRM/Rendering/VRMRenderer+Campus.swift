@@ -14,7 +14,7 @@ extension VRMRenderer {
 
     func setupCampus() {
         guard let url = findCampusGLB(named: "campus") else {
-            vrmLog("[CampusRenderer] campus.glb not found in bundle")
+            nlLog("[CampusRenderer] campus.glb not found in bundle")
             return
         }
         let renderer = CampusRenderer(
@@ -28,7 +28,7 @@ extension VRMRenderer {
             do {
                 try await renderer?.load(url: url)
             } catch {
-                vrmLog("[CampusRenderer] campus.glb load failed: \(error)")
+                nlLog("[CampusRenderer] campus.glb load failed: \(error)")
             }
         }
     }

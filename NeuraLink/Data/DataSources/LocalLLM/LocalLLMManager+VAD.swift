@@ -81,7 +81,7 @@ extension LocalLLMManager: SileroVADDelegate {
                     interleaved: false),
                 let converter = AVAudioConverter(from: inputFmt, to: targetFmt)
             else {
-                print("[LocalAI]: Failed to create AVAudioConverter.")
+                nlLog("[LocalAI]: Failed to create AVAudioConverter.", level: .error)
                 return
             }
 
@@ -125,7 +125,7 @@ extension LocalLLMManager: SileroVADDelegate {
             converter.convert(to: outputBuffer, error: &error, withInputFrom: inputBlock)
 
             if let error = error {
-                print("[LocalAI]: AVAudioConverter Error at end: \(error)")
+                nlLog("[LocalAI]: AVAudioConverter Error at end: \(error)", level: .info)
                 return
             }
 

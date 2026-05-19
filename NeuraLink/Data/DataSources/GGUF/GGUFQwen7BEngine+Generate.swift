@@ -23,7 +23,7 @@ extension GGUFQwen7BEngine {
         generationLock.unlock()
 
         guard !alreadyRunning else {
-            print("[GGUFQwen7B] Dropped generate — already in progress")
+            nlLog("[GGUFQwen7B] Dropped generate — already in progress", level: .info)
             Task { @MainActor [weak self] in
                 self?.delegate?.localLLM(didFinishGeneration: "")
             }

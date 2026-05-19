@@ -19,24 +19,24 @@ final class VRMRenderItemSelector {
     func selectItems(_ input: RenderSelectionInput) -> [RenderItem] {
         var items = input.items
 
-        vrmLog(
+        nlLog(
             "[WORKAROUND PATH] debugSingleMesh = \(input.debugSingleMesh), allItems.count = \(items.count)"
         )
 
         if input.debugSingleMesh {
             if let firstItem = items.first {
                 items = [firstItem]
-                vrmLog(
+                nlLog(
                     "[DEBUG] 🔧 Debug single-mesh mode: rendering only '\(firstItem.materialName)' from mesh '\(firstItem.mesh.name ?? "unnamed")'"
                 )
             } else {
                 items = []
-                vrmLog("[DEBUG] 🔧 Debug single-mesh mode: no items to render")
+                nlLog("[DEBUG] 🔧 Debug single-mesh mode: no items to render")
             }
         }
 
-        vrmLog("[WORKAROUND LOOP] Starting render loop with \(items.count) items")
-        vrmLog("[LOOP DEBUG] About to iterate over \(items.count) items")
+        nlLog("[WORKAROUND LOOP] Starting render loop with \(items.count) items")
+        nlLog("[LOOP DEBUG] About to iterate over \(items.count) items")
 
         guard let filter = input.renderFilter else {
             return items
@@ -45,7 +45,7 @@ final class VRMRenderItemSelector {
         return items.enumerated().compactMap { index, item in
             let meshName = item.mesh.name ?? "unnamed"
             let materialName = item.materialName
-            vrmLog("[RENDER CHECK] Item \(index): mesh='\(meshName)', material='\(materialName)')")
+            nlLog("[RENDER CHECK] Item \(index): mesh='\(meshName)', material='\(materialName)')")
 
             let meshPrimIndex =
                 item.mesh.primitives.firstIndex(where: { $0 === item.primitive }) ?? -1
@@ -72,11 +72,11 @@ final class VRMRenderItemSelector {
 
     private func logFilterDetails(item: RenderItem, meshName: String, meshPrimIndex: Int) {
         let prim = item.primitive
-        vrmLog("\n━━━━━ FILTERED PRIMITIVE DETAILS ━━━━━")
-        vrmLog("Mesh: '\(meshName)'")
-        vrmLog("Material: '\(item.materialName)'")
-        vrmLog("Primitive index: \(meshPrimIndex)")
-        vrmLog("")
+        nlLog("\n━━━━━ FILTERED PRIMITIVE DETAILS ━━━━━")
+        nlLog("Mesh: '\(meshName)'")
+        nlLog("Material: '\(item.materialName)'")
+        nlLog("Primitive index: \(meshPrimIndex)")
+        nlLog("")
 
         let modeStr: String
         switch prim.primitiveType {
@@ -87,20 +87,20 @@ final class VRMRenderItemSelector {
         case .triangleStrip: modeStr = "TRIANGLE_STRIP (5)"
         @unknown default: modeStr = "UNKNOWN"
         }
-        vrmLog("Mode (glTF → Metal): \(modeStr) → \(prim.primitiveType)")
+        nlLog("Mode (glTF → Metal): \(modeStr) → \(prim.primitiveType)")
 
         let indexTypeStr = prim.indexType == .uint16 ? "uint16" : "uint32"
         let indexElemSize = prim.indexType == .uint16 ? 2 : 4
-        vrmLog("Index type: \(indexTypeStr)")
-        vrmLog("Index count: \(prim.indexCount)")
-        vrmLog("Index buffer offset: \(prim.indexBufferOffset) bytes")
+        nlLog("Index type: \(indexTypeStr)")
+        nlLog("Index count: \(prim.indexCount)")
+        nlLog("Index buffer offset: \(prim.indexBufferOffset) bytes")
 
         if let indexBuffer = prim.indexBuffer {
-            vrmLog("Index buffer length: \(indexBuffer.length) bytes")
+            nlLog("Index buffer length: \(indexBuffer.length) bytes")
 
             // Validate alignment - log error instead of crashing
             if prim.indexBufferOffset % indexElemSize != 0 {
-                vrmLog(
+                nlLog(
                     "❌ Index buffer offset \(prim.indexBufferOffset) not aligned to element size \(indexElemSize)"
                 )
                 return  // Exit diagnostic function
@@ -108,13 +108,13 @@ final class VRMRenderItemSelector {
 
             // Validate buffer size - log error instead of crashing
             if prim.indexBufferOffset + prim.indexCount * indexElemSize > indexBuffer.length {
-                vrmLog(
+                nlLog(
                     "❌ Index buffer overflow: offset(\(prim.indexBufferOffset)) + count(\(prim.indexCount)) * elemSize(\(indexElemSize)) > buffer.length(\(indexBuffer.length))"
                 )
                 return  // Exit diagnostic function
             }
 
-            vrmLog("\nFirst 24 indices:")
+            nlLog("\nFirst 24 indices:")
             let indicesToRead = min(24, prim.indexCount)
             var indicesStr: [String] = []
             var maxIndex = 0
@@ -136,17 +136,17 @@ final class VRMRenderItemSelector {
                     maxIndex = max(maxIndex, idx)
                 }
             }
-            vrmLog("  [\(indicesStr.joined(separator: ", "))]")
-            vrmLog("  Max index in sample: \(maxIndex)")
+            nlLog("  [\(indicesStr.joined(separator: ", "))]")
+            nlLog("  Max index in sample: \(maxIndex)")
 
-            vrmLog("\nPOSITION.count (vertexCount): \(prim.vertexCount)")
+            nlLog("\nPOSITION.count (vertexCount): \(prim.vertexCount)")
             // Validate vertex count - log error instead of crashing
             if maxIndex >= prim.vertexCount {
-                vrmLog("❌ Max index \(maxIndex) >= vertex count \(prim.vertexCount)")
+                nlLog("❌ Max index \(maxIndex) >= vertex count \(prim.vertexCount)")
                 return  // Exit diagnostic function
             }
 
-            vrmLog("\n✅ All validations pass for primitive \(meshPrimIndex)")
+            nlLog("\n✅ All validations pass for primitive \(meshPrimIndex)")
         }
     }
 }

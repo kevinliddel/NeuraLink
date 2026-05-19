@@ -14,7 +14,7 @@ extension VRMRenderer {
 
     func setupCity() {
         guard let url = findCityGLB(named: "city") else {
-            vrmLog("[CityRenderer] city.glb not found in bundle")
+            nlLog("[CityRenderer] city.glb not found in bundle")
             return
         }
         let renderer = CityRenderer(
@@ -28,7 +28,7 @@ extension VRMRenderer {
             do {
                 try await renderer?.load(url: url)
             } catch {
-                vrmLog("[CityRenderer] city.glb load failed: \(error)")
+                nlLog("[CityRenderer] city.glb load failed: \(error)")
             }
         }
     }

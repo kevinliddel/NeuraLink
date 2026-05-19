@@ -317,7 +317,8 @@ static void generate_pld(LlamaBridgeHandle* h,
     auto* memory = llama_get_memory(h->ctx);
 
     while (generated < max_new_tokens && !h->cancel_flag.load()) {
-        // Sample one token normally; this seeds the next n-gram lookup.
+        // 1. Sample seed token from the *current* logits (no speculation yet).
+        //    This is the target's normal next-token choice.
         llama_token first = llama_sampler_sample(h->sampler, h->ctx, -1);
         llama_sampler_accept(h->sampler, first);
         if (!pld_emit(h, first, on_token, user_ctx, piece_buf, sizeof(piece_buf))) {
@@ -329,12 +330,11 @@ static void generate_pld(LlamaBridgeHandle* h,
 
         llama_batch fb = llama_batch_get_one(&first, 1);
         if (llama_decode(h->ctx, fb) != 0) { break; }
+        if (generated >= max_new_tokens) { break; }
 
-        // Look for an n-gram match to seed a speculative draft.
+        // 2. Look for an n-gram match to seed a speculative draft.
         const size_t match_pos = find_pld_match(h->kv_tokens, h->pld_n);
-        if (match_pos == kNoMatch || generated >= max_new_tokens) {
-            continue;
-        }
+        if (match_pos == kNoMatch) { continue; }
 
         const int32_t budget = std::min(
             h->pld_n_draft, max_new_tokens - generated);
@@ -350,66 +350,106 @@ static void generate_pld(LlamaBridgeHandle* h,
             h->kv_tokens.begin() + match_pos,
             h->kv_tokens.begin() + match_pos + n_draft);
 
-        // Batch-decode the drafts through the target.
-        llama_batch db = llama_batch_get_one(
-            drafts.data(), static_cast<int32_t>(drafts.size()));
+        // 3. Verify drafts[0] BEFORE decoding the drafts batch: the target's
+        //    prediction for drafts[0]'s position is logits at -1 right now
+        //    (i.e. from the `first` decode above). After we decode the
+        //    drafts batch, those logits are no longer accessible.
+        llama_token target_d1 = llama_sampler_sample(h->sampler, h->ctx, -1);
+        if (target_d1 != drafts[0]) {
+            // Mismatch on the very first draft: emit target's choice and
+            // start fresh next round. No drafts batch needed.
+            llama_sampler_accept(h->sampler, target_d1);
+            if (!pld_emit(h, target_d1, on_token, user_ctx, piece_buf, sizeof(piece_buf))) {
+                h->kv_tokens.push_back(target_d1);
+                break;
+            }
+            h->kv_tokens.push_back(target_d1);
+            ++generated;
+            llama_batch tdb = llama_batch_get_one(&target_d1, 1);
+            if (llama_decode(h->ctx, tdb) != 0) { break; }
+            continue;
+        }
+
+        // 4. drafts[0] accepted by target. Decode the entire drafts batch
+        //    with logits enabled at every position so the verify loop can
+        //    sample any row. `llama_batch_get_one` would only enable logits
+        //    at the last position, which makes `sample(ctx, row=0)` fail
+        //    the `batch.logits[0] != true` assert.
+        const llama_pos draft_base_pos = static_cast<llama_pos>(h->kv_tokens.size());
+        llama_batch db = llama_batch_init(n_draft, /*embd=*/0, /*n_seq_max=*/1);
+        for (int i = 0; i < n_draft; ++i) {
+            db.token[db.n_tokens]    = drafts[i];
+            db.pos[db.n_tokens]      = draft_base_pos + i;
+            db.n_seq_id[db.n_tokens] = 1;
+            db.seq_id[db.n_tokens][0] = 0;
+            db.logits[db.n_tokens]   = true;
+            db.n_tokens++;
+        }
         if (llama_decode(h->ctx, db) != 0) {
+            llama_batch_free(db);
             llama_memory_clear(memory, true);
             h->kv_tokens.clear();
             break;
         }
 
-        // Verify token-by-token. The target's prediction for draft[i] sits
-        // at logits row i-1 of the batch; for i=0 we use the previous
-        // logits already at position -1.
-        int accepted = 0;
-        bool stop = false;
-        for (int i = 0; i < n_draft; ++i) {
-            const int row = (i == 0) ? -1 : i - 1;
+        // 5. Commit drafts[0] (already accepted via target_d1) and verify
+        //    drafts[1..n_draft-1] against the batch logits.
+        llama_sampler_accept(h->sampler, drafts[0]);
+        if (!pld_emit(h, drafts[0], on_token, user_ctx, piece_buf, sizeof(piece_buf))) {
+            h->kv_tokens.push_back(drafts[0]);
+            ++generated;
+            llama_batch_free(db);
+            break;
+        }
+        h->kv_tokens.push_back(drafts[0]);
+        ++generated;
+        int accepted = 1;
+        bool stop_round = false;
+
+        for (int i = 1; i < n_draft && !stop_round; ++i) {
+            // batch.logits[i-1] = target's prediction at position
+            // (draft_base_pos + i-1) = candidate for drafts[i].
+            const int row = i - 1;
             llama_token t = llama_sampler_sample(h->sampler, h->ctx, row);
+
             if (t == drafts[i]) {
-                llama_sampler_accept(h->sampler, t);
-                if (!pld_emit(h, t, on_token, user_ctx, piece_buf, sizeof(piece_buf))) {
-                    h->kv_tokens.insert(h->kv_tokens.end(),
-                                        drafts.begin(),
-                                        drafts.begin() + accepted + 1);
-                    generated += accepted + 1;
-                    stop = true;
+                llama_sampler_accept(h->sampler, drafts[i]);
+                if (!pld_emit(h, drafts[i], on_token, user_ctx, piece_buf, sizeof(piece_buf))) {
+                    h->kv_tokens.push_back(drafts[i]);
+                    ++generated;
+                    stop_round = true;
                     break;
                 }
+                h->kv_tokens.push_back(drafts[i]);
+                ++generated;
                 ++accepted;
             } else {
-                // Reject. Rewind target KV to the mismatch position and
-                // commit target's choice instead.
-                const llama_pos rewind = static_cast<llama_pos>(
-                    h->kv_tokens.size()) + static_cast<llama_pos>(accepted);
-                llama_memory_seq_rm(memory, 0, rewind, -1);
+                // Mismatch at drafts[i]. Rewind target KV to remove
+                // drafts[accepted..n_draft-1] (which were speculatively
+                // decoded but never committed), then decode target's
+                // replacement at position draft_base_pos + accepted.
+                const llama_pos rewind_pos = draft_base_pos +
+                    static_cast<llama_pos>(accepted);
+                llama_memory_seq_rm(memory, 0, rewind_pos, -1);
 
                 llama_batch tb = llama_batch_get_one(&t, 1);
-                if (llama_decode(h->ctx, tb) != 0) { stop = true; break; }
+                if (llama_decode(h->ctx, tb) != 0) { stop_round = true; break; }
                 llama_sampler_accept(h->sampler, t);
 
-                h->kv_tokens.insert(h->kv_tokens.end(),
-                                    drafts.begin(),
-                                    drafts.begin() + accepted);
                 h->kv_tokens.push_back(t);
-                generated += accepted + 1;
+                ++generated;
 
                 if (!pld_emit(h, t, on_token, user_ctx, piece_buf, sizeof(piece_buf))) {
-                    stop = true;
+                    stop_round = true;
                 }
-                accepted = -1;  // signal: handled the mismatch path
                 break;
             }
         }
-        if (stop) { break; }
 
-        if (accepted == n_draft) {
-            // All drafts accepted. Commit and continue from new state.
-            h->kv_tokens.insert(h->kv_tokens.end(),
-                                drafts.begin(), drafts.end());
-            generated += accepted;
-        }
+        llama_batch_free(db);
+        if (stop_round) { break; }
+        // All drafts accepted (when accepted == n_draft): both KV and
+        // kv_tokens are already in sync. Next round continues.
     }
     (void)on_finish;
 }

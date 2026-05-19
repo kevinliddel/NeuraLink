@@ -266,7 +266,7 @@ final class VRMMetalState {
         guard let renderer = renderer else { return }
         let result = renderer.hitTest(at: point, viewSize: size)
         
-        vrmLog("[Interaction] Touch at \(point) in \(size) -> Result: \(result)")
+        nlLog("[Interaction] Touch at \(point) in \(size) -> Result: \(result)")
         
         if case .none = result {
             return

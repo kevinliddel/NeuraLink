@@ -22,7 +22,7 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
             !cleanText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             firstTokenLatencyLogged = true
             let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000.0
-            print("[LocalLLM] First token latency: \(String(format: "%.1f", elapsedMs)) ms")
+            nlLog("[LocalLLM] First token latency: \(String(format: "%.1f", elapsedMs)) ms", level: .info)
         }
 
         Task { @MainActor in
@@ -105,8 +105,13 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
     func localLLM(didFinishGeneration fullText: String) {
         if let start = turnStartNs {
             let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000.0
-            print("[LocalLLM] Turn total latency: \(String(format: "%.1f", elapsedMs)) ms")
+            nlLog("[LocalLLM] Turn total latency: \(String(format: "%.1f", elapsedMs)) ms", level: .info)
         }
+
+        // Full final response at debug level — useful for inspecting what the
+        // model actually produced (including tool-call blocks and emotion
+        // tags before LocalToolCallParser / drainTagBuffer strip them out).
+        nlLog("[LocalLLM] Full AI response: \(fullText)", level: .debug)
 
         // Local tool-calling: if a <tool name="...">{json}</tool> block is present,
         // execute it via the same Skill system used by OpenAI realtime.
