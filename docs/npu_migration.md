@@ -559,3 +559,15 @@ case .qwen7b:
 ```
 
 Expected: 2–3× decode throughput on iPhone 15 Pro+ / 16 family. Output quality matches plain 7B in distribution because the target's sampler chain is what decides every accepted token.
+
+### 7.4 Engine routing matrix
+
+`LocalLLMManager.makeEngine()` resolves the active engine at each `startListening()` call, so newly downloaded models pick up without a relaunch. The `.qwen7b` branch checks `GGUFSpeculativeEngine.canActivate` (= both 7B target and 1.5B draft on disk) and falls back to the plain `GGUFQwen7BEngine` if either is missing.
+
+| Device | Default config | Engine returned |
+|---|---|---|
+| iPhone 11 / 12 / 13 (4 GB) | `.llama1b` | `GGUFLlamaEngine` (CPU-only via `<5 GB` fallback in `LlamaBridge.init?`) |
+| iPhone 14 / 15-base / Plus (6 GB) | `.qwen3b` | `GGUFQwen3BEngine` |
+| iPhone 15 Pro+ / 16 / 17 (8 GB), 7B downloaded only | `.qwen7b` | `GGUFQwen7BEngine` |
+| iPhone 15 Pro+ / 16 / 17 (8 GB), 7B **+** 1.5B downloaded | `.qwen7b` | **`GGUFSpeculativeEngine`** (2–3× decode tok/s) |
+| Any tier, user-selected JP override | `.japaneseLlama1b` | `GGUFJapaneseLlamaEngine` |

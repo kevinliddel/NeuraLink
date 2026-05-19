@@ -141,5 +141,17 @@ Because Local LLMs require significant Unified Memory, the engine selector auto-
 
 The user can manually override the default via `ModelLibraryView` — the warning banner in `AISettingsView` flags downgrades vs the device's recommended tier.
 
+### Engine routing matrix
+
+`LocalLLMManager.makeEngine()` returns one of five engines depending on the user's selected configuration and what's downloaded. Speculative decoding for `.qwen7b` activates only when its 1.5B draft pair (`.qwen2b`) is also on disk.
+
+| Device | Default config | Engine returned |
+| :--- | :--- | :--- |
+| iPhone 11 / 12 / 13 (4 GB) | `.llama1b` | `GGUFLlamaEngine` (CPU-only via the `<5 GB` fallback in `LlamaBridge.init?`) |
+| iPhone 14 / 15-base / Plus (6 GB) | `.qwen3b` | `GGUFQwen3BEngine` |
+| iPhone 15 Pro+ / 16 / 17 (8 GB), 7B downloaded only | `.qwen7b` | `GGUFQwen7BEngine` |
+| iPhone 15 Pro+ / 16 / 17 (8 GB), 7B **+** 1.5B downloaded | `.qwen7b` | **`GGUFSpeculativeEngine`** (2–3× decode tok/s) |
+| Any tier, user-selected JP override | `.japaneseLlama1b` | `GGUFJapaneseLlamaEngine` |
+
 By moving these workloads to the NPU and Metal GPU, NeuraLink achieves its goal of being a high-performance, private, and deeply native iOS application.
 
