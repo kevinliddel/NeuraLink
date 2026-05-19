@@ -64,6 +64,17 @@ extension VRMExtensionParser {
 
                 if let roots = groupDict["bones"] as? [Int] {
                     for rootIndex in roots {
+                        // Bust/breast bones (J_Sec_L/R_Bust1/2) are children of UpperChest
+                        // and deform the chest mesh with any physics motion, producing the
+                        // 'pulsating chest' artifact. Excluding the entire spring chain here
+                        // (rather than pinning parameters) ensures the GPU simulation never
+                        // touches these nodes — they will simply follow UpperChest rigidly.
+                        let rootName = gltfNodes[safe: rootIndex]?.name?.lowercased() ?? ""
+                        let isBustRoot = rootName.contains("bust")
+                            || rootName.contains("breast")
+                            || rootName.contains("mune")
+                        if isBustRoot { continue }
+
                         var spring = VRMSpring(name: groupDict["comment"] as? String)
 
                         if let center = groupDict["center"] as? Int {
@@ -141,39 +152,31 @@ extension VRMExtensionParser {
 
     private func makeJoint(node: Int, params: BoneGroupParams, nodeName: String?) -> VRMSpringJoint {
         var joint = VRMSpringJoint(node: node)
-        
-        // Stabilize VRM 0.x physics:
-        // Legacy models often have extreme gravityPower or low stiffness which causes
-        // numerical instability (pulsating/vibrating) especially on mobile hardware.
-        
+
+        // Bust/breast roots are excluded before this point (see parseSecondaryAnimation),
+        // so no bust-specific clamping is needed here.
+
         var stiffness = params.stiffness
         var gravityPower = params.gravityPower
         var drag = params.dragForce
-        
+
         let lowerName = nodeName?.lowercased() ?? ""
-        let isBust = lowerName.contains("bust") || lowerName.contains("breast") || lowerName.contains("mune")
-        let isCore = lowerName.contains("chest") || lowerName.contains("spine") || lowerName.contains("hips") || lowerName.contains("neck")
+        let isCore = lowerName.contains("chest") || lowerName.contains("spine")
+            || lowerName.contains("hips") || lowerName.contains("neck")
 
         if isCore {
-            // FORCIBLY neutralize any core humanoid bones that accidentally ended up in physics groups.
-            // These should be static anchors to prevent torso pulsation.
+            // Safety net: core humanoid bones that somehow escaped the coreBoneNodes exclusion
+            // must never accumulate physics velocity. Pin them completely.
             gravityPower = 0.0
             drag = 1.0
             stiffness = 1.0
-        } else if isBust {
-            // Bust/breast bones (VRM 0.x: "bust", "breast", "mune") are the primary source of
-            // pulsation artifacts. High drag (≥0.9) and high stiffness (≥1.0) ensure the Metal
-            // inertia-compensation threshold (0.00005–0.0005m) fires on even slow breathing motion.
-            gravityPower = min(gravityPower, 0.1)
-            drag = max(drag, 0.9)
-            stiffness = max(stiffness, 1.0)
         } else {
-            // General safety clamps for other secondary bones (hair, ribbons, etc.)
+            // General safety clamps for secondary bones (hair, ribbons, skirts, etc.)
             gravityPower = min(gravityPower, 0.8)
             drag = max(drag, 0.3)
             stiffness = max(stiffness, 0.05)
         }
-        
+
         joint.stiffness = stiffness
         joint.gravityPower = gravityPower
         joint.gravityDir = params.gravityDir

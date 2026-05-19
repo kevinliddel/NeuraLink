@@ -59,11 +59,35 @@ public enum VRMAnimationLoader {
         let animationExpressionMap = parseExpressionNodeMap(from: document)
         let modelNameToBone        = buildModelNameToBoneMap(model: model)
 
+        // Resolve bones for each node and check for metacarpals
+        var resolvedBones: [Int: VRMHumanoidBone] = [:]
+        for nodeIndex in nodeTracks.keys {
+            let nodeName = document.nodes?[safe: nodeIndex]?.name ?? ""
+            if let bone = resolveBone(nodeIndex: nodeIndex, nodeName: nodeName,
+                                      animationNodeToBone: animationNodeToBone,
+                                      modelNameToBone: modelNameToBone) {
+                resolvedBones[nodeIndex] = bone
+            }
+        }
+
+        let hasLeftMetacarpal = resolvedBones.values.contains(.leftThumbMetacarpal)
+        let hasRightMetacarpal = resolvedBones.values.contains(.rightThumbMetacarpal)
+        let isTargetVRM1 = model != nil && !model!.isVRM0
+
         for (nodeIndex, tracks) in nodeTracks {
             let nodeName = document.nodes?[safe: nodeIndex]?.name ?? ""
-            let bone = resolveBone(nodeIndex: nodeIndex, nodeName: nodeName,
-                                   animationNodeToBone: animationNodeToBone,
-                                   modelNameToBone: modelNameToBone)
+            var bone = resolvedBones[nodeIndex]
+
+            // If the target model is VRM 1.x and the animation has no metacarpal track,
+            // remap the proximal thumb joints to metacarpal thumb joints.
+            if isTargetVRM1, let b = bone {
+                if b == .leftThumbProximal && !hasLeftMetacarpal {
+                    bone = .leftThumbMetacarpal
+                } else if b == .rightThumbProximal && !hasRightMetacarpal {
+                    bone = .rightThumbMetacarpal
+                }
+            }
+
             if let bone {
                 clip.addJointTrack(makeJointTrack(
                     bone: bone, tracks: tracks,
@@ -84,6 +108,28 @@ public enum VRMAnimationLoader {
             clip.addMorphTrack(key: expressionName, sample: sampler)
             if let preset = VRMExpressionPreset(rawValue: expressionName) {
                 clip.addExpressionTrack(ExpressionTrack(expression: preset, sampler: sampler))
+            }
+        }
+
+        // VRM 1.x thumb metacarpal rest correction:
+        // VRoid-exported VRM 1.x models bake a ~45° spread into the metacarpal node's T-pose
+        // rotation. When an animation has no thumb tracks (common for idle/breathing clips),
+        // the bone is left frozen at that raised T-pose. For VRM 0.x the T-pose is flat, so the
+        // same animation looks fine there. We synthesize a constant track that closes the
+        // metacarpal to a natural rest (~10° spread) — only when no animation drives it.
+        if isTargetVRM1 {
+            let thumbPairs: [(bone: VRMHumanoidBone, sign: Float)] = [
+                (.leftThumbMetacarpal,  -1),   // inward (negative Z rotation)
+                (.rightThumbMetacarpal, +1),   // inward (positive Z rotation)
+            ]
+            for (bone, sign) in thumbPairs {
+                let alreadyTracked = clip.jointTracks.contains(where: { $0.bone == bone })
+                guard !alreadyTracked, let restRot = modelRestTransforms[bone]?.rotation else { continue }
+                // Close the thumb ~35° inward from its T-pose spread so it looks natural at rest.
+                // The sampler returns a constant value — no interpolation needed.
+                let correction = simd_quatf(angle: sign * 35.0 * .pi / 180.0, axis: SIMD3<Float>(0, 0, 1))
+                let naturalRest = simd_normalize(restRot * correction)
+                clip.addJointTrack(JointTrack(bone: bone, rotationSampler: { _ in naturalRest }))
             }
         }
 
@@ -122,7 +168,6 @@ private func makeJointTrack(
         rotationSampler: tracks["rotation"].map {
             makeRotationSampler(track: $0, animRest: animRest.rotation,
                                 modelRest: modelRest?.rotation,
-                                bone: bone,
                                 convertForVRM0: convertForVRM0)
         },
         translationSampler: tracks["translation"].map {

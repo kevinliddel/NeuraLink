@@ -12,11 +12,15 @@ import simd
 
 /// Builds a rotation sampler that applies delta-based retargeting from animation rest to model rest.
 /// VRM spec: delta = inv(animRest) * animRotation; result = modelRest * delta
+///
+/// For VRM 1.x thumbs: the metacarpal node's `rotation` in the GLTF already encodes the
+/// 45° T-pose spread, so `modelRest` captures it and the formula handles the delta naturally.
+/// No additional corrective angle is needed or correct here — that would double-apply the offset.
+/// (The proximal→metacarpal bone remapping in VRMAnimationLoader ensures the right node is driven.)
 func makeRotationSampler(
     track: KeyTrack,
     animRest: simd_quatf,
     modelRest: simd_quatf?,
-    bone: VRMHumanoidBone? = nil,
     convertForVRM0: Bool = false
 ) -> (Float) -> simd_quatf {
     let normalizedAnimRest  = simd_normalize(animRest)
@@ -24,24 +28,12 @@ func makeRotationSampler(
 
     return { t in
         var q = sampleQuaternion(track, at: t)
-        if convertForVRM0 { 
-            q = convertRotationForVRM0(q) 
-        } else if let bone = bone {
-            // VRM 1.0 Thumb Alignment Fix:
-            // VRM 1.0 specifies a 45-degree thumb orientation in T-pose. Standard animations 
-            // often assume a flatter thumb, which causes the thumb to 'raise up' or twist 
-            // towards the back of the hand. We apply a corrective pitch/roll to re-align them.
-            if bone == .leftThumbProximal || bone == .leftThumbMetacarpal {
-                let correction = simd_quatf(angle: -18.0 * .pi / 180.0, axis: SIMD3<Float>(0, 0, 1))
-                q = q * correction
-            } else if bone == .rightThumbProximal || bone == .rightThumbMetacarpal {
-                let correction = simd_quatf(angle: 18.0 * .pi / 180.0, axis: SIMD3<Float>(0, 0, 1))
-                q = q * correction
-            }
+        if convertForVRM0 {
+            q = convertRotationForVRM0(q)
         }
-        
+
         guard let modelRestNorm = normalizedModelRest else { return q }
-        
+
         // VRM Spec: result = modelRest * (inv(animRest) * q)
         let delta = simd_normalize(simd_inverse(normalizedAnimRest) * q)
         return simd_normalize(modelRestNorm * delta)

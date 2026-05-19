@@ -204,6 +204,67 @@ public class VRMModel: @unchecked Sendable {
 
         await context?.updatePhase(.complete, progress: 1.0)
 
+        // Log materials (such as outfits) and bones details
+        model.logModelDetails()
+
         return model
+    }
+
+    /// Logs a summary of the model's materials (such as outfits) and bones using nlLog at info level.
+    public func logModelDetails() {
+        withLock {
+            let name = meta.name ?? "Unnamed Model"
+            let version = specVersion.rawValue
+
+            var logString = "Loaded VRM Model: '\(name)' (vrm spec: \(version))\n"
+
+            // 1. Materials/Outfits
+            logString += "--- Materials (\(materials.count)) ---\n"
+            if materials.isEmpty {
+                logString += "  No materials loaded.\n"
+            } else {
+                for (index, material) in materials.enumerated() {
+                    let matName = material.name ?? "unnamed"
+                    let alphaMode = material.alphaMode
+                    let queue = material.renderQueue
+                    let hasTexture = material.baseColorTexture != nil ? "Texture" : "Color-only"
+                    logString += "  [\(index)] '\(matName)' (\(alphaMode), Queue: \(queue), \(hasTexture))\n"
+                }
+            }
+
+            // 2. Bones
+            logString += "--- Humanoid Bones ---\n"
+            if let humanoid = humanoid {
+                var activeBones: [String] = []
+                for bone in VRMHumanoidBone.allCases {
+                    if let nodeIndex = humanoid.getBoneNode(bone) {
+                        let nodeName = (nodeIndex < nodes.count) ? (nodes[nodeIndex].name ?? "unnamed") : "unknown"
+                        activeBones.append("  \(bone.rawValue) -> Node \(nodeIndex): '\(nodeName)'")
+                    }
+                }
+                if activeBones.isEmpty {
+                    logString += "  No humanoid bones mapped.\n"
+                } else {
+                    logString += activeBones.joined(separator: "\n") + "\n"
+                }
+            } else {
+                logString += "  No humanoid bones mapping configuration available.\n"
+            }
+
+            // 3. Secondary/Spring Bones (Physics/Hair/Outfit parts)
+            if let springBone = springBone, !springBone.springs.isEmpty {
+                logString += "--- Spring/Physics Bones (\(springBone.springs.count) groups) ---\n"
+                for (index, spring) in springBone.springs.enumerated() {
+                    let springName = spring.name ?? "Spring_\(index)"
+                    let joints = spring.joints.compactMap { joint -> String? in
+                        guard joint.node < nodes.count else { return nil }
+                        return nodes[joint.node].name ?? "Node_\(joint.node)"
+                    }.joined(separator: ", ")
+                    logString += "  [\(index)] '\(springName)': \(joints)\n"
+                }
+            }
+
+            nlLog(logString, level: .info)
+        }
     }
 }

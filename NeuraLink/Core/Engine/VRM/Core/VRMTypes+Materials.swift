@@ -81,10 +81,12 @@ public struct VRM0MaterialProperty {
             mtoon.shadeMultiplyTexture = mainTexIndex
         }
 
-        // Global illumination: giEqualizationFactor = 1.0 - giIntensityFactor
-        if let giIntensity = floatProperties["_IndirectLightIntensity"] {
-            mtoon.giIntensityFactor = giIntensity
-        }
+        // Global illumination: giEqualizationFactor = 1.0 - giIntensityFactor.
+        // VRM 0.x models that omit `_IndirectLightIntensity` get the struct default (0.05),
+        // which leaves the shadow side of the body almost pitch-black under directional light.
+        // Per three-vrm conversion behavior, we lift the missing value to 0.3
+        // So ambient will meaningfully fill the shaded half without flattening the toon ramp.
+        mtoon.giIntensityFactor = floatProperties["_IndirectLightIntensity"] ?? 0.3
 
         // Matcap/Sphere Add texture
         if let matcapIndex = textureProperties["_SphereAdd"] {
