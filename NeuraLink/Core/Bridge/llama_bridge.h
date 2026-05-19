@@ -109,6 +109,64 @@ void llama_bridge_cancel(LlamaBridgeHandle* handle);
 /// Returns the llama.cpp build commit string.
 const char* llama_bridge_version(void);
 
+// MARK: - Speculative decoding (draft + target)
+
+/// Opaque speculative inference context. Owns one target model and one draft
+/// model that MUST share the same tokenizer/vocabulary (verified at create).
+/// Used by `GGUFSpeculativeEngine` to accelerate the 8 GB tier
+/// (Qwen-2.5-7B target paired with Qwen-2.5-1.5B draft).
+typedef struct LlamaBridgeSpecHandle LlamaBridgeSpecHandle;
+
+/// Create a speculative inference context. The target produces the final
+/// output; the draft model generates `n_draft` speculative tokens per round
+/// that the target verifies in one batch decode — typically 2–3× decode
+/// throughput vs running the target alone.
+///
+/// Returns NULL if either model fails to load, their vocabularies differ,
+/// or context allocation fails.
+LlamaBridgeSpecHandle* llama_bridge_spec_create(
+    const char* target_path,
+    const char* draft_path,
+    int32_t     n_ctx,
+    int32_t     n_threads,
+    int32_t     n_gpu_layers,
+    int32_t     k_type,
+    int32_t     v_type,
+    int32_t     n_draft
+);
+
+/// Destroy the context and release all memory for both models.
+void llama_bridge_spec_free(LlamaBridgeSpecHandle* handle);
+
+/// Same semantics as `llama_bridge_apply_chat_template` — delegates to the
+/// target model's chat template (the draft model's template is irrelevant
+/// because the draft never sees user-facing prompt formatting).
+int32_t llama_bridge_spec_apply_chat_template(
+    LlamaBridgeSpecHandle* handle,
+    const char* const* roles,
+    const char* const* contents,
+    int32_t            n_messages,
+    bool               add_generation_prompt,
+    char*              out_buf,
+    int32_t            out_buf_size
+);
+
+/// Generate tokens via speculative decoding. Same callback contract as
+/// `llama_bridge_generate` — blocks calling thread; emits one piece per
+/// token through `on_token`.
+void llama_bridge_spec_generate(
+    LlamaBridgeSpecHandle* handle,
+    const char*            prompt,
+    int32_t                max_new_tokens,
+    LlamaTokenCallback     on_token,
+    LlamaFinishCallback    on_finish,
+    void*                  context
+);
+
+/// Signal the running speculative generation to stop after the current
+/// token. Thread-safe.
+void llama_bridge_spec_cancel(LlamaBridgeSpecHandle* handle);
+
 #ifdef __cplusplus
 }
 #endif

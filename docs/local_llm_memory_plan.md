@@ -105,11 +105,11 @@ gantt
     section Phase 1 — Prompt-Lookup Decoding
     Bridge prereqs + PLD impl + swiftlint         :done, p1, 2026-05-18, 1d
 
+    section Phase 1.5 — Speculative decoding restoration
+    Spec C bridge + Swift engine + makeEngine wiring  :done, p15, 2026-05-19, 1d
+
     section Phase 2A — Fact extractor + budget
-    LocalLLMContextBudget                         :p2a1, 2026-05-25, 1d
-    LocalLLMFactExtractor                         :p2a2, after p2a1, 2d
-    RAGManager facts schema extension             :p2a3, after p2a2, 1d
-    Unit tests + swiftlint                        :p2a4, after p2a3, 1d
+    LocalLLMContextBudget + Extractor + facts + tests :done, p2a, 2026-05-18, 1d
 
     section Phase 2B — Hierarchy + compaction
     LocalLLMMemoryHierarchy                       :p2b1, 2026-06-01, 1d
@@ -121,7 +121,9 @@ gantt
     swiftlint strict + docs update + merge        :p3b, after p3a, 1d
 ```
 
-**Final deadline: 2026-06-05.** Phases 0 and 1 finished on 2026-05-18 (ahead of plan). Buffer: every phase has a half-day buffer baked in; if a phase slips by ≥1 day the next phase compresses or the deadline moves to 2026-06-08 (Monday).
+**Final deadline: 2026-06-05.** Phases 0, 1, 1.5 and 2A finished ahead of plan (1, 1.5 and 2A completed before their planned windows; iPhone 11 stability fix unblocked Phase 1.5 by removing the heavy God-Rays render pass that had been forcing the MTLCompilerService into jetsam at LLM-load time). Buffer: every phase has a half-day buffer baked in; if a phase slips by ≥1 day the next phase compresses or the deadline moves to 2026-06-08 (Monday).
+
+> **Phase 1.5 scope:** restore the speculative-decoding work (1.5B draft + 7B target) that had been removed during the iPhone 11 debug. Implemented as an additive layer — new `llama_bridge_spec.cpp`, `LlamaSpeculativeBridge.swift`, `GGUFSpeculativeEngine[+Generate].swift` — so the working bridge.cpp / `LlamaBridge.swift` stay untouched (rule 5). Auto-activates only when `.qwen7b` is selected AND the 1.5B draft is also on disk; otherwise routes to plain `GGUFQwen7BEngine`. iPhone 11/12/13 default tier (`.llama1b`) never sees this path.
 
 ---
 

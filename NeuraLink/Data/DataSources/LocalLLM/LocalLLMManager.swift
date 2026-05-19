@@ -28,6 +28,13 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         case .qwen3b:
             return GGUFQwen3BEngine.shared as any LLMEngineProtocol
         case .qwen7b:
+            // Speculative decoding (1.5B draft + 7B target) auto-activates
+            // when the 1.5B Qwen is also on disk — typically 2–3× decode
+            // throughput at identical output quality. Falls back to the
+            // plain 7B engine when the draft model isn't available.
+            if GGUFSpeculativeEngine.canActivate {
+                return GGUFSpeculativeEngine.shared as any LLMEngineProtocol
+            }
             return GGUFQwen7BEngine.shared as any LLMEngineProtocol
         case .llama1b:
             return GGUFLlamaEngine.shared
