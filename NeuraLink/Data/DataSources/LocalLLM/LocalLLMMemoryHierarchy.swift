@@ -33,8 +33,22 @@ final class LocalLLMMemoryHierarchy {
     /// Top-K facts retrieved from `RAGManager.fetchFacts` for Tier 3.
     static let factsLimit = 3
 
-    /// Context window used by the budget check. All current engines use 2048.
+    /// Context window used by the budget check for Qwen-family engines.
+    /// The Llama-1B paths run at half this (1024) on iPhone 11/12/13 — see
+    /// `nCtx(for:)` below.
     static let nCtxDefault = 2_048
+
+    /// Per-config context window. Must match the `contextLength` passed to
+    /// `LlamaBridge.init` in the corresponding engine, otherwise the budget
+    /// compactor will over- or under-evict relative to actual KV capacity.
+    static func nCtx(for config: LocalModelDownloadManager.ModelConfiguration) -> Int {
+        switch config {
+        case .llama1b, .japaneseLlama1b:
+            return 1_024
+        default:
+            return nCtxDefault
+        }
+    }
 
     private static let lastCompactedKey = "LocalLLM_LastCompactedTurnID"
 
@@ -105,7 +119,7 @@ final class LocalLLMMemoryHierarchy {
         }
         messages.append(.init(role: "user", content: userMessage))
 
-        return Self.fitToBudget(messages, nCtx: Self.nCtxDefault)
+        return Self.fitToBudget(messages, nCtx: Self.nCtx(for: config))
     }
 
     /// Builds the warmup prompt for `prefill(messages:)` — everything we

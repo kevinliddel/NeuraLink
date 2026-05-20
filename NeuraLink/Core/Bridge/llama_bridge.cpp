@@ -308,6 +308,9 @@ static void generate_pld(LlamaBridgeHandle* h,
     auto* memory = llama_get_memory(h->ctx);
 
     while (generated < max_new_tokens && !h->cancel_flag.load()) {
+        // Count this iteration as a PLD round; we'll bump hits when an
+        // n-gram match is actually found below.
+        h->last_pld_rounds += 1;
         // 1. Sample seed token from the *current* logits (no speculation yet).
         //    This is the target's normal next-token choice.
         llama_token first = llama_sampler_sample(h->sampler, h->ctx, -1);
@@ -361,11 +364,13 @@ static void generate_pld(LlamaBridgeHandle* h,
             continue;
         }
 
-        // 4. drafts[0] accepted by target. Decode the entire drafts batch
-        //    with logits enabled at every position so the verify loop can
-        //    sample any row. `llama_batch_get_one` would only enable logits
-        //    at the last position, which makes `sample(ctx, row=0)` fail
-        //    the `batch.logits[0] != true` assert.
+        // 4. drafts[0] accepted by target. Count this as a PLD hit — at
+        //    least one speculative token was usable. Decode the entire
+        //    drafts batch with logits enabled at every position so the
+        //    verify loop can sample any row. `llama_batch_get_one` would
+        //    only enable logits at the last position, which makes
+        //    `sample(ctx, row=0)` fail the `batch.logits[0] != true` assert.
+        h->last_pld_hits += 1;
         const llama_pos draft_base_pos = static_cast<llama_pos>(h->kv_tokens.size());
         llama_batch db = llama_batch_init(n_draft, /*embd=*/0, /*n_seq_max=*/1);
         for (int i = 0; i < n_draft; ++i) {
@@ -460,6 +465,10 @@ void llama_bridge_generate(
         return;
     }
     handle->cancel_flag.store(false);
+    // Reset per-call PLD telemetry. Prefill stats are reset inside
+    // sync_kv_for_prompt, so they don't need touching here.
+    handle->last_pld_rounds = 0;
+    handle->last_pld_hits   = 0;
 
     std::vector<llama_token> new_tokens;
     if (!tokenise_into(handle->model, prompt, new_tokens)) {

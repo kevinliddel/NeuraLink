@@ -41,4 +41,13 @@ struct LlamaBridgeHandle {
     int32_t                  last_prefill_reused = 0;
     int32_t                  last_prefill_new    = 0;
     double                   last_prefill_ms     = 0.0;
+
+    /// Per-call PLD (prompt-lookup decoding) telemetry. `pld_rounds` counts
+    /// every iteration of the speculative loop; `pld_hits` counts only those
+    /// where an n-gram match was found and the verification batch ran. Hit
+    /// rate = hits/rounds. Useful for deciding whether PLD's overhead is
+    /// paying off — particularly relevant on Japanese where n-gram matches
+    /// are rarer than in English conversation.
+    int32_t                  last_pld_rounds     = 0;
+    int32_t                  last_pld_hits       = 0;
 };

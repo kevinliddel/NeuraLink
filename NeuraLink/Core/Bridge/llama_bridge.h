@@ -144,6 +144,19 @@ int32_t llama_bridge_load_kv_state(
 /// useful for benchmark logs ("loaded N tokens from disk cache").
 int32_t llama_bridge_kv_token_count(LlamaBridgeHandle* handle);
 
+/// Read the most recent PLD telemetry. `rounds` is the number of iterations
+/// of the speculative decoding loop in the last `llama_bridge_generate`
+/// call; `hits` is how many of those rounds actually found and verified an
+/// n-gram match. Hit-rate (hits/rounds) lets the caller decide whether PLD
+/// is paying off for a given language — particularly relevant on Japanese
+/// where n-gram matches are rarer than in English conversation. Pass NULL
+/// for any field you don't want.
+void llama_bridge_get_pld_stats(
+    LlamaBridgeHandle* handle,
+    int32_t*           out_rounds,
+    int32_t*           out_hits
+);
+
 /// Read the most recent prefill telemetry. `reused` is the number of prompt
 /// tokens served by KV-cache prefix reuse; `new` is the number actually
 /// decoded (the suffix); `ms` is wall time spent in that suffix decode.

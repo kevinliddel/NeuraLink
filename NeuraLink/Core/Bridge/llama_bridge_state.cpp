@@ -62,3 +62,13 @@ int32_t llama_bridge_kv_token_count(LlamaBridgeHandle* handle) {
     if (!handle) { return 0; }
     return static_cast<int32_t>(handle->kv_tokens.size());
 }
+
+void llama_bridge_get_pld_stats(
+    LlamaBridgeHandle* handle,
+    int32_t*           out_rounds,
+    int32_t*           out_hits)
+{
+    if (!handle) { return; }
+    if (out_rounds) { *out_rounds = handle->last_pld_rounds; }
+    if (out_hits)   { *out_hits   = handle->last_pld_hits;   }
+}

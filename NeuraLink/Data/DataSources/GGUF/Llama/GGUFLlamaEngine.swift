@@ -71,9 +71,15 @@ final class GGUFLlamaEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
                         // cores + 4 efficiency cores. Pinning to 2 threads keeps
                         // work on the P-cores; spilling to E-cores at threads=4
                         // measurably hurts decode tok/s on CPU-only paths.
+                        // n_ctx=1024 (halved from 2048): the 3-tier hierarchy
+                        // compacts older turns into RAG facts well before we
+                        // approach the limit on a 1B; halving the KV cache
+                        // saves ~50 MB of RSS and shortens per-token attention
+                        // cost (linear in cached length). Must match the
+                        // `nCtx` passed to `fitToBudget` in the hierarchy.
                         if let b = LlamaBridge(
                             modelPath: url.path,
-                            contextLength: 2048,
+                            contextLength: 1024,
                             threads: 2,
                             gpuLayers: 999,
                             label: "Llama-1B"

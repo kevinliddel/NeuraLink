@@ -29,6 +29,21 @@ extension LocalLLMManager {
         audioEngine.attach(playerNode)
         playerNode.volume = 2.5
 
+        // Hardware acoustic echo cancellation + noise suppression + AGC,
+        // enabled on the input node BEFORE any taps install so the
+        // negotiated input format is the voice-processing one (typically
+        // 24 kHz mono). This is the structural fix for speaker-to-mic
+        // leakage that previously required the 800 ms mic gate cool-down
+        // in `processCapturedAudio`. The gate stays in place as a
+        // belt-and-suspenders fallback for the brief window between
+        // .speaking and .ready before AEC has converged on the new echo.
+        do {
+            try audioEngine.inputNode.setVoiceProcessingEnabled(true)
+            nlLog("[LocalAI]: Voice processing enabled on input node (AEC/AGC/NS).", level: .info)
+        } catch {
+            nlLog("[LocalAI]: setVoiceProcessingEnabled failed (\(error)) — falling back to mic-gate cool-down only.", level: .error)
+        }
+
         let format = AVAudioFormat(standardFormatWithSampleRate: 24000, channels: 1)!
         audioEngine.connect(playerNode, to: audioEngine.mainMixerNode, format: format)
 
