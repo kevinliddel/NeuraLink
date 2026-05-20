@@ -63,4 +63,14 @@ protocol LLMEngineProtocol: AnyObject {
     /// is not loaded or has no embedded template — callers should then fall
     /// back to a hand-rolled template.
     func applyChatTemplate(messages: [LLMChatMessage]) -> String?
+
+    /// Warm the KV cache for `messages` without producing output. Used to
+    /// hide prefill latency behind user speech (kicked off on VAD voice
+    /// start; final `generate` then only prefills the user turn delta).
+    /// Engines that don't support warmup default to a no-op.
+    func prefill(messages: [LLMChatMessage]) async
+}
+
+extension LLMEngineProtocol {
+    func prefill(messages: [LLMChatMessage]) async { /* no-op */ }
 }

@@ -81,6 +81,13 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     internal var firstTokenLatencyLogged = false
     internal var firstAudioLatencyLogged = false
 
+    // Self-loop guard: timestamp (system uptime) until which mic frames are
+    // dropped before reaching the VAD. Bumped forward by the audio tap on
+    // every .thinking/.speaking sample observed, then naturally expires
+    // ~800 ms after the AI stops being busy — enough to outlast speaker
+    // playback latency and the room's audio decay.
+    internal var micGatedUntilUptime: TimeInterval = 0
+
     // TTS completion tracking — main thread only.
     internal var pendingTTSBuffers: Int = 0
     internal var ttsGenerationDone: Bool = false
@@ -121,6 +128,10 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         Task {
             try? await llmEngine.loadModel()
             _ = await whisperManager.setup()
+            // Cold-start warmup: prefill the persona/history prefix once
+            // the engine is up so the first user turn doesn't pay the full
+            // ~17 s ttft that an empty KV cache costs on iPhone 11.
+            warmupPrefill()
         }
     }
 
@@ -213,13 +224,38 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             let prompt = llmEngine.applyChatTemplate(messages: messages)
                 ?? fallbackChatPrompt(messages: messages, useQwen: useQwen)
 
-            // 60-token cap for Japanese: forces 1–2 sentence responses that
-            // match the system prompt instruction, cuts generation time by
-            // ~40%, and reduces the AI tokens that would otherwise inflate
-            // future prompts.
-            let maxTokens: Int = useQwen ? 160 : (isJapaneseLlama ? 60 : 100)
+            // Token caps tuned to local TTS speech rate, not raw quality:
+            //   - Llama-1B on iPhone 11 decodes at ~4 tok/s. 60 tokens =
+            //     ~15 s of speech, the realistic upper bound for a single
+            //     spoken reply before the user disengages. The system
+            //     prompt asks for 1–2 sentences anyway; cap matches intent.
+            //   - JP path stays at 60 (no change — already tight).
+            //   - Qwen tiers keep a longer budget since they're on devices
+            //     where decode tok/s isn't the constraint.
+            let maxTokens: Int = useQwen ? 160 : (isJapaneseLlama ? 60 : 60)
 
             await llmEngine.generate(prompt: prompt, maxTokens: maxTokens)
+        }
+    }
+
+    /// Kicks off a background KV-cache warmup using the prompt-without-user-turn.
+    /// Safe to call any time the engine is loaded and idle — the engine's
+    /// prefill implementation `try()`s its lock and steps aside on contention.
+    /// Returns immediately; the warmup runs on a utility-QoS queue.
+    func warmupPrefill() {
+        guard llmEngine.isLoaded else { return }
+        Task.detached(priority: .utility) { [weak self] in
+            guard let self else { return }
+            let mgr = LocalModelDownloadManager.shared
+            guard mgr.isAvailable else { return }
+            let characterName = await MainActor.run { self.state.selectedCharacterName }
+            let basePrompt = self.localLLMSystemPrompt(for: characterName)
+            let messages = await LocalLLMMemoryHierarchy.shared.buildPrefillMessages(
+                config: mgr.selectedConfig,
+                characterName: characterName,
+                baseSystemPrompt: basePrompt
+            )
+            await self.llmEngine.prefill(messages: messages)
         }
     }
 

@@ -104,6 +104,30 @@ void llama_bridge_generate(
 /// Thread-safe — may be called from any thread.
 void llama_bridge_cancel(LlamaBridgeHandle* handle);
 
+/// Prefill the KV cache with `prompt` WITHOUT generating any tokens. Used to
+/// warm the cache in the background (e.g. as soon as VAD detects the user
+/// has started speaking) so the subsequent `llama_bridge_generate` call only
+/// has to prefill the small token delta added by the user turn.
+///
+/// Honours the same prefix-reuse logic as `llama_bridge_generate`: tokens
+/// shared with the previous prompt are not re-decoded. Caller must serialise
+/// this with `llama_bridge_generate` — they cannot run concurrently on the
+/// same handle.
+void llama_bridge_prefill(LlamaBridgeHandle* handle, const char* prompt);
+
+/// Read the most recent prefill telemetry. `reused` is the number of prompt
+/// tokens served by KV-cache prefix reuse; `new` is the number actually
+/// decoded (the suffix); `ms` is wall time spent in that suffix decode.
+/// Values reflect the most recent call to `llama_bridge_generate` on this
+/// handle. Pass NULL for any field you don't want. Thread-safe to read after
+/// generation completes.
+void llama_bridge_get_prefill_stats(
+    LlamaBridgeHandle* handle,
+    int32_t*           out_reused,
+    int32_t*           out_new,
+    double*            out_ms
+);
+
 // MARK: - Diagnostics
 
 /// Returns the llama.cpp build commit string.

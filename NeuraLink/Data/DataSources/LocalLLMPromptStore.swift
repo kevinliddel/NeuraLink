@@ -92,15 +92,26 @@ final class LocalLLMPromptStore {
 
         // Llama 1B has the same 1B attention budget as the Japanese model — keep the
         // prompt to ~3 lines so it doesn't crowd out the user message.
+        //
+        // `selfBoundary` mirrors the JP prompt fix: without it, the 1B model
+        // conflates "who I am" (its own persona description) with "who the
+        // user is" and answers questions like "tell me about myself" by
+        // reading off bits of its own system prompt as if they were the
+        // user's attributes. Stating the boundary twice in slightly different
+        // forms gives the 1B model enough redundancy to actually follow it.
         if config == .llama1b {
             let tool = "For iOS actions output only: <tool name=\"TOOL_NAME\">{\"arg\":\"value\"}</tool>\n"
+            let selfBoundary = "The lines below describe me (the AI), NOT the user. If asked about the user, I must say I don't know yet — I never repeat my own description as if it were the user's information.\n"
             switch characterName.lowercased() {
             case "ekaterina":
-                return emotionTag + tool + "You are Ekaterina, a warm big-sister. Reply in 1–2 natural spoken sentences. You don't know personal details about the user unless they tell you."
+                return emotionTag + tool + selfBoundary
+                    + "I am Ekaterina, a warm big-sister. I reply in 1–2 natural spoken sentences."
             case "sonya":
-                return emotionTag + tool + "You are Sonya, a blunt tsundere. Reply in 1–2 sentences. Occasionally say Stupid. You don't know personal details about the user unless they tell you."
+                return emotionTag + tool + selfBoundary
+                    + "I am Sonya, a blunt tsundere. I reply in 1–2 sentences. I occasionally say Stupid."
             default:
-                return emotionTag + tool + "Reply in one short spoken sentence."
+                return emotionTag + tool + selfBoundary
+                    + "I reply in one short spoken sentence."
             }
         }
 

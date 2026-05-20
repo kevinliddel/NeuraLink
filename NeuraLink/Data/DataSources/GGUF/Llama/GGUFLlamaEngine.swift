@@ -41,6 +41,11 @@ final class GGUFLlamaEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
     internal let generationLock = NSLock()
     internal var _isGenerating = false
 
+    // Held for the duration of any llama.cpp work (generate OR prefill) so
+    // background warmup never collides with the foreground generate call.
+    // Generate blocks on this lock; prefill `try()`s and skips on contention.
+    internal let bridgeLock = NSLock()
+
     // MARK: - Init
 
     override private init() { super.init() }
@@ -62,12 +67,16 @@ final class GGUFLlamaEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
                 // Run on a dedicated thread so the Swift cooperative pool stays free.
                 let loaded: LlamaBridge = try await withCheckedThrowingContinuation { cont in
                     DispatchQueue.global(qos: .userInitiated).async {
-                        // 4 GB devices: n_ctx=2048, 4 threads, all layers on Metal GPU.
+                        // 4 GB devices (iPhone 11/12/13): A13 has 2 performance
+                        // cores + 4 efficiency cores. Pinning to 2 threads keeps
+                        // work on the P-cores; spilling to E-cores at threads=4
+                        // measurably hurts decode tok/s on CPU-only paths.
                         if let b = LlamaBridge(
                             modelPath: url.path,
                             contextLength: 2048,
-                            threads: 4,
-                            gpuLayers: 999
+                            threads: 2,
+                            gpuLayers: 999,
+                            label: "Llama-1B"
                         ) {
                             cont.resume(returning: b)
                         } else {

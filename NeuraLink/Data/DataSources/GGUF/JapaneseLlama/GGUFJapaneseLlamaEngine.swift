@@ -34,6 +34,10 @@ final class GGUFJapaneseLlamaEngine: NSObject, @unchecked Sendable, LLMEnginePro
     internal let generationLock = NSLock()
     internal var _isGenerating = false
 
+    // See GGUFLlamaEngine.bridgeLock: serialises prefill warmup against
+    // foreground generate so the two never run concurrently on the same ctx.
+    internal let bridgeLock = NSLock()
+
     // MARK: - Init
 
     override private init() { super.init() }
@@ -53,11 +57,14 @@ final class GGUFJapaneseLlamaEngine: NSObject, @unchecked Sendable, LLMEnginePro
 
                 let loaded: LlamaBridge = try await withCheckedThrowingContinuation { cont in
                     DispatchQueue.global(qos: .userInitiated).async {
+                        // 4 GB devices (iPhone 11/12/13): see GGUFLlamaEngine
+                        // for the threads=2 rationale (A13 P-core pinning).
                         if let b = LlamaBridge(
                             modelPath: url.path,
                             contextLength: 2048,
-                            threads: 4,
-                            gpuLayers: 999
+                            threads: 2,
+                            gpuLayers: 999,
+                            label: "Llama-1B-JP"
                         ) {
                             cont.resume(returning: b)
                         } else {

@@ -72,6 +72,29 @@ extension LocalLLMManager {
     }
 
     func processCapturedAudio(buffer: AVAudioPCMBuffer) {
+        // Self-loop guard: drop mic frames while the AI is producing audio
+        // and for a short cool-down after it stops. iOS doesn't apply
+        // hardware echo cancellation under `.default` audio session mode,
+        // so without this gate the speaker output bleeds into the mic, VAD
+        // treats it as user speech, and the AI gets stuck talking to
+        // itself (observed on iPhone 11 with Llama-1B and Qwen-7B).
+        //
+        // The TTS `dataConsumed` callback fires when audio is handed to
+        // the system audio buffer — not when speakers stop emitting — so
+        // there's ~100–300 ms of playback tail after status flips to
+        // .ready. The 0.8 s extension covers that plus room decay.
+        let now = ProcessInfo.processInfo.systemUptime
+        let status = state.status
+        if status == .thinking || status == .speaking {
+            // Bump the gate forward so cool-down counts from the LAST
+            // AI-busy sample, not the first.
+            micGatedUntilUptime = now + 0.8
+            return
+        }
+        if now < micGatedUntilUptime {
+            return
+        }
+
         sileroVAD.processAudioBuffer(buffer)
 
         recordingLock.lock()

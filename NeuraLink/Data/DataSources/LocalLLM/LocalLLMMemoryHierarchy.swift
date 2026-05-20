@@ -100,6 +100,34 @@ final class LocalLLMMemoryHierarchy {
         return Self.fitToBudget(messages, nCtx: Self.nCtxDefault)
     }
 
+    /// Builds the warmup prompt for `prefill(messages:)` — everything we
+    /// can format before knowing the user's input: system+persona content
+    /// and the verbatim history. Tier 3 (RAG) is intentionally omitted
+    /// because retrieval depends on the user query we don't have yet;
+    /// the final `buildMessages` call will add it back, and the bridge's
+    /// prefix-reuse will only re-prefill from the point where the prompts
+    /// diverge.
+    func buildPrefillMessages(
+        config: LocalModelDownloadManager.ModelConfiguration,
+        characterName: String,
+        baseSystemPrompt: String
+    ) async -> [LLMChatMessage] {
+        let isJP = (config == .japaneseLlama1b)
+        let systemContent = buildSystemContent(
+            base: baseSystemPrompt,
+            characterName: characterName,
+            isJapaneseLlama: isJP
+        )
+        var messages: [LLMChatMessage] = [
+            .init(role: "system", content: systemContent)
+        ]
+        messages.append(contentsOf: buildHistory(
+            isJapaneseLlama: isJP,
+            excluding: ""
+        ))
+        return messages
+    }
+
     // MARK: - Compaction surface
 
     /// Returns chat events that have aged out of the verbatim window AND

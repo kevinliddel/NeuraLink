@@ -53,6 +53,13 @@ extension GGUFLlamaEngine {
                     return
                 }
 
+                // Block until any in-flight prefill warmup finishes. The
+                // prefill side uses try() and steps aside on contention, so
+                // this lock only ever waits on a recently-kicked warmup —
+                // never another generate.
+                self.bridgeLock.lock()
+                defer { self.bridgeLock.unlock() }
+
                 bridge.generate(
                     prompt: prompt,
                     maxNewTokens: Int32(maxTokens),
@@ -71,6 +78,34 @@ extension GGUFLlamaEngine {
                         continuation.resume()
                     }
                 )
+            }
+        }
+    }
+
+    // MARK: - LLMEngineProtocol — prefill (background warmup)
+
+    func prefill(messages: [LLMChatMessage]) async {
+        guard isLoaded, let bridge else { return }
+        guard let prompt = bridge.applyChatTemplate(
+            messages: messages, addGenerationPrompt: false
+        ) else { return }
+
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            DispatchQueue.global(qos: .utility).async { [weak self] in
+                guard let self else {
+                    continuation.resume()
+                    return
+                }
+                // try() so the warmup steps aside if a generate is already
+                // running (or about to run). Never wait — a stale warmup
+                // would just delay the real reply.
+                guard self.bridgeLock.try() else {
+                    continuation.resume()
+                    return
+                }
+                defer { self.bridgeLock.unlock() }
+                bridge.prefill(prompt: prompt)
+                continuation.resume()
             }
         }
     }

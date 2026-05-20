@@ -20,6 +20,7 @@ final class LlamaBridge {
     // MARK: - Properties
 
     private var handle: OpaquePointer?
+    private let label: String
 
     var version: String {
         String(cString: llama_bridge_version())
@@ -36,6 +37,8 @@ final class LlamaBridge {
     ///   - gpuLayers:     Transformer layers to offload to Metal (999 = all).
     ///   - kType:         KV cache K quantization (default: .q4_0).
     ///   - vType:         KV cache V quantization (default: .q4_0).
+    ///   - label:         Short tag prepended to benchmark logs. Defaults to
+    ///                    the model filename stem.
     init?(
         modelPath: String,
         contextLength: Int32 = 2048,
@@ -43,8 +46,12 @@ final class LlamaBridge {
         gpuLayers: Int32 = 999,
         kType: LlamaKVType = .q4_0,
         vType: LlamaKVType = .q4_0,
-        promptLookup: Bool = true
+        promptLookup: Bool = true,
+        label: String = ""
     ) {
+        self.label = label.isEmpty
+            ? URL(fileURLWithPath: modelPath).deletingPathExtension().lastPathComponent
+            : label
         var layers = gpuLayers
         #if targetEnvironment(simulator)
         layers = 0 // CPU-only in Simulator to avoid MTLCompilerService crashes
@@ -94,7 +101,28 @@ final class LlamaBridge {
         onToken: @escaping (String) -> Bool,
         onFinish: @escaping () -> Void
     ) {
-        let box = CallbackBox(onToken: onToken, onFinish: onFinish)
+        let stats = GenerationStats()
+        let benchLabel = label
+        let weakHandle = handle
+        let timedOnToken: (String) -> Bool = { token in
+            if stats.firstTokenTime == nil {
+                stats.firstTokenTime = CFAbsoluteTimeGetCurrent()
+            }
+            stats.tokenCount += 1
+            return onToken(token)
+        }
+        let timedOnFinish: () -> Void = {
+            var reused: Int32 = 0
+            var newTokens: Int32 = 0
+            var prefillMs: Double = 0
+            llama_bridge_get_prefill_stats(weakHandle, &reused, &newTokens, &prefillMs)
+            LlamaBridge.logBenchmark(
+                label: benchLabel, stats: stats,
+                prefillReused: reused, prefillNew: newTokens, prefillMs: prefillMs)
+            onFinish()
+        }
+
+        let box = CallbackBox(onToken: timedOnToken, onFinish: timedOnFinish)
         // passRetained: the C callbacks keep the box alive until on_finish fires.
         let ptr = Unmanaged.passRetained(box).toOpaque()
 
@@ -118,9 +146,44 @@ final class LlamaBridge {
         )
     }
 
+    // MARK: - Benchmark logging
+
+    private static func logBenchmark(
+        label: String,
+        stats: GenerationStats,
+        prefillReused: Int32,
+        prefillNew: Int32,
+        prefillMs: Double
+    ) {
+        let end = CFAbsoluteTimeGetCurrent()
+        let ttftSec = (stats.firstTokenTime ?? end) - stats.start
+        let decodeWindow = end - (stats.firstTokenTime ?? end)
+        let decodeTokens = max(0, stats.tokenCount - 1)
+        let decodeTps = decodeWindow > 0.001
+            ? Double(decodeTokens) / decodeWindow
+            : 0
+        let prefillTps = prefillMs > 1.0
+            ? Double(prefillNew) / (prefillMs / 1000)
+            : 0
+        let totalElapsed = end - stats.start
+        let line = String(
+            format: "[Bench] %@ tokens=%d ttft=%.0fms decode=%.2ftok/s prefill=%d+%d@%.0fms(%.1ftok/s) elapsed=%.2fs",
+            label, stats.tokenCount, ttftSec * 1000, decodeTps,
+            prefillReused, prefillNew, prefillMs, prefillTps, totalElapsed)
+        nlLog(line, level: .info)
+    }
+
     /// Signals the in-progress generation to stop after the current token.
     func cancel() {
         llama_bridge_cancel(handle)
+    }
+
+    /// Synchronously prefills the KV cache for `prompt` without generating
+    /// tokens. Blocks the calling thread — dispatch to a background queue.
+    /// Caller MUST serialise with `generate(...)` (llama.cpp is not
+    /// thread-safe on a single context).
+    func prefill(prompt: String) {
+        llama_bridge_prefill(handle, prompt)
     }
 
     // MARK: - Prompt-lookup decoding
@@ -201,4 +264,14 @@ private final class CallbackBox {
         self.onToken  = onToken
         self.onFinish = onFinish
     }
+}
+
+// MARK: - GenerationStats
+
+/// Per-call timing scratch space. Mutated by the onToken/onFinish closures
+/// captured in `generate`; both fire on the same C thread so no locking.
+private final class GenerationStats {
+    let start: CFAbsoluteTime = CFAbsoluteTimeGetCurrent()
+    var firstTokenTime: CFAbsoluteTime?
+    var tokenCount: Int = 0
 }

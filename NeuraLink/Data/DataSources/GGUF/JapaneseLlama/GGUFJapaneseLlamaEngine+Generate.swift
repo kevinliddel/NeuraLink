@@ -49,6 +49,10 @@ extension GGUFJapaneseLlamaEngine {
                     return
                 }
 
+                // See GGUFLlamaEngine+Generate for the bridgeLock rationale.
+                self.bridgeLock.lock()
+                defer { self.bridgeLock.unlock() }
+
                 bridge.generate(
                     prompt: prompt,
                     maxNewTokens: Int32(maxTokens),
@@ -67,6 +71,31 @@ extension GGUFJapaneseLlamaEngine {
                         continuation.resume()
                     }
                 )
+            }
+        }
+    }
+
+    // MARK: - LLMEngineProtocol — prefill (background warmup)
+
+    func prefill(messages: [LLMChatMessage]) async {
+        guard isLoaded, let bridge else { return }
+        guard let prompt = bridge.applyChatTemplate(
+            messages: messages, addGenerationPrompt: false
+        ) else { return }
+
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            DispatchQueue.global(qos: .utility).async { [weak self] in
+                guard let self else {
+                    continuation.resume()
+                    return
+                }
+                guard self.bridgeLock.try() else {
+                    continuation.resume()
+                    return
+                }
+                defer { self.bridgeLock.unlock() }
+                bridge.prefill(prompt: prompt)
+                continuation.resume()
             }
         }
     }
