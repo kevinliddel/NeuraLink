@@ -288,44 +288,31 @@ private func buildModelNameToBoneMap(model: VRMModel?) -> [String: VRMHumanoidBo
 // MARK: - VRoid Thumb Compensation
 
 /// VRoid-exported VRM 1.x models encode a ~45° outward thumb spread in the metacarpal's
-/// node rotation while leaving the proximal/distal segments at near-identity rest — which
-/// makes the thumb extend as a perfectly straight stick after standard retargeting.
-/// Real thumbs aren't straight at rest: each joint carries a small flexion toward the palm.
-/// We pre-multiply a small inward rotation onto each segment's rest so the resting bone
-/// composes naturally with the animation.
+/// node rotation. Standard retargeting (`modelRest * q`) stacks that spread on top of the
+/// animation pose and produces a ~90° bent thumb. Pre-multiplying ~25° inward on the
+/// metacarpal's rest brings the resting bone to a natural thumb-base angle so animation
+/// deltas compose around it cleanly. Mirrored (-Z left, +Z right) for the baked spread.
 ///
-/// The metacarpal closes around the local Z axis (the axis the VRoid spread is encoded
-/// on). The proximal/distal use the local Y axis — their parent's ~103° spread rotation
-/// reorients their frames so neither X nor Z lines up with anatomical flex; Y is what
-/// remains as the bend-toward-palm axis on these segments in VRoid's rig.
-///
-/// Per-segment closure (degrees, all toward the palm):
-///   metacarpal = 25°  (axis Z, sign -L/+R)  — closes the T-pose spread
-///   proximal   = 15°  (axis Y, sign -L/+R)  — first-knuckle curl
-///   distal     = 10°  (axis Y, sign -L/+R)  — natural tip flex
+/// We deliberately *don't* compensate proximal/distal: any constant correction there acts
+/// as a permanent offset that masks the small per-joint deltas the .vrma carries between
+/// non-neutral animations, making the thumb appear frozen across gestures. The proximal/
+/// distal natural curl comes from the .vrma's own keyframes plus the small (~2.6°) curl
+/// baked into the model rest.
 private func applyVRoidThumbCompensation(
     bone: VRMHumanoidBone, rest: RestTransform?, isVRM1: Bool
 ) -> RestTransform? {
     guard isVRM1, let rest else { return rest }
     let sign: Float
-    let degrees: Float
-    let axis: SIMD3<Float>
     switch bone {
-    case .leftThumbMetacarpal:  sign = -1; degrees = 25; axis = SIMD3<Float>(0, 0, 1)
-    case .rightThumbMetacarpal: sign = +1; degrees = 25; axis = SIMD3<Float>(0, 0, 1)
-    case .leftThumbProximal:    sign = -1; degrees = 15; axis = SIMD3<Float>(0, 1, 0)
-    case .rightThumbProximal:   sign = +1; degrees = 15; axis = SIMD3<Float>(0, 1, 0)
-    case .leftThumbDistal:      sign = -1; degrees = 10; axis = SIMD3<Float>(0, 1, 0)
-    case .rightThumbDistal:     sign = +1; degrees = 10; axis = SIMD3<Float>(0, 1, 0)
+    case .leftThumbMetacarpal:  sign = -1
+    case .rightThumbMetacarpal: sign = +1
     default: return rest
     }
     // Skip the metacarpal correction for models whose rest is near-identity (no baked
-    // T-pose spread to compensate) so we don't over-curl them. Proximal/distal always
-    // get their small natural flex — the model rest there is near-identity by design.
-    let isMetacarpal = bone == .leftThumbMetacarpal || bone == .rightThumbMetacarpal
-    if isMetacarpal && abs(rest.rotation.real) > 0.97 { return rest }
+    // T-pose spread to compensate) so we don't over-curl them.
+    if abs(rest.rotation.real) > 0.97 { return rest }
 
-    let correction = simd_quatf(angle: sign * degrees * .pi / 180.0, axis: axis)
+    let correction = simd_quatf(angle: sign * 25.0 * .pi / 180.0, axis: SIMD3<Float>(0, 0, 1))
     let corrected = simd_normalize(rest.rotation * correction)
     return RestTransform(rotation: corrected, translation: rest.translation, scale: rest.scale)
 }
