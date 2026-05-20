@@ -211,15 +211,24 @@ final class LocalLLMMemoryHierarchy {
         if isJapaneseLlama {
             // 1B model attends most to the first ~30 tokens. Order: (1)
             // language directive — strongest signal, (2) one-line user
-            // context if the user has set their name — gives the model
-            // enough to answer "what do you know about me?" without
-            // hallucinating, (3) persona description in `base`.
+            // context if the user has set their name, (3) role clarification
+            // — names "私" and "あなた" explicitly so the model doesn't
+            // mechanically translate English "my" → 私 in its reply, and
+            // (4) persona description in `base`.
             var sys = "必ず日本語で返答してください。\n"
             sys += Self.buildJPUserContextLine()
+            sys += Self.buildJPRoleClarification(characterName: characterName)
             sys += base
             return sys
         }
-        return base
+        // English path. Role clarification goes BEFORE the persona so it
+        // anchors the AI's identity before any "I am" / "You are" phrasing
+        // appears, and BEFORE the [User Information] block in
+        // `systemPromptContext` so the model reads the rule first and the
+        // data second. Mirrors the JP-side fix that resolved the same
+        // "model treats user info as its own" pattern.
+        return Self.buildEnglishRoleClarification(characterName: characterName)
+            + base
             + UserSettings.shared.systemPromptContext
             + CompanionStateManager.shared.promptContext(characterName: characterName)
     }
@@ -243,6 +252,47 @@ final class LocalLLMMemoryHierarchy {
             return "ユーザーの名前は\(name)、\(age)歳。\n"
         }
         return "ユーザーの名前は\(name)。\n"
+    }
+
+    /// Pronoun + role disambiguation for the JP 1B. Observed failure mode
+    /// without this: user asks "What is my name?" (in English), model
+    /// answers `私の名前はDedicatusです` — using `私` (= "I/me") instead of
+    /// `あなた` (= "you"). The 1B is mechanically translating English "my"
+    /// to JP `私` rather than doing the speaker→listener perspective flip
+    /// that JP grammar requires in a reply. Naming `私` (= the AI) and
+    /// `あなた` (= the user) explicitly gives the model an unambiguous
+    /// anchor it can attend to even when input arrives in English.
+    ///
+    /// Falls back to a softer boundary ("if you don't know, say so") when
+    /// the user hasn't set a display name yet — without a name the role
+    /// mapping is one-sided and the 1B still tends to confabulate.
+    private static func buildJPRoleClarification(characterName: String) -> String {
+        let aiName = characterName.capitalized
+        let userName = UserSettings.shared.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if userName.isEmpty {
+            return "私(AI)＝\(aiName)。ユーザーについて確実な情報がない時は「まだ知りません」と答える。\n"
+        }
+        return "私(AI)＝\(aiName)、あなた(ユーザー)＝\(userName)。役割を混同しない。\n"
+            + "ユーザーが「私」「僕」「俺」と話す時、\(aiName)は「あなた」で返答する。\n"
+    }
+
+    /// Role/identity disambiguation for the English path. Mirrors the JP
+    /// fix but uses third-person framing so it works whether the persona
+    /// downstream speaks in first-person (Llama-1B: "I am Ekaterina") or
+    /// second-person (Qwen tiers: "You are Ekaterina") — no voice clash.
+    ///
+    /// The clause "use the [User Information] block ... never invent details"
+    /// pins the model to the structured user data appended later by
+    /// `UserSettings.systemPromptContext`, replacing the inline
+    /// "you don't know personal details" / "I must say I don't know yet"
+    /// lines that previously contradicted that very block.
+    private static func buildEnglishRoleClarification(characterName: String) -> String {
+        let aiName = characterName.capitalized
+        let userName = UserSettings.shared.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if userName.isEmpty {
+            return "[Role] \(aiName) is the AI assistant. When the user asks about themselves and the [User Information] block below is empty, \(aiName) says so honestly instead of inventing details.\n"
+        }
+        return "[Role] \(aiName) is the AI assistant; the user is \(userName). \(aiName) answers questions about the user using the [User Information] block below, and never invents details that aren't present there.\n"
     }
 
     private func buildFactsBlock(relevantTo input: String) -> String {
