@@ -61,16 +61,19 @@ struct RealtimeChatOverlay: View {
             return (aiState.status.label, nil, true, nil)
 
         case .ready, .disconnected:
+            // isEnabled / isLocalLLMEnabled are mutually exclusive
+            // (OpenAISettings setters clear the other), so at most one of
+            // these two branches fires. If neither is active — e.g. the
+            // user disabled both toggles — fall through to the configure
+            // hint instead of falsely promising "Start talking" with no
+            // backend wired up.
             if settings.isLocalLLMEnabled {
                 return ("Apple Neural Engine Ready", "apple.intelligence", false, nil)
             }
             if settings.isEnabled && settings.hasValidKey {
                 return ("Start talking", "waveform", false, nil)
             }
-            if !settings.hasValidKey && !settings.isLocalLLMEnabled {
-                return ("Tap to configure LLMs", "key.fill", false, { aiState.showSettings = true })
-            }
-            return ("Start talking", "waveform", false, nil)
+            return ("Tap to configure LLMs", "key.fill", false, { aiState.showSettings = true })
 
         default:
             return ("Thinking...", nil, true, nil)
