@@ -15,7 +15,15 @@ enum GGUFModelAccess {
     // MARK: - Constants
 
     static let repoID   = "bartowski/Llama-3.2-1B-Instruct-GGUF"
-    static let filename = "Llama-3.2-1B-Instruct-Q4_K_M.gguf"
+    // Switched from Q4_K_M to IQ4_XS in 2026-05: ARM-NEON tuned quant,
+    // ~65 MB smaller (743 vs 808 MB) and typically a touch faster on
+    // A-series CPUs at near-identical quality for instruction-tuned 1B
+    // models. The previous Q4_K_M filename was
+    //   "Llama-3.2-1B-Instruct-Q4_K_M.gguf"
+    // — kept here as a comment because `modelURL()` validates the
+    // persisted UserDefaults path against `filename` and will trigger a
+    // re-download if a user still has the old file cached.
+    static let filename = "Llama-3.2-1B-Instruct-IQ4_XS.gguf"
 
     private static let pathKey  = "LocalModel_GGUFPath"
     private static let hubSlug  = "models--bartowski--Llama-3.2-1B-Instruct-GGUF"
@@ -24,10 +32,16 @@ enum GGUFModelAccess {
 
     /// The full URL to the downloaded `.gguf` file, or `nil` if not present.
     static func modelURL() -> URL? {
-        // 1. Persisted path from a previous download.
+        // 1. Persisted path from a previous download — but only honour it
+        //    if the stored filename matches the current `filename` constant.
+        //    Otherwise a quant change in code (e.g. Q4_K_M → IQ4_XS) would
+        //    silently keep loading the old file forever.
         if let relative = UserDefaults.standard.string(forKey: pathKey) {
             let url = appSupport.appendingPathComponent(relative)
-            if FileManager.default.fileExists(atPath: url.path) { return url }
+            if url.lastPathComponent == filename,
+               FileManager.default.fileExists(atPath: url.path) {
+                return url
+            }
         }
         // 2. Scan the Hub cache directory (downloaded via HubApi).
         return scanHubCache()

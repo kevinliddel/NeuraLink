@@ -46,49 +46,22 @@ Recorded so this plan doesn't double‑count completed work.
 | **P2: Prompt reordering** — RAG facts moved out of the system message into a separate message after history | [LocalLLMMemoryHierarchy.swift](../NeuraLink/Data/DataSources/LocalLLM/LocalLLMMemoryHierarchy.swift) | Keeps `[system + history]` contiguous and stable across turns; only the per‑turn facts block + user turn need re‑prefilling. Expected: warm `prefill=R+N` shifts from ~150/250 toward ~300/100 |
 | **P1: Persistent KV cache to disk** — save once per session, restore on cold start | new [llama_bridge_internal.hpp](../NeuraLink/Core/Bridge/llama_bridge_internal.hpp), new [llama_bridge_state.cpp](../NeuraLink/Core/Bridge/llama_bridge_state.cpp), [llama_bridge.h](../NeuraLink/Core/Bridge/llama_bridge.h), [LlamaBridge.swift](../NeuraLink/Data/DataSources/GGUF/LlamaBridge.swift), [LLMEngineProtocol.swift](../NeuraLink/Domain/Interfaces/LLMEngineProtocol.swift), [GGUFLlamaEngine+Generate.swift](../NeuraLink/Data/DataSources/GGUF/Llama/GGUFLlamaEngine+Generate.swift), [GGUFJapaneseLlamaEngine+Generate.swift](../NeuraLink/Data/DataSources/GGUF/JapaneseLlama/GGUFJapaneseLlamaEngine+Generate.swift), new [LocalLLMKVCache.swift](../NeuraLink/Data/DataSources/LocalLLM/LocalLLMKVCache.swift), [LocalLLMManager.swift](../NeuraLink/Data/DataSources/LocalLLM/LocalLLMManager.swift) | Cache file at `Application Support/llm_kv/<config>_<personaHash>.kv`. Cold turn 1 `ttft` expected to drop from ~17 s to <1 s on the second-and-later launches. Persona edits invalidate the cache automatically via the prompt hash in the filename. Limited to `.llama1b` and `.japaneseLlama1b` for now — Qwen tiers will get their own plan |
 
+### Phase 3 — measurement + memory shaping + AEC (Llama paths only)
+
+| Item | Files | Effect |
+|---|---|---|
+| **P5: `n_ctx` 2048 → 1024** | [GGUFLlamaEngine.swift](../NeuraLink/Data/DataSources/GGUF/Llama/GGUFLlamaEngine.swift), [GGUFJapaneseLlamaEngine.swift](../NeuraLink/Data/DataSources/GGUF/JapaneseLlama/GGUFJapaneseLlamaEngine.swift), [LocalLLMMemoryHierarchy.swift](../NeuraLink/Data/DataSources/LocalLLM/LocalLLMMemoryHierarchy.swift) | Halves the KV cache (saves ~50 MB RSS on iPhone 11), shortens per-token attention. New `nCtx(for:)` in hierarchy keeps compactor in sync with actual capacity. Qwen tiers unaffected — they stay at 2048 |
+| **P4: PLD telemetry + JP tuning** — `pld=hits/rounds(%)` now in `[Bench]`; JP uses `n=2, nDraft=3` | [llama_bridge_internal.hpp](../NeuraLink/Core/Bridge/llama_bridge_internal.hpp), [llama_bridge.cpp](../NeuraLink/Core/Bridge/llama_bridge.cpp), [llama_bridge_state.cpp](../NeuraLink/Core/Bridge/llama_bridge_state.cpp), [llama_bridge.h](../NeuraLink/Core/Bridge/llama_bridge.h), [LlamaBridge.swift](../NeuraLink/Data/DataSources/GGUF/LlamaBridge.swift), [GGUFJapaneseLlamaEngine.swift](../NeuraLink/Data/DataSources/GGUF/JapaneseLlama/GGUFJapaneseLlamaEngine.swift) | First time we can actually measure whether PLD is worth keeping per-language. JP gets a tighter window because subword n-grams repeat less in Japanese than English |
+| **P6: Hardware AEC via voice processing** | [LocalLLMManager+Audio.swift](../NeuraLink/Data/DataSources/LocalLLM/LocalLLMManager+Audio.swift) | `setVoiceProcessingEnabled(true)` on the input node before any taps install. Structural fix for speaker-to-mic leakage. The 800 ms mic gate cool-down stays as belt-and-suspenders for the AEC convergence window |
+| **P3: IQ4_NL → IQ4_XS quant swap** (IQ4_NL not in either repo; IQ4_XS is the available ARM-tuned alternative) | [GGUFModelAccess.swift](../NeuraLink/Data/DataSources/GGUF/Llama/GGUFModelAccess.swift), [GGUFJapaneseLlamaModelAccess.swift](../NeuraLink/Data/DataSources/GGUF/JapaneseLlama/GGUFJapaneseLlamaModelAccess.swift), [GGUFLlamaDownloader.swift](../NeuraLink/Data/DataSources/GGUF/Llama/GGUFLlamaDownloader.swift), [GGUFJapaneseLlamaDownloader.swift](../NeuraLink/Data/DataSources/GGUF/JapaneseLlama/GGUFJapaneseLlamaDownloader.swift), [LocalModelDownloadManager.swift](../NeuraLink/Data/DataSources/LocalModelDownloadManager.swift) | Filename swap (Q4_K_M → IQ4_XS), ~65 MB smaller, ARM-NEON tuned. `modelURL()` now validates the persisted UserDefaults path against the current `filename` so existing users automatically re-download instead of silently loading the stale Q4_K_M file |
+
 ---
 
 ## 3. Priority queue — remaining work
 
 Ordered by **expected impact / cost ratio**. Items are independent unless noted.
 
-> P1 (persistent KV cache) and P2 (prompt reordering) have moved to §2 as shipped. The remaining queue starts at P3.
-
-### P3 — IQ4_NL quantisation of Llama‑1B
-
-The current GGUF is Q4_K_M (~0.8 GB). IQ4_NL is an ARM‑NEON‑tuned quant designed for Apple Silicon — at the same bit budget it routinely runs 20–30% faster on A‑series CPUs than legacy K‑quants. Q3_K_M is also worth measuring (smaller, slightly worse quality) but starts at the same speed envelope.
-
-- **Files:** new downloader URL in [GGUFLlamaDownloader.swift](../NeuraLink/Data/DataSources/GGUF/Llama/GGUFLlamaDownloader.swift); add a quant selector to [ModelLibraryView](../NeuraLink/Presentation/Views/AI/) if we want users to toggle without re‑downloading.
-- **Expected:** decode 3.5 → 4.5 tok/s on iPhone 11 CPU. Also frees ~200 MB RAM headroom if we switch to Q3_K_M.
-- **Risk:** quality regression on a 1B is real but small for spoken dialog. A/B locally before defaulting.
-- **Validation:** 5‑turn dialogue both quants. Acceptance: ≥15% decode tok/s improvement at no worse than parity on the self‑boundary sanity check ("tell me about myself" → "I don't know yet").
-
-### P4 — PLD tuning for the JP path
-
-Default `pld_n=3, pld_n_draft=5` was tuned on English n‑gram statistics. Japanese subword tokens repeat less in conversation; the wasted batch‑decodes on PLD mismatches likely exceed the wins.
-
-- **Files:** [GGUFJapaneseLlamaEngine.swift](../NeuraLink/Data/DataSources/GGUF/JapaneseLlama/GGUFJapaneseLlamaEngine.swift) — pass `LlamaBridge(... promptLookup: true)` then `bridge.enablePromptLookup(true, n: 2, nDraft: 3)`. Also add an n‑gram‑hit counter to `[Bench]` so we can measure first.
-- **Expected:** small improvement (5–10%) on JP decode; possibly a small regression if hit rate is actually fine. **Measure before deciding.**
-- **Risk:** very low — purely a runtime knob.
-- **Validation:** add a `pld_hits=X/Y` counter to the benchmark line. If hit rate <15% for the default config on JP, drop `n` to 2.
-
-### P5 — Reduce `n_ctx` (2048 → 1024) for iPhone 11
-
-The 3‑tier hierarchy's compactor activates at 80% of `n_ctx`. At 2048 that's turn ~10. Halving `n_ctx` to 1024 compacts at turn ~5, keeps the KV cache smaller (saves ~50 MB on Q4_0 K/V), and shortens per‑token attention cost (linear in cached length).
-
-- **Files:** [GGUFLlamaEngine.swift](../NeuraLink/Data/DataSources/GGUF/Llama/GGUFLlamaEngine.swift), [GGUFJapaneseLlamaEngine.swift](../NeuraLink/Data/DataSources/GGUF/JapaneseLlama/GGUFJapaneseLlamaEngine.swift) — `contextLength: 1024`.
-- **Expected:** marginal decode speedup (~5%), better memory headroom, more frequent compaction.
-- **Risk:** the compactor's fact‑extraction quality on a 1B is already imperfect (see [local_llm_memory_plan.md §9](local_llm_memory_plan.md)); compacting more often surfaces more potential errors.
-- **Validation:** seed a 20‑turn dialogue, verify the model still recalls a fact established at turn 1 when asked at turn 18.
-
-### P6 — Hardware acoustic echo cancellation (deeper self‑loop fix)
-
-The 800 ms mic gate covers the symptom but the root cause is iOS not enabling AEC under `.default` audio session mode. `audioEngine.inputNode.setVoiceProcessingEnabled(true)` (iOS 15+) turns on hardware voice processing including AEC, AGC, and noise suppression.
-
-- **Files:** [LocalLLMManager+Audio.swift](../NeuraLink/Data/DataSources/LocalLLM/LocalLLMManager+Audio.swift) — call `setVoiceProcessingEnabled(true)` after `audioEngine.start()`, and switch session mode from `.default` to `.voiceChat`.
-- **Expected:** self‑loop becomes structurally impossible; gate can be shortened or removed. Mic also gets noise suppression for free.
-- **Risk:** medium — voice processing changes the input format and can break the existing mic tap (sample rate, channel count). Has bitten other voice apps when interacting with `AVAudioEngine` taps. Test thoroughly.
-- **Validation:** ten‑minute long monologue + a YouTube playing in background through speakers. Acceptance: zero self‑triggered turns.
+> P1, P2, P3, P4, P5, P6 have moved to §2 as shipped. The only remaining item is P7 (precompiled metallib), which is high-risk / high-effort and not yet started.
 
 ### P7 — Precompiled metallib (enable Metal on iPhone 11)
 

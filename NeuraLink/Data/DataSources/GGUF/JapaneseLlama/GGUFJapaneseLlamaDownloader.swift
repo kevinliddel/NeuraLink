@@ -4,7 +4,7 @@
 //
 //  Downloads the Japanese-oriented Llama-3.2-1B GGUF model from HuggingFace.
 //  Model: grapevine-AI/Llama-3.2-1B-Instruct-GGUF
-//  File:  Llama-3.2-1B-Instruct-Q4_K_M.gguf (~808 MB)
+//  File:  Llama-3.2-1B-Instruct-IQ4_XS.gguf (~743 MB) — see GGUFModelAccess
 //
 //  Created by Dedicatus on 06/05/2026.
 //

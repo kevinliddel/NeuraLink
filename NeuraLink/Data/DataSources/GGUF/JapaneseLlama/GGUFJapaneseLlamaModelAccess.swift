@@ -15,7 +15,9 @@ enum GGUFJapaneseLlamaModelAccess {
     // MARK: - Constants
 
     static let repoID   = "grapevine-AI/Llama-3.2-1B-Instruct-GGUF"
-    static let filename = "Llama-3.2-1B-Instruct-Q4_K_M.gguf"
+    // See GGUFModelAccess for IQ4_XS rationale. Previous Q4_K_M filename
+    // was "Llama-3.2-1B-Instruct-Q4_K_M.gguf".
+    static let filename = "Llama-3.2-1B-Instruct-IQ4_XS.gguf"
 
     private static let pathKey = "LocalModel_GGUFJapaneseLlamaPath"
     private static let hubSlug = "models--grapevine-AI--Llama-3.2-1B-Instruct-GGUF"
@@ -23,9 +25,15 @@ enum GGUFJapaneseLlamaModelAccess {
     // MARK: - URL resolution
 
     static func modelURL() -> URL? {
+        // Validate the persisted path against the current `filename` so a
+        // quant change in code triggers a re-download instead of silently
+        // loading the stale file. See GGUFModelAccess for full context.
         if let relative = UserDefaults.standard.string(forKey: pathKey) {
             let url = appSupport.appendingPathComponent(relative)
-            if FileManager.default.fileExists(atPath: url.path) { return url }
+            if url.lastPathComponent == filename,
+               FileManager.default.fileExists(atPath: url.path) {
+                return url
+            }
         }
         return scanHubCache()
     }
