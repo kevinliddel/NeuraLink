@@ -257,7 +257,7 @@ public class VRMExtensionParser {
             for (boneName, boneData) in humanBonesDict {
                 guard let bone = VRMHumanoidBone(rawValue: boneName),
                     let boneDict = boneData as? [String: Any],
-                    let nodeIndex = boneDict["node"] as? Int
+                    let nodeIndex = anyToInt(boneDict["node"])
                 else {
                     continue
                 }
@@ -269,7 +269,7 @@ public class VRMExtensionParser {
             for boneData in humanBonesArray {
                 guard let boneName = boneData["bone"] as? String,
                     let bone = VRMHumanoidBone(rawValue: boneName),
-                    let nodeIndex = boneData["node"] as? Int
+                    let nodeIndex = anyToInt(boneData["node"])
                 else {
                     continue
                 }
@@ -289,7 +289,7 @@ public class VRMExtensionParser {
         if let meshAnnotations = dict["meshAnnotations"] as? [[String: Any]] {
             for annotation in meshAnnotations {
                 // VRM 0.0 uses "mesh" instead of "node" for some annotations
-                let nodeOrMesh = annotation["node"] as? Int ?? annotation["mesh"] as? Int
+                let nodeOrMesh = anyToInt(annotation["node"]) ?? anyToInt(annotation["mesh"])
                 guard let node = nodeOrMesh,
                     let typeStr = annotation["firstPersonFlag"] as? String ?? annotation["type"]
                         as? String
@@ -309,4 +309,15 @@ public class VRMExtensionParser {
         return firstPerson
     }
 
+    private func anyToInt(_ any: Any?) -> Int? {
+        switch any {
+        case let i as Int:      return i
+        case let d as Double:   return Int(d)
+        case let s as String:   return Int(s)
+        case let n as NSNumber: return n.intValue
+        default:                return nil
+        }
+    }
+
 }
+

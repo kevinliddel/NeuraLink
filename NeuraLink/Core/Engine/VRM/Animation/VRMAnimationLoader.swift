@@ -74,6 +74,10 @@ public enum VRMAnimationLoader {
         let hasRightMetacarpal = resolvedBones.values.contains(.rightThumbMetacarpal)
         let isTargetVRM1 = model != nil && !model!.isVRM0
 
+        // Tracks nodes whose bone was remapped (proximal → metacarpal).
+        // These skip modelRest to avoid stacking the T-pose spread on the animation delta.
+        var remappedNodes = Set<Int>()
+
         for (nodeIndex, tracks) in nodeTracks {
             let nodeName = document.nodes?[safe: nodeIndex]?.name ?? ""
             var bone = resolvedBones[nodeIndex]
@@ -83,16 +87,44 @@ public enum VRMAnimationLoader {
             if isTargetVRM1, let b = bone {
                 if b == .leftThumbProximal && !hasLeftMetacarpal {
                     bone = .leftThumbMetacarpal
+                    remappedNodes.insert(nodeIndex)
                 } else if b == .rightThumbProximal && !hasRightMetacarpal {
                     bone = .rightThumbMetacarpal
+                    remappedNodes.insert(nodeIndex)
                 }
             }
 
             if let bone {
+                let isThumb = bone == .leftThumbMetacarpal || bone == .rightThumbMetacarpal
+                    || bone == .leftThumbProximal || bone == .rightThumbProximal
+
+                let animRest = animRestTransforms[nodeIndex] ?? .identity
+                let effectiveModelRest: RestTransform? = remappedNodes.contains(nodeIndex)
+                    ? nil
+                    : modelRestTransforms[bone]
+
+                // Diagnostic: log thumb quaternion values so we can derive the correct formula.
+                if isThumb {
+                    let aR = animRest.rotation
+                    let mR = effectiveModelRest?.rotation
+                    let firstQ = tracks["rotation"].flatMap { t -> simd_quatf? in
+                        guard !t.times.isEmpty, t.values.count >= 4 else { return nil }
+                        return simd_quatf(ix: t.values[0], iy: t.values[1],
+                                         iz: t.values[2],  r:  t.values[3])
+                    }
+                    let remapped = remappedNodes.contains(nodeIndex)
+                    nlLog("""
+                        [ThumbDiag] bone=\(bone.rawValue) nodeIndex=\(nodeIndex) remapped=\(remapped)
+                          animRest : ix=\(String(format:"%.4f",aR.imag.x)) iy=\(String(format:"%.4f",aR.imag.y)) iz=\(String(format:"%.4f",aR.imag.z)) r=\(String(format:"%.4f",aR.real))
+                          modelRest: \(mR.map { "ix=\(String(format:"%.4f",$0.imag.x)) iy=\(String(format:"%.4f",$0.imag.y)) iz=\(String(format:"%.4f",$0.imag.z)) r=\(String(format:"%.4f",$0.real))" } ?? "nil")
+                          firstKey : \(firstQ.map { "ix=\(String(format:"%.4f",$0.imag.x)) iy=\(String(format:"%.4f",$0.imag.y)) iz=\(String(format:"%.4f",$0.imag.z)) r=\(String(format:"%.4f",$0.real))" } ?? "no track")
+                        """, level: .info)
+                }
+
                 clip.addJointTrack(makeJointTrack(
                     bone: bone, tracks: tracks,
-                    animRest: animRestTransforms[nodeIndex] ?? .identity,
-                    modelRest: modelRestTransforms[bone],
+                    animRest: animRest,
+                    modelRest: effectiveModelRest,
                     convertForVRM0: convertForVRM0))
             } else {
                 clip.addNodeTrack(makeNodeTrack(
@@ -108,28 +140,6 @@ public enum VRMAnimationLoader {
             clip.addMorphTrack(key: expressionName, sample: sampler)
             if let preset = VRMExpressionPreset(rawValue: expressionName) {
                 clip.addExpressionTrack(ExpressionTrack(expression: preset, sampler: sampler))
-            }
-        }
-
-        // VRM 1.x thumb metacarpal rest correction:
-        // VRoid-exported VRM 1.x models bake a ~45° spread into the metacarpal node's T-pose
-        // rotation. When an animation has no thumb tracks (common for idle/breathing clips),
-        // the bone is left frozen at that raised T-pose. For VRM 0.x the T-pose is flat, so the
-        // same animation looks fine there. We synthesize a constant track that closes the
-        // metacarpal to a natural rest (~10° spread) — only when no animation drives it.
-        if isTargetVRM1 {
-            let thumbPairs: [(bone: VRMHumanoidBone, sign: Float)] = [
-                (.leftThumbMetacarpal,  -1),   // inward (negative Z rotation)
-                (.rightThumbMetacarpal, +1),   // inward (positive Z rotation)
-            ]
-            for (bone, sign) in thumbPairs {
-                let alreadyTracked = clip.jointTracks.contains(where: { $0.bone == bone })
-                guard !alreadyTracked, let restRot = modelRestTransforms[bone]?.rotation else { continue }
-                // Close the thumb ~35° inward from its T-pose spread so it looks natural at rest.
-                // The sampler returns a constant value — no interpolation needed.
-                let correction = simd_quatf(angle: sign * 35.0 * .pi / 180.0, axis: SIMD3<Float>(0, 0, 1))
-                let naturalRest = simd_normalize(restRot * correction)
-                clip.addJointTrack(JointTrack(bone: bone, rotationSampler: { _ in naturalRest }))
             }
         }
 

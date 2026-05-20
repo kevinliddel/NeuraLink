@@ -149,4 +149,29 @@ struct NeuraLinkTests {
             Issue.record("Unexpected error: \(error)")
         }
     }
+
+    @Test("Thumb Bone Retargeting Diagnostics")
+    @MainActor
+    func testThumbBoneRetargetingDiagnostics() async throws {
+        let vrmURL = URL(fileURLWithPath: "/Users/mac/Dedicatus/NeuraLink/NeuraLink/App/Resources/Characters/Sonya/Sonya.vrm")
+        let vrmaURL = URL(fileURLWithPath: "/Users/mac/Dedicatus/NeuraLink/NeuraLink/App/Resources/Animations/neutral.vrma")
+        
+        print("DIAGNOSTIC: Loading model from \(vrmURL.path)")
+        let model = try await VRMModel.load(from: vrmURL)
+        print("DIAGNOSTIC: Model loaded successfully: \(model.meta.name ?? "unnamed")")
+        
+        if let humanoid = model.humanoid {
+            print("DIAGNOSTIC: Sonya mapped bones:")
+            for bone in VRMHumanoidBone.allCases {
+                if let node = humanoid.getBoneNode(bone) {
+                    let nodeName = model.nodes[safe: node]?.name ?? "unknown"
+                    print("  - \(bone.rawValue) -> node \(node) (\(nodeName))")
+                }
+            }
+        }
+        
+        print("DIAGNOSTIC: Loading animation from \(vrmaURL.path)")
+        let clip = try VRMAnimationLoader.loadVRMA(from: vrmaURL, model: model)
+        print("DIAGNOSTIC: Clip loaded successfully, duration=\(clip.duration)")
+    }
 }
