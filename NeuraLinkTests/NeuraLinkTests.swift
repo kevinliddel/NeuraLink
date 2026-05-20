@@ -149,4 +149,34 @@ struct NeuraLinkTests {
             Issue.record("Unexpected error: \(error)")
         }
     }
+
+    @Test("Thumb Bone Retargeting Diagnostics")
+    @MainActor
+    func testThumbBoneRetargetingDiagnostics() async throws {
+        // Resolved from the host app bundle so the test stays portable across CI runners.
+        // When the .vrm/.vrma aren't packaged (e.g. unit-test-only target builds), skip cleanly.
+        guard let vrmURL = Bundle.main.url(forResource: "Sonya", withExtension: "vrm"),
+              let vrmaURL = Bundle.main.url(forResource: "neutral", withExtension: "vrma") else {
+            print("DIAGNOSTIC: Sonya.vrm or neutral.vrma not found in main bundle — skipping")
+            return
+        }
+
+        print("DIAGNOSTIC: Loading model from \(vrmURL.path)")
+        let model = try await VRMModel.load(from: vrmURL)
+        print("DIAGNOSTIC: Model loaded successfully: \(model.meta.name ?? "unnamed")")
+
+        if let humanoid = model.humanoid {
+            print("DIAGNOSTIC: Sonya mapped bones:")
+            for bone in VRMHumanoidBone.allCases {
+                if let node = humanoid.getBoneNode(bone) {
+                    let nodeName = model.nodes[safe: node]?.name ?? "unknown"
+                    print("  - \(bone.rawValue) -> node \(node) (\(nodeName))")
+                }
+            }
+        }
+
+        print("DIAGNOSTIC: Loading animation from \(vrmaURL.path)")
+        let clip = try VRMAnimationLoader.loadVRMA(from: vrmaURL, model: model)
+        print("DIAGNOSTIC: Clip loaded successfully, duration=\(clip.duration)")
+    }
 }

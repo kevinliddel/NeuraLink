@@ -59,16 +59,99 @@ public enum VRMAnimationLoader {
         let animationExpressionMap = parseExpressionNodeMap(from: document)
         let modelNameToBone        = buildModelNameToBoneMap(model: model)
 
+        // Resolve bones for each node and check for metacarpals
+        var resolvedBones: [Int: VRMHumanoidBone] = [:]
+        for nodeIndex in nodeTracks.keys {
+            let nodeName = document.nodes?[safe: nodeIndex]?.name ?? ""
+            if let bone = resolveBone(nodeIndex: nodeIndex, nodeName: nodeName,
+                                      animationNodeToBone: animationNodeToBone,
+                                      modelNameToBone: modelNameToBone) {
+                resolvedBones[nodeIndex] = bone
+            }
+        }
+
+        let animHasLeftMetacarpal = resolvedBones.values.contains(.leftThumbMetacarpal)
+        let animHasRightMetacarpal = resolvedBones.values.contains(.rightThumbMetacarpal)
+        let modelHasLeftMetacarpal = modelRestTransforms[.leftThumbMetacarpal] != nil
+        let modelHasRightMetacarpal = modelRestTransforms[.rightThumbMetacarpal] != nil
+        let isTargetVRM1 = model != nil && !model!.isVRM0
+
+        // Tracks nodes whose bone was remapped between metacarpal/proximal.
+        // These skip modelRest to avoid stacking the T-pose spread on the animation delta.
+        var remappedNodes = Set<Int>()
+
         for (nodeIndex, tracks) in nodeTracks {
             let nodeName = document.nodes?[safe: nodeIndex]?.name ?? ""
-            let bone = resolveBone(nodeIndex: nodeIndex, nodeName: nodeName,
-                                   animationNodeToBone: animationNodeToBone,
-                                   modelNameToBone: modelNameToBone)
+            var bone = resolvedBones[nodeIndex]
+
+            // Thumb retargeting between the 3-joint VRM 1.x animation schema
+            // (Metacarpal → Proximal → Distal) and the model's actual humanoid map.
+            if isTargetVRM1, let b = bone {
+                // Anim lacks metacarpal but model has it: the anim's proximal track
+                // is the wrist-attached joint, so drive the model's metacarpal with it.
+                if b == .leftThumbProximal && !animHasLeftMetacarpal && modelHasLeftMetacarpal {
+                    bone = .leftThumbMetacarpal
+                    remappedNodes.insert(nodeIndex)
+                } else if b == .rightThumbProximal && !animHasRightMetacarpal && modelHasRightMetacarpal {
+                    bone = .rightThumbMetacarpal
+                    remappedNodes.insert(nodeIndex)
+                }
+                // Anim has metacarpal but model lacks it: the model's "proximal" is the
+                // wrist-attached bone (VRM 0.x-style 2-joint thumb on a 1.x model). Drive it
+                // with the anim's metacarpal track and drop the anim's proximal track —
+                // otherwise both would compete for the same model bone and produce the
+                // ~90° bent thumb seen with neutral.vrma on Sonya.
+                else if b == .leftThumbMetacarpal && !modelHasLeftMetacarpal {
+                    bone = .leftThumbProximal
+                    remappedNodes.insert(nodeIndex)
+                } else if b == .rightThumbMetacarpal && !modelHasRightMetacarpal {
+                    bone = .rightThumbProximal
+                    remappedNodes.insert(nodeIndex)
+                } else if b == .leftThumbProximal && animHasLeftMetacarpal && !modelHasLeftMetacarpal {
+                    continue
+                } else if b == .rightThumbProximal && animHasRightMetacarpal && !modelHasRightMetacarpal {
+                    continue
+                }
+            }
+
             if let bone {
+                let isThumb = bone == .leftThumbMetacarpal || bone == .rightThumbMetacarpal
+                    || bone == .leftThumbProximal || bone == .rightThumbProximal
+
+                let animRest = animRestTransforms[nodeIndex] ?? .identity
+                let rawModelRest: RestTransform? = remappedNodes.contains(nodeIndex)
+                    ? nil
+                    : modelRestTransforms[bone]
+                // VRoid-exported VRM 1.x models bake a ~45° outward spread into the thumb
+                // metacarpal's rest rotation. Standard retargeting (`modelRest * q`) stacks
+                // that spread on top of the animation pose and bends the thumb at ~90°.
+                // Pre-multiplying ~35° inward on the modelRest brings the resting bone to a
+                // natural closed-thumb pose so animation deltas compose around it cleanly.
+                let effectiveModelRest = applyVRoidThumbCompensation(
+                    bone: bone, rest: rawModelRest, isVRM1: isTargetVRM1)
+
+                // Diagnostic: log thumb quaternion values so we can derive the correct formula.
+                if isThumb {
+                    let aR = animRest.rotation
+                    let mR = effectiveModelRest?.rotation
+                    let firstQ = tracks["rotation"].flatMap { t -> simd_quatf? in
+                        guard !t.times.isEmpty, t.values.count >= 4 else { return nil }
+                        return simd_quatf(ix: t.values[0], iy: t.values[1],
+                                         iz: t.values[2], r: t.values[3])
+                    }
+                    let remapped = remappedNodes.contains(nodeIndex)
+                    nlLog("""
+                        [ThumbDiag] bone=\(bone.rawValue) nodeIndex=\(nodeIndex) remapped=\(remapped)
+                          animRest : ix=\(String(format: "%.4f", aR.imag.x)) iy=\(String(format: "%.4f", aR.imag.y)) iz=\(String(format: "%.4f", aR.imag.z)) r=\(String(format: "%.4f", aR.real))
+                          modelRest: \(mR.map { "ix=\(String(format: "%.4f", $0.imag.x)) iy=\(String(format: "%.4f", $0.imag.y)) iz=\(String(format: "%.4f", $0.imag.z)) r=\(String(format: "%.4f", $0.real))" } ?? "nil")
+                          firstKey : \(firstQ.map { "ix=\(String(format: "%.4f", $0.imag.x)) iy=\(String(format: "%.4f", $0.imag.y)) iz=\(String(format: "%.4f", $0.imag.z)) r=\(String(format: "%.4f", $0.real))" } ?? "no track")
+                        """, level: .info)
+                }
+
                 clip.addJointTrack(makeJointTrack(
                     bone: bone, tracks: tracks,
-                    animRest: animRestTransforms[nodeIndex] ?? .identity,
-                    modelRest: modelRestTransforms[bone],
+                    animRest: animRest,
+                    modelRest: effectiveModelRest,
                     convertForVRM0: convertForVRM0))
             } else {
                 clip.addNodeTrack(makeNodeTrack(
@@ -122,7 +205,6 @@ private func makeJointTrack(
         rotationSampler: tracks["rotation"].map {
             makeRotationSampler(track: $0, animRest: animRest.rotation,
                                 modelRest: modelRest?.rotation,
-                                bone: bone,
                                 convertForVRM0: convertForVRM0)
         },
         translationSampler: tracks["translation"].map {
@@ -201,6 +283,38 @@ private func buildModelNameToBoneMap(model: VRMModel?) -> [String: VRMHumanoidBo
         map[normalizeNodeName(name)] = bone
     }
     return map
+}
+
+// MARK: - VRoid Thumb Compensation
+
+/// VRoid-exported VRM 1.x models encode a ~45° outward thumb spread in the metacarpal's
+/// node rotation. Standard retargeting (`modelRest * q`) stacks that spread on top of the
+/// animation pose and produces a ~90° bent thumb. Pre-multiplying ~25° inward on the
+/// metacarpal's rest brings the resting bone to a natural thumb-base angle so animation
+/// deltas compose around it cleanly. Mirrored (-Z left, +Z right) for the baked spread.
+///
+/// We deliberately *don't* compensate proximal/distal: any constant correction there acts
+/// as a permanent offset that masks the small per-joint deltas the .vrma carries between
+/// non-neutral animations, making the thumb appear frozen across gestures. The proximal/
+/// distal natural curl comes from the .vrma's own keyframes plus the small (~2.6°) curl
+/// baked into the model rest.
+private func applyVRoidThumbCompensation(
+    bone: VRMHumanoidBone, rest: RestTransform?, isVRM1: Bool
+) -> RestTransform? {
+    guard isVRM1, let rest else { return rest }
+    let sign: Float
+    switch bone {
+    case .leftThumbMetacarpal:  sign = -1
+    case .rightThumbMetacarpal: sign = +1
+    default: return rest
+    }
+    // Skip the metacarpal correction for models whose rest is near-identity (no baked
+    // T-pose spread to compensate) so we don't over-curl them.
+    if abs(rest.rotation.real) > 0.97 { return rest }
+
+    let correction = simd_quatf(angle: sign * 25.0 * .pi / 180.0, axis: SIMD3<Float>(0, 0, 1))
+    let corrected = simd_normalize(rest.rotation * correction)
+    return RestTransform(rotation: corrected, translation: rest.translation, scale: rest.scale)
 }
 
 // MARK: - Utilities
