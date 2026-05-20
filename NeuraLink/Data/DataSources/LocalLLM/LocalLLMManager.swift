@@ -88,6 +88,12 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     // playback latency and the room's audio decay.
     internal var micGatedUntilUptime: TimeInterval = 0
 
+    // KV-cache persistence: set true once per session after the first
+    // successful warmup persists the prefilled state to disk. Avoids
+    // hammering the flash chip with redundant writes (warmup runs on
+    // every VAD voice-start). Cleared when the engine unloads.
+    internal var kvCachePersistedThisSession = false
+
     // TTS completion tracking — main thread only.
     internal var pendingTTSBuffers: Int = 0
     internal var ttsGenerationDone: Bool = false
@@ -128,6 +134,11 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         Task {
             try? await llmEngine.loadModel()
             _ = await whisperManager.setup()
+            // KV-cache restore from disk: if a previous session persisted
+            // the prefilled persona/history prefix, load it back into the
+            // bridge so the very first warmup hits 100% prefix-reuse and
+            // cold-turn ttft drops from ~17 s to <1 s.
+            await tryRestoreKVCache()
             // Cold-start warmup: prefill the persona/history prefix once
             // the engine is up so the first user turn doesn't pay the full
             // ~17 s ttft that an empty KV cache costs on iPhone 11.
@@ -256,7 +267,45 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
                 baseSystemPrompt: basePrompt
             )
             await self.llmEngine.prefill(messages: messages)
+            // Persist once per session — flash writes are slow on iPhone 11,
+            // and the cache contents are essentially identical across the
+            // warmups of a single session (persona/history is stable).
+            await self.persistKVCacheIfNeeded(
+                config: mgr.selectedConfig, systemPrompt: basePrompt)
         }
+    }
+
+    /// Try to load a previously-persisted KV cache state. Idempotent and
+    /// safe to call multiple times — `loadKVCache` no-ops if the file is
+    /// missing. Must run after `loadModel` and before any prefill/generate.
+    private func tryRestoreKVCache() async {
+        guard llmEngine.isLoaded else { return }
+        let mgr = LocalModelDownloadManager.shared
+        guard mgr.isAvailable else { return }
+        let characterName = await MainActor.run { self.state.selectedCharacterName }
+        let basePrompt = localLLMSystemPrompt(for: characterName)
+        guard let path = LocalLLMKVCache.path(
+            config: mgr.selectedConfig, systemPrompt: basePrompt) else { return }
+        let restored = await llmEngine.loadKVCache(from: path)
+        if restored > 0 {
+            // If we restored from disk, treat the cache as already
+            // persisted — no need to rewrite the same bytes.
+            kvCachePersistedThisSession = true
+        }
+    }
+
+    /// Persist the current KV state to disk once per session. The cache
+    /// key includes a hash of the system prompt so persona edits invalidate
+    /// it automatically (new key → restore attempt misses → fresh prefill).
+    private func persistKVCacheIfNeeded(
+        config: LocalModelDownloadManager.ModelConfiguration,
+        systemPrompt: String
+    ) async {
+        if kvCachePersistedThisSession { return }
+        guard let path = LocalLLMKVCache.path(
+            config: config, systemPrompt: systemPrompt) else { return }
+        let saved = await llmEngine.saveKVCache(to: path)
+        if saved { kvCachePersistedThisSession = true }
     }
 
     /// Hand-rolled chat template used when the model's GGUF has no embedded
@@ -320,6 +369,9 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         sileroVAD.stop()
         llmEngine.stop()
         llmEngine.unloadModel()
+        // New engine session next time — let the first successful warmup
+        // re-persist the cache.
+        kvCachePersistedThisSession = false
         playerNode.stop()
         ttsBuffer = ""
         tagBuffer = ""

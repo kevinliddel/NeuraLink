@@ -99,4 +99,41 @@ extension GGUFJapaneseLlamaEngine {
             }
         }
     }
+
+    // MARK: - LLMEngineProtocol — KV cache persistence
+
+    func saveKVCache(to path: String) async -> Bool {
+        guard isLoaded, let bridge else { return false }
+        return await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+            DispatchQueue.global(qos: .utility).async { [weak self] in
+                guard let self else { continuation.resume(returning: false); return }
+                guard self.bridgeLock.try() else {
+                    continuation.resume(returning: false); return
+                }
+                defer { self.bridgeLock.unlock() }
+                let bytes = bridge.saveKVState(path: path)
+                if bytes > 0 {
+                    nlLog("[KVCache] Saved \(bridge.kvTokenCount) tokens, \(bytes) bytes to \(URL(fileURLWithPath: path).lastPathComponent)", level: .info)
+                }
+                continuation.resume(returning: bytes > 0)
+            }
+        }
+    }
+
+    func loadKVCache(from path: String) async -> Int {
+        guard isLoaded, let bridge else { return 0 }
+        guard FileManager.default.fileExists(atPath: path) else { return 0 }
+        return await withCheckedContinuation { (continuation: CheckedContinuation<Int, Never>) in
+            DispatchQueue.global(qos: .utility).async { [weak self] in
+                guard let self else { continuation.resume(returning: 0); return }
+                self.bridgeLock.lock()
+                defer { self.bridgeLock.unlock() }
+                let restored = bridge.loadKVState(path: path)
+                if restored > 0 {
+                    nlLog("[KVCache] Restored \(restored) tokens from \(URL(fileURLWithPath: path).lastPathComponent)", level: .info)
+                }
+                continuation.resume(returning: restored)
+            }
+        }
+    }
 }

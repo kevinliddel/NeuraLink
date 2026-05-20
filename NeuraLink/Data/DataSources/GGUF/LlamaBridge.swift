@@ -186,6 +186,32 @@ final class LlamaBridge {
         llama_bridge_prefill(handle, prompt)
     }
 
+    // MARK: - KV cache persistence
+
+    /// Save the current KV cache state to `path`. Returns the number of
+    /// bytes written, or 0 on failure / empty cache. Blocking — dispatch
+    /// to a background queue, and serialise with prefill/generate calls.
+    @discardableResult
+    func saveKVState(path: String) -> Int {
+        return Int(llama_bridge_save_kv_state(handle, path))
+    }
+
+    /// Restore a previously-saved KV cache state from `path`. Returns the
+    /// number of tokens restored, or 0 on failure. On failure the bridge is
+    /// left with an empty KV cache — safe to fall through to a normal
+    /// prefill/generate afterwards. Blocking — dispatch and serialise as
+    /// with `saveKVState`.
+    @discardableResult
+    func loadKVState(path: String) -> Int {
+        return Int(llama_bridge_load_kv_state(handle, path))
+    }
+
+    /// Number of tokens currently materialised in the KV cache. Useful for
+    /// benchmark logging ("loaded N tokens from disk cache").
+    var kvTokenCount: Int {
+        return Int(llama_bridge_kv_token_count(handle))
+    }
+
     // MARK: - Prompt-lookup decoding
 
     /// Toggle prompt-lookup speculative decoding. Passing `n` or `nDraft`

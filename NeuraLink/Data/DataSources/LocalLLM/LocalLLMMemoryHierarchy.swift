@@ -77,9 +77,14 @@ final class LocalLLMMemoryHierarchy {
             isJapaneseLlama: isJP
         )
 
-        // Tier 3 (facts) injected into the system message so it's prefix-
-        // cached alongside the persona — same KV reuse semantics, no extra
-        // role chunk for the model to parse.
+        // Tier 3 (facts) is appended AFTER history as its own system
+        // message rather than glued onto the persona. Reason: facts vary
+        // per turn (different RAG hits for different user inputs), so
+        // mixing them into the system message would invalidate the KV-
+        // cache prefix at the very first token where facts diverge.
+        // Keeping persona + history contiguous lets prefix-reuse cover
+        // the entire stable portion of the prompt — the only re-prefill
+        // each turn is the facts block + the user turn itself.
         let factsBlock = isJP
             ? ""
             : buildFactsBlock(relevantTo: userInput)
@@ -92,9 +97,12 @@ final class LocalLLMMemoryHierarchy {
         let userMessage = isJP ? "（日本語で回答）\(userInput)" : userInput
 
         var messages: [LLMChatMessage] = [
-            .init(role: "system", content: systemContent + factsBlock)
+            .init(role: "system", content: systemContent)
         ]
         messages.append(contentsOf: history)
+        if !factsBlock.isEmpty {
+            messages.append(.init(role: "system", content: factsBlock))
+        }
         messages.append(.init(role: "user", content: userMessage))
 
         return Self.fitToBudget(messages, nCtx: Self.nCtxDefault)
@@ -229,7 +237,7 @@ final class LocalLLMMemoryHierarchy {
         )
         guard !facts.isEmpty else { return "" }
         let bulleted = facts.map { "- \($0)" }.joined(separator: "\n")
-        return "\n[Established facts about the user]\n\(bulleted)\n[End facts]\n"
+        return "[Established facts about the user]\n\(bulleted)\n[End facts]"
     }
 
     private func buildHistory(

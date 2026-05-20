@@ -16,6 +16,7 @@ extern "C" {
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 /// Opaque inference context. Swift holds this as `OpaquePointer`.
 typedef struct LlamaBridgeHandle LlamaBridgeHandle;
@@ -114,6 +115,34 @@ void llama_bridge_cancel(LlamaBridgeHandle* handle);
 /// this with `llama_bridge_generate` — they cannot run concurrently on the
 /// same handle.
 void llama_bridge_prefill(LlamaBridgeHandle* handle, const char* prompt);
+
+// MARK: - KV cache persistence
+
+/// Save the current KV cache state (sequence 0) and the corresponding token
+/// list to `path` as a single file. Subsequent launches can `load` this back
+/// to skip the cold-start persona prefill that costs ~6–17 s on iPhone 11.
+///
+/// Returns the number of bytes written, or 0 on failure (missing handle,
+/// disk error, empty cache). Caller must serialise with `llama_bridge_generate`
+/// and `llama_bridge_prefill` — llama.cpp is not thread-safe on a single ctx.
+size_t llama_bridge_save_kv_state(
+    LlamaBridgeHandle* handle,
+    const char*        path
+);
+
+/// Load a previously-saved KV cache state into sequence 0 and repopulate the
+/// bridge's internal token list. Returns the number of tokens restored, or 0
+/// on failure (missing file, format mismatch, capacity exhausted). On failure
+/// the handle is left with an empty KV cache — safe to fall through to a
+/// normal generate/prefill call afterwards.
+int32_t llama_bridge_load_kv_state(
+    LlamaBridgeHandle* handle,
+    const char*        path
+);
+
+/// Number of tokens currently materialised in this handle's KV cache. Mainly
+/// useful for benchmark logs ("loaded N tokens from disk cache").
+int32_t llama_bridge_kv_token_count(LlamaBridgeHandle* handle);
 
 /// Read the most recent prefill telemetry. `reused` is the number of prompt
 /// tokens served by KV-cache prefix reuse; `new` is the number actually
