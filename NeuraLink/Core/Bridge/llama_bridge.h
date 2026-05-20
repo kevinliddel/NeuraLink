@@ -16,6 +16,7 @@ extern "C" {
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 /// Opaque inference context. Swift holds this as `OpaquePointer`.
 typedef struct LlamaBridgeHandle LlamaBridgeHandle;
@@ -103,6 +104,71 @@ void llama_bridge_generate(
 /// Signal the running generation to stop cleanly after the current token.
 /// Thread-safe — may be called from any thread.
 void llama_bridge_cancel(LlamaBridgeHandle* handle);
+
+/// Prefill the KV cache with `prompt` WITHOUT generating any tokens. Used to
+/// warm the cache in the background (e.g. as soon as VAD detects the user
+/// has started speaking) so the subsequent `llama_bridge_generate` call only
+/// has to prefill the small token delta added by the user turn.
+///
+/// Honours the same prefix-reuse logic as `llama_bridge_generate`: tokens
+/// shared with the previous prompt are not re-decoded. Caller must serialise
+/// this with `llama_bridge_generate` — they cannot run concurrently on the
+/// same handle.
+void llama_bridge_prefill(LlamaBridgeHandle* handle, const char* prompt);
+
+// MARK: - KV cache persistence
+
+/// Save the current KV cache state (sequence 0) and the corresponding token
+/// list to `path` as a single file. Subsequent launches can `load` this back
+/// to skip the cold-start persona prefill that costs ~6–17 s on iPhone 11.
+///
+/// Returns the number of bytes written, or 0 on failure (missing handle,
+/// disk error, empty cache). Caller must serialise with `llama_bridge_generate`
+/// and `llama_bridge_prefill` — llama.cpp is not thread-safe on a single ctx.
+size_t llama_bridge_save_kv_state(
+    LlamaBridgeHandle* handle,
+    const char*        path
+);
+
+/// Load a previously-saved KV cache state into sequence 0 and repopulate the
+/// bridge's internal token list. Returns the number of tokens restored, or 0
+/// on failure (missing file, format mismatch, capacity exhausted). On failure
+/// the handle is left with an empty KV cache — safe to fall through to a
+/// normal generate/prefill call afterwards.
+int32_t llama_bridge_load_kv_state(
+    LlamaBridgeHandle* handle,
+    const char*        path
+);
+
+/// Number of tokens currently materialised in this handle's KV cache. Mainly
+/// useful for benchmark logs ("loaded N tokens from disk cache").
+int32_t llama_bridge_kv_token_count(LlamaBridgeHandle* handle);
+
+/// Read the most recent PLD telemetry. `rounds` is the number of iterations
+/// of the speculative decoding loop in the last `llama_bridge_generate`
+/// call; `hits` is how many of those rounds actually found and verified an
+/// n-gram match. Hit-rate (hits/rounds) lets the caller decide whether PLD
+/// is paying off for a given language — particularly relevant on Japanese
+/// where n-gram matches are rarer than in English conversation. Pass NULL
+/// for any field you don't want.
+void llama_bridge_get_pld_stats(
+    LlamaBridgeHandle* handle,
+    int32_t*           out_rounds,
+    int32_t*           out_hits
+);
+
+/// Read the most recent prefill telemetry. `reused` is the number of prompt
+/// tokens served by KV-cache prefix reuse; `new` is the number actually
+/// decoded (the suffix); `ms` is wall time spent in that suffix decode.
+/// Values reflect the most recent call to `llama_bridge_generate` on this
+/// handle. Pass NULL for any field you don't want. Thread-safe to read after
+/// generation completes.
+void llama_bridge_get_prefill_stats(
+    LlamaBridgeHandle* handle,
+    int32_t*           out_reused,
+    int32_t*           out_new,
+    double*            out_ms
+);
 
 // MARK: - Diagnostics
 

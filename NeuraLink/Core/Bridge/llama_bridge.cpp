@@ -20,30 +20,12 @@
 // MARK: - §1 Includes
 
 #include "llama_bridge.h"
-#include <llama/llama.h>
+#include "llama_bridge_internal.hpp"
 
-#include <atomic>
-#include <vector>
+#include <chrono>
 #include <algorithm>
 #include <cstring>
 #include <cstdlib>
-
-struct LlamaBridgeHandle {
-    llama_model*             model       = nullptr;
-    llama_context*           ctx         = nullptr;
-    llama_sampler*           sampler     = nullptr;
-    std::atomic<bool>        cancel_flag { false };
-
-    /// Tokens currently materialised in the KV cache for sequence 0.
-    /// Used to compute the common prefix with the next prompt so we only
-    /// re-prefill the suffix that actually changed.
-    std::vector<llama_token> kv_tokens;
-
-    /// Prompt-Lookup Decoding config. See `llama_bridge_set_prompt_lookup`.
-    bool                     pld_enabled = false;
-    int32_t                  pld_n       = 3;
-    int32_t                  pld_n_draft = 5;
-};
 
 // MARK: - §2 Context lifecycle
 
@@ -214,6 +196,7 @@ static bool sync_kv_for_prompt(LlamaBridgeHandle* h,
     }
 
     const size_t suffix_len = new_tokens.size() - common;
+    const auto prefill_start = std::chrono::steady_clock::now();
     if (suffix_len > 0) {
         llama_batch batch = llama_batch_get_one(
             const_cast<llama_token*>(new_tokens.data() + common),
@@ -221,9 +204,17 @@ static bool sync_kv_for_prompt(LlamaBridgeHandle* h,
         if (llama_decode(h->ctx, batch) != 0) {
             llama_memory_clear(memory, true);
             h->kv_tokens.clear();
+            h->last_prefill_reused = 0;
+            h->last_prefill_new    = 0;
+            h->last_prefill_ms     = 0.0;
             return false;
         }
     }
+    const auto prefill_end = std::chrono::steady_clock::now();
+    h->last_prefill_reused = static_cast<int32_t>(common);
+    h->last_prefill_new    = static_cast<int32_t>(suffix_len);
+    h->last_prefill_ms     = std::chrono::duration<double, std::milli>(
+        prefill_end - prefill_start).count();
     h->kv_tokens = new_tokens;
     return true;
 }
@@ -317,6 +308,9 @@ static void generate_pld(LlamaBridgeHandle* h,
     auto* memory = llama_get_memory(h->ctx);
 
     while (generated < max_new_tokens && !h->cancel_flag.load()) {
+        // Count this iteration as a PLD round; we'll bump hits when an
+        // n-gram match is actually found below.
+        h->last_pld_rounds += 1;
         // 1. Sample seed token from the *current* logits (no speculation yet).
         //    This is the target's normal next-token choice.
         llama_token first = llama_sampler_sample(h->sampler, h->ctx, -1);
@@ -370,11 +364,13 @@ static void generate_pld(LlamaBridgeHandle* h,
             continue;
         }
 
-        // 4. drafts[0] accepted by target. Decode the entire drafts batch
-        //    with logits enabled at every position so the verify loop can
-        //    sample any row. `llama_batch_get_one` would only enable logits
-        //    at the last position, which makes `sample(ctx, row=0)` fail
-        //    the `batch.logits[0] != true` assert.
+        // 4. drafts[0] accepted by target. Count this as a PLD hit — at
+        //    least one speculative token was usable. Decode the entire
+        //    drafts batch with logits enabled at every position so the
+        //    verify loop can sample any row. `llama_batch_get_one` would
+        //    only enable logits at the last position, which makes
+        //    `sample(ctx, row=0)` fail the `batch.logits[0] != true` assert.
+        h->last_pld_hits += 1;
         const llama_pos draft_base_pos = static_cast<llama_pos>(h->kv_tokens.size());
         llama_batch db = llama_batch_init(n_draft, /*embd=*/0, /*n_seq_max=*/1);
         for (int i = 0; i < n_draft; ++i) {
@@ -469,6 +465,10 @@ void llama_bridge_generate(
         return;
     }
     handle->cancel_flag.store(false);
+    // Reset per-call PLD telemetry. Prefill stats are reset inside
+    // sync_kv_for_prompt, so they don't need touching here.
+    handle->last_pld_rounds = 0;
+    handle->last_pld_hits   = 0;
 
     std::vector<llama_token> new_tokens;
     if (!tokenise_into(handle->model, prompt, new_tokens)) {
@@ -492,4 +492,28 @@ void llama_bridge_generate(
 
 void llama_bridge_cancel(LlamaBridgeHandle* handle) {
     if (handle) { handle->cancel_flag.store(true); }
+}
+
+void llama_bridge_prefill(LlamaBridgeHandle* handle, const char* prompt) {
+    if (!handle || !handle->model || !handle->ctx || !prompt) { return; }
+    handle->cancel_flag.store(false);
+    std::vector<llama_token> new_tokens;
+    if (!tokenise_into(handle->model, prompt, new_tokens)) { return; }
+    // sync_kv_for_prompt assumes the prompt will be followed by at least one
+    // more decode step; it leaves `common = size - 1` so the last token's
+    // logits are available for sampling. That's also what we want here —
+    // generate's subsequent call appends the user turn after this prefix.
+    sync_kv_for_prompt(handle, new_tokens);
+}
+
+void llama_bridge_get_prefill_stats(
+    LlamaBridgeHandle* handle,
+    int32_t*           out_reused,
+    int32_t*           out_new,
+    double*            out_ms)
+{
+    if (!handle) { return; }
+    if (out_reused) { *out_reused = handle->last_prefill_reused; }
+    if (out_new)    { *out_new    = handle->last_prefill_new;    }
+    if (out_ms)     { *out_ms     = handle->last_prefill_ms;     }
 }

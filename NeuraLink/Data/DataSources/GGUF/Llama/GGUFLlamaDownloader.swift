@@ -5,8 +5,8 @@
 //  Downloads the single-file GGUF model from bartowski/Llama-3.2-1B-Instruct-GGUF.
 //  Replaces the multi-chunk CoreML snapshot download in LlamaModelDownloader.
 //
-//  Download target:
-//    Llama-3.2-1B-Instruct-Q4_K_M.gguf  (~0.8 GB)
+//  Download target (from `GGUFModelAccess.filename`):
+//    Llama-3.2-1B-Instruct-IQ4_XS.gguf  (~0.74 GB)
 //
 //  Created by Dedicatus on 29/04/2026.
 //
@@ -40,9 +40,9 @@ enum GGUFLlamaDownloader {
     ) async throws {
         let repo = Hub.Repo(id: GGUFModelAccess.repoID)
         // CRITICAL: pass `matching:` so HubApi fetches ONLY the one quant we
-        // use (Q4_K_M). Without this, snapshot pulls every file in the repo —
-        // for bartowski's GGUF repos that's 6–10 quantization variants
-        // totalling 4–8 GB per "download" of a 0.8 GB model.
+        // use (IQ4_XS). Without this, snapshot pulls every file in the repo
+        // — for bartowski's GGUF repos that's 18+ quantization variants
+        // totalling 10+ GB per "download" of a 0.74 GB model.
         let snapshotDir = try await api.snapshot(
             from: repo, matching: [GGUFModelAccess.filename]
         ) { progress in

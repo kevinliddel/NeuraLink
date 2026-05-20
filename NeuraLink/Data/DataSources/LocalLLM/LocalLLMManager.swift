@@ -81,6 +81,19 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     internal var firstTokenLatencyLogged = false
     internal var firstAudioLatencyLogged = false
 
+    // Self-loop guard: timestamp (system uptime) until which mic frames are
+    // dropped before reaching the VAD. Bumped forward by the audio tap on
+    // every .thinking/.speaking sample observed, then naturally expires
+    // ~800 ms after the AI stops being busy — enough to outlast speaker
+    // playback latency and the room's audio decay.
+    internal var micGatedUntilUptime: TimeInterval = 0
+
+    // KV-cache persistence: set true once per session after the first
+    // successful warmup persists the prefilled state to disk. Avoids
+    // hammering the flash chip with redundant writes (warmup runs on
+    // every VAD voice-start). Cleared when the engine unloads.
+    internal var kvCachePersistedThisSession = false
+
     // TTS completion tracking — main thread only.
     internal var pendingTTSBuffers: Int = 0
     internal var ttsGenerationDone: Bool = false
@@ -121,6 +134,15 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         Task {
             try? await llmEngine.loadModel()
             _ = await whisperManager.setup()
+            // KV-cache restore from disk: if a previous session persisted
+            // the prefilled persona/history prefix, load it back into the
+            // bridge so the very first warmup hits 100% prefix-reuse and
+            // cold-turn ttft drops from ~17 s to <1 s.
+            await tryRestoreKVCache()
+            // Cold-start warmup: prefill the persona/history prefix once
+            // the engine is up so the first user turn doesn't pay the full
+            // ~17 s ttft that an empty KV cache costs on iPhone 11.
+            warmupPrefill()
         }
     }
 
@@ -213,14 +235,77 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             let prompt = llmEngine.applyChatTemplate(messages: messages)
                 ?? fallbackChatPrompt(messages: messages, useQwen: useQwen)
 
-            // 60-token cap for Japanese: forces 1–2 sentence responses that
-            // match the system prompt instruction, cuts generation time by
-            // ~40%, and reduces the AI tokens that would otherwise inflate
-            // future prompts.
-            let maxTokens: Int = useQwen ? 160 : (isJapaneseLlama ? 60 : 100)
+            // Token caps tuned to local TTS speech rate, not raw quality:
+            //   - Llama-1B on iPhone 11 decodes at ~4 tok/s. 60 tokens =
+            //     ~15 s of speech, the realistic upper bound for a single
+            //     spoken reply before the user disengages. The system
+            //     prompt asks for 1–2 sentences anyway; cap matches intent.
+            //   - JP path stays at 60 (no change — already tight).
+            //   - Qwen tiers keep a longer budget since they're on devices
+            //     where decode tok/s isn't the constraint.
+            let maxTokens: Int = useQwen ? 160 : (isJapaneseLlama ? 60 : 60)
 
             await llmEngine.generate(prompt: prompt, maxTokens: maxTokens)
         }
+    }
+
+    /// Kicks off a background KV-cache warmup using the prompt-without-user-turn.
+    /// Safe to call any time the engine is loaded and idle — the engine's
+    /// prefill implementation `try()`s its lock and steps aside on contention.
+    /// Returns immediately; the warmup runs on a utility-QoS queue.
+    func warmupPrefill() {
+        guard llmEngine.isLoaded else { return }
+        Task.detached(priority: .utility) { [weak self] in
+            guard let self else { return }
+            let mgr = LocalModelDownloadManager.shared
+            guard mgr.isAvailable else { return }
+            let characterName = await MainActor.run { self.state.selectedCharacterName }
+            let basePrompt = self.localLLMSystemPrompt(for: characterName)
+            let messages = await LocalLLMMemoryHierarchy.shared.buildPrefillMessages(
+                config: mgr.selectedConfig,
+                characterName: characterName,
+                baseSystemPrompt: basePrompt
+            )
+            await self.llmEngine.prefill(messages: messages)
+            // Persist once per session — flash writes are slow on iPhone 11,
+            // and the cache contents are essentially identical across the
+            // warmups of a single session (persona/history is stable).
+            await self.persistKVCacheIfNeeded(
+                config: mgr.selectedConfig, systemPrompt: basePrompt)
+        }
+    }
+
+    /// Try to load a previously-persisted KV cache state. Idempotent and
+    /// safe to call multiple times — `loadKVCache` no-ops if the file is
+    /// missing. Must run after `loadModel` and before any prefill/generate.
+    private func tryRestoreKVCache() async {
+        guard llmEngine.isLoaded else { return }
+        let mgr = LocalModelDownloadManager.shared
+        guard mgr.isAvailable else { return }
+        let characterName = await MainActor.run { self.state.selectedCharacterName }
+        let basePrompt = localLLMSystemPrompt(for: characterName)
+        guard let path = LocalLLMKVCache.path(
+            config: mgr.selectedConfig, systemPrompt: basePrompt) else { return }
+        let restored = await llmEngine.loadKVCache(from: path)
+        if restored > 0 {
+            // If we restored from disk, treat the cache as already
+            // persisted — no need to rewrite the same bytes.
+            kvCachePersistedThisSession = true
+        }
+    }
+
+    /// Persist the current KV state to disk once per session. The cache
+    /// key includes a hash of the system prompt so persona edits invalidate
+    /// it automatically (new key → restore attempt misses → fresh prefill).
+    private func persistKVCacheIfNeeded(
+        config: LocalModelDownloadManager.ModelConfiguration,
+        systemPrompt: String
+    ) async {
+        if kvCachePersistedThisSession { return }
+        guard let path = LocalLLMKVCache.path(
+            config: config, systemPrompt: systemPrompt) else { return }
+        let saved = await llmEngine.saveKVCache(to: path)
+        if saved { kvCachePersistedThisSession = true }
     }
 
     /// Hand-rolled chat template used when the model's GGUF has no embedded
@@ -284,6 +369,9 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         sileroVAD.stop()
         llmEngine.stop()
         llmEngine.unloadModel()
+        // New engine session next time — let the first successful warmup
+        // re-persist the cache.
+        kvCachePersistedThisSession = false
         playerNode.stop()
         ttsBuffer = ""
         tagBuffer = ""

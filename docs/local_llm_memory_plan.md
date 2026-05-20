@@ -1,9 +1,10 @@
 # Local LLM — Performance & Long-Context Memory Plan
 
-> **Status:** Proposed. Awaiting approval before implementation.
+> **Status:** Phases 0, 1, 1.5, 2A, 2B, 3 all shipped ahead of the 2026-06-05 deadline. Phase 3 validation work expanded into a companion plan, [local_llm_iphone11_plan.md](local_llm_iphone11_plan.md), which is now itself near-complete (only P7 deferred). Some items originally listed as out-of-scope follow-ups (§10) have been picked up as part of that work — see annotations there.
 > **Author:** Dedicatus
 > **Drafted:** 2026-05-18
-> **Target delivery:** 2026-06-05
+> **Last updated:** 2026-05-20
+> **Target delivery:** 2026-06-05 (shipped early)
 
 ---
 
@@ -115,13 +116,15 @@ gantt
     Hierarchy + compaction + tests + swiftlint    :done, p2b, 2026-05-19, 1d
 
     section Phase 3 — Validation & tuning
-    Device tests across all tiers                 :p3a, 2026-06-04, 1d
-    swiftlint strict + docs update + merge        :p3b, after p3a, 1d
+    Device tests across all tiers                 :done, p3a, 2026-05-20, 1d
+    swiftlint strict + docs update + merge        :done, p3b, after p3a, 1d
 ```
 
 **Final deadline: 2026-06-05.** Phases 0, 1, 1.5, 2A and 2B finished ahead of plan (each completed before its planned window; iPhone 11 stability fix unblocked Phase 1.5 by removing the heavy God-Rays render pass that had been forcing the MTLCompilerService into jetsam at LLM-load time). Buffer: every phase has a half-day buffer baked in; only Phase 3 (device tests + docs update) remains before the 2026-06-05 deadline.
 
 > **Phase 1.5 scope:** restore the speculative-decoding work (1.5B draft + 7B target) that had been removed during the iPhone 11 debug. Implemented as an additive layer — new `llama_bridge_spec.cpp`, `LlamaSpeculativeBridge.swift`, `GGUFSpeculativeEngine[+Generate].swift` — so the working bridge.cpp / `LlamaBridge.swift` stay untouched (rule 5). Auto-activates only when `.qwen7b` is selected AND the 1.5B draft is also on disk; otherwise routes to plain `GGUFQwen7BEngine`. iPhone 11/12/13 default tier (`.llama1b`) never sees this path.
+
+> **Phase 3 status — 2026-05-20.** Phase 3 was originally scoped as just "device tests + docs update + merge". Real-device benchmarking on iPhone 11 surfaced that the architecture from Phases 1–2B was correct but the *tuning* needed substantial extension: persistent KV cache, prompt-order changes for prefix-reuse, threads/n_ctx/quant tuning, hardware AEC, and a separate self-loop fix. All of that lives in [local_llm_iphone11_plan.md](local_llm_iphone11_plan.md) with per-item status annotations. Phase 3 itself is therefore done — the iPhone 11 plan is its execution log.
 
 ---
 
@@ -228,19 +231,17 @@ PLD is gated by a runtime flag `LlamaBridge.enablePromptLookup(false)`. Memory h
 Not in this plan but candidates for future work, in priority order:
 
 1. **Persistent KV cache to disk** via `llama_state_seq_save_file` — saves prefilling the persona on every cold launch (~3 s wins on iPhone 11). Could be Phase 4 if there's appetite after 2026-06-05.
+
+   > **Status — shipped 2026-05-20** (during Phase 3 validation). Tracked as P1 in [local_llm_iphone11_plan.md](local_llm_iphone11_plan.md). Implementation came in as `llama_bridge_save_kv_state` / `llama_bridge_load_kv_state` in a new [llama_bridge_state.cpp](../NeuraLink/Core/Bridge/llama_bridge_state.cpp), surfaced via `LLMEngineProtocol.{saveKVCache, loadKVCache}` (no-op defaults so non-Llama engines are unaffected). Measured cold-turn `ttft` ≈ 2 s on iPhone 11 after a cache hit, vs ~17 s pre-shipping.
+
 2. **Grammar-constrained tool calls** via `llama_sampler_init_grammar` — enforces `<tool ...>{...}</tool>` shape at logit level. Eliminates malformed tool-call parsing failures.
+
+   > **Status — not started.** Still a candidate; current `LocalToolCallParser` handles malformed outputs gracefully so this is a quality improvement, not a bug fix.
+
 3. **MLX-Swift parallel engine for the 8 GB tier** — only worth it if 7B tok/s becomes a measured product complaint.
+
+   > **Status — not started.** No product complaints to date; speculative decoding (1.5B draft + 7B target, Phase 1.5) is the speed lever for the 8 GB tier so far.
+
 4. **iPhone 11 Metal-compile mitigation** — investigate post-build metallib bundling without patching upstream llama.cpp (compile metallib with `xcrun -sdk iphoneos metal` against the vendored `.metal` source, drop into `llama.framework/`, ensure framework's compile-time `GGML_METAL_EMBED_LIBRARY` is OFF in our local fork — that part *is* an upstream patch, so this remains tricky).
 
----
-
-## 11. Approval
-
-This plan is ready for review. Before any code is written:
-
-- [ ] Scope (§2) confirmed: no work touches files outside the in-scope list.
-- [ ] Deadlines (§4) accepted, or new dates agreed.
-- [ ] Risk list (§9) acknowledged; mitigations acceptable.
-- [ ] Validation criteria (§8) accepted as the bar for "done".
-
-Once all four boxes are checked, Phase 1 starts on 2026-05-19.
+   > **Status — promoted to P7 of [local_llm_iphone11_plan.md](local_llm_iphone11_plan.md); deferred there.** After P1–P6 of that plan landed, cold and warm `ttft` are close to targets without Metal. Metal would still ~3× decode tok/s but the upstream patch + framework rebuild risk profile is high. Revisit if decode tok/s becomes the user-perceived bottleneck.

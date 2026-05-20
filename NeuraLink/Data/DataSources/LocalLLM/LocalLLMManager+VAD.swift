@@ -23,6 +23,13 @@ extension LocalLLMManager: SileroVADDelegate {
             lastPartialTranscribedCount = 0
             // Keep the pre-roll buffer intact so we don't lose the first word
             recordingLock.unlock()
+
+            // Kick off KV-cache warmup in parallel with the user's speech.
+            // By the time Whisper finalises and handleUserInput runs, the
+            // system+persona+history prefix is already in the cache and the
+            // foreground generate only has to prefill the user-turn delta.
+            // Inside the .ready guard so warmup never fires during AI speech.
+            warmupPrefill()
         }
     }
 

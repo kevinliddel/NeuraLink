@@ -72,15 +72,21 @@ final class LocalModelDownloadManager: @unchecked Sendable {
             case .qwen2b: return 1.1
             case .qwen3b: return 1.93
             case .qwen7b: return 4.68
-            case .llama1b: return 0.8
-            case .japaneseLlama1b: return 0.8
+            // IQ4_XS — see quantizationLabel.
+            case .llama1b: return 0.74
+            case .japaneseLlama1b: return 0.74
             }
         }
 
         var quantizationLabel: String {
             switch self {
-            case .qwen2b, .qwen3b, .qwen7b, .llama1b, .japaneseLlama1b:
+            case .qwen2b, .qwen3b, .qwen7b:
                 return "Q4_K_M"
+            case .llama1b, .japaneseLlama1b:
+                // ARM-NEON tuned quant, ~8% smaller than Q4_K_M with similar
+                // quality — picked specifically to save RAM headroom on
+                // iPhone 11/12/13 (4 GB). See GGUFModelAccess.swift.
+                return "IQ4_XS"
             }
         }
 

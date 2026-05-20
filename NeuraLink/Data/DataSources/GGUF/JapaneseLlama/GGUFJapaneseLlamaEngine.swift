@@ -34,6 +34,10 @@ final class GGUFJapaneseLlamaEngine: NSObject, @unchecked Sendable, LLMEnginePro
     internal let generationLock = NSLock()
     internal var _isGenerating = false
 
+    // See GGUFLlamaEngine.bridgeLock: serialises prefill warmup against
+    // foreground generate so the two never run concurrently on the same ctx.
+    internal let bridgeLock = NSLock()
+
     // MARK: - Init
 
     override private init() { super.init() }
@@ -53,11 +57,24 @@ final class GGUFJapaneseLlamaEngine: NSObject, @unchecked Sendable, LLMEnginePro
 
                 let loaded: LlamaBridge = try await withCheckedThrowingContinuation { cont in
                     DispatchQueue.global(qos: .userInitiated).async {
+                        // 4 GB devices (iPhone 11/12/13): see GGUFLlamaEngine
+                        // for the threads=2 and n_ctx=1024 rationale.
+                        // PLD tuned for Japanese: n=2, nDraft=3. The default
+                        // n=3, nDraft=5 was calibrated on English where
+                        // 3-token n-grams repeat constantly ("I think the",
+                        // user names, command prefixes). Japanese subword
+                        // tokens repeat less often at 3-grams, so the
+                        // default wastes batch-decode cycles on misses.
+                        // The `pld=hits/rounds(%)` field in `[Bench]`
+                        // confirms whether this pays off.
                         if let b = LlamaBridge(
                             modelPath: url.path,
-                            contextLength: 2048,
-                            threads: 4,
-                            gpuLayers: 999
+                            contextLength: 1024,
+                            threads: 2,
+                            gpuLayers: 999,
+                            pldN: 2,
+                            pldNDraft: 3,
+                            label: "Llama-1B-JP"
                         ) {
                             cont.resume(returning: b)
                         } else {

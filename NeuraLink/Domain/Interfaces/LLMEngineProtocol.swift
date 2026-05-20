@@ -63,4 +63,27 @@ protocol LLMEngineProtocol: AnyObject {
     /// is not loaded or has no embedded template — callers should then fall
     /// back to a hand-rolled template.
     func applyChatTemplate(messages: [LLMChatMessage]) -> String?
+
+    /// Warm the KV cache for `messages` without producing output. Used to
+    /// hide prefill latency behind user speech (kicked off on VAD voice
+    /// start; final `generate` then only prefills the user turn delta).
+    /// Engines that don't support warmup default to a no-op.
+    func prefill(messages: [LLMChatMessage]) async
+
+    /// Save the current KV cache state to disk so subsequent app launches
+    /// can resume the prefilled persona/history prefix instead of paying
+    /// the ~6–17 s cold-start cost. Returns true on success.
+    /// Engines that don't support persistence default to a no-op.
+    func saveKVCache(to path: String) async -> Bool
+
+    /// Restore a previously-saved KV cache state from disk. Returns the
+    /// number of tokens restored, or 0 on failure. Safe to call after
+    /// loadModel and before any prefill/generate.
+    func loadKVCache(from path: String) async -> Int
+}
+
+extension LLMEngineProtocol {
+    func prefill(messages: [LLMChatMessage]) async { /* no-op */ }
+    func saveKVCache(to path: String) async -> Bool { false }
+    func loadKVCache(from path: String) async -> Int { 0 }
 }

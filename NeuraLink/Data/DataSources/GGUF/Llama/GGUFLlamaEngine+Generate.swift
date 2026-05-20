@@ -53,6 +53,13 @@ extension GGUFLlamaEngine {
                     return
                 }
 
+                // Block until any in-flight prefill warmup finishes. The
+                // prefill side uses try() and steps aside on contention, so
+                // this lock only ever waits on a recently-kicked warmup —
+                // never another generate.
+                self.bridgeLock.lock()
+                defer { self.bridgeLock.unlock() }
+
                 bridge.generate(
                     prompt: prompt,
                     maxNewTokens: Int32(maxTokens),
@@ -71,6 +78,77 @@ extension GGUFLlamaEngine {
                         continuation.resume()
                     }
                 )
+            }
+        }
+    }
+
+    // MARK: - LLMEngineProtocol — prefill (background warmup)
+
+    func prefill(messages: [LLMChatMessage]) async {
+        guard isLoaded, let bridge else { return }
+        guard let prompt = bridge.applyChatTemplate(
+            messages: messages, addGenerationPrompt: false
+        ) else { return }
+
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            DispatchQueue.global(qos: .utility).async { [weak self] in
+                guard let self else {
+                    continuation.resume()
+                    return
+                }
+                // try() so the warmup steps aside if a generate is already
+                // running (or about to run). Never wait — a stale warmup
+                // would just delay the real reply.
+                guard self.bridgeLock.try() else {
+                    continuation.resume()
+                    return
+                }
+                defer { self.bridgeLock.unlock() }
+                bridge.prefill(prompt: prompt)
+                continuation.resume()
+            }
+        }
+    }
+
+    // MARK: - LLMEngineProtocol — KV cache persistence
+
+    func saveKVCache(to path: String) async -> Bool {
+        guard isLoaded, let bridge else { return false }
+        return await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+            DispatchQueue.global(qos: .utility).async { [weak self] in
+                guard let self else { continuation.resume(returning: false); return }
+                // try() — never wait. If a generate is in progress, the
+                // persist attempt simply skips this turn; we'll retry on
+                // the next warmup completion.
+                guard self.bridgeLock.try() else {
+                    continuation.resume(returning: false); return
+                }
+                defer { self.bridgeLock.unlock() }
+                let bytes = bridge.saveKVState(path: path)
+                if bytes > 0 {
+                    nlLog("[KVCache] Saved \(bridge.kvTokenCount) tokens, \(bytes) bytes to \(URL(fileURLWithPath: path).lastPathComponent)", level: .info)
+                }
+                continuation.resume(returning: bytes > 0)
+            }
+        }
+    }
+
+    func loadKVCache(from path: String) async -> Int {
+        guard isLoaded, let bridge else { return 0 }
+        guard FileManager.default.fileExists(atPath: path) else { return 0 }
+        return await withCheckedContinuation { (continuation: CheckedContinuation<Int, Never>) in
+            DispatchQueue.global(qos: .utility).async { [weak self] in
+                guard let self else { continuation.resume(returning: 0); return }
+                // Use blocking lock() — restore is meant to happen during
+                // model load when nothing else is touching the bridge yet,
+                // but block defensively in case warmup raced us here.
+                self.bridgeLock.lock()
+                defer { self.bridgeLock.unlock() }
+                let restored = bridge.loadKVState(path: path)
+                if restored > 0 {
+                    nlLog("[KVCache] Restored \(restored) tokens from \(URL(fileURLWithPath: path).lastPathComponent)", level: .info)
+                }
+                continuation.resume(returning: restored)
             }
         }
     }
