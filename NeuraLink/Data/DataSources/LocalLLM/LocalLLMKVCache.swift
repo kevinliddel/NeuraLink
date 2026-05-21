@@ -23,23 +23,24 @@ import Foundation
 enum LocalLLMKVCache {
 
     /// Returns the on-disk path for the given config + system prompt, or
-    /// nil if the directory could not be created or the config is not
-    /// supported by the persistence layer (currently only `.llama1b` and
-    /// `.japaneseLlama1b`).
+    /// nil if the directory could not be created. All `LlamaBridge`-backed
+    /// engines (Llama-1B, Llama-1B-JP, Qwen-2B/3B/7B) participate. The
+    /// Speculative engine uses a separate `LlamaBridgeSpec` context with no
+    /// equivalent `_state_seq_*` plumbing yet — falls through to no-op via
+    /// the protocol default in `LLMEngineProtocol`.
     static func path(
         config: LocalModelDownloadManager.ModelConfiguration,
         systemPrompt: String
     ) -> String? {
-        guard config == .llama1b || config == .japaneseLlama1b else {
-            return nil
-        }
         guard let dir = supportDir() else { return nil }
 
         let configKey: String
         switch config {
         case .llama1b:         configKey = "llama1b"
         case .japaneseLlama1b: configKey = "japaneseLlama1b"
-        default:               return nil
+        case .qwen2b:          configKey = "qwen2b"
+        case .qwen3b:          configKey = "qwen3b"
+        case .qwen7b:          configKey = "qwen7b"
         }
         let personaKey = sha256Prefix(systemPrompt, length: 16)
 
