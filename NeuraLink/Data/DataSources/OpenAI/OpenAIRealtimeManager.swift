@@ -207,7 +207,10 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
         //      Bearer auth and the SDP offer body.
         // The master API key is therefore the only thing that touches
         // the auth endpoint; the SDP POST uses the short-lived secret.
-        requestEphemeralKey { [weak self] ephemeralKey, errorMessage in
+        // Resolve the persona once per handshake so the session is born with
+        // the right voice (see `requestEphemeralKey` for the full rationale).
+        let persona = CharacterPersona.forCharacter(named: state.selectedCharacterName)
+        requestEphemeralKey(persona: persona) { [weak self] ephemeralKey, errorMessage in
             guard let self = self else { return }
             if let key = ephemeralKey {
                 self.postSDPOffer(offer, ephemeralKey: key)
@@ -225,7 +228,15 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
     /// `error` holds a human-readable message. Two-arg shape instead of
     /// `Result<String, Error>` avoids needing a wrapper error type for
     /// what is purely string-shaped diagnostics.
+    ///
+    /// `persona.voice` is seeded into the session here because the GA API
+    /// freezes voice once any assistant audio is in flight — sending it in
+    /// a later `session.update` triggers `cannot_update_voice` and drops the
+    /// envelope. `persona.instructions` is also seeded so the model has the
+    /// right system prompt in the small window before our follow-up
+    /// `session.update` arrives with the full RAG-augmented context.
     private func requestEphemeralKey(
+        persona: CharacterPersona,
         completion: @escaping (_ key: String?, _ error: String?) -> Void
     ) {
         let url = URL(
@@ -237,7 +248,11 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
         let body: [String: Any] = [
             "session": [
                 "type": "realtime",
-                "model": "gpt-realtime"
+                "model": "gpt-realtime",
+                "instructions": persona.instructions,
+                "audio": [
+                    "output": ["voice": persona.voice]
+                ]
             ]
         ]
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)

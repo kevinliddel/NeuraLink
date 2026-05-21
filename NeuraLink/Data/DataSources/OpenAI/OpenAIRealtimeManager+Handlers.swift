@@ -369,7 +369,11 @@ extension OpenAIRealtimeManager: RTCDataChannelDelegate {
             // GA session shape. Key differences from the beta body:
             //   - `session.type = "realtime"` is now required (was implicit).
             //   - `modalities` → `output_modalities` (same semantics).
-            //   - `voice` moved under `session.audio.output`.
+            //   - `voice` moved under `session.audio.output` — set ONCE at
+            //     `/client_secrets` mint time (see `requestEphemeralKey`).
+            //     Sending it again here triggers `cannot_update_voice` once
+            //     any assistant audio is in flight, which drops the whole
+            //     envelope on the floor.
             //   - `input_audio_transcription` → `session.audio.input.transcription`.
             //   - `turn_detection` moved under `session.audio.input`.
             // See https://developers.openai.com/api/docs/guides/realtime
@@ -407,10 +411,9 @@ extension OpenAIRealtimeManager: RTCDataChannelDelegate {
                             "noise_reduction": [
                                 "type": "near_field"
                             ]
-                        ],
-                        "output": [
-                            "voice": persona.voice
                         ]
+                        // `audio.output.voice` deliberately omitted — see
+                        // comment above and `requestEphemeralKey`.
                     ]
                 ]
             ]
