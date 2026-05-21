@@ -79,6 +79,8 @@ Not in the original P1–P7 queue. Surfaced from iPhone 11 testing during Phase 
 
 Originally proposed in priority order (expected impact / cost ratio). Each item keeps its original description and gets a **Status** annotation describing what actually shipped and what we measured.
 
+> **Phase 5 deferred batch (P7, P8, P9):** the three items below are deliberately deferred together rather than ordered for execution. P7 (Metal) carries the most risk, P8 (diagnostics) the most workflow leverage, P9 (speculative KV) the narrowest hardware reach. Picking up any one of them is independent of the others. Promoted into the queue 2026-05-21 — see corresponding entries in [local_llm_memory_plan.md §10](local_llm_memory_plan.md) (items 5 and 6) for the cross-plan context.
+
 ### P1 — Persistent KV cache to disk (cold start)
 
 The Tier 1 system+persona prefix is identical across runs. Today the first turn after app launch repays the full ~6–17 s prefill of that prefix every time. `llama_state_seq_save_file` / `llama_state_seq_load_file` can serialise the prefilled KV state to disk; subsequent launches `mmap`‑load it in <100 ms.
@@ -167,7 +169,40 @@ CPU‑only on A13 is the dominant cost. Metal would be ~3× faster for both pref
 - **Risk:** high — touches the framework build, needs an upstream patch, can regress on iOS versions we don't test.
 - **Validation:** all the above benchmark gates, on iPhone 11 specifically. Compare metallib vs CPU‑only.
 
-**Status — deferred.** Not started. After P1–P6, warm `ttft` is in the 1.3–4.3 s band and cold-start is ~2 s with a cache hit — both close to the targets in §1. P7's theoretical 3× decode win is still attractive but its risk profile (upstream patch, framework rebuild, can break the build on iOS versions we don't actively test) is much higher than anything we've shipped so far. Revisit only if decode tok/s becomes the dominant user complaint after a few sessions of real use.
+**Status — Phase 5 deferred.** Not started. After P1–P6, warm `ttft` is in the 1.3–4.3 s band and cold-start is ~2 s with a cache hit — both close to the targets in §1. P7's theoretical 3× decode win is still attractive but its risk profile (upstream patch, framework rebuild, can break the build on iOS versions we don't actively test) is much higher than anything we've shipped so far. Revisit only if decode tok/s becomes the dominant user complaint after a few sessions of real use.
+
+---
+
+### P8 — Diagnostics + log persistence
+
+Promoted from the workflow friction observed across Phases 3 and 4 — every iteration of "run on iPhone 11, paste the `[Bench]` lines back" was bottlenecked by the Xcode console buffer. The same pattern applied to the OpenAI GA migration debugging where `[AI ERROR EVENT]` was the only diagnostic we had.
+
+Persisting the structured log lines this codebase already emits would unblock multi-session work and let us look at lines from yesterday's run without reproducing the conditions.
+
+- **Files:** new `NeuraLink/Core/Logging/PersistentLogSink.swift` (~100 lines), modify `NeuraLink/Core/Logging/NeuraLinkLogger.swift` (the impl behind `nlLog`) to fan out to the sink for tagged levels, add an in-app "Share logs" button under `AISettingsView`.
+- **Storage:** `Application Support/logs/YYYY-MM-DD.log`, rotated daily, capped at ~10 MB total via oldest-first eviction.
+- **Tag extension:** add `ProcessInfo.processInfo.thermalState` to every `[Bench]` line so we can correlate decode tok/s dips with the device throttling (`.nominal` / `.fair` / `.serious` / `.critical`). Cheap — one `ProcessInfo` read per line.
+- **Expected:** future debugging rounds drop from "reproduce and screenshot Xcode" to "share the log file". Particularly valuable for intermittent issues (thermal-correlated slowdowns) that require multiple session captures to characterise.
+- **Risk:** low. File I/O on a background queue, format unchanged. Privacy review needed before any in-app share UI ships — logs include the user's transcripts (`[User Transcript]:`, `[OpenAI] Full response:`).
+- **Validation:** kill the app mid-session, relaunch, verify previous session's `[Bench]` and `[KVCache]` lines are still readable in the new log file. Trigger a known error (set a wrong API key) and confirm `[AI ERROR EVENT]` is preserved.
+
+**Status — Phase 5 deferred.** Not started. Highest workflow leverage of the three deferred items but no end-user-visible feature change — it speeds *us* up, not the product.
+
+---
+
+### P9 — Speculative engine KV cache (extend P1 plumbing)
+
+P1 (Persistent KV cache to disk) shipped for every `LlamaBridge`-backed engine — Llama-1B (EN), Llama-1B-JP, Qwen-2B, Qwen-3B, Qwen-7B. The Speculative engine uses a separate `LlamaBridgeSpec` C++ context and the existing `LLMEngineProtocol` save/load defaults to no-op for it (see [local_llm_iphone11_plan.md §5](local_llm_iphone11_plan.md) entry for context — out-of-scope flag from the P1 round).
+
+The Speculative path activates on iPhone 15 Pro+ when both Qwen-7B and the 1.5B draft model are downloaded. Adding `_state_seq_save_file` / `_state_seq_load_file` calls on the spec bridge would give that hardware tier the same cold-start speedup.
+
+- **Files:** new `llama_bridge_spec_state.cpp` (mirror of the existing `llama_bridge_state.cpp` for `LlamaBridge`); declarations in `llama_bridge.h`; `LlamaBridgeSpec.swift` wrappers; protocol method implementations on `GGUFSpeculativeEngine+Generate.swift`; `LocalLLMKVCache.path(...)` widened to accept the speculative config (cache key needs to include both model identities since target + draft mismatch would corrupt the resumed state).
+- **Cache key:** `<config>_<targetHash>_<draftHash>_<personaHash>.kv` — three hashes vs the current two so a draft-model swap invalidates correctly.
+- **Expected:** matches P1's measured improvement on Qwen-7B (cold-turn ttft ~17 s → ~2 s) but on the 8 GB iPhone tier instead.
+- **Risk:** medium. `LlamaBridgeSpec` is a separate code path with its own KV cache invariants; the save/restore semantics must respect both context lifetimes. Easy to introduce a subtle state-sync bug between target and draft.
+- **Validation:** iPhone 15 Pro with both Qwen models downloaded, force-quit + relaunch test from P1's validation plan, expect `R ≥ 150` on cold turn 1 in the `[Bench]` line.
+
+**Status — Phase 5 deferred.** Not started. Hardware target (iPhone 15 Pro+) isn't in our current test fleet, and on those devices ttft is already much lower than on iPhone 11 even without the cache — the user-perceived gain is small. Implementation pattern is well-trodden though (close mirror of the existing P1 work), so cost to ship is mostly testing time rather than design time.
 
 ---
 
