@@ -35,4 +35,5 @@ DerivedData/
 
 # MD file
 rule.md
+docs/security_audit_plan.md
 

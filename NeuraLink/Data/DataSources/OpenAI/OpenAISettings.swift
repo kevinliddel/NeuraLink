@@ -14,7 +14,11 @@ final class OpenAISettings {
     static let shared = OpenAISettings()
 
     // UserDefaults Keys
-    private let apiKeyPrefix = "com.neuralink.openai.apiKey"
+    /// Legacy UserDefaults key — kept for the one-shot migration that moves
+    /// the value into the Keychain via `SecureStore`. Do not read/write it
+    /// outside `migrateAPIKeyToKeychainIfNeeded()`.
+    private static let legacyAPIKeyUserDefaultsKey = "com.neuralink.openai.apiKey"
+    private static let apiKeyKeychainMigrationFlag = "com.neuralink.migration.apiKeyKeychain.v1"
     private let enabledKey = "com.neuralink.openai.enabled"
     private let localLLMEnabledKey = "com.neuralink.localllm.enabled"
     private let vadEnabledKey = "com.neuralink.openai.vadEnabled"
@@ -35,8 +39,13 @@ final class OpenAISettings {
             UserDefaults.standard.set(false, forKey: localLLMEnabledKey)
             UserDefaults.standard.set(true, forKey: Self.migrationV2Key)
         }
-        
-        self.apiKey = UserDefaults.standard.string(forKey: "com.neuralink.openai.apiKey") ?? ""
+
+        // Security Phase 1: move the API key off `UserDefaults` and into the
+        // Keychain. Must run before reading `self.apiKey` so the Keychain is
+        // populated by the time the property initializes.
+        Self.migrateAPIKeyToKeychainIfNeeded()
+
+        self.apiKey = (try? SecureStore.get(.openAIAPIKey)) ?? ""
         self.isEnabled = UserDefaults.standard.object(forKey: "com.neuralink.openai.enabled") as? Bool ?? false
         self.isLocalLLMEnabled = UserDefaults.standard.object(forKey: "com.neuralink.localllm.enabled") as? Bool ?? false
         self.isVADEnabled = UserDefaults.standard.bool(forKey: "com.neuralink.openai.vadEnabled")
@@ -50,7 +59,56 @@ final class OpenAISettings {
     }
 
     var apiKey: String {
-        didSet { UserDefaults.standard.set(apiKey, forKey: apiKeyPrefix) }
+        didSet { persistAPIKey() }
+    }
+
+    /// Writes the current `apiKey` value to the Keychain via `SecureStore`.
+    /// Empty values delete the Keychain item rather than storing a zero-length
+    /// blob, so a Keychain dump on a "no key configured" device shows nothing.
+    private func persistAPIKey() {
+        do {
+            if apiKey.isEmpty {
+                try SecureStore.delete(.openAIAPIKey)
+            } else {
+                try SecureStore.set(apiKey, for: .openAIAPIKey)
+            }
+        } catch {
+            nlLog(
+                "[OpenAISettings] Failed to persist API key to Keychain: \(error)",
+                level: .error)
+        }
+    }
+
+    /// One-shot migration that copies an existing plaintext API key out of
+    /// `UserDefaults` into the Keychain, then deletes the `UserDefaults` entry.
+    /// Idempotent — runs only on the first launch after the upgrade.
+    ///
+    /// If the Keychain write fails (e.g. transient `errSecInteractionNotAllowed`
+    /// during a background launch before first unlock) we deliberately do
+    /// **not** set the completion flag, so the migration retries on the next
+    /// launch instead of silently dropping the user's key.
+    private static func migrateAPIKeyToKeychainIfNeeded() {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: apiKeyKeychainMigrationFlag) else { return }
+
+        let legacyValue = defaults.string(forKey: legacyAPIKeyUserDefaultsKey) ?? ""
+
+        if !legacyValue.isEmpty {
+            do {
+                try SecureStore.set(legacyValue, for: .openAIAPIKey)
+                nlLog(
+                    "[OpenAISettings] Migrated API key from UserDefaults to Keychain.",
+                    level: .info)
+            } catch {
+                nlLog(
+                    "[OpenAISettings] API key Keychain migration failed, will retry: \(error)",
+                    level: .error)
+                return
+            }
+        }
+
+        defaults.removeObject(forKey: legacyAPIKeyUserDefaultsKey)
+        defaults.set(true, forKey: apiKeyKeychainMigrationFlag)
     }
     
     var isEnabled: Bool {
