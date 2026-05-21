@@ -248,7 +248,34 @@ static size_t find_pld_match(const std::vector<llama_token>& tokens,
     return kNoMatch;
 }
 
-// MARK: - §5 Standard generate loop
+// MARK: - §5 Token emission helpers (UTF-8 safe)
+
+/// Appends `piece_len` bytes from `piece` into `buf` and forwards any
+/// prefix that ends on a complete UTF-8 boundary to `on_token`. Returns
+/// false only if the callback asked to stop. See `utf8_safe_prefix` in
+/// llama_bridge_internal.hpp for the boundary rules.
+static bool emit_utf8_safe(std::string& buf,
+                           const char* piece, int piece_len,
+                           LlamaTokenCallback on_token, void* user_ctx) {
+    if (piece_len > 0) { buf.append(piece, piece_len); }
+    const std::size_t safe = utf8_safe_prefix(buf);
+    if (safe == 0) { return true; }
+    const std::string prefix = buf.substr(0, safe);
+    buf.erase(0, safe);
+    return on_token ? on_token(prefix.c_str(), user_ctx) : true;
+}
+
+/// Forward any trailing bytes left in `buf` after the decode loop exits.
+/// Called once per generate call. Malformed trailing fragments still
+/// reach Swift — better to deliver mojibake than to silently drop output.
+static void flush_utf8_remaining(std::string& buf,
+                                 LlamaTokenCallback on_token, void* user_ctx) {
+    if (buf.empty() || !on_token) { buf.clear(); return; }
+    on_token(buf.c_str(), user_ctx);
+    buf.clear();
+}
+
+// MARK: - §5b Standard generate loop
 
 static void generate_standard(LlamaBridgeHandle* h,
                               std::vector<llama_token>& new_tokens,
@@ -258,6 +285,7 @@ static void generate_standard(LlamaBridgeHandle* h,
                               void* user_ctx) {
     const auto* vocab = llama_model_get_vocab(h->model);
     char piece_buf[512] = {};
+    std::string utf8_buf;
 
     for (int step = 0; step < max_new_tokens; ++step) {
         if (h->cancel_flag.load()) { break; }
@@ -269,30 +297,34 @@ static void generate_standard(LlamaBridgeHandle* h,
 
         int piece_len = token_to_str(h->model, next, piece_buf, sizeof(piece_buf));
         if (piece_len > 0) {
-            piece_buf[piece_len] = '\0';
-            if (on_token && !on_token(piece_buf, user_ctx)) { break; }
+            if (!emit_utf8_safe(utf8_buf, piece_buf, piece_len, on_token, user_ctx)) { break; }
         }
         h->kv_tokens.push_back(next);
 
         llama_batch nb = llama_batch_get_one(&next, 1);
         if (llama_decode(h->ctx, nb) != 0) { break; }
     }
+    flush_utf8_remaining(utf8_buf, on_token, user_ctx);
     (void)on_finish;
 }
 
 // MARK: - §6 Prompt-lookup decoding loop
 
 /// Emits `tok` via the token callback. Returns true to keep going,
-/// false to stop (EOG or callback returned false).
+/// false to stop (EOG or callback returned false). `utf8_buf` is the
+/// per-call byte buffer that `emit_utf8_safe` uses to stitch multi-byte
+/// characters back together before forwarding to Swift.
 static bool pld_emit(LlamaBridgeHandle* h, llama_token tok,
                      LlamaTokenCallback on_token, void* user_ctx,
-                     char* piece_buf, int buf_size) {
+                     char* piece_buf, int buf_size,
+                     std::string& utf8_buf) {
     const auto* vocab = llama_model_get_vocab(h->model);
     if (llama_vocab_is_eog(vocab, tok)) { return false; }
     int piece_len = token_to_str(h->model, tok, piece_buf, buf_size);
     if (piece_len > 0) {
-        piece_buf[piece_len] = '\0';
-        if (on_token && !on_token(piece_buf, user_ctx)) { return false; }
+        if (!emit_utf8_safe(utf8_buf, piece_buf, piece_len, on_token, user_ctx)) {
+            return false;
+        }
     }
     return true;
 }
@@ -304,6 +336,7 @@ static void generate_pld(LlamaBridgeHandle* h,
                          LlamaFinishCallback on_finish,
                          void* user_ctx) {
     char piece_buf[512] = {};
+    std::string utf8_buf;
     int generated = 0;
     auto* memory = llama_get_memory(h->ctx);
 
@@ -315,7 +348,7 @@ static void generate_pld(LlamaBridgeHandle* h,
         //    This is the target's normal next-token choice.
         llama_token first = llama_sampler_sample(h->sampler, h->ctx, -1);
         llama_sampler_accept(h->sampler, first);
-        if (!pld_emit(h, first, on_token, user_ctx, piece_buf, sizeof(piece_buf))) {
+        if (!pld_emit(h, first, on_token, user_ctx, piece_buf, sizeof(piece_buf), utf8_buf)) {
             h->kv_tokens.push_back(first);
             break;
         }
@@ -353,7 +386,7 @@ static void generate_pld(LlamaBridgeHandle* h,
             // Mismatch on the very first draft: emit target's choice and
             // start fresh next round. No drafts batch needed.
             llama_sampler_accept(h->sampler, target_d1);
-            if (!pld_emit(h, target_d1, on_token, user_ctx, piece_buf, sizeof(piece_buf))) {
+            if (!pld_emit(h, target_d1, on_token, user_ctx, piece_buf, sizeof(piece_buf), utf8_buf)) {
                 h->kv_tokens.push_back(target_d1);
                 break;
             }
@@ -391,7 +424,7 @@ static void generate_pld(LlamaBridgeHandle* h,
         // 5. Commit drafts[0] (already accepted via target_d1) and verify
         //    drafts[1..n_draft-1] against the batch logits.
         llama_sampler_accept(h->sampler, drafts[0]);
-        if (!pld_emit(h, drafts[0], on_token, user_ctx, piece_buf, sizeof(piece_buf))) {
+        if (!pld_emit(h, drafts[0], on_token, user_ctx, piece_buf, sizeof(piece_buf), utf8_buf)) {
             h->kv_tokens.push_back(drafts[0]);
             ++generated;
             llama_batch_free(db);
@@ -410,7 +443,7 @@ static void generate_pld(LlamaBridgeHandle* h,
 
             if (t == drafts[i]) {
                 llama_sampler_accept(h->sampler, drafts[i]);
-                if (!pld_emit(h, drafts[i], on_token, user_ctx, piece_buf, sizeof(piece_buf))) {
+                if (!pld_emit(h, drafts[i], on_token, user_ctx, piece_buf, sizeof(piece_buf), utf8_buf)) {
                     h->kv_tokens.push_back(drafts[i]);
                     ++generated;
                     stop_round = true;
@@ -435,7 +468,7 @@ static void generate_pld(LlamaBridgeHandle* h,
                 h->kv_tokens.push_back(t);
                 ++generated;
 
-                if (!pld_emit(h, t, on_token, user_ctx, piece_buf, sizeof(piece_buf))) {
+                if (!pld_emit(h, t, on_token, user_ctx, piece_buf, sizeof(piece_buf), utf8_buf)) {
                     stop_round = true;
                 }
                 break;
@@ -447,6 +480,7 @@ static void generate_pld(LlamaBridgeHandle* h,
         // All drafts accepted (when accepted == n_draft): both KV and
         // kv_tokens are already in sync. Next round continues.
     }
+    flush_utf8_remaining(utf8_buf, on_token, user_ctx);
     (void)on_finish;
 }
 
