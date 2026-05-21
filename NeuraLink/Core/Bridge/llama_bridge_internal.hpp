@@ -16,6 +16,8 @@
 #include <llama/llama.h>
 
 #include <atomic>
+#include <cstddef>
+#include <string>
 #include <vector>
 
 struct LlamaBridgeHandle {
@@ -51,3 +53,49 @@ struct LlamaBridgeHandle {
     int32_t                  last_pld_rounds     = 0;
     int32_t                  last_pld_hits       = 0;
 };
+
+// MARK: - UTF-8 stream assembly
+
+/// Returns the longest prefix of `s` that ends on a complete UTF-8 boundary.
+/// llama.cpp's BPE tokeniser emits raw bytes per token for any code point
+/// outside the model's vocabulary fast path — for CJK/emoji input that means
+/// a single Unicode character can arrive as 2–4 separate `on_token` pieces,
+/// each containing only one byte of a multi-byte UTF-8 sequence. Passing
+/// such a piece through Swift's `String(cString:)` produces `\u{FFFD}`
+/// (the replacement char) because no individual byte is valid UTF-8 on its
+/// own. Callers buffer pieces until this function reports a complete
+/// boundary and only then forward the prefix to the Swift callback.
+///
+/// Lead-byte length classification used here:
+///   0xxxxxxx → 1 byte (ASCII)
+///   110xxxxx → 2 bytes
+///   1110xxxx → 3 bytes
+///   11110xxx → 4 bytes
+///   10xxxxxx → continuation byte (never a lead)
+inline std::size_t utf8_safe_prefix(const std::string& s) {
+    if (s.empty()) { return 0; }
+    std::size_t pos = s.size();
+    while (pos > 0) {
+        const unsigned char b = static_cast<unsigned char>(s[pos - 1]);
+        if ((b & 0xC0) == 0x80) {
+            // Continuation byte — walk back to find the lead.
+            --pos;
+            continue;
+        }
+        // Lead byte (or ASCII) — determine its expected length.
+        int expected = 1;
+        if ((b & 0x80) == 0)      { expected = 1; }
+        else if ((b & 0xE0) == 0xC0) { expected = 2; }
+        else if ((b & 0xF0) == 0xE0) { expected = 3; }
+        else if ((b & 0xF8) == 0xF0) { expected = 4; }
+        // Anything else is malformed — fall through with expected=1
+        // so we emit the lead alone rather than block the stream.
+        const std::size_t lead_pos = pos - 1;
+        const std::size_t available = s.size() - lead_pos;
+        if (available >= static_cast<std::size_t>(expected)) {
+            return s.size();          // last char is complete
+        }
+        return lead_pos;              // last char incomplete; keep tail buffered
+    }
+    return s.size();                  // all continuation bytes (malformed) — flush
+}

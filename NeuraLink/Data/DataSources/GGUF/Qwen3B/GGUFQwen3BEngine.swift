@@ -31,6 +31,10 @@ final class GGUFQwen3BEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
     internal let generationLock = NSLock()
     internal var _isGenerating = false
 
+    // See GGUFLlamaEngine.bridgeLock: serialises prefill warmup against
+    // foreground generate so the two never run concurrently on the same ctx.
+    internal let bridgeLock = NSLock()
+
     // MARK: - Init
 
     override private init() { super.init() }

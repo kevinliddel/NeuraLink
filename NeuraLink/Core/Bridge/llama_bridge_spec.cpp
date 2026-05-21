@@ -28,12 +28,14 @@
 //
 
 #include "llama_bridge.h"
+#include "llama_bridge_internal.hpp"
 #include <llama/llama.h>
 
 #include <atomic>
 #include <vector>
 #include <algorithm>
 #include <cstring>
+#include <string>
 
 // MARK: - Internal struct
 
@@ -281,17 +283,35 @@ void llama_bridge_spec_generate(
 
     // Speculative decode loop.
     char piece_buf[512] = {};
+    std::string utf8_buf;
     int  generated      = 0;
     const int N         = h->n_draft;
 
+    // See llama_bridge.cpp emit_utf8_safe — same byte-stitching rationale.
+    // BPE byte-fallback tokens split multi-byte UTF-8 chars across pieces;
+    // forwarding each fragment to Swift's String(cString:) produces �.
     auto emit_token = [&](llama_token tok) -> bool {
         if (llama_vocab_is_eog(tvocab, tok)) { return false; }
         int piece_len = spec_token_to_str(h->target_model, tok, piece_buf, sizeof(piece_buf));
         if (piece_len > 0) {
-            piece_buf[piece_len] = '\0';
-            if (on_token && !on_token(piece_buf, user_ctx)) { return false; }
+            utf8_buf.append(piece_buf, piece_len);
+            const std::size_t safe = utf8_safe_prefix(utf8_buf);
+            if (safe > 0) {
+                const std::string prefix = utf8_buf.substr(0, safe);
+                utf8_buf.erase(0, safe);
+                if (on_token && !on_token(prefix.c_str(), user_ctx)) { return false; }
+            }
         }
         return true;
+    };
+
+    // Forward any trailing bytes at the end of generation. Without this,
+    // a final partial UTF-8 character would be dropped entirely.
+    auto flush_remaining = [&]() {
+        if (!utf8_buf.empty() && on_token) {
+            on_token(utf8_buf.c_str(), user_ctx);
+            utf8_buf.clear();
+        }
     };
 
     while (generated < max_new_tokens && !h->cancel_flag.load()) {
@@ -419,5 +439,6 @@ void llama_bridge_spec_generate(
     }
 
 end_generate:
+    flush_remaining();
     if (on_finish) { on_finish(user_ctx); }
 }

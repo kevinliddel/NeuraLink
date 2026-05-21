@@ -1,9 +1,13 @@
 # Local LLM — Performance & Long-Context Memory Plan
 
 > **Status:** Phases 0, 1, 1.5, 2A, 2B, 3 all shipped ahead of the 2026-06-05 deadline. Phase 3 validation work expanded into a companion plan, [local_llm_iphone11_plan.md](local_llm_iphone11_plan.md), which is now itself near-complete (only P7 deferred). Some items originally listed as out-of-scope follow-ups (§10) have been picked up as part of that work — see annotations there.
+>
 > **Author:** Dedicatus
+>
 > **Drafted:** 2026-05-18
+>
 > **Last updated:** 2026-05-20
+>
 > **Target delivery:** 2026-06-05 (shipped early)
 
 ---
@@ -245,3 +249,11 @@ Not in this plan but candidates for future work, in priority order:
 4. **iPhone 11 Metal-compile mitigation** — investigate post-build metallib bundling without patching upstream llama.cpp (compile metallib with `xcrun -sdk iphoneos metal` against the vendored `.metal` source, drop into `llama.framework/`, ensure framework's compile-time `GGML_METAL_EMBED_LIBRARY` is OFF in our local fork — that part *is* an upstream patch, so this remains tricky).
 
    > **Status — promoted to P7 of [local_llm_iphone11_plan.md](local_llm_iphone11_plan.md); deferred there.** After P1–P6 of that plan landed, cold and warm `ttft` are close to targets without Metal. Metal would still ~3× decode tok/s but the upstream patch + framework rebuild risk profile is high. Revisit if decode tok/s becomes the user-perceived bottleneck.
+
+5. **Diagnostics + log persistence.** Today the `[Bench]`, `[KVCache]`, `[AI Event Received]`, and `[AI ERROR EVENT]` lines only live in the Xcode console — they vanish the moment the device disconnects. Persisting them to a file in `Application Support/logs/` with an in-app Share/Export button would unblock multi-session tuning work by making logs survive between debugging runs. Worth tagging each `[Bench]` line with `ProcessInfo.processInfo.thermalState` so future readers can correlate decode tok/s dips with thermal throttling on iPhone 11. Cross-cutting infrastructure — not strictly memory or performance, but the natural beneficiary of measurement plumbing every other plan item depends on.
+
+   > **Status — Phase 5 deferred candidate (added 2026-05-21).** Not started. Lowest implementation risk of the three Phase 5 items but lowest user-visible impact too — it's a workflow lever for *us*, not a feature for end users. The `[AI ERROR EVENT]` handler from the OpenAI GA migration ([docs/openai_realtime_ga_migration.md](openai_realtime_ga_migration.md) §6) paid for itself within one round-trip; persisting that output would make every future incident debug equally fast.
+
+6. **Speculative engine KV cache.** Item 1 ("Persistent KV cache to disk") shipped for all `LlamaBridge`-backed engines (Llama-1B, JP, Qwen-2B/3B/7B) via `llama_state_seq_save_file` / `_load_file`. The Speculative engine (used when both Qwen-7B and Qwen-2.5-1.5B are downloaded on iPhone 15 Pro+) runs on a separate `LlamaBridgeSpec` C++ context with its own state plumbing not yet wired through. Adding the same save/load API to `LlamaBridgeSpec` would give that hardware tier the cold-start speedup.
+
+   > **Status — Phase 5 deferred candidate (added 2026-05-21).** Not started. Hardware target is iPhone 15 Pro+ — not currently in our test fleet. The bridge-level work mirrors the existing P1 implementation closely; cost is mostly in cache-key derivation (two model hashes instead of one) and an extra protocol hop. Revisit when iPhone 15 Pro+ becomes a test target or when a user actually exercises the speculative path enough that cold-start matters.

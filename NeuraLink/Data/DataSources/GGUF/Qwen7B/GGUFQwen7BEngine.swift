@@ -31,6 +31,10 @@ final class GGUFQwen7BEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
     internal let generationLock = NSLock()
     internal var _isGenerating = false
 
+    // See GGUFLlamaEngine.bridgeLock — serialises prefill/save/load with
+    // foreground generate on the single llama.cpp context.
+    internal let bridgeLock = NSLock()
+
     // MARK: - Init
 
     override private init() { super.init() }

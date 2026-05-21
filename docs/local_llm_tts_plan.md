@@ -1,9 +1,13 @@
 # Local LLM — Voice & TTS Plan (addendum)
 
 > **Status:** Proposed. Awaiting approval before implementation.
+>
 > **Author:** Dedicatus
+>
 > **Drafted:** 2026-05-19
+>
 > **Target delivery:** 2026-06-26
+>
 > **Sequenced after** [`docs/local_llm_memory_plan.md`](local_llm_memory_plan.md) (memory hierarchy ships 2026-06-05).
 
 ---

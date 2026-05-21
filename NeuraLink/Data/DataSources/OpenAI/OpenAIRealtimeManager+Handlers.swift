@@ -19,7 +19,12 @@ extension OpenAIRealtimeManager {
         Task { @MainActor in
             switch type {
 
-            case "response.audio_transcript.delta":
+            // GA event name. Beta variant was `response.audio_transcript.delta`
+            // — see https://developers.openai.com/api/docs/guides/realtime
+            // §"Beta to GA migration". If you ever see no transcript on a
+            // working audio connection, OpenAI rotated the name again and
+            // this case needs another rename.
+            case "response.output_audio_transcript.delta":
                 if let delta = json["delta"] as? String {
                     nlLog("[AI Text Delta]: \(delta)", level: .info)
                     state.aiTranscript += delta
@@ -53,7 +58,8 @@ extension OpenAIRealtimeManager {
 
             // Fired when all transcript text for this response has been received.
             // In real-time streaming this timestamp closely tracks actual audio completion.
-            case "response.audio_transcript.done":
+            // GA event name — see the `.delta` case above for context.
+            case "response.output_audio_transcript.done":
                 transcriptDoneTime = Date()
                 nlLog("[AI Tools]: transcript done at \(Date())", level: .info)
 
@@ -119,6 +125,28 @@ extension OpenAIRealtimeManager {
                     // Wait for this audio to finish, then fire the deferred app-open.
                     schedulePendingUIAction()
                 }
+
+            // Surface server-side errors verbatim. Without this, a rejected
+            // session.update (wrong field name, invalid value, etc.) was
+            // failing silently — the model would then run with vanilla
+            // defaults, ignoring our persona/language/context instructions.
+            // Symptom report that led to this: "model used to speak Japanese
+            // per the persona, now speaks English" + "user context and
+            // date/time aren't applied". Both fit a dropped session.update.
+            case "error":
+                let preview = (try? JSONSerialization.data(
+                    withJSONObject: json, options: [.prettyPrinted]))
+                    .flatMap { String(data: $0, encoding: .utf8) }?.prefix(800) ?? ""
+                nlLog("[AI ERROR EVENT]: \(preview)", level: .warning)
+
+            // Server ack that the session.update we sent was accepted. If we
+            // sent one but never see this, the body had a schema problem.
+            case "session.updated", "session.created":
+                let sess = (json["session"] as? [String: Any]) ?? [:]
+                let instr = (sess["instructions"] as? String) ?? "(none)"
+                let voice = ((sess["audio"] as? [String: Any])?["output"] as? [String: Any])?["voice"] as? String ?? "(default)"
+                let instrPreview = String(instr.prefix(120)).replacingOccurrences(of: "\n", with: " ")
++               nlLog("[AI \(type)]: voice=\(voice) instructions_preview=\"\(instrPreview)\"", level: .info)
 
             default:
                 break
@@ -338,19 +366,51 @@ extension OpenAIRealtimeManager: RTCDataChannelDelegate {
             let companion = CompanionStateManager.shared.promptContext(characterName: state.selectedCharacterName)
             let finalInstructions = persona.instructions + "\n" + userContext + memoryContext + kgFacts + companion
             
+            // GA session shape. Key differences from the beta body:
+            //   - `session.type = "realtime"` is now required (was implicit).
+            //   - `modalities` → `output_modalities` (same semantics).
+            //   - `voice` moved under `session.audio.output`.
+            //   - `input_audio_transcription` → `session.audio.input.transcription`.
+            //   - `turn_detection` moved under `session.audio.input`.
+            // See https://developers.openai.com/api/docs/guides/realtime
+            // §"Beta to GA migration" — the full migration enumerated there.
             let update: [String: Any] = [
                 "type": "session.update",
                 "session": [
-                    "modalities": ["text", "audio"],
-                    "voice": persona.voice,
+                    "type": "realtime",
+                    // GA only accepts ["text"] OR ["audio"] — not both. The
+                    // beta `modalities: ["text", "audio"]` shape returns
+                    // `invalid_value` at this key. Audio is what we want;
+                    // the transcript still streams via
+                    // `response.output_audio_transcript.delta` regardless
+                    // (see §4 of docs/openai_realtime_ga_migration.md).
+                    "output_modalities": ["audio"],
                     "instructions": finalInstructions,
                     "tools": AppFunctionTool.all,
                     "tool_choice": "auto",
-                    "input_audio_transcription": [
-                        "model": "whisper-1"
-                    ],
-                    "turn_detection": [
-                        "type": "server_vad"
+                    "audio": [
+                        "input": [
+                            "transcription": [
+                                "model": "whisper-1"
+                            ],
+                            "turn_detection": [
+                                "type": "server_vad"
+                            ],
+                            // Server-side noise reduction on the user's mic
+                            // input. `near_field` is calibrated for
+                            // close-talk mics (phone held to mouth /
+                            // earbuds); `far_field` is for room-distance
+                            // mics. iPhone in conversational use is
+                            // close-talk. Independent of the local LLM
+                            // path's VPIO — applies only to audio that
+                            // OpenAI receives over WebRTC.
+                            "noise_reduction": [
+                                "type": "near_field"
+                            ]
+                        ],
+                        "output": [
+                            "voice": persona.voice
+                        ]
                     ]
                 ]
             ]
