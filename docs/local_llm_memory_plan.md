@@ -1,9 +1,13 @@
 # Local LLM — Performance & Long-Context Memory Plan
 
 > **Status:** Phases 0, 1, 1.5, 2A, 2B, 3 all shipped ahead of the 2026-06-05 deadline. Phase 3 validation work expanded into a companion plan, [local_llm_iphone11_plan.md](local_llm_iphone11_plan.md), which is now itself near-complete (only P7 deferred). Some items originally listed as out-of-scope follow-ups (§10) have been picked up as part of that work — see annotations there.
+>
 > **Author:** Dedicatus
+>
 > **Drafted:** 2026-05-18
+>
 > **Last updated:** 2026-05-20
+>
 > **Target delivery:** 2026-06-05 (shipped early)
 
 ---

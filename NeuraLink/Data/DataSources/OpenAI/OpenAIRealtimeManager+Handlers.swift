@@ -19,7 +19,12 @@ extension OpenAIRealtimeManager {
         Task { @MainActor in
             switch type {
 
-            case "response.audio_transcript.delta":
+            // GA event name. Beta variant was `response.audio_transcript.delta`
+            // — see https://developers.openai.com/api/docs/guides/realtime
+            // §"Beta to GA migration". If you ever see no transcript on a
+            // working audio connection, OpenAI rotated the name again and
+            // this case needs another rename.
+            case "response.output_audio_transcript.delta":
                 if let delta = json["delta"] as? String {
                     nlLog("[AI Text Delta]: \(delta)", level: .info)
                     state.aiTranscript += delta
@@ -53,7 +58,8 @@ extension OpenAIRealtimeManager {
 
             // Fired when all transcript text for this response has been received.
             // In real-time streaming this timestamp closely tracks actual audio completion.
-            case "response.audio_transcript.done":
+            // GA event name — see the `.delta` case above for context.
+            case "response.output_audio_transcript.done":
                 transcriptDoneTime = Date()
                 nlLog("[AI Tools]: transcript done at \(Date())", level: .info)
 
@@ -338,19 +344,45 @@ extension OpenAIRealtimeManager: RTCDataChannelDelegate {
             let companion = CompanionStateManager.shared.promptContext(characterName: state.selectedCharacterName)
             let finalInstructions = persona.instructions + "\n" + userContext + memoryContext + kgFacts + companion
             
+            // GA session shape. Key differences from the beta body:
+            //   - `session.type = "realtime"` is now required (was implicit).
+            //   - `modalities` → `output_modalities` (same semantics).
+            //   - `voice` moved under `session.audio.output`.
+            //   - `input_audio_transcription` → `session.audio.input.transcription`.
+            //   - `turn_detection` moved under `session.audio.input`.
+            // See https://developers.openai.com/api/docs/guides/realtime
+            // §"Beta to GA migration" — the full migration enumerated there.
             let update: [String: Any] = [
                 "type": "session.update",
                 "session": [
-                    "modalities": ["text", "audio"],
-                    "voice": persona.voice,
+                    "type": "realtime",
+                    "output_modalities": ["audio", "text"],
                     "instructions": finalInstructions,
                     "tools": AppFunctionTool.all,
                     "tool_choice": "auto",
-                    "input_audio_transcription": [
-                        "model": "whisper-1"
-                    ],
-                    "turn_detection": [
-                        "type": "server_vad"
+                    "audio": [
+                        "input": [
+                            "transcription": [
+                                "model": "whisper-1"
+                            ],
+                            "turn_detection": [
+                                "type": "server_vad"
+                            ],
+                            // Server-side noise reduction on the user's mic
+                            // input. `near_field` is calibrated for
+                            // close-talk mics (phone held to mouth /
+                            // earbuds); `far_field` is for room-distance
+                            // mics. iPhone in conversational use is
+                            // close-talk. Independent of the local LLM
+                            // path's VPIO — applies only to audio that
+                            // OpenAI receives over WebRTC.
+                            "noise_reduction": [
+                                "type": "near_field"
+                            ]
+                        ],
+                        "output": [
+                            "voice": persona.voice
+                        ]
                     ]
                 ]
             ]

@@ -1,9 +1,13 @@
 # Local LLM — iPhone 11 Performance Plan
 
 > **Status:** P1–P6 shipped; P7 deferred. Companion to [local_llm_memory_plan.md](local_llm_memory_plan.md) Phase 3 validation — this file *is* that validation.
+>
 > **Author:** Dedicatus
+>
 > **Drafted:** 2026-05-20
+>
 > **Last updated:** 2026-05-20
+>
 > **Scope:** Llama-3.2-1B (English) and Llama-3.2-1B-JP on iPhone 11 (A13, 4 GB RAM, CPU-only path).
 
 ---
