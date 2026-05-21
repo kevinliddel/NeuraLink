@@ -145,7 +145,8 @@ extension OpenAIRealtimeManager {
                 let sess = (json["session"] as? [String: Any]) ?? [:]
                 let instr = (sess["instructions"] as? String) ?? "(none)"
                 let voice = ((sess["audio"] as? [String: Any])?["output"] as? [String: Any])?["voice"] as? String ?? "(default)"
-                nlLog("[AI \(type)]: voice=\(voice) instructions=\"\(instr)…\"", level: .info)
+                let instrPreview = String(instr.prefix(120)).replacingOccurrences(of: "\n", with: " ")
++               nlLog("[AI \(type)]: voice=\(voice) instructions_preview=\"\(instrPreview)\"", level: .info)
 
             default:
                 break
