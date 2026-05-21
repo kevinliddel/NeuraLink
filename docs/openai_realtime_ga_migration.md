@@ -24,7 +24,7 @@ This doc records what was changed so a future reader can:
 | Required header | `OpenAI-Beta: realtime=v1` (never set in this codebase) | _omitted_ | n/a |
 | Ephemeral credentials | _none — master key sent directly_ | `POST /v1/realtime/client_secrets` | [OpenAIRealtimeManager.swift](../NeuraLink/Data/DataSources/OpenAI/OpenAIRealtimeManager.swift) `requestEphemeralKey` |
 | WebRTC SDP endpoint | `POST /v1/realtime?model=...` with master key + SDP | `POST /v1/realtime/calls` with ephemeral key + SDP | [OpenAIRealtimeManager.swift](../NeuraLink/Data/DataSources/OpenAI/OpenAIRealtimeManager.swift) `postSDPOffer` |
-| `session.update` body | flat: `modalities`, `voice`, `input_audio_transcription`, `turn_detection` | nested under `session.audio.{input,output}`; new required `session.type = "realtime"`; `noise_reduction: { type: "near_field" }` added | [+Handlers.swift](../NeuraLink/Data/DataSources/OpenAI/OpenAIRealtimeManager+Handlers.swift) `sendInitialSessionUpdate` (search by the `"type": "session.update"` literal) |
+| `session.update` body | flat: `modalities: ["text", "audio"]`, `voice`, `input_audio_transcription`, `turn_detection` | nested under `session.audio.{input,output}`; `session.type = "realtime"` required; `output_modalities` accepts only `["text"]` *or* `["audio"]`; `noise_reduction: { type: "near_field" }` added | [+Handlers.swift](../NeuraLink/Data/DataSources/OpenAI/OpenAIRealtimeManager+Handlers.swift) `sendInitialSessionUpdate` |
 | Transcript delta event | `response.audio_transcript.delta` | `response.output_audio_transcript.delta` | [+Handlers.swift](../NeuraLink/Data/DataSources/OpenAI/OpenAIRealtimeManager+Handlers.swift) `handleIncomingJSON` |
 | Transcript done event | `response.audio_transcript.done` | `response.output_audio_transcript.done` | same |
 
@@ -111,7 +111,7 @@ The body is sent over the WebRTC data channel right after the connection establi
   "type": "session.update",
   "session": {
     "type": "realtime",
-    "output_modalities": ["audio", "text"],
+    "output_modalities": ["audio"],
     "instructions": "...",
     "tools": [...],
     "tool_choice": "auto",
@@ -129,7 +129,7 @@ The body is sent over the WebRTC data channel right after the connection establi
 }
 ```
 
-The voice configuration now lives under `session.audio.output`; input-side configuration (`transcription`, `turn_detection`, `noise_reduction`, plus any future `format` knob) lives under `session.audio.input`. `modalities` was renamed `output_modalities` with otherwise identical semantics.
+The voice configuration now lives under `session.audio.output`; input-side configuration (`transcription`, `turn_detection`, `noise_reduction`, plus any future `format` knob) lives under `session.audio.input`. `modalities` was renamed `output_modalities` **but the value semantics also changed** — GA accepts only `["text"]` *or* `["audio"]`, not both. The beta shape `["text", "audio"]` is rejected with `invalid_value`. We use `["audio"]`; the transcript still streams over `response.output_audio_transcript.delta` events independently of this setting, so we don't lose the text view.
 
 **`noise_reduction`** values are `"near_field"` (close-talk mics — phone held to mouth, earbuds) or `"far_field"` (room-distance mics — laptop, smart speaker), or omit to disable. We use `near_field` because iPhone conversational use is close-talk. This is server-side and orthogonal to the local LLM path's hardware AEC (VPIO) — `noise_reduction` cleans only the audio that OpenAI receives over WebRTC.
 
@@ -209,6 +209,10 @@ Items the OpenAI docs mention. Updated 2026-05-21 — the `noise_reduction` entr
 ### Shipped after first publication of this doc
 
 - **`session.audio.input.noise_reduction`** — added with value `{"type": "near_field"}`. *(The first revision of §8 said this was "not directly applicable to the cloud path because that path doesn't go through VPIO" — that was wrong. `noise_reduction` is a server-side setting that cleans the user's WebRTC audio before OpenAI processes it, and is therefore exactly applicable to the cloud path. VPIO is the local LLM's hardware AEC and runs in a different process before any audio leaves the device — orthogonal concern.)*
+
+- **`output_modalities` value corrected to `["audio"]`.** First revision sent `["audio", "text"]` (matching the beta `modalities` array's two-value form). GA rejects this with `invalid_value` at `session.output_modalities`, message: *"Invalid modalities: ['audio', 'text']. Supported combinations are: ['text'] and ['audio']."* The error event was silently dropped before we added the `case "error":` handler in [+Handlers.swift](../NeuraLink/Data/DataSources/OpenAI/OpenAIRealtimeManager+Handlers.swift), which caused the entire session.update to be ignored and the model fell back to defaults — symptoms were "model speaks English instead of Japanese" and "user context isn't applied" because none of our persona/context instructions ever landed. Discovered on first device test after the diagnostic was added; one-line fix. Transcript events fire the same way under `["audio"]` so we don't lose anything.
+
+- **`error` event handler + `session.created`/`session.updated` echo.** Added as diagnostics (§6) but became load-bearing once they surfaced the `output_modalities` issue above. Worth keeping permanently — future OpenAI schema changes that reject our session.update will now fail loudly with the exact `param` and `message` from the server.
 
 ### Still pending — actionable when triggered
 

@@ -126,6 +126,27 @@ extension OpenAIRealtimeManager {
                     schedulePendingUIAction()
                 }
 
+            // Surface server-side errors verbatim. Without this, a rejected
+            // session.update (wrong field name, invalid value, etc.) was
+            // failing silently — the model would then run with vanilla
+            // defaults, ignoring our persona/language/context instructions.
+            // Symptom report that led to this: "model used to speak Japanese
+            // per the persona, now speaks English" + "user context and
+            // date/time aren't applied". Both fit a dropped session.update.
+            case "error":
+                let preview = (try? JSONSerialization.data(
+                    withJSONObject: json, options: [.prettyPrinted]))
+                    .flatMap { String(data: $0, encoding: .utf8) }?.prefix(800) ?? ""
+                nlLog("[AI ERROR EVENT]: \(preview)", level: .warning)
+
+            // Server ack that the session.update we sent was accepted. If we
+            // sent one but never see this, the body had a schema problem.
+            case "session.updated", "session.created":
+                let sess = (json["session"] as? [String: Any]) ?? [:]
+                let instr = (sess["instructions"] as? String) ?? "(none)"
+                let voice = ((sess["audio"] as? [String: Any])?["output"] as? [String: Any])?["voice"] as? String ?? "(default)"
+                nlLog("[AI \(type)]: voice=\(voice) instructions=\"\(instr)…\"", level: .info)
+
             default:
                 break
             }
@@ -356,7 +377,13 @@ extension OpenAIRealtimeManager: RTCDataChannelDelegate {
                 "type": "session.update",
                 "session": [
                     "type": "realtime",
-                    "output_modalities": ["audio", "text"],
+                    // GA only accepts ["text"] OR ["audio"] — not both. The
+                    // beta `modalities: ["text", "audio"]` shape returns
+                    // `invalid_value` at this key. Audio is what we want;
+                    // the transcript still streams via
+                    // `response.output_audio_transcript.delta` regardless
+                    // (see §4 of docs/openai_realtime_ga_migration.md).
+                    "output_modalities": ["audio"],
                     "instructions": finalInstructions,
                     "tools": AppFunctionTool.all,
                     "tool_choice": "auto",
