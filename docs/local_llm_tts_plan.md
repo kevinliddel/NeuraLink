@@ -151,7 +151,7 @@ gantt
 
 ## 5. File-level map
 
-All new files target ≤300 lines (well under the 500-line ceiling in `rule.md`). Each engine implementation is one file; engine internals (e.g. F5-TTS's `DiT`, `Vocos`) sit in a subfolder.
+All new files target ≤300 lines. Each engine implementation is one file; engine internals (e.g. F5-TTS's `DiT`, `Vocos`) sit in a subfolder.
 
 ### New files
 
@@ -208,9 +208,9 @@ Both branches were created against an older layout (`NeuraLink/AI/TTS/`, `NeuraL
 
 ---
 
-## 6. Rules compliance (`rule.md`)
+## 6. Rules compliance
 
-Every applicable rule from `rule.md`, mapped to this plan:
+Every applicable rule mapped to this plan:
 
 | # | Rule | Plan compliance |
 |---|---|---|
@@ -225,7 +225,6 @@ Every applicable rule from `rule.md`, mapped to this plan:
 | 11 | All tests pass | New unit tests for `TTSEngineSelector` (selection logic), `PersonaVoiceStore` (round-trip persistence), `KokoroVoicePreset` (persona mapping). F5-TTS ODE solver gets correctness tests against a small reference output. Existing tests continue to pass. |
 | 12 | Build succeeds + swiftlint | `xcodebuild -scheme NeuraLink -destination "generic/platform=iOS"` runs at the end of every phase. |
 
-The "Important note" at the end of `rule.md` is acknowledged: every fix, feature, and refactor in this plan respects all 12 rules above.
 
 ---
 

@@ -33,7 +33,12 @@ DerivedData/
 # Build logs
 *.log
 
-# MD file
-rule.md
+# AI Agent files
+RULES.md
+SKILL.md
+agents/
+.cursorrules
+.clauderules
+.github/copilot-instructions.md
 docs/security_audit_plan.md
 

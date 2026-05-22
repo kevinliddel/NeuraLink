@@ -176,7 +176,7 @@ Each new `.cpp` includes only `llama_bridge.h` + `<llama/llama.h>`. No header-pr
 
 ## 7. Rules compliance checklist
 
-Map of this plan against `rule.md`:
+Map of this plan:
 
 | Rule | How this plan complies |
 |---|---|
