@@ -8,7 +8,7 @@
 import Foundation
 import Observation
 
-/// Manages persistent storage of character personas using UserDefaults.
+/// Manages persistent storage of character personas using a protected JSON file.
 @Observable
 final class PersonaStore {
     static let shared = PersonaStore()
@@ -18,6 +18,16 @@ final class PersonaStore {
     private let userDefaults = UserDefaults.standard
     private let cacheKey = "com.neuralink.personas.v1"
 
+    private var fileURL: URL? {
+        do {
+            let dir = try ProtectedStorage.privateApplicationSupportURL()
+            return dir.appendingPathComponent("personas.json")
+        } catch {
+            nlLog("[PersonaStore] Failed to resolve secure private storage directory: \(error)", level: .error)
+            return nil
+        }
+    }
+
     private init() {}
 
     /// Saves a persona for a given model ID (usually the filename).
@@ -25,10 +35,17 @@ final class PersonaStore {
         var allPersonas = getAllPersonas()
         allPersonas[modelID.lowercased()] = persona
         
+        guard let url = fileURL else { return }
+        
         if let encoded = try? JSONEncoder().encode(allPersonas) {
-            userDefaults.set(encoded, forKey: cacheKey)
-            lastUpdated = Date()
-            nlLog("[PersonaStore] Saved persona for \(modelID)", level: .info)
+            do {
+                try encoded.write(to: url, options: .atomic)
+                try ProtectedStorage.protect(url)
+                lastUpdated = Date()
+                nlLog("[PersonaStore] Saved persona for \(modelID) to secure storage", level: .info)
+            } catch {
+                nlLog("[PersonaStore] Failed to write secure persona file: \(error)", level: .error)
+            }
         }
     }
 
@@ -51,16 +68,46 @@ final class PersonaStore {
         var allPersonas = getAllPersonas()
         allPersonas.removeValue(forKey: modelID.lowercased())
         
+        guard let url = fileURL else { return }
+        
         if let encoded = try? JSONEncoder().encode(allPersonas) {
-            userDefaults.set(encoded, forKey: cacheKey)
-            lastUpdated = Date()
-            nlLog("[PersonaStore] Reset persona for \(modelID)", level: .info)
+            do {
+                try encoded.write(to: url, options: .atomic)
+                try ProtectedStorage.protect(url)
+                lastUpdated = Date()
+                nlLog("[PersonaStore] Reset persona for \(modelID) in secure storage", level: .info)
+            } catch {
+                nlLog("[PersonaStore] Failed to write secure persona file during reset: \(error)", level: .error)
+            }
         }
     }
 
     private func getAllPersonas() -> [String: CharacterPersona] {
-        guard let data = userDefaults.data(forKey: cacheKey),
+        guard let url = fileURL else { return [:] }
+        let fileManager = FileManager.default
+        
+        if !fileManager.fileExists(atPath: url.path) {
+            // Perform one-shot migration if legacy UserDefaults data is found
+            if let legacyData = userDefaults.data(forKey: cacheKey) {
+                nlLog("[PersonaStore] Migrating legacy personas from UserDefaults to secure file storage...", level: .info)
+                do {
+                    try legacyData.write(to: url, options: .atomic)
+                    try ProtectedStorage.protect(url)
+                    userDefaults.removeObject(forKey: cacheKey)
+                    nlLog("[PersonaStore] Migration successful. Erased legacy UserDefaults key.", level: .info)
+                    if let decoded = try? JSONDecoder().decode([String: CharacterPersona].self, from: legacyData) {
+                        return decoded
+                    }
+                } catch {
+                    nlLog("[PersonaStore] Migration failed to write secure file: \(error)", level: .error)
+                }
+            }
+            return [:]
+        }
+        
+        guard let data = try? Data(contentsOf: url),
               let decoded = try? JSONDecoder().decode([String: CharacterPersona].self, from: data) else {
+            nlLog("[PersonaStore] Failed to read or decode personas from \(url.path)", level: .error)
             return [:]
         }
         return decoded
