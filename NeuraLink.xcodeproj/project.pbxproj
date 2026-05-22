@@ -17,6 +17,7 @@
 		041885CD2F99F90100609CCE /* argmax-cli in Frameworks */ = {isa = PBXBuildFile; productRef = 041885CC2F99F90100609CCE /* argmax-cli */; };
 		041E139A2F913E1500D2D110 /* Starscream in Frameworks */ = {isa = PBXBuildFile; productRef = 041E13992F913E1500D2D110 /* Starscream */; };
 		04332ACD2F9913B00035B9D0 /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = 04332ACC2F9913B00035B9D0 /* WebRTC */; };
+		04C895512FC041F90015EDC0 /* SQLCipher in Frameworks */ = {isa = PBXBuildFile; productRef = 04C895502FC041F90015EDC0 /* SQLCipher */; };
 		04F3BD6F2F9630CD00D2DDF2 /* RealTimeCutVADLibrary in Frameworks */ = {isa = PBXBuildFile; productRef = 04F3BD6E2F9630CD00D2DDF2 /* RealTimeCutVADLibrary */; };
 		AFECF4B6451C234E9720E970 /* llama.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = AC9FBDA126D2084ED6E64CC8 /* llama.xcframework */; };
 		B28C440838DF8F0459096F14 /* llama.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AC9FBDA126D2084ED6E64CC8 /* llama.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -84,6 +85,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				041885AF2F99F0B200609CCE /* Transformers in Frameworks */,
+				04C895512FC041F90015EDC0 /* SQLCipher in Frameworks */,
 				04F3BD6F2F9630CD00D2DDF2 /* RealTimeCutVADLibrary in Frameworks */,
 				041885CB2F99F90100609CCE /* WhisperKit in Frameworks */,
 				041885C52F99F90100609CCE /* ArgmaxOSS in Frameworks */,
@@ -176,6 +178,7 @@
 				041885C82F99F90100609CCE /* TTSKit */,
 				041885CA2F99F90100609CCE /* WhisperKit */,
 				041885CC2F99F90100609CCE /* argmax-cli */,
+				04C895502FC041F90015EDC0 /* SQLCipher */,
 			);
 			productName = NeuraLink;
 			productReference = 041E11DE2F8E782300D2D110 /* NeuraLink.app */;
@@ -261,6 +264,7 @@
 				04332ACB2F9913B00035B9D0 /* XCRemoteSwiftPackageReference "WebRTC" */,
 				041885A92F99F0B200609CCE /* XCRemoteSwiftPackageReference "swift-transformers" */,
 				041885C32F99F90100609CCE /* XCRemoteSwiftPackageReference "argmax-oss-swift" */,
+				04C8954F2FC041F90015EDC0 /* XCRemoteSwiftPackageReference "SQLCipher.swift" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 041E11DF2F8E782300D2D110 /* Products */;
@@ -382,6 +386,7 @@
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"DEBUG=1",
 					"$(inherited)",
+					"SQLITE_HAS_CODEC=1",
 				);
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
 				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
@@ -441,6 +446,10 @@
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"SQLITE_HAS_CODEC=1",
+				);
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
 				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
@@ -685,6 +694,14 @@
 				minimumVersion = 147.0.0;
 			};
 		};
+		04C8954F2FC041F90015EDC0 /* XCRemoteSwiftPackageReference "SQLCipher.swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sqlcipher/SQLCipher.swift.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 4.16.0;
+			};
+		};
 		04F3BD6D2F9630CD00D2DDF2 /* XCRemoteSwiftPackageReference "RealTimeCutVADLibrary" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/helloooideeeeea/RealTimeCutVADLibrary";
@@ -745,6 +762,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 04332ACB2F9913B00035B9D0 /* XCRemoteSwiftPackageReference "WebRTC" */;
 			productName = WebRTC;
+		};
+		04C895502FC041F90015EDC0 /* SQLCipher */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 04C8954F2FC041F90015EDC0 /* XCRemoteSwiftPackageReference "SQLCipher.swift" */;
+			productName = SQLCipher;
 		};
 		04F3BD6E2F9630CD00D2DDF2 /* RealTimeCutVADLibrary */ = {
 			isa = XCSwiftPackageProductDependency;

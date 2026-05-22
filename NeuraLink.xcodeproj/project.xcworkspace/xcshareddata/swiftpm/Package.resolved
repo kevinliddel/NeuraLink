@@ -1,5 +1,5 @@
 {
-  "originHash" : "a0f785d904c175882dde269e75d80befe32a7720dad7e525079bd79c28a526d7",
+  "originHash" : "b03af0bfbeb6d554cf64504343197fe5d6da38b4b957e2b07f45c9d0b1ff00e1",
   "pins" : [
     {
       "identity" : "argmax-oss-swift",
@@ -26,6 +26,15 @@
       "state" : {
         "revision" : "b059608836a055dc0ce74ca2d0eeb19fc54cb7d4",
         "version" : "1.0.14"
+      }
+    },
+    {
+      "identity" : "sqlcipher.swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/sqlcipher/SQLCipher.swift.git",
+      "state" : {
+        "revision" : "07bf6bc2191a063d6f1e7c3b5f276a3fadfe36b7",
+        "version" : "4.16.0"
       }
     },
     {

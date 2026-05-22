@@ -8,7 +8,7 @@
 //
 
 import Foundation
-import SQLite3
+import SQLCipher
 
 struct MemoryItem {
     let id: Int64
@@ -44,11 +44,129 @@ final class MemoryStore {
     let lock = NSLock()
     private let dbPath: String
 
+    /// Filename of the SQLite database; shared by the relocation migration
+    /// and the live path resolution so the two stay in sync.
+    private static let dbFileName = "neuralink_memory.sqlite"
+
+    /// UserDefaults flag set once the legacy `Documents/` DB family has
+    /// been moved into the protected directory. See `relocateLegacyDBIfNeeded`.
+    private static let dbRelocationMigrationFlag = "com.neuralink.migration.dbRelocate.v1"
+
     private init() {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        self.dbPath = docs.appendingPathComponent("neuralink_memory.sqlite").path
+        let path = Self.resolveDBPath()
+        self.dbPath = path
+
+        // Phase 2b (opt-in): if the user has flipped on SQLCipher and we
+        // haven't converted the on-disk DB yet, perform the one-shot
+        // plaintext-to-encrypted conversion now. See
+        // `MemoryStore+SQLCipher.swift` for the conversion logic and the
+        // two-flag (intent vs realised) state machine.
+        if Self.isSQLCipherEnabled && !Self.isSQLCipherActive {
+            Self.convertPlaintextToSQLCipher(at: path)
+        }
+
         setupDatabase()
         migrateIfNeeded()
+        Self.protectDBFamily(at: path)
+    }
+
+    /// Resolves the SQLite path, running the one-shot relocation from
+    /// `Documents/` to `Application Support/private/` if it hasn't fired
+    /// yet. Falls back to the legacy `Documents/` path if `ProtectedStorage`
+    /// is unavailable — the DB stays unencrypted-at-rest in that case but
+    /// the app remains functional and the failure is logged.
+    private static func resolveDBPath() -> String {
+        do {
+            try relocateLegacyDBIfNeeded()
+            let dir = try ProtectedStorage.privateApplicationSupportURL()
+            return dir.appendingPathComponent(dbFileName).path
+        } catch {
+            nlLog(
+                "[MemoryStore] Protected location unavailable, falling back to Documents (unencrypted at rest): \(error)",
+                level: .error)
+            let docs = FileManager.default
+                .urls(for: .documentDirectory, in: .userDomainMask).first!
+            return docs.appendingPathComponent(dbFileName).path
+        }
+    }
+
+    /// Atomically moves the legacy `Documents/<dbFileName>` family (the
+    /// main `.sqlite` plus any transient `-journal`/`-wal`/`-shm` siblings)
+    /// into `Application Support/private/`. Idempotent — guarded by the
+    /// `dbRelocationMigrationFlag` so it runs at most once.
+    ///
+    /// On any move failure, rolls back the moves performed so far. SQLite
+    /// refuses to open a `.sqlite` whose sibling journal has gone missing,
+    /// so a half-migrated state would corrupt the user's chat history.
+    private static func relocateLegacyDBIfNeeded() throws {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: dbRelocationMigrationFlag) else { return }
+
+        let fileManager = FileManager.default
+        let documents = fileManager
+            .urls(for: .documentDirectory, in: .userDomainMask).first!
+        let legacyMain = documents.appendingPathComponent(dbFileName)
+
+        // Fresh install — nothing to move. Mark the flag so we don't
+        // re-stat `Documents/` on every launch forever.
+        guard fileManager.fileExists(atPath: legacyMain.path) else {
+            defaults.set(true, forKey: dbRelocationMigrationFlag)
+            return
+        }
+
+        let targetDir = try ProtectedStorage.privateApplicationSupportURL()
+        let siblingSuffixes = ["", "-journal", "-wal", "-shm"]
+
+        var moved: [(URL, URL)] = []
+        do {
+            for suffix in siblingSuffixes {
+                let src = documents.appendingPathComponent("\(dbFileName)\(suffix)")
+                guard fileManager.fileExists(atPath: src.path) else { continue }
+
+                let dst = targetDir.appendingPathComponent("\(dbFileName)\(suffix)")
+                // A prior interrupted migration could leave a stale
+                // destination; overwriting it preserves the legacy state
+                // as the source of truth.
+                if fileManager.fileExists(atPath: dst.path) {
+                    try fileManager.removeItem(at: dst)
+                }
+                try fileManager.moveItem(at: src, to: dst)
+                moved.append((src, dst))
+            }
+        } catch {
+            for (src, dst) in moved.reversed() {
+                try? fileManager.moveItem(at: dst, to: src)
+            }
+            throw error
+        }
+
+        nlLog(
+            "[MemoryStore] Relocated DB family (\(moved.count) file(s)) from Documents/ to protected directory",
+            level: .info)
+        defaults.set(true, forKey: dbRelocationMigrationFlag)
+    }
+
+    /// Belt-and-suspenders: applies the Data Protection class to each
+    /// member of the DB file family. Files created inside the protected
+    /// directory inherit the class on creation, but this catches files
+    /// that may have been created before the directory attribute applied
+    /// — e.g. a `-journal` that SQLite produces between calls or a file
+    /// left over from the relocation move.
+    private static func protectDBFamily(at path: String) {
+        let baseURL = URL(fileURLWithPath: path)
+        let parent = baseURL.deletingLastPathComponent()
+        let stem = baseURL.lastPathComponent
+
+        for suffix in ["", "-journal", "-wal", "-shm"] {
+            let file = parent.appendingPathComponent("\(stem)\(suffix)")
+            do {
+                try ProtectedStorage.protect(file)
+            } catch {
+                nlLog(
+                    "[MemoryStore] Failed to set protection class on \(file.lastPathComponent): \(error)",
+                    level: .warning)
+            }
+        }
     }
 
     // MARK: - Schema
@@ -57,6 +175,19 @@ final class MemoryStore {
         if sqlite3_open(dbPath, &db) != SQLITE_OK {
             nlLog("[MemoryStore] Error: Could not open database.", level: .error)
             return
+        }
+
+        // SQLCipher keying MUST happen before any other DB operation —
+        // the library refuses to key a connection that has already
+        // touched the file. When `isSQLCipherActive` is false (default),
+        // this branch is skipped and the DB is plaintext-on-disk (still
+        // protected at the filesystem layer by Phase 2a).
+        if Self.isSQLCipherActive {
+            guard Self.keyDatabase(db) else {
+                sqlite3_close(db)
+                db = nil
+                return
+            }
         }
 
         let createTableQuery = """
