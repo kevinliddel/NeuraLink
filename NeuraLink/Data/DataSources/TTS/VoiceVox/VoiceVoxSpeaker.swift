@@ -116,7 +116,7 @@ extension VoiceVoxSpeaker {
 
     static let allBuiltIn: [VoiceVoxSpeaker] = [
         .kyushuSora, .namineRitsu, .chugokuUsagi, .whiteCUL, .kotoyomiNia, .ierutan,
-        .manbetsuHanamaru, .yureichan, .shirakamiKotaro, .kuritaMarron,
+        .manbetsuHanamaru, .yureichan, .shirakamiKotaro, .kuritaMarron
     ]
 
     static let kyushuSora = VoiceVoxSpeaker(
