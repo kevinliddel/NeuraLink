@@ -5,9 +5,6 @@
 //  Thin wrapper around `kSecClassGenericPassword` Keychain Services for
 //  storing app secrets (API keys, future per-store encryption keys, etc.).
 //
-//  Phase 1 of the security audit remediation plan. See
-//  `docs/security_audit_plan.md` §3.1.
-//
 //  Design notes:
 //    - Stateless namespace `enum` — no instance state, no singleton lifecycle.
 //    - Every item is bound to `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`:
@@ -38,11 +35,19 @@ enum SecureKey {
     /// service from `openAIAPIKey` so attribute-level access policies can
     /// evolve independently.
     case memoryDBPageKey
+    /// 32-byte random key used to HMAC-SHA256 the persisted llama.cpp KV
+    /// cache blobs in `Application Support/llm_kv/`. Each `.kv` file gets a
+    /// sibling `.kv.hmac` sidecar; tampering with either is detected on
+    /// load and the cache is purged + cold-prefilled. The key never needs
+    /// to leave the device — a key rotation just invalidates all cached
+    /// blobs (next launch falls back to cold prefill, no data loss).
+    case kvCacheHMACKey
 
     fileprivate var service: String {
         switch self {
         case .openAIAPIKey: return "com.neuralink.openai"
         case .memoryDBPageKey: return "com.neuralink.memory"
+        case .kvCacheHMACKey: return "com.neuralink.localllm"
         }
     }
 
@@ -50,6 +55,7 @@ enum SecureKey {
         switch self {
         case .openAIAPIKey: return "apiKey"
         case .memoryDBPageKey: return "dbPageKey"
+        case .kvCacheHMACKey: return "kvCacheHMACKey"
         }
     }
 }
@@ -105,7 +111,8 @@ enum SecureStore {
 
         var addAttributes = baseQuery
         addAttributes[kSecValueData as String] = data
-        addAttributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        addAttributes[kSecAttrAccessible as String] =
+            kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
 
         let addStatus = SecItemAdd(addAttributes as CFDictionary, nil)
         switch addStatus {
@@ -184,7 +191,8 @@ enum SecureStore {
 
         var addAttributes = baseQuery
         addAttributes[kSecValueData as String] = value
-        addAttributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        addAttributes[kSecAttrAccessible as String] =
+            kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
 
         let addStatus = SecItemAdd(addAttributes as CFDictionary, nil)
         switch addStatus {

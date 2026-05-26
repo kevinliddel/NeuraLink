@@ -67,11 +67,11 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     var recordingBuffer = [Float]()
     var isRecordingVoice = false
     let recordingLock = NSLock()
-    
+
     // Concurrency guard for startListening
     let stateLock = NSLock()
     var isPreparingOrActive = false
-    
+
     // Partial transcription state
     internal var isTranscribingPartial = false
     internal var lastPartialTranscribedCount = 0
@@ -117,7 +117,8 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
 
     @objc private func handleAudioInterruption(_ note: Notification) {
         guard let typeVal = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
-              let type = AVAudioSession.InterruptionType(rawValue: typeVal) else { return }
+            let type = AVAudioSession.InterruptionType(rawValue: typeVal)
+        else { return }
         if type == .ended {
             try? AVAudioSession.sharedInstance().setActive(true)
             if !audioEngine.isRunning { try? audioEngine.start() }
@@ -147,11 +148,13 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     }
 
     func startListening() {
-        guard stateLock.withLock({
-            if isPreparingOrActive { return false }
-            isPreparingOrActive = true
-            return true
-        }) else {
+        guard
+            stateLock.withLock({
+                if isPreparingOrActive { return false }
+                isPreparingOrActive = true
+                return true
+            })
+        else {
             nlLog("[LocalAI]: Already listening or preparing, skipping.", level: .info)
             return
         }
@@ -207,13 +210,15 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             state.aiTranscript = ""
             state.status = .thinking
         }
-        
+
         ProactiveVisionManager.shared.notifyUserSpoke()
         ChatTimelineStore.logUserMessage(text)
 
         Task {
             let mgr = LocalModelDownloadManager.shared
-            let isQwenFamily: Set<LocalModelDownloadManager.ModelConfiguration> = [.qwen2b, .qwen3b, .qwen7b]
+            let isQwenFamily: Set<LocalModelDownloadManager.ModelConfiguration> = [
+                .qwen2b, .qwen3b, .qwen7b
+            ]
             let useQwen = mgr.isAvailable && isQwenFamily.contains(mgr.selectedConfig)
             let isJapaneseLlama = mgr.selectedConfig == .japaneseLlama1b
 
@@ -232,7 +237,8 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
 
             // Engine formats via the model's own GGUF chat template; falls
             // back to a hand-rolled template if the model has none.
-            let prompt = llmEngine.applyChatTemplate(messages: messages)
+            let prompt =
+                llmEngine.applyChatTemplate(messages: messages)
                 ?? fallbackChatPrompt(messages: messages, useQwen: useQwen)
 
             // Token caps tuned to local TTS speech rate, not raw quality:
@@ -278,14 +284,35 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     /// Try to load a previously-persisted KV cache state. Idempotent and
     /// safe to call multiple times — `loadKVCache` no-ops if the file is
     /// missing. Must run after `loadModel` and before any prefill/generate.
+    ///
+    /// Refuses to load any blob whose HMAC-SHA256 sidecar is
+    /// missing, unreadable, or doesn't match. A failed verification
+    /// purges the .kv + .kv.hmac files so the next launch starts clean
+    /// — cold prefill costs ~17 s on iPhone 11 but is correct, vs. the
+    /// alternative of feeding a tampered blob into the engine.
     private func tryRestoreKVCache() async {
         guard llmEngine.isLoaded else { return }
         let mgr = LocalModelDownloadManager.shared
         guard mgr.isAvailable else { return }
         let characterName = await MainActor.run { self.state.selectedCharacterName }
         let basePrompt = localLLMSystemPrompt(for: characterName)
-        guard let path = LocalLLMKVCache.path(
-            config: mgr.selectedConfig, systemPrompt: basePrompt) else { return }
+        guard
+            let path = LocalLLMKVCache.path(
+                config: mgr.selectedConfig, systemPrompt: basePrompt)
+        else { return }
+
+        // No file at all = nothing to verify and nothing to purge —
+        // fresh install / first-ever launch with this persona.
+        guard FileManager.default.fileExists(atPath: path) else { return }
+
+        guard LocalLLMKVCache.verifyIntegrity(at: path) else {
+            nlLog(
+                "[LocalLLMManager] KV cache integrity check failed; purging and falling back to cold prefill",
+                level: .warning)
+            LocalLLMKVCache.purge(at: path)
+            return
+        }
+
         let restored = await llmEngine.loadKVCache(from: path)
         if restored > 0 {
             // If we restored from disk, treat the cache as already
@@ -302,10 +329,18 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         systemPrompt: String
     ) async {
         if kvCachePersistedThisSession { return }
-        guard let path = LocalLLMKVCache.path(
-            config: config, systemPrompt: systemPrompt) else { return }
+        guard
+            let path = LocalLLMKVCache.path(
+                config: config, systemPrompt: systemPrompt)
+        else { return }
         let saved = await llmEngine.saveKVCache(to: path)
-        if saved { kvCachePersistedThisSession = true }
+        if saved {
+            // Sign immediately after a successful save so the
+            // next launch's `tryRestoreKVCache` can verify the bytes
+            // weren't tampered with while the app was backgrounded.
+            LocalLLMKVCache.signIntegrity(at: path)
+            kvCachePersistedThisSession = true
+        }
     }
 
     /// Hand-rolled chat template used when the model's GGUF has no embedded
