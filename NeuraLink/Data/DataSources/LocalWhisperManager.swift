@@ -30,22 +30,81 @@ final class LocalWhisperManager: NSObject, @unchecked Sendable {
     private let setupLock = NSLock()
 
     // To support iPhone 11 (4GB RAM) efficiently, "openai_whisper-tiny.en" or "tiny.en" is recommended.
-    // "openai_whisper-base" and "large-v3-turbo" cause the OS to kill the Metal Compiler (Jetsam) 
+    // "openai_whisper-base" and "large-v3-turbo" cause the OS to kill the Metal Compiler (Jetsam)
     // when loaded alongside the Llama LLM due to 4GB RAM limits.
     private let modelName = "openai_whisper-tiny.en"
 
+    /// One-shot migration flag: pre-Phase-4 builds wrote raw user audio
+    /// to `Documents/whisper_<ts>.wav` where it persisted indefinitely
+    /// and was eligible for iCloud backup. We now write to `tmpDirectory`
+    /// and delete after transcribe — but installed users may have a
+    /// backlog from the old code path that needs sweeping once.
+    private static let legacyDocsCleanupFlag = "com.neuralink.migration.whisperDocsCleanup.v1"
+
     override private init() {
         super.init()
+        Self.sweepLegacyDocumentsAudioIfNeeded()
+    }
+
+    /// Deletes any `whisper_*.wav` left in the Documents directory by
+    /// pre-Phase-4 builds. Guarded by a UserDefaults flag so it runs at
+    /// most once per install. Best-effort — a failure logs but does not
+    /// block app launch.
+    private static func sweepLegacyDocumentsAudioIfNeeded() {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: legacyDocsCleanupFlag) else { return }
+
+        let fileManager = FileManager.default
+        guard let docs = fileManager.urls(
+            for: .documentDirectory, in: .userDomainMask).first
+        else {
+            defaults.set(true, forKey: legacyDocsCleanupFlag)
+            return
+        }
+
+        var removed = 0
+        if let contents = try? fileManager.contentsOfDirectory(atPath: docs.path) {
+            for name in contents where name.hasPrefix("whisper_") && name.hasSuffix(".wav") {
+                let url = docs.appendingPathComponent(name)
+                do {
+                    try fileManager.removeItem(at: url)
+                    removed += 1
+                } catch {
+                    nlLog(
+                        "[Whisper] Legacy sweep: failed to remove \(name): \(error)",
+                        level: .warning)
+                }
+            }
+        }
+
+        if removed > 0 {
+            nlLog(
+                "[Whisper] Legacy sweep: removed \(removed) pre-Phase-4 whisper_*.wav from Documents/",
+                level: .info)
+        }
+        defaults.set(true, forKey: legacyDocsCleanupFlag)
     }
 
     var isReadyToUse: Bool { isReady }
 
-    // Writes samples as a 16 kHz mono PCM-float WAV. Returns the URL for transcription.
-    // Pull files from Documents via Xcode → Window → Devices → NeuraLink → Download Container.
+    /// Writes the float PCM samples as a 16 kHz mono WAV inside the app's
+    /// `tmpDirectory` and returns the URL — required because
+    /// `WhisperKit.transcribe(audioPath:)` reads through `AVAudioFile`,
+    /// which handles the Int16 PCM conversion that the `audioArray:` code
+    /// path doesn't. Caller is responsible for deleting the file when
+    /// transcription completes; the file's location guarantees it never
+    /// lands in iCloud / iTunes backups and never appears in Files.app.
+    ///
+    /// Filename uses a UUID rather than a Unix timestamp so concurrent
+    /// transcriptions (e.g. proactive vision overlap) can't collide on
+    /// the same path. Protection class is applied for parity with the
+    /// rest of the app's on-disk state, even though tmp files are also
+    /// purged by the OS on a schedule.
     @discardableResult
-    private func saveDebugAudio(samples: [Float], sampleRate: Double = 16000) -> URL? {
+    private func writeTranscriptionInputWAV(
+        samples: [Float], sampleRate: Double = 16000
+    ) -> URL? {
         guard
-            let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
             let format = AVAudioFormat(
                 commonFormat: .pcmFormatFloat32, sampleRate: sampleRate, channels: 1,
                 interleaved: false),
@@ -58,17 +117,18 @@ final class LocalWhisperManager: NSObject, @unchecked Sendable {
             for (i, s) in samples.enumerated() { ch[0][i] = s }
         }
 
-        let stamp = Int(Date().timeIntervalSince1970)
-        let url = docs.appendingPathComponent("whisper_\(stamp).wav")
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("whisper_\(UUID().uuidString).wav")
         do {
             let file = try AVAudioFile(forWriting: url, settings: format.settings)
             try file.write(from: buffer)
+            try? ProtectedStorage.protect(url)
             nlLog(
-                "[Whisper] Debug audio saved → \(url.lastPathComponent) (\(samples.count) samples)",
+                "[Whisper] Transcription input saved → \(url.lastPathComponent) (\(samples.count) samples)",
                 level: .info)
             return url
         } catch {
-            nlLog("[Whisper] saveDebugAudio failed: \(error)", level: .error)
+            nlLog("[Whisper] writeTranscriptionInputWAV failed: \(error)", level: .error)
             return nil
         }
     }
@@ -205,10 +265,14 @@ final class LocalWhisperManager: NSObject, @unchecked Sendable {
             // Save to WAV so WhisperKit can load via its own audio pipeline.
             // transcribe(audioPath:) uses AVAudioFile internally which handles
             // Int16 PCM conversion — a different code path from transcribe(audioArray:).
-            guard let audioURL = saveDebugAudio(samples: normalizedSamples) else {
+            // File lives in tmpDirectory (not Documents/) so it never enters
+            // iCloud backups or Files.app, and we delete it the moment
+            // transcription returns so it isn't sitting on disk between turns.
+            guard let audioURL = writeTranscriptionInputWAV(samples: normalizedSamples) else {
                 nlLog("[Whisper] Could not save audio for transcription.", level: .info)
                 return
             }
+            defer { try? FileManager.default.removeItem(at: audioURL) }
 
             var options = DecodingOptions()
             options.noSpeechThreshold = 0.6
