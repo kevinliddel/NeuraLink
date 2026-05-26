@@ -288,16 +288,20 @@ final class LocalWhisperManager: NSObject, @unchecked Sendable {
 
             let allSegments = result.flatMap { $0.segments }
             for (i, seg) in allSegments.enumerated() {
+                // Metadata public, segment text private — keeps confidence
+                // diagnostics visible without leaking the spoken content.
                 nlLog(
-                    "[Whisper] Segment[\(i)]: '\(seg.text)' noSpeechProb=\(String(format: "%.3f", seg.noSpeechProb)) avgLogprob=\(String(format: "%.3f", seg.avgLogprob)) temp=\(seg.temperature)",
+                    "[Whisper] Segment[\(i)]: noSpeechProb=\(String(format: "%.3f", seg.noSpeechProb)) avgLogprob=\(String(format: "%.3f", seg.avgLogprob)) temp=\(seg.temperature)",
                     level: .info)
+                nlLogSensitive("[Whisper] Segment[\(i)] text: '\(seg.text)'", level: .info)
             }
 
             let fullText = result.map { $0.text }.joined(separator: " ").trimmingCharacters(
                 in: .whitespacesAndNewlines)
 
             if !fullText.isEmpty {
-                nlLog("[Whisper] Transcription complete (partial=\(isPartial)): \(fullText)", level: .info)
+                nlLog("[Whisper] Transcription complete (partial=\(isPartial), \(fullText.count) chars)", level: .info)
+                nlLogSensitive("[Whisper] Transcription text: \(fullText)", level: .info)
                 DispatchQueue.main.async { [weak self] in
                     if isPartial {
                         self?.delegate?.whisperManager(didTranscribePartialText: fullText)

@@ -160,6 +160,38 @@ private func emit(
     }
 }
 
+/// Sensitive-payload variant of `emit`: marks the body with
+/// `privacy: .private` so the OS auto-redacts the interpolated string
+/// when the logs are read from a non-developer Console (TestFlight tester
+/// hooking up Console.app, MDM log capture, etc.). The category tail
+/// stays `.public` because file/function/line is metadata, not content.
+///
+/// When viewing from Xcode's debugger or a profile-paired Console with the
+/// "Enable Private Data" entitlement, the body still appears in full —
+/// developers can debug; observers can't snoop.
+@inline(__always)
+private func emitSensitive(
+    _ body: String,
+    level: NLLogLevel,
+    logger: Logger,
+    function: String,
+    line: UInt
+) {
+    let tail = "[\(function)#\(line)]"
+    switch level {
+    case .trace, .debug:
+        logger.debug("\(level.emoji) \(body, privacy: .private) \(tail, privacy: .public)")
+    case .info:
+        logger.info("\(level.emoji) \(body, privacy: .private) \(tail, privacy: .public)")
+    case .notice:
+        logger.notice("\(level.emoji) \(body, privacy: .private) \(tail, privacy: .public)")
+    case .warning, .error:
+        logger.error("\(level.emoji) \(body, privacy: .private) \(tail, privacy: .public)")
+    case .critical:
+        logger.fault("\(level.emoji) \(body, privacy: .private) \(tail, privacy: .public)")
+    }
+}
+
 // MARK: - Public API
 
 @inline(__always)
@@ -174,6 +206,37 @@ func nlLog(
         let (logger, osLog) = LoggerHub.get(deriveCategory(from: category))
         guard osLog.isEnabled(type: level.osLogType) else { return }
         emit(message(), level: level, logger: logger,
+              function: String(describing: function), line: line)
+    #else
+        _ = message
+        _ = level
+        _ = category
+        _ = function
+        _ = line
+    #endif
+}
+
+/// Sensitive-payload variant of `nlLog`. Use for content that should not
+/// land in cleartext in observer-readable system logs — chat transcripts,
+/// persona system prompts, RAG memory bodies, user names, etc. The body
+/// is marked `privacy: .private` so it shows as `<private>` in Console.app
+/// for non-developers, and the entire call remains a no-op in Release per
+/// the same DEBUG gate as `nlLog`.
+///
+/// API surface is intentionally identical to `nlLog` so call sites can
+/// switch with a single-token rename.
+@inline(__always)
+func nlLogSensitive(
+    _ message: @autoclosure () -> String,
+    level: NLLogLevel = .debug,
+    category: StaticString = #fileID,
+    function: StaticString = #function,
+    line: UInt = #line
+) {
+    #if DEBUG
+        let (logger, osLog) = LoggerHub.get(deriveCategory(from: category))
+        guard osLog.isEnabled(type: level.osLogType) else { return }
+        emitSensitive(message(), level: level, logger: logger,
               function: String(describing: function), line: line)
     #else
         _ = message
