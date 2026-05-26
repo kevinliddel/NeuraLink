@@ -18,10 +18,43 @@ final class LocalLLMPromptStore {
     private let key = "com.neuralink.local-llm-prompts.v1"
     private var saved: [String: String] = [:]
 
+    private var fileURL: URL? {
+        do {
+            let dir = try ProtectedStorage.privateApplicationSupportURL()
+            return dir.appendingPathComponent("local_llm_prompts.json")
+        } catch {
+            nlLog("[LocalLLMPromptStore] Failed to resolve secure private storage directory: \(error)", level: .error)
+            return nil
+        }
+    }
+
     private init() {
-        if let data = UserDefaults.standard.data(forKey: key),
-           let decoded = try? JSONDecoder().decode([String: String].self, from: data) {
-            saved = decoded
+        guard let url = fileURL else { return }
+        let fileManager = FileManager.default
+        
+        if fileManager.fileExists(atPath: url.path) {
+            if let data = try? Data(contentsOf: url),
+               let decoded = try? JSONDecoder().decode([String: String].self, from: data) {
+                saved = decoded
+            } else {
+                nlLog("[LocalLLMPromptStore] Failed to read or decode local LLM prompts from \(url.path)", level: .error)
+            }
+        } else {
+            // Perform one-shot migration if legacy UserDefaults data is found
+            if let legacyData = UserDefaults.standard.data(forKey: key) {
+                nlLog("[LocalLLMPromptStore] Migrating legacy prompts from UserDefaults to secure file storage...", level: .info)
+                do {
+                    try legacyData.write(to: url, options: .atomic)
+                    try ProtectedStorage.protect(url)
+                    UserDefaults.standard.removeObject(forKey: key)
+                    nlLog("[LocalLLMPromptStore] Migration successful. Erased legacy UserDefaults key.", level: .info)
+                    if let decoded = try? JSONDecoder().decode([String: String].self, from: legacyData) {
+                        saved = decoded
+                    }
+                } catch {
+                    nlLog("[LocalLLMPromptStore] Migration failed to write secure file: \(error)", level: .error)
+                }
+            }
         }
     }
 
@@ -64,8 +97,14 @@ final class LocalLLMPromptStore {
     }
 
     private func persist() {
+        guard let url = fileURL else { return }
         if let data = try? JSONEncoder().encode(saved) {
-            UserDefaults.standard.set(data, forKey: key)
+            do {
+                try data.write(to: url, options: .atomic)
+                try ProtectedStorage.protect(url)
+            } catch {
+                nlLog("[LocalLLMPromptStore] Failed to write secure prompt file: \(error)", level: .error)
+            }
         }
     }
 

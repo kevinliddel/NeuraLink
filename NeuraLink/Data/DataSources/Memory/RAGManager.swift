@@ -29,9 +29,12 @@ final class RAGManager {
         Task.detached(priority: .background) {
             if let vector = self.embedder.generateVector(for: text) {
                 self.store.insert(text: text, vector: vector, source: source)
+                // Metadata stays public so behaviour can be diagnosed
+                // ("did we store anything?") without exposing the body.
                 nlLog(
-                    "[RAGManager] Stored new memory (source=\(source), \(text.count) chars): \(text)",
+                    "[RAGManager] Stored new memory (source=\(source), \(text.count) chars)",
                     level: .info)
+                nlLogSensitive("[RAGManager] Memory body: \(text)", level: .info)
             }
             
             let days = self.settings.autoForgetDays

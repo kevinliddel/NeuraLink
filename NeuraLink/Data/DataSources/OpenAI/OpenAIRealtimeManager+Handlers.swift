@@ -26,13 +26,13 @@ extension OpenAIRealtimeManager {
             // this case needs another rename.
             case "response.output_audio_transcript.delta":
                 if let delta = json["delta"] as? String {
-                    nlLog("[AI Text Delta]: \(delta)", level: .info)
+                    nlLogSensitive("[AI Text Delta]: \(delta)", level: .info)
                     state.aiTranscript += delta
                 }
 
             case "conversation.item.input_audio_transcription.completed":
                 if let transcript = json["transcript"] as? String {
-                    nlLog("[User Transcript]: \(transcript)", level: .info)
+                    nlLogSensitive("[User Transcript]: \(transcript)", level: .info)
                     state.userTranscript = transcript
                     ProactiveVisionManager.shared.notifyUserSpoke()
                     // RAG: Store user input in long-term memory
@@ -99,7 +99,7 @@ extension OpenAIRealtimeManager {
 
             // Response lifecycle
             case "response.done":
-                nlLog("[OpenAI] Full response: \(state.aiTranscript)", level: .info)
+                nlLogSensitive("[OpenAI] Full response: \(state.aiTranscript)", level: .info)
                 state.status = .ready
                 
                 // RAG: Store AI response in long-term memory
@@ -146,7 +146,8 @@ extension OpenAIRealtimeManager {
                 let instr = (sess["instructions"] as? String) ?? "(none)"
                 let voice = ((sess["audio"] as? [String: Any])?["output"] as? [String: Any])?["voice"] as? String ?? "(default)"
                 let instrPreview = String(instr.prefix(120)).replacingOccurrences(of: "\n", with: " ")
-                nlLog("[AI \(type)]: voice=\(voice) instructions_preview=\"\(instrPreview)\"", level: .info)
+                nlLog("[AI \(type)]: voice=\(voice)", level: .info)
+                nlLogSensitive("[AI \(type)]: instructions_preview=\"\(instrPreview)\"", level: .info)
 
             default:
                 break
