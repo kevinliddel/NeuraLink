@@ -33,6 +33,11 @@ DerivedData/
 # Build logs
 *.log
 
+# LLM Models
+model.safetensors
+vocab.txt
+vocos.safetensors
+
 # AI Agent files
 RULES.md
 SKILL.md

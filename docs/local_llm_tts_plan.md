@@ -66,12 +66,14 @@ The repo is a Tauri/Rust **desktop application** that bundles multiple Python-ba
        8 GB tier        any tier           JP only             always
 ```
 
-Selection rules at runtime:
+Engine selection is **automatic** — the user never picks which engine to use. The runtime rules:
 
 1. If the user has a **trained F5-TTS clone** for the persona AND the device is on the 8 GB tier (`selectedConfig == .qwen7b`) → `F5TTSEngine`.
 2. Else, if the active local LLM is `.japaneseLlama1b` → `VoiceVoxEngine` with the persona's mapped speaker.
-3. Else, if Kokoro voices are downloaded → `KokoroEngine` with the persona's preset (e.g. Ekaterina → `af_bella`, Sonya → `af_sky`).
+3. Else, if Kokoro voices are downloaded → `KokoroEngine` with the persona's preset. **[Phase 4 deferred — see §4 update]**
 4. Else → `SystemTTSEngine` (AVSpeechSynthesizer fallback, zero download, zero latency).
+
+The user-facing picker in `PersonaSettingsView` only chooses **which VOICEVOX speaker** to use for the persona — Metan, Zundamon, Tsumugi, Ritsu, Himari, Mochiko. The override is persisted in `PersonaVoiceStore.voicevoxSpeakerIDs` and read by `VoiceVoxSpeaker.speakerID(for:)`. Built-in defaults (Ekaterina → Himari, Sonya/Dedicatus → Metan, others → Tsumugi) stand if the user hasn't overridden.
 
 ### 3.2 Per-tier engine selection (final state)
 
@@ -98,7 +100,9 @@ The TTS layer mirrors the LLM layer exactly:
 `feat/voice-cloning` ships `TTSProtocol` with an `onBufferReady: ((AVAudioPCMBuffer) -> Void)?` push-streaming callback. `feat/voice-vox` ships `TTSEngineProtocol` with a pull `synthesize(text:speakerID:) async throws -> Data`. They are incompatible. The merged protocol adopts the **streaming push model** (lower first-audio latency, matches the existing `LocalLLMManager+TTS` sentence-chunked playback) while exposing a one-shot pull as a default-implemented extension for callers that want bytes:
 
 ```swift
-protocol TTSEngineProtocol: AnyObject, Sendable {
+typealias PersonaIdentifier = String
+
+protocol TTSEngineProtocol: AnyObject {
     var isReady: Bool { get }
     var onBufferReady: ((AVAudioPCMBuffer) -> Void)? { get set }
     func initialize() async throws
@@ -107,6 +111,11 @@ protocol TTSEngineProtocol: AnyObject, Sendable {
     func shutdown()
 }
 ```
+
+**Revisions from the original draft (locked 2026-05-26):**
+
+- `PersonaIdentifier` is a `typealias PersonaIdentifier = String`, not a new type. Every current call-site identifies personas by name (`state.selectedCharacterName`, `CharacterPersona.forCharacter(named:)`), so a string typealias keeps the merge surgical. Promote to a real value type only if downstream type-safety demands it.
+- `Sendable` is dropped. The protocol exposes mutable storage (`var onBufferReady`, `var isReady`); a `Sendable` protocol with mutable vars fails Swift 6.2 strict-concurrency checking. The existing `LLMEngineProtocol` is `AnyObject`-only for the same reason. Engines are reached from `LocalLLMManager`'s `@MainActor` context, so isolation is handled at the call site rather than via `Sendable` on the protocol.
 
 ---
 
@@ -146,6 +155,15 @@ gantt
 ```
 
 **Final deadline: 2026-06-26.** Phase 0 starts today; Phases 1–6 are scheduled to start 2026-06-08 so they don't compete with the memory plan's Phase 2B / Phase 3 (2026-06-01 → 2026-06-05). If the memory plan ships early, Phase 1 can pull in. Half-day buffer per phase; ≥1 day slip pushes deadline to 2026-06-30 (Tuesday).
+
+**Phase 4 deferred (decided 2026-05-26).** The original Kokoro path assumed ONNX Runtime + a Swift wrapper. Two findings during the EP audit made this larger than budgeted:
+
+1. The bundled `voicevox_onnxruntime.framework` ships **no public C headers** (binary + modulemap only). Internally it includes the CoreML EP (`CoreMLExecutionProvider` string is in the binary), and exports stock `OrtGetApiBase` — so the binary IS reusable for Kokoro inference, but we'd need to vendor matching ORT 1.17.3 headers from Microsoft's release to call into it.
+2. Kokoro inference also needs a **G2P (text → phoneme) layer**. kokoro.cpp uses espeak-ng; Python Kokoro ports use `misaki`. Neither has a clean iOS Swift port. Adding espeak-ng is its own integration effort.
+
+The Phase 5 selector therefore ships with the §3.1 Kokoro branch returning `nil` for now. English on tiers below `.qwen7b` falls through to `SystemTTSEngine` (iOS Premium voices), which is the §3.1 step 4 fallback. Kokoro becomes a follow-up plan that owns both the ORT header vendoring and the G2P decision (espeak-ng port vs. an alternative phonemizer).
+
+No deadline change for Phases 5 and 6.
 
 ---
 
@@ -292,12 +310,12 @@ Candidates for a future plan, in priority order:
 
 This plan is ready for review. Before any code is written:
 
-- [ ] Scope (§2) confirmed: no work touches files outside the in-scope list.
-- [ ] Engine selection rules (§3.1) accepted, or revised.
-- [ ] Per-tier defaults (§3.2) accepted, or revised.
-- [ ] Unified protocol (§3.4) accepted as the post-merge contract.
-- [ ] Deadlines (§4) accepted, or new dates agreed.
-- [ ] Risk list (§7) acknowledged; mitigations acceptable.
-- [ ] Validation criteria (§8) accepted as the bar for "done".
+- [x] Scope (§2) confirmed: no work touches files outside the in-scope list.
+- [x] Engine selection rules (§3.1) accepted, or revised.
+- [x] Per-tier defaults (§3.2) accepted, or revised.
+- [x] Unified protocol (§3.4) accepted as the post-merge contract — with two revisions: `PersonaIdentifier` is a `String` typealias, and `Sendable` is dropped (see §3.4 revisions block).
+- [x] Deadlines (§4) accepted, or new dates agreed.
+- [x] Risk list (§7) acknowledged; mitigations acceptable.
+- [x] Validation criteria (§8) accepted as the bar for "done".
 
-Once all seven boxes are checked, Phase 1 starts on 2026-06-08 (or sooner if the memory plan finishes early).
+All seven boxes checked **2026-05-26**. Pre-work (unified protocol + selector skeleton, both in isolation from the engine implementations) approved to land immediately so the Phase 1 / Phase 2 branch merges land against a stable target. Phase 1 still gated on the memory plan finishing; earliest start 2026-06-08.

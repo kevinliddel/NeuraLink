@@ -46,7 +46,6 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     // Audio Engine for TTS Lip-sync
     internal let audioEngine = AVAudioEngine()
     internal let playerNode = AVAudioPlayerNode()
-    internal let synthesizer = AVSpeechSynthesizer()
 
     // State
     let state = RealtimeChatState.shared
@@ -98,8 +97,11 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     internal var pendingTTSBuffers: Int = 0
     internal var ttsGenerationDone: Bool = false
     internal var pendingUIActionTask: Task<Void, Never>?
-
-    var voicesLogged = false
+    /// Counts engine.speak(...) calls that haven't returned yet. The wait
+    /// loop in `schedulePendingUIActionAfterSpeech` needs this in addition to
+    /// `pendingTTSBuffers` so it doesn't fire while synthesis is still in
+    /// flight but no buffers have been emitted yet.
+    internal var inFlightSynthesis: Int = 0
 
     override init() {
         super.init()
@@ -374,6 +376,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         Task { @MainActor in
             pendingTTSBuffers = 0
             ttsGenerationDone = false
+            inFlightSynthesis = 0
             state.status = .ready
         }
     }
@@ -394,6 +397,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         Task { @MainActor in
             pendingTTSBuffers = 0
             ttsGenerationDone = false
+            inFlightSynthesis = 0
             state.status = .disconnected
             startListening()
         }
@@ -419,6 +423,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         Task { @MainActor in
             pendingTTSBuffers = 0
             ttsGenerationDone = false
+            inFlightSynthesis = 0
             state.status = .disconnected
         }
         nlLog("[LocalLLM] Manager unloaded — all models freed.", level: .info)
@@ -439,9 +444,9 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         pendingUIActionTask?.cancel()
         pendingUIActionTask = Task { [weak self] in
             guard let self else { return }
-            // Wait until the queued TTS buffers drain and synthesizer finishes.
+            // Wait until the queued TTS buffers drain and no engine.speak() is in flight.
             while !Task.isCancelled {
-                if self.pendingTTSBuffers <= 0 && !self.synthesizer.isSpeaking {
+                if self.pendingTTSBuffers <= 0 && self.inFlightSynthesis == 0 {
                     break
                 }
                 try? await Task.sleep(nanoseconds: 150_000_000)

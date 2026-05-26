@@ -18,6 +18,11 @@
 		041E139A2F913E1500D2D110 /* Starscream in Frameworks */ = {isa = PBXBuildFile; productRef = 041E13992F913E1500D2D110 /* Starscream */; };
 		04332ACD2F9913B00035B9D0 /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = 04332ACC2F9913B00035B9D0 /* WebRTC */; };
 		04C895512FC041F90015EDC0 /* SQLCipher in Frameworks */ = {isa = PBXBuildFile; productRef = 04C895502FC041F90015EDC0 /* SQLCipher */; };
+		04CCE3AD2FC5B55500C119D0 /* MLX in Frameworks */ = {isa = PBXBuildFile; productRef = 04CCE3AC2FC5B55500C119D0 /* MLX */; };
+		04CCE3AF2FC5B55500C119D0 /* MLXFFT in Frameworks */ = {isa = PBXBuildFile; productRef = 04CCE3AE2FC5B55500C119D0 /* MLXFFT */; };
+		04CCE3B12FC5B55500C119D0 /* MLXFast in Frameworks */ = {isa = PBXBuildFile; productRef = 04CCE3B02FC5B55500C119D0 /* MLXFast */; };
+		04CCE3B32FC5B55500C119D0 /* MLXLinalg in Frameworks */ = {isa = PBXBuildFile; productRef = 04CCE3B22FC5B55500C119D0 /* MLXLinalg */; };
+		04CCE3B52FC5B55500C119D0 /* MLXNN in Frameworks */ = {isa = PBXBuildFile; productRef = 04CCE3B42FC5B55500C119D0 /* MLXNN */; };
 		04F3BD6F2F9630CD00D2DDF2 /* RealTimeCutVADLibrary in Frameworks */ = {isa = PBXBuildFile; productRef = 04F3BD6E2F9630CD00D2DDF2 /* RealTimeCutVADLibrary */; };
 		AFECF4B6451C234E9720E970 /* llama.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = AC9FBDA126D2084ED6E64CC8 /* llama.xcframework */; };
 		B28C440838DF8F0459096F14 /* llama.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AC9FBDA126D2084ED6E64CC8 /* llama.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -61,9 +66,27 @@
 		AC9FBDA126D2084ED6E64CC8 /* llama.xcframework */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = wrapper.xcframework; name = llama.xcframework; path = "llama.cpp/build-apple/llama.xcframework"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
+		04CCE38F2FC5AC2A00C119D0 /* Exceptions for "NeuraLink" folder in "Embed Frameworks" phase from "NeuraLink" target */ = {
+			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
+			attributesByRelativePath = {
+				Dependencies/VOICEVOX/voicevox_core.xcframework = (CodeSignOnCopy, RemoveHeadersOnCopy, );
+				Dependencies/VOICEVOX/voicevox_onnxruntime.xcframework = (CodeSignOnCopy, RemoveHeadersOnCopy, );
+			};
+			buildPhase = 315A748A75D9DD5A81ED86AE /* Embed Frameworks */;
+			membershipExceptions = (
+				Dependencies/VOICEVOX/voicevox_core.xcframework,
+				Dependencies/VOICEVOX/voicevox_onnxruntime.xcframework,
+			);
+		};
+/* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		041E11E02F8E782300D2D110 /* NeuraLink */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				04CCE38F2FC5AC2A00C119D0 /* Exceptions for "NeuraLink" folder in "Embed Frameworks" phase from "NeuraLink" target */,
+			);
 			path = NeuraLink;
 			sourceTree = "<group>";
 		};
@@ -84,18 +107,23 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				04CCE3B12FC5B55500C119D0 /* MLXFast in Frameworks */,
 				041885AF2F99F0B200609CCE /* Transformers in Frameworks */,
 				04C895512FC041F90015EDC0 /* SQLCipher in Frameworks */,
 				04F3BD6F2F9630CD00D2DDF2 /* RealTimeCutVADLibrary in Frameworks */,
 				041885CB2F99F90100609CCE /* WhisperKit in Frameworks */,
+				04CCE3AD2FC5B55500C119D0 /* MLX in Frameworks */,
 				041885C52F99F90100609CCE /* ArgmaxOSS in Frameworks */,
 				04332ACD2F9913B00035B9D0 /* WebRTC in Frameworks */,
+				04CCE3B32FC5B55500C119D0 /* MLXLinalg in Frameworks */,
 				041885AB2F99F0B200609CCE /* Hub in Frameworks */,
 				041885C72F99F90100609CCE /* SpeakerKit in Frameworks */,
 				041885C92F99F90100609CCE /* TTSKit in Frameworks */,
 				041E139A2F913E1500D2D110 /* Starscream in Frameworks */,
 				041885AD2F99F0B200609CCE /* Tokenizers in Frameworks */,
 				041885CD2F99F90100609CCE /* argmax-cli in Frameworks */,
+				04CCE3AF2FC5B55500C119D0 /* MLXFFT in Frameworks */,
+				04CCE3B52FC5B55500C119D0 /* MLXNN in Frameworks */,
 				AFECF4B6451C234E9720E970 /* llama.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -179,6 +207,11 @@
 				041885CA2F99F90100609CCE /* WhisperKit */,
 				041885CC2F99F90100609CCE /* argmax-cli */,
 				04C895502FC041F90015EDC0 /* SQLCipher */,
+				04CCE3AC2FC5B55500C119D0 /* MLX */,
+				04CCE3AE2FC5B55500C119D0 /* MLXFFT */,
+				04CCE3B02FC5B55500C119D0 /* MLXFast */,
+				04CCE3B22FC5B55500C119D0 /* MLXLinalg */,
+				04CCE3B42FC5B55500C119D0 /* MLXNN */,
 			);
 			productName = NeuraLink;
 			productReference = 041E11DE2F8E782300D2D110 /* NeuraLink.app */;
@@ -265,6 +298,7 @@
 				041885A92F99F0B200609CCE /* XCRemoteSwiftPackageReference "swift-transformers" */,
 				041885C32F99F90100609CCE /* XCRemoteSwiftPackageReference "argmax-oss-swift" */,
 				04C8954F2FC041F90015EDC0 /* XCRemoteSwiftPackageReference "SQLCipher.swift" */,
+				04CCE3AB2FC5B55500C119D0 /* XCRemoteSwiftPackageReference "mlx-swift" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 041E11DF2F8E782300D2D110 /* Products */;
@@ -702,6 +736,14 @@
 				minimumVersion = 4.16.0;
 			};
 		};
+		04CCE3AB2FC5B55500C119D0 /* XCRemoteSwiftPackageReference "mlx-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/ml-explore/mlx-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.31.3;
+			};
+		};
 		04F3BD6D2F9630CD00D2DDF2 /* XCRemoteSwiftPackageReference "RealTimeCutVADLibrary" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/helloooideeeeea/RealTimeCutVADLibrary";
@@ -767,6 +809,31 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 04C8954F2FC041F90015EDC0 /* XCRemoteSwiftPackageReference "SQLCipher.swift" */;
 			productName = SQLCipher;
+		};
+		04CCE3AC2FC5B55500C119D0 /* MLX */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 04CCE3AB2FC5B55500C119D0 /* XCRemoteSwiftPackageReference "mlx-swift" */;
+			productName = MLX;
+		};
+		04CCE3AE2FC5B55500C119D0 /* MLXFFT */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 04CCE3AB2FC5B55500C119D0 /* XCRemoteSwiftPackageReference "mlx-swift" */;
+			productName = MLXFFT;
+		};
+		04CCE3B02FC5B55500C119D0 /* MLXFast */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 04CCE3AB2FC5B55500C119D0 /* XCRemoteSwiftPackageReference "mlx-swift" */;
+			productName = MLXFast;
+		};
+		04CCE3B22FC5B55500C119D0 /* MLXLinalg */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 04CCE3AB2FC5B55500C119D0 /* XCRemoteSwiftPackageReference "mlx-swift" */;
+			productName = MLXLinalg;
+		};
+		04CCE3B42FC5B55500C119D0 /* MLXNN */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 04CCE3AB2FC5B55500C119D0 /* XCRemoteSwiftPackageReference "mlx-swift" */;
+			productName = MLXNN;
 		};
 		04F3BD6E2F9630CD00D2DDF2 /* RealTimeCutVADLibrary */ = {
 			isa = XCSwiftPackageProductDependency;

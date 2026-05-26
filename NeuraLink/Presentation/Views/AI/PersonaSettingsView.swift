@@ -50,6 +50,7 @@ struct PersonaSettingsView: View {
     let selectedConfig: LocalModelDownloadManager.ModelConfiguration
     @State private var persona: CharacterPersona
     @State private var localPrompt: String
+    @State private var voicevoxSpeakerID: Int
     @Environment(\.dismiss) private var dismiss
 
     // Voice preview (OpenAI mode only)
@@ -71,6 +72,8 @@ struct PersonaSettingsView: View {
         let current = CharacterPersona.forCharacter(named: modelID)
         _persona = State(initialValue: current)
         _localPrompt = State(initialValue: LocalLLMPromptStore.shared.effectivePrompt(for: modelID, config: config))
+        let initialSpeaker = VoiceVoxSpeaker.speakerID(for: modelID)
+        _voicevoxSpeakerID = State(initialValue: initialSpeaker)
     }
 
     var body: some View {
@@ -95,6 +98,8 @@ struct PersonaSettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 }
+
+                localVoiceEngineSection
             } else {
                 Section("AI Instructions (System Prompt)") {
                     TextEditor(text: $persona.instructions)
@@ -118,6 +123,8 @@ struct PersonaSettingsView: View {
                     Button {
                         if isLocalLLMMode {
                             LocalLLMPromptStore.shared.savePrompt(localPrompt, for: modelID, config: selectedConfig)
+                            PersonaVoiceStore.shared.setVoicevoxSpeakerID(voicevoxSpeakerID, for: modelID)
+                            TTSEngineSelector.shared.invalidateCache(for: modelID)
                         } else {
                             PersonaStore.shared.savePersona(persona, for: modelID)
                         }
@@ -136,6 +143,9 @@ struct PersonaSettingsView: View {
                         if isLocalLLMMode {
                             LocalLLMPromptStore.shared.resetPrompt(for: modelID, config: selectedConfig)
                             localPrompt = LocalLLMPromptStore.shared.effectivePrompt(for: modelID, config: selectedConfig)
+                            PersonaVoiceStore.shared.clearVoicevoxSpeakerID(for: modelID)
+                            TTSEngineSelector.shared.invalidateCache(for: modelID)
+                            voicevoxSpeakerID = VoiceVoxSpeaker.speakerID(for: modelID)
                         } else {
                             PersonaStore.shared.resetPersona(for: modelID)
                             persona = CharacterPersona.forCharacter(named: modelID)
@@ -158,6 +168,29 @@ struct PersonaSettingsView: View {
         .navigationTitle(isLocalLLMMode ? "\(persona.name) — \(isJapaneseModel ? "JP Prompt" : "Local Prompt")" : "\(persona.name) Persona")
         .navigationBarTitleDisplayMode(.inline)
         .onDisappear { previewPlayer.stop() }
+    }
+
+    // MARK: - VOICEVOX Voice Picker
+
+    private var localVoiceEngineSection: some View {
+        Section {
+            Picker("Voice", selection: $voicevoxSpeakerID) {
+                ForEach(VoiceVoxSpeaker.allBuiltIn) { speaker in
+                    Text(speaker.name).tag(speaker.id)
+                }
+            }
+            .pickerStyle(.menu)
+        } header: {
+            Text("Voice (VOICEVOX)")
+        } footer: {
+            Text(
+                isJapaneseModel
+                    ? "Used by the Japanese local LLM. Other models fall through to the iOS system voice."
+                    : "Will be used when you switch to the Japanese local LLM. Other models use the iOS system voice."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
     }
 
     // MARK: - Voice Preview Section
