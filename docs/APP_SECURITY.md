@@ -26,63 +26,80 @@ Secondary threats covered:
 
 ```mermaid
 flowchart TB
-    subgraph Boundary [" Device security boundary "]
+    %% Boundary
+    subgraph Boundary["Device Security Boundary"]
         direction LR
-        SE["Secure Enclave<br/>(class keys)"]
-        KC["Keychain<br/>(secrets)"]
-        APP["App sandbox<br/>(files)"]
-        SE -->|"derives"| KC
-        SE -->|"derives"| APP
+        SE["Secure Enclave\n(class keys)"]
+        KC["Keychain\n(secrets)"]
+        APP["App Sandbox\n(files)"]
+
+        SE --> D1["Derived Keys"] --> KC
+        SE --> D1 --> APP
     end
 
-    subgraph SecureStore [" Layer 1 — Secrets (Keychain) "]
+    %% Layer 1
+    subgraph SecureStore["Layer 1 — Secrets (Keychain)"]
         direction TB
-        K1["openAIAPIKey<br/>OpenAI sk-…"]
-        K2["memoryDBPageKey<br/>32-byte SQLCipher page key"]
-        K3["kvCacheHMACKey<br/>32-byte HMAC-SHA256 key"]
+        K1["openAIAPIKey\nOpenAI sk-…"]
+        K2["memoryDBPageKey\n32-byte SQLCipher key"]
+        K3["kvCacheHMACKey\n32-byte HMAC-SHA256"]
     end
 
-    subgraph ProtectedStorage [" Layer 2 — Files (Data Protection + no backup) "]
+    %% Layer 2
+    subgraph ProtectedStorage["Layer 2 — Files (Data Protection + no backup)"]
         direction TB
-        F1["personas.json<br/>local_llm_prompts.json"]
-        F2["neuralink_memory.sqlite<br/>(plus -wal / -shm / -journal)"]
-        F3["llm_kv/*.kv + *.kv.hmac"]
+        F1["personas.json\nlocal_llm_prompts.json"]
+        F2["neuralink_memory.sqlite\n(+wal / shm / journal)"]
+        F3["llm_kv/*.kv + *.hmac"]
     end
 
-    subgraph Optional [" Layer 3 (opt-in) — Page-level crypto "]
-        SQLCipher["SQLCipher AES-CBC + HMAC<br/>com.neuralink.security.sqlcipherEnabled"]
+    %% Layer 3
+    subgraph Optional["Layer 3 (opt-in) — Page Crypto"]
+        SQLCipher["SQLCipher AES-CBC + HMAC\nflag: sqlcipherEnabled"]
     end
 
-    subgraph Transient [" Layer 4 — Transient "]
-        T1["tmpDirectory/whisper_*.wav<br/>(deleted in defer after transcribe)"]
+    %% Layer 4
+    subgraph Transient["Layer 4 — Transient"]
+        T1["tmp/whisper_*.wav\n(deleted after use)"]
     end
 
-    subgraph Logs [" Layer 5 — Logging "]
-        L1["nlLog (privacy: .public)<br/>operational, non-PII"]
-        L2["nlLogSensitive (privacy: .private)<br/>transcripts, persona text, memories"]
+    %% Layer 5
+    subgraph Logs["Layer 5 — Logging"]
+        L1["nlLog (.public)\nnon-PII"]
+        L2["nlLogSensitive (.private)\ntranscripts / memory"]
     end
 
+    %% Flows
     KC --> K1
     KC --> K2
     KC --> K3
+
     APP --> F1
     APP --> F2
     APP --> F3
     APP --> T1
-    K2 -.->|"sqlite3_key when flag on"| SQLCipher
-    SQLCipher -.-> F2
-    K3 -->|"HMAC over blob + filename"| F3
 
-    classDef secure fill:#1f5a3a,stroke:#69db7c,color:#fff
-    classDef store fill:#2a2a2a,stroke:#adb5bd,color:#fff
-    classDef optional fill:#1f4a7a,stroke:#74c0fc,color:#fff,stroke-dasharray: 5 5
-    classDef transient fill:#5a5a1f,stroke:#ffd43b,color:#fff
-    classDef logs fill:#7a4a1f,stroke:#ffa94d,color:#fff
+    K2 --> D2["sqlite3_key"] --> SQLCipher
+    SQLCipher --> D3["Encrypted Pages"] --> F2
+
+    K3 --> D4["HMAC (blob + filename)"] --> F3
+
+    %% Styles
+    classDef secure fill:#1f5a3a,stroke:#69db7c,color:#ffffff
+    classDef store fill:#2a2a2a,stroke:#adb5bd,color:#ffffff
+    classDef optional fill:#1f4a7a,stroke:#74c0fc,color:#ffffff,stroke-dasharray:5 5
+    classDef transient fill:#5a5a1f,stroke:#ffd43b,color:#ffffff
+    classDef logs fill:#7a4a1f,stroke:#ffa94d,color:#ffffff
+
     class SE,KC,APP secure
     class K1,K2,K3,F1,F2,F3 store
     class SQLCipher optional
     class T1 transient
     class L1,L2 logs
+
+    %% Data flow styling (consistent across your diagrams)
+    classDef data fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
+    class D1,D2,D3,D4 data
 ```
 
 **Reading the diagram:** every secret traces back to either the Secure Enclave (Keychain items) or the app sandbox (files protected by iOS Data Protection). Files inherit class keys from the Secure Enclave; secrets in the Keychain *are* derived via the Secure Enclave. The opt-in SQLCipher layer adds page-level crypto on top of file-level protection for the conversation DB — useful as a precondition for the future passphrase mode.
