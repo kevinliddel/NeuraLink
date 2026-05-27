@@ -48,7 +48,10 @@ extension OpenAIRealtimeManager {
                     pendingFunctionCallId = item["call_id"] as? String ?? ""
                     pendingFunctionName = item["name"] as? String ?? ""
                     pendingFunctionArgsJSON = ""
-                    nlLog("[AI Tools]: function_call started — \(pendingFunctionName)", level: .info)
+                    nlLog(
+                        "֎ [FunctionCall] OpenAI requested tool '\(pendingFunctionName)' (call_id=\(pendingFunctionCallId)) — streaming args…",
+                        level: .info
+                    )
                 } else {
                     state.aiTranscript = ""
                     state.status = .speaking
@@ -80,7 +83,10 @@ extension OpenAIRealtimeManager {
                     if let emotion = args["emotion"] as? String,
                        let duration = args["duration"] as? Double {
                         state.triggerEmotion(emotion, duration: Float(duration))
-                        nlLog("[Emotion] \(emotion) for \(duration)s", level: .info)
+                        nlLog(
+                            "֎ [FunctionCall] set_emotion → \(emotion) for \(duration)s (synchronous, pre-speech)",
+                            level: .info
+                        )
                     }
                     sendFunctionResult(callId: pendingFunctionCallId, result: "ok")
                 } else if !pendingFunctionName.isEmpty {
@@ -90,8 +96,9 @@ extension OpenAIRealtimeManager {
                         args: pendingFunctionArgsJSON
                     )
                     nlLog(
-                        "[AI Tools]: Arguments complete for \(pendingFunctionName). Deferring execution until response.done",
-                        level: .info)
+                        "֎ [FunctionCall] args complete for '\(pendingFunctionName)' (call_id=\(pendingFunctionCallId)) — deferring to response.done",
+                        level: .info
+                    )
                 }
                 pendingFunctionCallId = ""
                 pendingFunctionName = ""
@@ -117,7 +124,6 @@ extension OpenAIRealtimeManager {
                             with: Data(deferred.args.utf8)) as? [String: Any]) ?? [:]
                     let result = await AppFunctionExecutor.shared.execute(
                         name: deferred.name, arguments: args)
-                    nlLog("[AI Tools]: result → \(result)", level: .info)
                     ChatTimelineStore.logToolCall(name: deferred.name, result: result)
                     sendFunctionResult(callId: deferred.id, result: result)
                 } else if AppFunctionExecutor.shared.pendingUIAction != nil {
@@ -356,7 +362,7 @@ extension OpenAIRealtimeManager: RTCDataChannelDelegate {
     func sendInitialSessionUpdate() {
         Task {
             let persona = CharacterPersona.forCharacter(named: state.selectedCharacterName)
-            
+
             // RAG: Fetch relevant memories for the current persona/session
             // Since we don't have a specific query yet, we fetch general recent context
             // or just the persona-related memories. For now, we'll fetch context
@@ -365,7 +371,30 @@ extension OpenAIRealtimeManager: RTCDataChannelDelegate {
             let memoryContext = await RAGManager.shared.fetchContext(for: persona.instructions, limit: 5)
             let kgFacts = KnowledgeGraphManager.shared.getFormattedFacts()
             let companion = CompanionStateManager.shared.promptContext(characterName: state.selectedCharacterName)
-            let finalInstructions = persona.instructions + "\n" + userContext + memoryContext + kgFacts + companion
+
+            // Heavy personas (Ekaterina/Sonya) consume the model's attention
+            // budget on character behaviour and de-prioritise tool calls. This
+            // block restores the pre-security `remember_fact` autonomy by
+            // making the trigger condition explicit and giving the model the
+            // exact S/P/O shape to emit. Mirrors the local-LLM prompt's
+            // explicit tool instructions.
+            let factsTriggerInstruction = """
+
+            TOOL USAGE — remember_fact:
+              Whenever the user reveals a personal detail about themselves or \
+              their life (name, family member, pet, job, hobby, preference, \
+              location, relationship, dislike, etc.), call the `remember_fact` \
+              function in addition to your spoken reply. Use S/P/O shape:
+                subject  = "User" (or the named entity, e.g. the sister's name)
+                predicate = the relationship (e.g. "has_sister", "likes", "lives_in")
+                object   = the value (e.g. "Manohy", "sushi", "Tokyo")
+              Do not announce the call in speech; just emit it silently.
+            """
+
+            let finalInstructions =
+                persona.instructions + "\n"
+                + userContext + memoryContext + kgFacts + companion
+                + factsTriggerInstruction
             
             // GA session shape. Key differences from the beta body:
             //   - `session.type = "realtime"` is now required (was implicit).

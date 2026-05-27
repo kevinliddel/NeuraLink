@@ -228,7 +228,7 @@ struct MemoryTimelineView: View {
         HStack(alignment: .center, spacing: 10) {
             VStack(alignment: .leading, spacing: 4) {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    Text("\(f.subject) \(f.predicate) \(f.object)")
+                    Text(factDisplayText(f))
                         .font(.subheadline.weight(.medium))
                 }
                 Text(Self.timeFormatter.string(from: f.timestamp))
@@ -259,6 +259,16 @@ struct MemoryTimelineView: View {
                 Label("Delete", systemImage: "trash")
             }
         }
+    }
+
+    /// Knowledge-graph entries have three fields; memory-table flat facts
+    /// only fill `subject`. Join non-empty fields with single spaces so neither
+    /// form renders extra whitespace.
+    private func factDisplayText(_ f: FactItem) -> String {
+        [f.subject, f.predicate, f.object]
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
     }
 
     // MARK: - Section header
