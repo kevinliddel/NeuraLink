@@ -45,11 +45,23 @@ struct PersonaSettingsView: View {
         self.selectedConfig = config
         let current = CharacterPersona.forCharacter(named: modelID)
         _persona = State(initialValue: current)
-        _localPrompt = State(initialValue: LocalLLMPromptStore.shared.effectivePrompt(for: modelID, config: config))
+        let prompt = LocalLLMPromptStore.shared.effectivePrompt(for: modelID, config: config)
+        _localPrompt = State(initialValue: prompt)
         let initialSpeaker = VoiceVoxSpeaker.speakerID(for: modelID)
         _voicevoxSpeakerID = State(initialValue: initialSpeaker)
         let initialKokoro = KokoroVoicePreset.preset(for: modelID).rawValue
         _kokoroVoiceID = State(initialValue: initialKokoro)
+
+        // Diagnostic: this fires on every NavigationLink push of the persona
+        // sheet. If the printed values don't match what you just saved, the
+        // bug is in the corresponding store; if they DO match but the UI
+        // still shows defaults, the bug is in @State / SwiftUI binding.
+        nlLog(
+            "[PersonaSettings.init] modelID='\(modelID)' config=\(config) "
+            + "→ persona.voice=\(current.voice), instructions.len=\(current.instructions.count); "
+            + "localPrompt.len=\(prompt.count); voicevoxSpeaker=\(initialSpeaker); kokoro=\(initialKokoro)",
+            level: .info
+        )
     }
 
     var body: some View {
@@ -144,6 +156,12 @@ struct PersonaSettingsView: View {
 
     private func saveChanges() {
         if isLocalLLMMode {
+            nlLog(
+                "[PersonaSettings.save] LOCAL mode — modelID='\(modelID)' "
+                + "localPrompt.len=\(localPrompt.count) "
+                + (isJapaneseModel ? "voicevox=\(voicevoxSpeakerID)" : "kokoro=\(kokoroVoiceID)"),
+                level: .info
+            )
             LocalLLMPromptStore.shared.savePrompt(localPrompt, for: modelID, config: selectedConfig)
             if isJapaneseModel {
                 PersonaVoiceStore.shared.setVoicevoxSpeakerID(voicevoxSpeakerID, for: modelID)
@@ -152,6 +170,11 @@ struct PersonaSettingsView: View {
             }
             TTSEngineSelector.shared.invalidateCache(for: modelID)
         } else {
+            nlLog(
+                "[PersonaSettings.save] OPENAI mode — modelID='\(modelID)' "
+                + "voice=\(persona.voice) name=\(persona.name) instructions.len=\(persona.instructions.count)",
+                level: .info
+            )
             PersonaStore.shared.savePersona(persona, for: modelID)
         }
     }
