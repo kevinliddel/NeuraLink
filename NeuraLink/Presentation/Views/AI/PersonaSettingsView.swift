@@ -8,7 +8,7 @@
 import AVFoundation
 import SwiftUI
 
-// MARK: - Voice Preview Player
+// MARK: - OpenAI / Cloud Preview Player (AVAudioPlayer)
 
 @Observable
 private final class VoicePreviewPlayer: NSObject, AVAudioPlayerDelegate, @unchecked Sendable {
@@ -43,6 +43,72 @@ private final class VoicePreviewPlayer: NSObject, AVAudioPlayerDelegate, @unchec
     deinit { player?.stop() }
 }
 
+// MARK: - Local Engine Preview Player (AVAudioEngine + PCMBuffer streaming)
+
+/// Plays PCMBuffer streams produced by local TTS engines (VoiceVox, Kokoro).
+/// Owns its own AVAudioEngine so previewing here doesn't interfere with the
+/// chat playback engine in `LocalLLMManager`.
+@Observable
+private final class LocalTTSPreviewPlayer: @unchecked Sendable {
+    var isSpeaking = false
+
+    private let audioEngine = AVAudioEngine()
+    private let playerNode = AVAudioPlayerNode()
+    private var didAttach = false
+    private var pendingBuffers = 0
+
+    func schedule(_ buffer: AVAudioPCMBuffer) {
+        ensureAttached(format: buffer.format)
+        if !audioEngine.isRunning {
+            try? audioEngine.start()
+        }
+        if !playerNode.isPlaying { playerNode.play() }
+
+        pendingBuffers += 1
+        isSpeaking = true
+        playerNode.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.pendingBuffers -= 1
+                if self.pendingBuffers <= 0 {
+                    self.pendingBuffers = 0
+                    self.isSpeaking = false
+                }
+            }
+        }
+    }
+
+    func stop() {
+        if playerNode.isPlaying {
+            playerNode.stop()
+        }
+        if audioEngine.isRunning {
+            audioEngine.stop()
+        }
+        pendingBuffers = 0
+        isSpeaking = false
+    }
+
+    private func ensureAttached(format: AVAudioFormat) {
+        if !didAttach {
+            audioEngine.attach(playerNode)
+            audioEngine.connect(playerNode, to: audioEngine.mainMixerNode, format: format)
+            didAttach = true
+            return
+        }
+        let current = playerNode.outputFormat(forBus: 0)
+        if current != format {
+            let wasRunning = audioEngine.isRunning
+            if wasRunning { audioEngine.pause() }
+            audioEngine.disconnectNodeInput(playerNode)
+            audioEngine.connect(playerNode, to: audioEngine.mainMixerNode, format: format)
+            if wasRunning { try? audioEngine.start() }
+        }
+    }
+
+    deinit { stop() }
+}
+
 // MARK: - View
 
 struct PersonaSettingsView: View {
@@ -51,11 +117,12 @@ struct PersonaSettingsView: View {
     @State private var persona: CharacterPersona
     @State private var localPrompt: String
     @State private var voicevoxSpeakerID: Int
+    @State private var kokoroVoiceID: String
     @Environment(\.dismiss) private var dismiss
 
-    // Voice preview (OpenAI mode only)
     @State private var previewText: String = ""
     @State private var previewPlayer = VoicePreviewPlayer()
+    @State private var localPreviewPlayer = LocalTTSPreviewPlayer()
     @State private var isLoadingPreview = false
 
     private let voices = [
@@ -64,6 +131,11 @@ struct PersonaSettingsView: View {
 
     private var isLocalLLMMode: Bool { OpenAISettings.shared.isLocalLLMEnabled }
     private var isJapaneseModel: Bool { selectedConfig == .japaneseLlama1b }
+
+    /// Whichever player the active mode uses. Centralises the isSpeaking flag.
+    private var activeIsSpeaking: Bool {
+        isLocalLLMMode ? localPreviewPlayer.isSpeaking : previewPlayer.isSpeaking
+    }
 
     init(modelID: String) {
         self.modelID = modelID
@@ -74,6 +146,8 @@ struct PersonaSettingsView: View {
         _localPrompt = State(initialValue: LocalLLMPromptStore.shared.effectivePrompt(for: modelID, config: config))
         let initialSpeaker = VoiceVoxSpeaker.speakerID(for: modelID)
         _voicevoxSpeakerID = State(initialValue: initialSpeaker)
+        let initialKokoro = KokoroVoicePreset.preset(for: modelID).rawValue
+        _kokoroVoiceID = State(initialValue: initialKokoro)
     }
 
     var body: some View {
@@ -99,7 +173,13 @@ struct PersonaSettingsView: View {
                     .foregroundStyle(.secondary)
                 }
 
-                localVoiceEngineSection
+                if isJapaneseModel {
+                    voicevoxVoiceSection
+                } else {
+                    kokoroVoiceSection
+                }
+
+                voicePreviewSection
             } else {
                 Section("AI Instructions (System Prompt)") {
                     TextEditor(text: $persona.instructions)
@@ -121,13 +201,7 @@ struct PersonaSettingsView: View {
             Section {
                 VStack(spacing: 8) {
                     Button {
-                        if isLocalLLMMode {
-                            LocalLLMPromptStore.shared.savePrompt(localPrompt, for: modelID, config: selectedConfig)
-                            PersonaVoiceStore.shared.setVoicevoxSpeakerID(voicevoxSpeakerID, for: modelID)
-                            TTSEngineSelector.shared.invalidateCache(for: modelID)
-                        } else {
-                            PersonaStore.shared.savePersona(persona, for: modelID)
-                        }
+                        saveChanges()
                         dismiss()
                     } label: {
                         Text("Save Changes")
@@ -140,16 +214,7 @@ struct PersonaSettingsView: View {
                     }
 
                     Button {
-                        if isLocalLLMMode {
-                            LocalLLMPromptStore.shared.resetPrompt(for: modelID, config: selectedConfig)
-                            localPrompt = LocalLLMPromptStore.shared.effectivePrompt(for: modelID, config: selectedConfig)
-                            PersonaVoiceStore.shared.clearVoicevoxSpeakerID(for: modelID)
-                            TTSEngineSelector.shared.invalidateCache(for: modelID)
-                            voicevoxSpeakerID = VoiceVoxSpeaker.speakerID(for: modelID)
-                        } else {
-                            PersonaStore.shared.resetPersona(for: modelID)
-                            persona = CharacterPersona.forCharacter(named: modelID)
-                        }
+                        resetToDefault()
                         dismiss()
                     } label: {
                         Text("Reset to Default")
@@ -167,12 +232,49 @@ struct PersonaSettingsView: View {
         }
         .navigationTitle(isLocalLLMMode ? "\(persona.name) — \(isJapaneseModel ? "JP Prompt" : "Local Prompt")" : "\(persona.name) Persona")
         .navigationBarTitleDisplayMode(.inline)
-        .onDisappear { previewPlayer.stop() }
+        .onDisappear {
+            previewPlayer.stop()
+            localPreviewPlayer.stop()
+        }
     }
 
-    // MARK: - VOICEVOX Voice Picker
+    // MARK: - Save / Reset
 
-    private var localVoiceEngineSection: some View {
+    private func saveChanges() {
+        if isLocalLLMMode {
+            LocalLLMPromptStore.shared.savePrompt(localPrompt, for: modelID, config: selectedConfig)
+            if isJapaneseModel {
+                PersonaVoiceStore.shared.setVoicevoxSpeakerID(voicevoxSpeakerID, for: modelID)
+            } else {
+                PersonaVoiceStore.shared.setKokoroVoiceID(kokoroVoiceID, for: modelID)
+            }
+            TTSEngineSelector.shared.invalidateCache(for: modelID)
+        } else {
+            PersonaStore.shared.savePersona(persona, for: modelID)
+        }
+    }
+
+    private func resetToDefault() {
+        if isLocalLLMMode {
+            LocalLLMPromptStore.shared.resetPrompt(for: modelID, config: selectedConfig)
+            localPrompt = LocalLLMPromptStore.shared.effectivePrompt(for: modelID, config: selectedConfig)
+            if isJapaneseModel {
+                PersonaVoiceStore.shared.clearVoicevoxSpeakerID(for: modelID)
+                voicevoxSpeakerID = VoiceVoxSpeaker.speakerID(for: modelID)
+            } else {
+                PersonaVoiceStore.shared.clearKokoroVoiceID(for: modelID)
+                kokoroVoiceID = KokoroVoicePreset.builtInDefault(for: modelID).rawValue
+            }
+            TTSEngineSelector.shared.invalidateCache(for: modelID)
+        } else {
+            PersonaStore.shared.resetPersona(for: modelID)
+            persona = CharacterPersona.forCharacter(named: modelID)
+        }
+    }
+
+    // MARK: - Voice Picker Sections
+
+    private var voicevoxVoiceSection: some View {
         Section {
             Picker("Voice", selection: $voicevoxSpeakerID) {
                 ForEach(VoiceVoxSpeaker.allBuiltIn) { speaker in
@@ -183,78 +285,120 @@ struct PersonaSettingsView: View {
         } header: {
             Text("Voice (VOICEVOX)")
         } footer: {
-            Text(
-                isJapaneseModel
-                    ? "Used by the Japanese local LLM. Other models fall through to the iOS system voice."
-                    : "Will be used when you switch to the Japanese local LLM. Other models use the iOS system voice."
-            )
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            Text("Used by the Japanese local LLM.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var kokoroVoiceSection: some View {
+        Section {
+            Picker("Voice", selection: $kokoroVoiceID) {
+                ForEach(KokoroVoicePreset.allCases) { preset in
+                    Text(preset.displayName).tag(preset.rawValue)
+                }
+            }
+            .pickerStyle(.menu)
+        } header: {
+            Text("Voice (Kokoro)")
+        } footer: {
+            if KokoroModelAccess.isAvailable {
+                Text("Used by the on-device LLM for English speech synthesis.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Label(
+                    "Kokoro voice pack not installed — falls back to the iOS system voice.",
+                    systemImage: "exclamationmark.triangle"
+                )
+                .font(.caption)
+                .foregroundStyle(.orange)
+            }
         }
     }
 
     // MARK: - Voice Preview Section
 
     private var voicePreviewSection: some View {
-                Section {
-                    ZStack(alignment: .bottom) {
-                        TextField("Enter text to preview…", text: $previewText, axis: .vertical)
-                            .font(.headline)
-                            .padding(.trailing, 60) // Space for the 40pt button + margin
-                            .padding(.vertical, 15)
-                            .padding(.horizontal, 15)
+        Section {
+            ZStack(alignment: .bottom) {
+                TextField("Enter text to preview…", text: $previewText, axis: .vertical)
+                    .font(.headline)
+                    .padding(.trailing, 60)
+                    .padding(.vertical, 15)
+                    .padding(.horizontal, 15)
+                    .background(
+                        RoundedRectangle(cornerRadius: 25)
+                            .stroke(lineWidth: 1.0)
+                            .foregroundStyle(Color.clear)
                             .background(
-                                RoundedRectangle(cornerRadius: 25)
-                                    .stroke(lineWidth: 1.0)
-                                    .foregroundStyle(Color.clear)
-                                    .background(
-                                        Color.gray.opacity(0.12)
-                                            .clipShape(RoundedRectangle(cornerRadius: 25))
-                                    )
+                                Color.gray.opacity(0.12)
+                                    .clipShape(RoundedRectangle(cornerRadius: 25))
                             )
-                            .disabled(isLoadingPreview)
+                    )
+                    .disabled(isLoadingPreview)
 
-                        HStack(alignment: .bottom) {
-                            Spacer()
-                            previewButton
-                                .padding(.trailing, 8)
-                                .padding(.bottom, 8)
-                        }
-                    }
-                } header: {
-                    Text("Voice Preview")
-                } footer: {
-                    let settings = OpenAISettings.shared
-                    if !settings.isEnabled || !settings.hasValidKey {
-                        Label(
-                            "Add an OpenAI API key in settings to preview voices.",
-                            systemImage: "info.circle"
-                        )
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                    } else {
-                        Text(
-                            "Tap the mic to hear your text spoken in \(persona.voice.capitalized)'s voice."
-                        )
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    }
+                HStack(alignment: .bottom) {
+                    Spacer()
+                    previewButton
+                        .padding(.trailing, 8)
+                        .padding(.bottom, 8)
                 }
-                .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
-                .listRowBackground(Color.clear)
+            }
+        } header: {
+            Text("Voice Preview")
+        } footer: {
+            previewFooter
+        }
+        .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
+        .listRowBackground(Color.clear)
+    }
+
+    @ViewBuilder
+    private var previewFooter: some View {
+        if isLocalLLMMode {
+            if isJapaneseModel {
+                Text("Tap the mic to hear your text spoken in the selected VOICEVOX voice.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if KokoroModelAccess.isAvailable {
+                Text("Tap the mic to hear your text spoken in the selected Kokoro voice.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Label(
+                    "Kokoro voice pack not installed — install it to enable previews.",
+                    systemImage: "info.circle"
+                )
+                .font(.caption)
+                .foregroundStyle(.orange)
+            }
+        } else {
+            let settings = OpenAISettings.shared
+            if !settings.isEnabled || !settings.hasValidKey {
+                Label(
+                    "Add an OpenAI API key in settings to preview voices.",
+                    systemImage: "info.circle"
+                )
+                .font(.caption)
+                .foregroundStyle(.orange)
+            } else {
+                Text("Tap the mic to hear your text spoken in \(persona.voice.capitalized)'s voice.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 
     @ViewBuilder
     private var previewButton: some View {
-        let isActive = previewPlayer.isSpeaking
-        let canTap =
-            isActive
-            || (!previewText.trimmingCharacters(in: .whitespaces).isEmpty
-                && OpenAISettings.shared.isEnabled && OpenAISettings.shared.hasValidKey)
+        let isActive = activeIsSpeaking
+        let canTap = isActive || (!previewText.trimmingCharacters(in: .whitespaces).isEmpty && previewIsAvailable)
 
         Button {
             if isActive {
                 previewPlayer.stop()
+                localPreviewPlayer.stop()
             } else {
                 Task { await startPreview() }
             }
@@ -281,6 +425,18 @@ struct PersonaSettingsView: View {
         .disabled(!canTap || isLoadingPreview)
     }
 
+    /// Whether the current mode has the resources needed to render a preview.
+    /// OpenAI: enabled + valid key. Japanese: VoiceVox engine builds unconditionally
+    /// (dictionary is bundled). Other local: Kokoro pack present.
+    private var previewIsAvailable: Bool {
+        if isLocalLLMMode {
+            if isJapaneseModel { return true }
+            return KokoroModelAccess.isAvailable
+        }
+        let settings = OpenAISettings.shared
+        return settings.isEnabled && settings.hasValidKey
+    }
+
     private func buttonTint(isActive: Bool) -> Color {
         isActive ? .red : .blue
     }
@@ -290,6 +446,15 @@ struct PersonaSettingsView: View {
     private func startPreview() async {
         let text = previewText.trimmingCharacters(in: .whitespaces)
         guard !text.isEmpty else { return }
+
+        if isLocalLLMMode {
+            await startLocalPreview(text: text)
+        } else {
+            await startOpenAIPreview(text: text)
+        }
+    }
+
+    private func startOpenAIPreview(text: String) async {
         let settings = OpenAISettings.shared
         guard settings.isEnabled && settings.hasValidKey else { return }
 
@@ -317,6 +482,50 @@ struct PersonaSettingsView: View {
         else { return }
 
         previewPlayer.start(data: data)
+    }
+
+    /// Synthesises through the local engine that would otherwise run during a
+    /// chat turn. Uses temporary `PersonaVoiceStore` overrides to honour the
+    /// current picker value even before the user hits Save, then restores any
+    /// prior override when synthesis finishes.
+    private func startLocalPreview(text: String) async {
+        isLoadingPreview = true
+        defer { isLoadingPreview = false }
+
+        // Temporarily apply the picker selection so the engine sees it.
+        let previousVoicevox = PersonaVoiceStore.shared.voicevoxSpeakerID(for: modelID)
+        let previousKokoro = PersonaVoiceStore.shared.kokoroVoiceID(for: modelID)
+        if isJapaneseModel {
+            PersonaVoiceStore.shared.setVoicevoxSpeakerID(voicevoxSpeakerID, for: modelID)
+        } else {
+            PersonaVoiceStore.shared.setKokoroVoiceID(kokoroVoiceID, for: modelID)
+        }
+        TTSEngineSelector.shared.invalidateCache(for: modelID)
+
+        defer {
+            if isJapaneseModel {
+                PersonaVoiceStore.shared.setVoicevoxSpeakerID(previousVoicevox, for: modelID)
+            } else {
+                PersonaVoiceStore.shared.setKokoroVoiceID(previousKokoro, for: modelID)
+            }
+            TTSEngineSelector.shared.invalidateCache(for: modelID)
+        }
+
+        guard let engine = TTSEngineSelector.shared.engine(for: modelID) else {
+            nlLog("[Preview] No TTS engine resolved for persona '\(modelID)'", level: .error)
+            return
+        }
+
+        engine.onBufferReady = { [weak localPreviewPlayer] buffer in
+            DispatchQueue.main.async { localPreviewPlayer?.schedule(buffer) }
+        }
+
+        do {
+            try await engine.initialize()
+            try await engine.speak(text, persona: modelID)
+        } catch {
+            nlLog("[Preview] Local TTS preview failed: \(error)", level: .error)
+        }
     }
 }
 
