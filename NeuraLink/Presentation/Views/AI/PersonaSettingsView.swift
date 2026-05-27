@@ -126,6 +126,13 @@ struct PersonaSettingsView: View {
                             .background(Color(uiColor: .secondarySystemBackground))
                             .cornerRadius(12)
                     }
+                    // `.borderless` scopes the tap area to the button's label.
+                    // Without it, SwiftUI's Form treats the whole row as a
+                    // single tappable region and BOTH buttons fire on any
+                    // tap — that's how Save was triggering Reset and wiping
+                    // the just-saved data. See feedback memory
+                    // "swiftui_form_stacked_buttons" for the diagnosis trail.
+                    .buttonStyle(.borderless)
 
                     Button {
                         resetToDefault()
@@ -139,6 +146,7 @@ struct PersonaSettingsView: View {
                             .background(Color(uiColor: .secondarySystemBackground))
                             .cornerRadius(12)
                     }
+                    .buttonStyle(.borderless)
                 }
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets(top: 10, leading: 0, bottom: 10, trailing: 0))
