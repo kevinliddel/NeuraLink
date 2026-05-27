@@ -82,7 +82,7 @@ final class TTSEngineSelector {
     }
 
     private func hasKokoroVoicesDownloaded() -> Bool {
-        false
+        KokoroModelAccess.isAvailable
     }
 
     private func makeF5TTSEngine(for persona: PersonaIdentifier) -> (any TTSEngineProtocol)? {
@@ -101,7 +101,8 @@ final class TTSEngineSelector {
     }
 
     private func makeKokoroEngine(for persona: PersonaIdentifier) -> (any TTSEngineProtocol)? {
-        nil
+        _ = persona
+        return KokoroEngine.shared
     }
 
     private func makeSystemTTSEngine(for persona: PersonaIdentifier) -> (any TTSEngineProtocol)? {

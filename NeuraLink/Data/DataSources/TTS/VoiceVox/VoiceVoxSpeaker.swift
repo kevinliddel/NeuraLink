@@ -47,25 +47,19 @@ extension VoiceVoxSpeaker {
     /// `.vvm` packs don't always use IDs that match their filename.
     static func map(_ incomingID: Int) -> Mapping {
         switch incomingID {
-        case 16:  // Kyushu Sora is in 2.vvm
+        case 2, 16:
             return Mapping(filenameID: 2, internalStyleID: 16)
-        case 9:  // Namine Ritsu is in 3.vvm
+        case 9:
             return Mapping(filenameID: 3, internalStyleID: 9)
-        case 61:  // Chugoku Usagi is in 3.vvm
+        case 3, 61:
             return Mapping(filenameID: 3, internalStyleID: 61)
-        case 23:  // WhiteCUL is in 8.vvm
+        case 8, 23:
             return Mapping(filenameID: 8, internalStyleID: 23)
-        case 12:  // Shirakami Kotaro is in 9.vvm
+        case 12:
             return Mapping(filenameID: 9, internalStyleID: 12)
-        case 67:  // Kurita Marron is in 14.vvm
+        case 14, 67:
             return Mapping(filenameID: 14, internalStyleID: 67)
-        case 68:  // Ieru-tan is in 14.vvm
-            return Mapping(filenameID: 14, internalStyleID: 68)
-        case 69:  // Manbetsu Hanamaru is in 14.vvm
-            return Mapping(filenameID: 14, internalStyleID: 69)
-        case 74:  // Kotoyomi Nia is in 14.vvm
-            return Mapping(filenameID: 14, internalStyleID: 74)
-        case 102:  // Yurei-chan is in 20.vvm
+        case 20, 102:
             return Mapping(filenameID: 20, internalStyleID: 102)
         default:
             return Mapping(filenameID: incomingID, internalStyleID: incomingID)
@@ -78,7 +72,7 @@ extension VoiceVoxSpeaker {
 extension VoiceVoxSpeaker {
 
     /// The default VoiceVox speaker used when no persona-specific choice is set.
-    static let defaultSpeakerID: Int = kotoyomiNia.id
+    static let defaultSpeakerID: Int = tsumugi.id
 
     /// Maps a `PersonaIdentifier` (the current `state.selectedCharacterName`
     /// in `LocalLLMManager`) to a VoiceVox speaker ID. Mapping is by lowercase
@@ -101,9 +95,9 @@ extension VoiceVoxSpeaker {
         }
         switch persona.lowercased() {
         case "ekaterina":
-            return kotoyomiNia.id  // soft, warm, friendly — fits the Onee-san archetype (Kotoyomi Nia inside 14.vvm)
-        case "sonya", "dedicatus":
-            return kyushuSora.id  // female, characteristic, snappy — fits the tsundere (Kyushu Sora inside 2.vvm)
+            return tsumugi.id  // soft, warm, friendly — fits the Onee-san archetype
+        case "sonya":
+            return ritsu.id  // female, characteristic, snappy — fits the tsundere
         default:
             return defaultSpeakerID
         }
@@ -115,67 +109,42 @@ extension VoiceVoxSpeaker {
 extension VoiceVoxSpeaker {
 
     static let allBuiltIn: [VoiceVoxSpeaker] = [
-        .kyushuSora, .namineRitsu, .chugokuUsagi, .whiteCUL, .kotoyomiNia, .ierutan,
-        .manbetsuHanamaru, .yureichan, .shirakamiKotaro, .kuritaMarron
+        .metan, .zundamon, .tsumugi, .ritsu, .himari, .mochiko
     ]
 
-    static let kyushuSora = VoiceVoxSpeaker(
-        id: 16,
-        name: "九州そら",
+    static let metan = VoiceVoxSpeaker(
+        id: 2,
+        name: "四国めたん",
         styles: [VoiceVoxStyle(id: 16, name: "ノーマル")]
     )
 
-    static let namineRitsu = VoiceVoxSpeaker(
+    static let zundamon = VoiceVoxSpeaker(
+        id: 3,
+        name: "ずんだもん",
+        styles: [VoiceVoxStyle(id: 61, name: "ノーマル")]
+    )
+
+    static let tsumugi = VoiceVoxSpeaker(
+        id: 8,
+        name: "春日部つむぎ",
+        styles: [VoiceVoxStyle(id: 23, name: "ノーマル")]
+    )
+
+    static let ritsu = VoiceVoxSpeaker(
         id: 9,
         name: "波音リツ",
         styles: [VoiceVoxStyle(id: 9, name: "ノーマル")]
     )
 
-    static let chugokuUsagi = VoiceVoxSpeaker(
-        id: 61,
-        name: "中国うさぎ",
-        styles: [VoiceVoxStyle(id: 61, name: "ノーマル")]
-    )
-
-    static let whiteCUL = VoiceVoxSpeaker(
-        id: 23,
-        name: "WhiteCUL",
-        styles: [VoiceVoxStyle(id: 23, name: "ノーマル")]
-    )
-
-    static let kotoyomiNia = VoiceVoxSpeaker(
-        id: 74,
-        name: "琴詠ニア",
-        styles: [VoiceVoxStyle(id: 74, name: "ノーマル")]
-    )
-
-    static let ierutan = VoiceVoxSpeaker(
-        id: 68,
-        name: "あいえるたん",
-        styles: [VoiceVoxStyle(id: 68, name: "ノーマル")]
-    )
-
-    static let manbetsuHanamaru = VoiceVoxSpeaker(
-        id: 69,
-        name: "満別花丸",
-        styles: [VoiceVoxStyle(id: 69, name: "ノーマル")]
-    )
-
-    static let yureichan = VoiceVoxSpeaker(
-        id: 102,
-        name: "ユーレイちゃん",
-        styles: [VoiceVoxStyle(id: 102, name: "ノーマル")]
-    )
-
-    static let shirakamiKotaro = VoiceVoxSpeaker(
-        id: 12,
-        name: "白上虎太郎",
-        styles: [VoiceVoxStyle(id: 12, name: "ノーマル")]
-    )
-
-    static let kuritaMarron = VoiceVoxSpeaker(
-        id: 67,
-        name: "栗田まろん",
+    static let himari = VoiceVoxSpeaker(
+        id: 14,
+        name: "冥鳴ひまり",
         styles: [VoiceVoxStyle(id: 67, name: "ノーマル")]
+    )
+
+    static let mochiko = VoiceVoxSpeaker(
+        id: 20,
+        name: "もち子さん",
+        styles: [VoiceVoxStyle(id: 102, name: "ノーマル")]
     )
 }
