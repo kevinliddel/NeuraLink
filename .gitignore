@@ -37,6 +37,7 @@ DerivedData/
 model.safetensors
 vocab.txt
 vocos.safetensors
+Dependencies/Kokoro/Resources/kokoro.onnx
 
 # AI Agent files
 RULES.md
