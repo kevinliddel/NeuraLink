@@ -8,13 +8,21 @@
 //  Belt-and-suspenders persistence: protected JSON file + UserDefaults backup.
 //  See PersonaStore.swift for the rationale.
 //
+//  Notes on the class shape: this is a plain `final class`, *not* `@Observable`.
+//  An earlier revision used `@Observable` + `@ObservationIgnored private var saved`,
+//  which under Xcode 26 / Swift 6.2 / `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`
+//  produced a reproducible bug where mutating `saved` triggered a second `[:]`
+//  flush moments after a successful save — wiping the file on disk. Removing the
+//  macro entirely makes the property a normal stored ivar with no synthesized
+//  accessors, and persistence becomes deterministic. No view in the app observes
+//  this store's properties, so dropping `@Observable` has no UI side-effect.
+//
 //  Created by Dedicatus on 30/04/2026.
 //
 
 import Foundation
-import SwiftUI
 
-@Observable
+@MainActor
 final class LocalLLMPromptStore {
     static let shared = LocalLLMPromptStore()
 
@@ -22,8 +30,8 @@ final class LocalLLMPromptStore {
     private let backupKey = "com.neuralink.local-llm-prompts.v2.backup"
 
     /// Authoritative in-memory cache. Disk + UserDefaults backup are the
-    /// durable layers.
-    @ObservationIgnored private var saved: [String: String] = [:]
+    /// durable layers. Plain stored property — no observation macro.
+    private var saved: [String: String] = [:]
 
     private var fileURL: URL? {
         do {
@@ -82,7 +90,12 @@ final class LocalLLMPromptStore {
         config: LocalModelDownloadManager.ModelConfiguration? = nil
     ) -> String {
         let k = storeKey(for: characterName, config: config)
-        return saved[k] ?? Self.defaultPrompt(for: characterName, config: config)
+        if let stored = saved[k] {
+            nlLog("[LocalLLMPromptStore] effectivePrompt('\(k)') → SAVED (\(stored.count) chars)", level: .info)
+            return stored
+        }
+        nlLog("[LocalLLMPromptStore] effectivePrompt('\(k)') → DEFAULT (no saved entry; cache has keys: \(Array(saved.keys).sorted()))", level: .info)
+        return Self.defaultPrompt(for: characterName, config: config)
     }
 
     func savePrompt(
@@ -91,10 +104,8 @@ final class LocalLLMPromptStore {
         config: LocalModelDownloadManager.ModelConfiguration? = nil
     ) {
         let key = storeKey(for: characterName, config: config)
-        var updated = saved
-        updated[key] = prompt
-        saved = updated
-        nlLog("[LocalLLMPromptStore] Saving prompt for '\(key)' (length=\(prompt.count))", level: .info)
+        saved[key] = prompt
+        nlLog("[LocalLLMPromptStore] Saving prompt for '\(key)' (length=\(prompt.count), cache now has \(saved.count) entry/ies)", level: .info)
         flushToBothLayers()
     }
 
@@ -103,9 +114,7 @@ final class LocalLLMPromptStore {
         config: LocalModelDownloadManager.ModelConfiguration? = nil
     ) {
         let key = storeKey(for: characterName, config: config)
-        var updated = saved
-        updated.removeValue(forKey: key)
-        saved = updated
+        saved.removeValue(forKey: key)
         nlLog("[LocalLLMPromptStore] Reset prompt for '\(key)'", level: .info)
         flushToBothLayers()
     }
@@ -129,7 +138,7 @@ final class LocalLLMPromptStore {
             do {
                 try encoded.write(to: url, options: .atomic)
                 try? ProtectedStorage.protect(url)
-                nlLog("[LocalLLMPromptStore] flushToBothLayers: wrote \(encoded.count) bytes to \(url.lastPathComponent)", level: .info)
+                nlLog("[LocalLLMPromptStore] flushToBothLayers: wrote \(encoded.count) bytes to \(url.lastPathComponent) (cache size: \(saved.count))", level: .info)
             } catch {
                 nlLog("[LocalLLMPromptStore] flushToBothLayers: file write failed: \(error)", level: .error)
             }

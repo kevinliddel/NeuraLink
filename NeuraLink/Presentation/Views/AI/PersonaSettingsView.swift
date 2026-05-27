@@ -427,20 +427,23 @@ struct PersonaSettingsView: View {
         }
         TTSEngineSelector.shared.invalidateCache(for: modelID)
 
-        defer {
+        guard let engine = TTSEngineSelector.shared.engine(for: modelID) else {
+            nlLog("[Preview] No TTS engine resolved for persona '\(modelID)'", level: .error)
+            // Restore overrides before bailing.
             if isJapaneseModel {
                 PersonaVoiceStore.shared.setVoicevoxSpeakerID(previousVoicevox, for: modelID)
             } else {
                 PersonaVoiceStore.shared.setKokoroVoiceID(previousKokoro, for: modelID)
             }
             TTSEngineSelector.shared.invalidateCache(for: modelID)
-        }
-
-        guard let engine = TTSEngineSelector.shared.engine(for: modelID) else {
-            nlLog("[Preview] No TTS engine resolved for persona '\(modelID)'", level: .error)
             return
         }
 
+        // Save the engine's existing callback (LocalLLMManager wires this up
+        // for chat synthesis) so we can restore it when the preview ends.
+        // Without this, the next chat turn's PCM buffers would be routed to
+        // the freed preview player.
+        let previousCallback = engine.onBufferReady
         engine.onBufferReady = { [weak localPreviewPlayer] buffer in
             DispatchQueue.main.async { localPreviewPlayer?.schedule(buffer) }
         }
@@ -451,6 +454,15 @@ struct PersonaSettingsView: View {
         } catch {
             nlLog("[Preview] Local TTS preview failed: \(error)", level: .error)
         }
+
+        // Restore both the engine callback and the persona voice override.
+        engine.onBufferReady = previousCallback
+        if isJapaneseModel {
+            PersonaVoiceStore.shared.setVoicevoxSpeakerID(previousVoicevox, for: modelID)
+        } else {
+            PersonaVoiceStore.shared.setKokoroVoiceID(previousKokoro, for: modelID)
+        }
+        TTSEngineSelector.shared.invalidateCache(for: modelID)
     }
 }
 

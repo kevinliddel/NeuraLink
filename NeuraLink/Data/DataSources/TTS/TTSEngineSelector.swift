@@ -45,18 +45,27 @@ final class TTSEngineSelector {
     }
 
     func invalidateCache() {
-        for engine in cachedEngines.values {
-            engine.stop()
-            engine.shutdown()
-        }
+        let engines = Array(cachedEngines.values)
         cachedEngines.removeAll()
+        // `shutdown()` on VOICEVOX/Kokoro does `queue.sync { … }`. Calling
+        // that from the MainActor while the queue is mid-synthesis blocks
+        // the main thread and trips the iOS watchdog (SIGABRT on Thread 43).
+        // The engines are singletons that don't actually need a tear-down to
+        // re-key their persona — and a save-during-chat is the realistic
+        // case here. So fire the stop on main (it's cheap / no-op for these
+        // engines) and let the shutdown happen off-main if anything actually
+        // needs it.
+        for engine in engines {
+            engine.stop()
+        }
     }
 
     func invalidateCache(for persona: PersonaIdentifier) {
-        if let engine = cachedEngines.removeValue(forKey: persona) {
-            engine.stop()
-            engine.shutdown()
-        }
+        guard let engine = cachedEngines.removeValue(forKey: persona) else { return }
+        // Same rationale as `invalidateCache()` above — never block main on
+        // `queue.sync`. The cached entry being removed is the actual contract
+        // of "invalidate"; the engine's lifecycle is independent.
+        engine.stop()
     }
 
     private func resolveEngine(for persona: PersonaIdentifier) -> (any TTSEngineProtocol)? {
