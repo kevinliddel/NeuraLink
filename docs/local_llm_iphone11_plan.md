@@ -1,6 +1,6 @@
 # Local LLM — iPhone 11 Performance Plan
 
-> **Status:** P1–P6 shipped; P7 deferred. Companion to [local_llm_memory_plan.md](local_llm_memory_plan.md) Phase 3 validation — this file *is* that validation.
+> **Status:** P1–P6 shipped; P8 sink shipped 2026-05-28 (share-UI still deferred pending privacy review); P7 and P9 deferred. Companion to [local_llm_memory_plan.md](local_llm_memory_plan.md) Phase 3 validation — this file *is* that validation.
 >
 > **Author:** Dedicatus
 >
@@ -186,7 +186,7 @@ Persisting the structured log lines this codebase already emits would unblock mu
 - **Risk:** low. File I/O on a background queue, format unchanged. Privacy review needed before any in-app share UI ships — logs include the user's transcripts (`[User Transcript]:`, `[OpenAI] Full response:`).
 - **Validation:** kill the app mid-session, relaunch, verify previous session's `[Bench]` and `[KVCache]` lines are still readable in the new log file. Trigger a known error (set a wrong API key) and confirm `[AI ERROR EVENT]` is preserved.
 
-**Status — Phase 5 deferred.** Not started. Highest workflow leverage of the three deferred items but no end-user-visible feature change — it speeds *us* up, not the product.
+**Status — sink shipped 2026-05-28; in-app share UI still deferred.** Persistence side landed: new [PersistentLogSink.swift](../NeuraLink/Core/Utils/PersistentLogSink.swift) in `Core/Utils/` (not `Core/Logging/` — kept alongside the existing logger), wired into [NeuraLinkLogger.nlLog](../NeuraLink/Core/Utils/NeuraLinkLogger.swift) so every `nlLog` call tees to `<App Support>/logs/YYYY-MM-DD.log`. `nlLogSensitive` deliberately bypasses the sink so transcripts and persona prompts stay out of the on-disk file. Sink is `#if DEBUG`-gated end-to-end — release builds produce zero on-disk log surface, so the privacy review is only a prerequisite for the in-app "Share logs" button, which is deferred until that review happens. Thermal-state tag added to every `[Bench]` line via `LlamaBridge.thermalStateLabel()` — format suffix is `thermal=nominal|fair|serious|critical`. Daily rotation + 10 MB rolling cap with oldest-first eviction (never deletes the file currently being appended). Retrieval today: Xcode → Devices and Simulators → Download Container, or the simulator's `~/Library/Developer/CoreSimulator/Devices/<id>/data/Containers/Data/Application/<app>/Library/Application Support/logs/` directory.
 
 ---
 

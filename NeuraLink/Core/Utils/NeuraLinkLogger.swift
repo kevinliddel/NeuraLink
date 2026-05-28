@@ -203,10 +203,14 @@ func nlLog(
     line: UInt = #line
 ) {
     #if DEBUG
-        let (logger, osLog) = LoggerHub.get(deriveCategory(from: category))
+        let cat = deriveCategory(from: category)
+        let (logger, osLog) = LoggerHub.get(cat)
         guard osLog.isEnabled(type: level.osLogType) else { return }
-        emit(message(), level: level, logger: logger,
-              function: String(describing: function), line: line)
+        let body = message()
+        let fn = String(describing: function)
+        emit(body, level: level, logger: logger, function: fn, line: line)
+        PersistentLogSink.write(
+            level: level, body: body, category: cat, function: fn, line: line)
     #else
         _ = message
         _ = level

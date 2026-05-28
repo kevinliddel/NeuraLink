@@ -183,11 +183,26 @@ final class LlamaBridge {
             ? 100.0 * Double(pldHits) / Double(pldRounds)
             : 0
         let line = String(
-            format: "[Bench] %@ tokens=%d ttft=%.0fms decode=%.2ftok/s prefill=%d+%d@%.0fms(%.1ftok/s) pld=%d/%d(%.0f%%) elapsed=%.2fs",
+            format: "[Bench] %@ tokens=%d ttft=%.0fms decode=%.2ftok/s prefill=%d+%d@%.0fms(%.1ftok/s) pld=%d/%d(%.0f%%) elapsed=%.2fs thermal=%@",
             label, stats.tokenCount, ttftSec * 1000, decodeTps,
             prefillReused, prefillNew, prefillMs, prefillTps,
-            pldHits, pldRounds, pldHitPct, totalElapsed)
+            pldHits, pldRounds, pldHitPct, totalElapsed,
+            thermalStateLabel())
         nlLog(line, level: .info)
+    }
+
+    /// Compact label for `ProcessInfo.thermalState` so `[Bench]` can be
+    /// correlated with device throttling in post-hoc log analysis. iOS
+    /// drops clocks aggressively at `.serious` and `.critical`, which
+    /// correlates strongly with decode-tok/s dips on A13.
+    private static func thermalStateLabel() -> String {
+        switch ProcessInfo.processInfo.thermalState {
+        case .nominal:  return "nominal"
+        case .fair:     return "fair"
+        case .serious:  return "serious"
+        case .critical: return "critical"
+        @unknown default: return "unknown"
+        }
     }
 
     /// Signals the in-progress generation to stop after the current token.
