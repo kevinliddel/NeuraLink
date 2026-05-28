@@ -23,18 +23,33 @@ When `OpenAISettings.isLocalLLMEnabled = true`, the LLM runs on-device via [`Loc
 
 ```mermaid
 flowchart TD
-    Start[Persona + ModelConfig] --> Q1{Has F5-TTS clone?<br/>AND tier == qwen7b?}
-    Q1 -- yes --> F5[F5TTSEngine<br/>MLX-Swift voice clone]
-    Q1 -- no --> Q2{ModelConfig ==<br/>japaneseLlama1b?}
-    Q2 -- yes --> VV[VoiceVoxEngine<br/>ONNX Runtime + OpenJTalk]
-    Q2 -- no --> Q3{Kokoro pack<br/>installed on disk?}
-    Q3 -- yes --> KK[KokoroEngine<br/>ONNX kokoro-82M]
-    Q3 -- no --> SYS[SystemTTSEngine<br/>AVSpeechSynthesizer fallback]
+    Start["Persona + ModelConfig"] --> Q1{"Has F5-TTS clone?\nAND tier == qwen7b?"}
 
-    F5 --> Done[onBufferReady → AVAudioPCMBuffer]
-    VV --> Done
-    KK --> Done
-    SYS --> Done
+    Q1 --> D1["yes"] --> F5["F5TTSEngine\nMLX-Swift voice clone"]
+    Q1 --> D2["no"] --> Q2{"ModelConfig ==\njapaneseLlama1b?"}
+
+    Q2 --> D3["yes"] --> VV["VoiceVoxEngine\nONNX Runtime + OpenJTalk"]
+    Q2 --> D4["no"] --> Q3{"Kokoro pack\ninstalled on disk?"}
+
+    Q3 --> D5["yes"] --> KK["KokoroEngine\nONNX kokoro-82M"]
+    Q3 --> D6["no"] --> SYS["SystemTTSEngine\nAVSpeechSynthesizer fallback"]
+
+    F5 --> D7["Audio Buffer"] --> Done["onBufferReady → AVAudioPCMBuffer"]
+    VV --> D7
+    KK --> D7
+    SYS --> D7
+
+    %% Engine styles
+    classDef engine fill:#0f172a,stroke:#7c3aed,color:#a78bfa
+    class F5,VV,KK,SYS engine
+
+    %% Decision nodes
+    classDef decision fill:#1e293b,stroke:#94a3b8,color:#e2e8f0
+    class Q1,Q2,Q3 decision
+
+    %% Data / flow nodes (consistent with your other diagrams)
+    classDef data fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
+    class D1,D2,D3,D4,D5,D6,D7 data
 ```
 
 Each engine conforms to [`TTSEngineProtocol`](../NeuraLink/Domain/Interfaces/TTSEngineProtocol.swift), which is a push-streaming contract: the engine calls back into `onBufferReady` with each PCM buffer as it's synthesised, so the iPhone can start playing before the full sentence has finished synthesising. That callback is what keeps first-audio latency low even when the LLM is producing text faster than the TTS can synthesise it.

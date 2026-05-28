@@ -12,16 +12,35 @@ static std::vector<float> trim_audio(const std::vector<float>& audio, int sample
     return audio; 
 }
 
-Kokoro::Kokoro(const std::string& model_path, const std::string& voices_path, const std::string& vocab_path, const std::string& dict_path) 
+Kokoro::Kokoro(const std::string& model_path, const std::string& voices_path, const std::string& vocab_path, const std::string& dict_path)
     : env_(ORT_LOGGING_LEVEL_WARNING, "Kokoro")
 {
     Ort::SessionOptions session_options;
-    session_options.SetIntraOpNumThreads(2);
-    session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
+    session_options.SetIntraOpNumThreads(1);
+    session_options.SetInterOpNumThreads(1);
+    session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_BASIC);
+    session_options.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
+
+    // Memory-pressure hardening for iOS: the bundled Kokoro model is 328 MB
+    // and previously OOM-killed the process under the combined load of a
+    // local LLM (~800 MB) + the OS + the ONNX session arena. Two knobs reduce
+    // the steady-state footprint without measurable quality loss for 24 kHz
+    // speech:
+    //   - DisableCpuMemArena: skip the default per-session arena that
+    //     pre-allocates large pools sized for the worst-case input shape.
+    //     Inference falls back to malloc/free per tensor, which fragments
+    //     more but caps RSS far lower for the tiny inputs we ship.
+    //   - DisableMemPattern: don't pre-plan the optimal memory pattern from
+    //     the first run; pairs with the disabled arena.
+    // SetGraphOptimizationLevel(ORT_ENABLE_BASIC) skips the ENABLE_ALL passes
+    // that aggressively fuse operators — those fusions sometimes double-keep
+    // intermediate tensors in memory.
+    session_options.DisableCpuMemArena();
+    session_options.DisableMemPattern();
 
     // On iOS we run on ARM64 CPU. CoreML Execution Provider is not strictly necessary
     // for this small 82M model as CPU is already extremely fast (>100x real-time).
-    
+
 #ifdef _WIN32
     std::wstring wmodel_path(model_path.begin(), model_path.end());
     session_ = Ort::Session(env_, wmodel_path.c_str(), session_options);
@@ -40,6 +59,8 @@ Kokoro::Kokoro(const std::string& model_path, const std::string& voices_path, co
 Kokoro::~Kokoro() = default;
 
 void Kokoro::load_voices(const std::string& voices_path) {
+    voices_path_ = voices_path;
+
     std::ifstream in(voices_path, std::ios::binary);
     if (!in.is_open()) {
         std::cerr << "[Kokoro] Failed to open voices file: " << voices_path << std::endl;
@@ -59,30 +80,63 @@ void Kokoro::load_voices(const std::string& voices_path) {
     uint32_t num_voices;
     in.read(reinterpret_cast<char*>(&num_voices), 4);
 
+    // Index-only pass: record each voice's offset + length, skip the
+    // payload. Loading the actual float arrays happens on first use in
+    // get_voice_style() — see the rationale comment in Kokoro.h's
+    // VoiceEntry / voices_path_ declarations.
     for (uint32_t i = 0; i < num_voices; ++i) {
-        uint32_t name_len;
+        uint32_t name_len = 0;
         in.read(reinterpret_cast<char*>(&name_len), 4);
-        
+
         std::string name(name_len, '\0');
         in.read(&name[0], name_len);
-        
-        uint32_t dim;
+
+        uint32_t dim = 0;
         in.read(reinterpret_cast<char*>(&dim), 4);
-        
-        std::vector<float> style(dim);
-        in.read(reinterpret_cast<char*>(style.data()), dim * sizeof(float));
-        
-        voices_[name] = style;
+
+        VoiceEntry entry;
+        entry.file_offset = static_cast<uint64_t>(in.tellg());
+        entry.float_count = dim;
+        voice_index_[name] = entry;
+
+        in.seekg(static_cast<std::streamoff>(dim) * sizeof(float), std::ios::cur);
     }
+
+    std::cerr << "[Kokoro] Indexed " << voice_index_.size() << " voice(s) (lazy load)." << std::endl;
 }
 
 std::vector<float> Kokoro::get_voice_style(const std::string& name) {
-    if (voices_.find(name) != voices_.end()) {
-        return voices_.at(name);
+    if (name == cached_voice_name_ && !cached_voice_data_.empty()) {
+        return cached_voice_data_;
     }
-    std::cerr << "[Kokoro] Voice " << name << " not found. Using default." << std::endl;
-    if (!voices_.empty()) return voices_.begin()->second;
-    return std::vector<float>(256, 0.0f);
+
+    auto it = voice_index_.find(name);
+    if (it == voice_index_.end()) {
+        std::cerr << "[Kokoro] Voice " << name << " not found. Using default." << std::endl;
+        if (!voice_index_.empty()) {
+            it = voice_index_.begin();
+        } else {
+            return std::vector<float>(256, 0.0f);
+        }
+    }
+
+    std::ifstream in(voices_path_, std::ios::binary);
+    if (!in.is_open()) {
+        std::cerr << "[Kokoro] Failed to reopen voices file for lazy load: "
+                  << voices_path_ << std::endl;
+        return std::vector<float>(256, 0.0f);
+    }
+
+    const VoiceEntry& entry = it->second;
+    in.seekg(static_cast<std::streamoff>(entry.file_offset));
+
+    std::vector<float> style(entry.float_count);
+    in.read(reinterpret_cast<char*>(style.data()),
+            static_cast<std::streamsize>(entry.float_count) * sizeof(float));
+
+    cached_voice_name_ = it->first;
+    cached_voice_data_ = style;
+    return style;
 }
 
 std::vector<std::string> Kokoro::_split_phonemes(const std::string& phonemes) {

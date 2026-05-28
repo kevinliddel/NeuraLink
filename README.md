@@ -287,7 +287,7 @@ When running in **Offline Mode** (Local LLM), the system selects a TTS engine pe
 ### 🗣️ Local SLMs voice
 The selector logic, per-persona voice picker, and end-to-end audio pipelines (LLM → text chunks → engine → PCM buffers → AVAudioPlayerNode) are documented separately:
 
-- 📐 [docs/LLM_VOICE.md](./docs/LLM_VOICE.md) — full architecture with mermaid diagrams comparing the local-LLM TTS path against the OpenAI Realtime audio path.
+- [LLM_VOICE](./docs/LLM_VOICE.md) — full architecture with mermaid diagrams comparing the local-LLM TTS path against the OpenAI Realtime audio path.
 
 #### Improving the AVSpeechSynthesizer fallback
 When the system falls through to the iOS speech synthesizer (no Kokoro pack, no VOICEVOX model, no cloned voice), iOS uses compact voices (`q=1`) which can sound robotic. To improve fidelity:

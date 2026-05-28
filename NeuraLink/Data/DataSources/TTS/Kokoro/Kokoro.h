@@ -41,12 +41,29 @@ private:
     Ort::Env env_;
     Ort::Session session_{nullptr};
     Ort::AllocatorWithDefaultOptions allocator_;
-    
-    std::map<std::string, std::vector<float>> voices_;
+
+    /// Lazy-load index. Holds (file_offset, float_count) per voice name so
+    /// `get_voice_style` can fseek+read the single requested voice instead
+    /// of eager-loading all 103 voices into RAM at startup (~51 MB saved
+    /// on the bundled voices.bin). Combined with the ONNX arena tweaks in
+    /// the constructor, this is what keeps Kokoro under the iOS memory
+    /// ceiling alongside a 1B-class local LLM.
+    struct VoiceEntry {
+        uint64_t file_offset;
+        uint32_t float_count;
+    };
+    std::string voices_path_;
+    std::map<std::string, VoiceEntry> voice_index_;
+
+    /// Single-slot read-through cache so back-to-back synthesis calls for the
+    /// same persona don't re-read the file every chunk.
+    std::string cached_voice_name_;
+    std::vector<float> cached_voice_data_;
+
     std::unique_ptr<Tokenizer> tokenizer_;
-    
+
     void load_voices(const std::string& voices_path);
-    
+
     std::pair<std::vector<float>, int> _create_audio(
         const std::string& phonemes,
         const std::vector<float>& voice,

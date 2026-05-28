@@ -2,20 +2,35 @@
 //  KokoroVoicePreset.swift
 //  NeuraLink
 //
-//  Catalogue of standard Kokoro voice presets and persona-to-voice mappings.
+//  Catalogue of Kokoro voice presets actually present in the bundled
+//  `voices.bin`. The shipped file contains 103 voice styles:
+//    - 2 American Female (af_*)
+//    - 1 British Female (bf_*)
+//    - ~100 Chinese voices (zf_*, zm_*)
+//
+//  Previous revisions had `af_bella`/`af_sarah`/`am_adam`-style names that
+//  belong to the upstream Kokoro release but are NOT in this app's voices
+//  pack — every preset request was hitting the C++ "voice not found, using
+//  default" fallback. Persona pickers were effectively broken. This enum
+//  now mirrors the file exactly so saved selections actually take effect.
 //
 
 import Foundation
 
 enum KokoroVoicePreset: String, CaseIterable, Identifiable {
-    case afBella = "af_bella"
-    case afSarah = "af_sarah"
-    case afNicole = "af_nicole"
-    case afSky = "af_sky"
-    case amAdam = "am_adam"
-    case amMichael = "am_michael"
-    case pmAlex = "pm_alex"
-    case pmSanta = "pm_santa"
+    // MARK: - English voices
+
+    case afMaple = "af_maple"     // American Female · warm, conversational
+    case afSol = "af_sol"         // American Female · bright
+    case bfVale = "bf_vale"       // British Female · neutral
+
+    // MARK: - Chinese voices (subset — full set is in `allInVoiceFile`)
+
+    case zf001 = "zf_001"         // Chinese Female · first stock voice
+    case zf005 = "zf_005"
+    case zf017 = "zf_017"
+    case zm009 = "zm_009"         // Chinese Male · first stock voice
+    case zm025 = "zm_025"
 
     var id: String { rawValue }
     var identifier: String { rawValue }
@@ -23,14 +38,14 @@ enum KokoroVoicePreset: String, CaseIterable, Identifiable {
     /// Human-readable label for picker UI.
     var displayName: String {
         switch self {
-        case .afBella: return "Bella (Female · Warm)"
-        case .afSarah: return "Sarah (Female · Calm)"
-        case .afNicole: return "Nicole (Female · Bright)"
-        case .afSky: return "Sky (Female · Neutral)"
-        case .amAdam: return "Adam (Male · Standard)"
-        case .amMichael: return "Michael (Male · Deep)"
-        case .pmAlex: return "Alex (Male · Casual)"
-        case .pmSanta: return "Santa (Male · Jolly)"
+        case .afMaple: return "Maple (American Female · Warm)"
+        case .afSol:   return "Sol (American Female · Bright)"
+        case .bfVale:  return "Vale (British Female · Neutral)"
+        case .zf001:   return "Chinese Female #001"
+        case .zf005:   return "Chinese Female #005"
+        case .zf017:   return "Chinese Female #017"
+        case .zm009:   return "Chinese Male #009"
+        case .zm025:   return "Chinese Male #025"
         }
     }
 
@@ -46,14 +61,17 @@ enum KokoroVoicePreset: String, CaseIterable, Identifiable {
 
     /// Built-in default for a persona, independent of any user override. Used
     /// when the picker needs a placeholder before the user makes a choice.
+    /// Only English voices are picked here — the Chinese voices are
+    /// available as user overrides but aren't the right pick for the
+    /// English-speaking on-device LLM personas.
     static func builtInDefault(for persona: PersonaIdentifier) -> KokoroVoicePreset {
         switch persona.lowercased() {
         case "ekaterina":
-            return .afSarah
+            return .afMaple
         case "sonya":
-            return .afBella
+            return .bfVale
         default:
-            return .afSky
+            return .afMaple
         }
     }
 }

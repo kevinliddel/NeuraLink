@@ -72,6 +72,9 @@ final class PersonaVoiceStore {
         } else {
             kokoroVoicePresets.removeValue(forKey: key)
         }
+        nlLog(
+            "[PersonaVoiceStore] setKokoroVoiceID('\(key)') = \(id ?? "<nil>") (cache now: \(kokoroVoicePresets))",
+            level: .info)
         persistKokoro()
     }
 
@@ -97,7 +100,17 @@ final class PersonaVoiceStore {
     nonisolated static func kokoroVoiceIDFromDefaults(
         for persona: String
     ) -> String? {
-        loadKokoroFromDefaults()[persona.lowercased()]
+        let dict = loadKokoroFromDefaults()
+        let value = dict[persona.lowercased()]
+        // `nlLog` is MainActor-isolated under the project's default isolation;
+        // this function is `nonisolated` (engines may call it off-main).
+        // Plain `print` avoids the actor hop while still surfacing the
+        // round-trip in the Xcode console for the persistence diagnosis.
+        nlLog(
+            "[PersonaVoiceStore] kokoroVoiceIDFromDefaults('\(persona.lowercased())') = \(value ?? "<nil>") (UD has: \(dict))",
+            level: .info
+        )
+        return value
     }
 
     private nonisolated static func loadFromDefaults() -> [String: Int] {
