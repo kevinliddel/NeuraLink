@@ -282,10 +282,15 @@ For detailed technical specs and migration history, refer to:
 
 ## ֎ Offline AI Voices
 
-When running in **Offline Mode** (Local LLM), the system utilizes Apple's **AVSpeechSynthesizer** to generate speech entirely on-device.
+When running in **Offline Mode** (Local LLM), the system selects a TTS engine per persona and device tier — Kokoro for English personas, VOICEVOX for the Japanese model, F5-TTS for cloned voices on the qwen-7b tier, and Apple's **AVSpeechSynthesizer** as the universal fallback.
 
-### 🗣️ Improving Voice Quality
-By default, iOS uses compact voices (`q=1`) which can sound robotic. To achieve natural, high-fidelity speech, you must download the **Enhanced** or **Premium** versions of the voices:
+### 🗣️ Local SLMs voice
+The selector logic, per-persona voice picker, and end-to-end audio pipelines (LLM → text chunks → engine → PCM buffers → AVAudioPlayerNode) are documented separately:
+
+- [LLM_VOICE](./docs/LLM_VOICE.md) — full architecture with mermaid diagrams comparing the local-LLM TTS path against the OpenAI Realtime audio path.
+
+#### Improving the AVSpeechSynthesizer fallback
+When the system falls through to the iOS speech synthesizer (no Kokoro pack, no VOICEVOX model, no cloned voice), iOS uses compact voices (`q=1`) which can sound robotic. To improve fidelity:
 
 1.  Open **Settings** on your iPhone.
 2.  Navigate to **Accessibility** → **Read & Speak** → **Voices**.
@@ -294,8 +299,8 @@ By default, iOS uses compact voices (`q=1`) which can sound robotic. To achieve 
 5.  Once downloaded, the system will automatically jump from `q=1` to `q=2`, providing a dramatically more lifelike experience.
 
 ### 🛠️ Implementation Details
-The orchestration of offline synthesis, including voice selection patterns and pitch modulation for local characters, is managed in:
-- [LocalLLMManager+TTS.swift](./NeuraLink/Data/DataSources/LocalLLM/LocalLLMManager+TTS.swift)
+- [TTSEngineSelector.swift](./NeuraLink/Data/DataSources/TTS/TTSEngineSelector.swift) — engine resolution per persona + model tier.
+- [LocalLLMManager+TTS.swift](./NeuraLink/Data/DataSources/LocalLLM/LocalLLMManager+TTS.swift) — chunked synthesis pipeline that pumps engine PCM buffers into the playback graph.
 
 ---
 

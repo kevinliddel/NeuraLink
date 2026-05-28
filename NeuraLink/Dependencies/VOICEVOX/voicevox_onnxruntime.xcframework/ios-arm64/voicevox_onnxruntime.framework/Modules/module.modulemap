@@ -1,0 +1,5 @@
+framework module voicevox_onnxruntime {
+  export *
+
+  module * { export * }
+}

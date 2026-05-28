@@ -116,6 +116,10 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
         // Local tool-calling: if a <tool name="...">{json}</tool> block is present,
         // execute it via the same Skill system used by OpenAI realtime.
         if let tool = LocalToolCallParser.firstToolCall(in: fullText) {
+            nlLog(
+                "֎ [FunctionCall] LocalLLM emitted <tool name=\"\(tool.name)\"> with args \(tool.arguments)",
+                level: .info
+            )
             Task { @MainActor in
                 let result = await AppFunctionExecutor.shared.execute(name: tool.name, arguments: tool.arguments)
                 ChatTimelineStore.logToolCall(name: tool.name, result: result)

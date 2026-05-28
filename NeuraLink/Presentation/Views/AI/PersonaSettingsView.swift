@@ -8,40 +8,8 @@
 import AVFoundation
 import SwiftUI
 
-// MARK: - Voice Preview Player
-
-@Observable
-private final class VoicePreviewPlayer: NSObject, AVAudioPlayerDelegate, @unchecked Sendable {
-    var isSpeaking = false
-    private var player: AVAudioPlayer?
-
-    func start(data: Data) {
-        stop()
-        do {
-            try AVAudioSession.sharedInstance().setActive(true)
-            let p = try AVAudioPlayer(data: data)
-            p.delegate = self
-            player = p
-            p.play()
-            isSpeaking = true
-        } catch {
-            isSpeaking = false
-        }
-    }
-
-    func stop() {
-        player?.stop()
-        player = nil
-        isSpeaking = false
-    }
-
-    func audioPlayerDidFinishPlaying(_: AVAudioPlayer, successfully _: Bool) {
-        player = nil
-        isSpeaking = false
-    }
-
-    deinit { player?.stop() }
-}
+// Preview players live in `PersonaVoicePreviewPlayers.swift` to keep this
+// file under the project's 525-line ceiling.
 
 // MARK: - View
 
@@ -50,11 +18,13 @@ struct PersonaSettingsView: View {
     let selectedConfig: LocalModelDownloadManager.ModelConfiguration
     @State private var persona: CharacterPersona
     @State private var localPrompt: String
+    @State private var voicevoxSpeakerID: Int
+    @State private var kokoroVoiceID: String
     @Environment(\.dismiss) private var dismiss
 
-    // Voice preview (OpenAI mode only)
     @State private var previewText: String = ""
     @State private var previewPlayer = VoicePreviewPlayer()
+    @State private var localPreviewPlayer = LocalTTSPreviewPlayer()
     @State private var isLoadingPreview = false
 
     private let voices = [
@@ -64,13 +34,34 @@ struct PersonaSettingsView: View {
     private var isLocalLLMMode: Bool { OpenAISettings.shared.isLocalLLMEnabled }
     private var isJapaneseModel: Bool { selectedConfig == .japaneseLlama1b }
 
+    /// Whichever player the active mode uses. Centralises the isSpeaking flag.
+    private var activeIsSpeaking: Bool {
+        isLocalLLMMode ? localPreviewPlayer.isSpeaking : previewPlayer.isSpeaking
+    }
+
     init(modelID: String) {
         self.modelID = modelID
         let config = LocalModelDownloadManager.shared.selectedConfig
         self.selectedConfig = config
         let current = CharacterPersona.forCharacter(named: modelID)
         _persona = State(initialValue: current)
-        _localPrompt = State(initialValue: LocalLLMPromptStore.shared.effectivePrompt(for: modelID, config: config))
+        let prompt = LocalLLMPromptStore.shared.effectivePrompt(for: modelID, config: config)
+        _localPrompt = State(initialValue: prompt)
+        let initialSpeaker = VoiceVoxSpeaker.speakerID(for: modelID)
+        _voicevoxSpeakerID = State(initialValue: initialSpeaker)
+        let initialKokoro = KokoroVoicePreset.preset(for: modelID).rawValue
+        _kokoroVoiceID = State(initialValue: initialKokoro)
+
+        // Diagnostic: this fires on every NavigationLink push of the persona
+        // sheet. If the printed values don't match what you just saved, the
+        // bug is in the corresponding store; if they DO match but the UI
+        // still shows defaults, the bug is in @State / SwiftUI binding.
+        nlLog(
+            "[PersonaSettings.init] modelID='\(modelID)' config=\(config) "
+            + "→ persona.voice=\(current.voice), instructions.len=\(current.instructions.count); "
+            + "localPrompt.len=\(prompt.count); voicevoxSpeaker=\(initialSpeaker); kokoro=\(initialKokoro)",
+            level: .info
+        )
     }
 
     var body: some View {
@@ -95,6 +86,14 @@ struct PersonaSettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 }
+
+                if isJapaneseModel {
+                    voicevoxVoiceSection
+                } else {
+                    kokoroVoiceSection
+                }
+
+                voicePreviewSection
             } else {
                 Section("AI Instructions (System Prompt)") {
                     TextEditor(text: $persona.instructions)
@@ -116,11 +115,7 @@ struct PersonaSettingsView: View {
             Section {
                 VStack(spacing: 8) {
                     Button {
-                        if isLocalLLMMode {
-                            LocalLLMPromptStore.shared.savePrompt(localPrompt, for: modelID, config: selectedConfig)
-                        } else {
-                            PersonaStore.shared.savePersona(persona, for: modelID)
-                        }
+                        saveChanges()
                         dismiss()
                     } label: {
                         Text("Save Changes")
@@ -131,15 +126,16 @@ struct PersonaSettingsView: View {
                             .background(Color(uiColor: .secondarySystemBackground))
                             .cornerRadius(12)
                     }
+                    // `.borderless` scopes the tap area to the button's label.
+                    // Without it, SwiftUI's Form treats the whole row as a
+                    // single tappable region and BOTH buttons fire on any
+                    // tap — that's how Save was triggering Reset and wiping
+                    // the just-saved data. See feedback memory
+                    // "swiftui_form_stacked_buttons" for the diagnosis trail.
+                    .buttonStyle(.borderless)
 
                     Button {
-                        if isLocalLLMMode {
-                            LocalLLMPromptStore.shared.resetPrompt(for: modelID, config: selectedConfig)
-                            localPrompt = LocalLLMPromptStore.shared.effectivePrompt(for: modelID, config: selectedConfig)
-                        } else {
-                            PersonaStore.shared.resetPersona(for: modelID)
-                            persona = CharacterPersona.forCharacter(named: modelID)
-                        }
+                        resetToDefault()
                         dismiss()
                     } label: {
                         Text("Reset to Default")
@@ -150,6 +146,7 @@ struct PersonaSettingsView: View {
                             .background(Color(uiColor: .secondarySystemBackground))
                             .cornerRadius(12)
                     }
+                    .buttonStyle(.borderless)
                 }
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets(top: 10, leading: 0, bottom: 10, trailing: 0))
@@ -157,71 +154,184 @@ struct PersonaSettingsView: View {
         }
         .navigationTitle(isLocalLLMMode ? "\(persona.name) — \(isJapaneseModel ? "JP Prompt" : "Local Prompt")" : "\(persona.name) Persona")
         .navigationBarTitleDisplayMode(.inline)
-        .onDisappear { previewPlayer.stop() }
+        .onDisappear {
+            previewPlayer.stop()
+            localPreviewPlayer.stop()
+        }
+    }
+
+    // MARK: - Save / Reset
+
+    private func saveChanges() {
+        if isLocalLLMMode {
+            nlLog(
+                "[PersonaSettings.save] LOCAL mode — modelID='\(modelID)' "
+                + "localPrompt.len=\(localPrompt.count) "
+                + (isJapaneseModel ? "voicevox=\(voicevoxSpeakerID)" : "kokoro=\(kokoroVoiceID)"),
+                level: .info
+            )
+            LocalLLMPromptStore.shared.savePrompt(localPrompt, for: modelID, config: selectedConfig)
+            if isJapaneseModel {
+                PersonaVoiceStore.shared.setVoicevoxSpeakerID(voicevoxSpeakerID, for: modelID)
+            } else {
+                PersonaVoiceStore.shared.setKokoroVoiceID(kokoroVoiceID, for: modelID)
+            }
+            TTSEngineSelector.shared.invalidateCache(for: modelID)
+        } else {
+            nlLog(
+                "[PersonaSettings.save] OPENAI mode — modelID='\(modelID)' "
+                + "voice=\(persona.voice) name=\(persona.name) instructions.len=\(persona.instructions.count)",
+                level: .info
+            )
+            PersonaStore.shared.savePersona(persona, for: modelID)
+        }
+    }
+
+    private func resetToDefault() {
+        if isLocalLLMMode {
+            LocalLLMPromptStore.shared.resetPrompt(for: modelID, config: selectedConfig)
+            localPrompt = LocalLLMPromptStore.shared.effectivePrompt(for: modelID, config: selectedConfig)
+            if isJapaneseModel {
+                PersonaVoiceStore.shared.clearVoicevoxSpeakerID(for: modelID)
+                voicevoxSpeakerID = VoiceVoxSpeaker.speakerID(for: modelID)
+            } else {
+                PersonaVoiceStore.shared.clearKokoroVoiceID(for: modelID)
+                kokoroVoiceID = KokoroVoicePreset.builtInDefault(for: modelID).rawValue
+            }
+            TTSEngineSelector.shared.invalidateCache(for: modelID)
+        } else {
+            PersonaStore.shared.resetPersona(for: modelID)
+            persona = CharacterPersona.forCharacter(named: modelID)
+        }
+    }
+
+    // MARK: - Voice Picker Sections
+
+    private var voicevoxVoiceSection: some View {
+        Section {
+            Picker("Voice", selection: $voicevoxSpeakerID) {
+                ForEach(VoiceVoxSpeaker.allBuiltIn) { speaker in
+                    Text(speaker.name).tag(speaker.id)
+                }
+            }
+            .pickerStyle(.menu)
+        } header: {
+            Text("Voice (VOICEVOX)")
+        } footer: {
+            Text("Used by the Japanese local LLM.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var kokoroVoiceSection: some View {
+        Section {
+            Picker("Voice", selection: $kokoroVoiceID) {
+                ForEach(KokoroVoicePreset.allCases) { preset in
+                    Text(preset.displayName).tag(preset.rawValue)
+                }
+            }
+            .pickerStyle(.menu)
+        } header: {
+            Text("Voice (Kokoro)")
+        } footer: {
+            if KokoroModelAccess.isAvailable {
+                Text("Used by the on-device LLM for English speech synthesis.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Label(
+                    "Kokoro voice pack not installed — falls back to the iOS system voice.",
+                    systemImage: "exclamationmark.triangle"
+                )
+                .font(.caption)
+                .foregroundStyle(.orange)
+            }
+        }
     }
 
     // MARK: - Voice Preview Section
 
     private var voicePreviewSection: some View {
-                Section {
-                    ZStack(alignment: .bottom) {
-                        TextField("Enter text to preview…", text: $previewText, axis: .vertical)
-                            .font(.headline)
-                            .padding(.trailing, 60) // Space for the 40pt button + margin
-                            .padding(.vertical, 15)
-                            .padding(.horizontal, 15)
+        Section {
+            ZStack(alignment: .bottom) {
+                TextField("Enter text to preview…", text: $previewText, axis: .vertical)
+                    .font(.headline)
+                    .padding(.trailing, 60)
+                    .padding(.vertical, 15)
+                    .padding(.horizontal, 15)
+                    .background(
+                        RoundedRectangle(cornerRadius: 25)
+                            .stroke(lineWidth: 1.0)
+                            .foregroundStyle(Color.clear)
                             .background(
-                                RoundedRectangle(cornerRadius: 25)
-                                    .stroke(lineWidth: 1.0)
-                                    .foregroundStyle(Color.clear)
-                                    .background(
-                                        Color.gray.opacity(0.12)
-                                            .clipShape(RoundedRectangle(cornerRadius: 25))
-                                    )
+                                Color.gray.opacity(0.12)
+                                    .clipShape(RoundedRectangle(cornerRadius: 25))
                             )
-                            .disabled(isLoadingPreview)
+                    )
+                    .disabled(isLoadingPreview)
 
-                        HStack(alignment: .bottom) {
-                            Spacer()
-                            previewButton
-                                .padding(.trailing, 8)
-                                .padding(.bottom, 8)
-                        }
-                    }
-                } header: {
-                    Text("Voice Preview")
-                } footer: {
-                    let settings = OpenAISettings.shared
-                    if !settings.isEnabled || !settings.hasValidKey {
-                        Label(
-                            "Add an OpenAI API key in settings to preview voices.",
-                            systemImage: "info.circle"
-                        )
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                    } else {
-                        Text(
-                            "Tap the mic to hear your text spoken in \(persona.voice.capitalized)'s voice."
-                        )
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    }
+                HStack(alignment: .bottom) {
+                    Spacer()
+                    previewButton
+                        .padding(.trailing, 8)
+                        .padding(.bottom, 8)
                 }
-                .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
-                .listRowBackground(Color.clear)
+            }
+        } header: {
+            Text("Voice Preview")
+        } footer: {
+            previewFooter
+        }
+        .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
+        .listRowBackground(Color.clear)
+    }
+
+    @ViewBuilder
+    private var previewFooter: some View {
+        if isLocalLLMMode {
+            if isJapaneseModel {
+                Text("Tap the mic to hear your text spoken in the selected VOICEVOX voice.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if KokoroModelAccess.isAvailable {
+                Text("Tap the mic to hear your text spoken in the selected Kokoro voice.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Label(
+                    "Kokoro voice pack not installed — install it to enable previews.",
+                    systemImage: "info.circle"
+                )
+                .font(.caption)
+                .foregroundStyle(.orange)
+            }
+        } else {
+            let settings = OpenAISettings.shared
+            if !settings.isEnabled || !settings.hasValidKey {
+                Label(
+                    "Add an OpenAI API key in settings to preview voices.",
+                    systemImage: "info.circle"
+                )
+                .font(.caption)
+                .foregroundStyle(.orange)
+            } else {
+                Text("Tap the mic to hear your text spoken in \(persona.voice.capitalized)'s voice.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 
     @ViewBuilder
     private var previewButton: some View {
-        let isActive = previewPlayer.isSpeaking
-        let canTap =
-            isActive
-            || (!previewText.trimmingCharacters(in: .whitespaces).isEmpty
-                && OpenAISettings.shared.isEnabled && OpenAISettings.shared.hasValidKey)
+        let isActive = activeIsSpeaking
+        let canTap = isActive || (!previewText.trimmingCharacters(in: .whitespaces).isEmpty && previewIsAvailable)
 
         Button {
             if isActive {
                 previewPlayer.stop()
+                localPreviewPlayer.stop()
             } else {
                 Task { await startPreview() }
             }
@@ -248,6 +358,18 @@ struct PersonaSettingsView: View {
         .disabled(!canTap || isLoadingPreview)
     }
 
+    /// Whether the current mode has the resources needed to render a preview.
+    /// OpenAI: enabled + valid key. Japanese: VoiceVox engine builds unconditionally
+    /// (dictionary is bundled). Other local: Kokoro pack present.
+    private var previewIsAvailable: Bool {
+        if isLocalLLMMode {
+            if isJapaneseModel { return true }
+            return KokoroModelAccess.isAvailable
+        }
+        let settings = OpenAISettings.shared
+        return settings.isEnabled && settings.hasValidKey
+    }
+
     private func buttonTint(isActive: Bool) -> Color {
         isActive ? .red : .blue
     }
@@ -257,6 +379,15 @@ struct PersonaSettingsView: View {
     private func startPreview() async {
         let text = previewText.trimmingCharacters(in: .whitespaces)
         guard !text.isEmpty else { return }
+
+        if isLocalLLMMode {
+            await startLocalPreview(text: text)
+        } else {
+            await startOpenAIPreview(text: text)
+        }
+    }
+
+    private func startOpenAIPreview(text: String) async {
         let settings = OpenAISettings.shared
         guard settings.isEnabled && settings.hasValidKey else { return }
 
@@ -284,6 +415,62 @@ struct PersonaSettingsView: View {
         else { return }
 
         previewPlayer.start(data: data)
+    }
+
+    /// Synthesises through the local engine that would otherwise run during a
+    /// chat turn. Uses temporary `PersonaVoiceStore` overrides to honour the
+    /// current picker value even before the user hits Save, then restores any
+    /// prior override when synthesis finishes.
+    private func startLocalPreview(text: String) async {
+        isLoadingPreview = true
+        defer { isLoadingPreview = false }
+
+        // Temporarily apply the picker selection so the engine sees it.
+        let previousVoicevox = PersonaVoiceStore.shared.voicevoxSpeakerID(for: modelID)
+        let previousKokoro = PersonaVoiceStore.shared.kokoroVoiceID(for: modelID)
+        if isJapaneseModel {
+            PersonaVoiceStore.shared.setVoicevoxSpeakerID(voicevoxSpeakerID, for: modelID)
+        } else {
+            PersonaVoiceStore.shared.setKokoroVoiceID(kokoroVoiceID, for: modelID)
+        }
+        TTSEngineSelector.shared.invalidateCache(for: modelID)
+
+        guard let engine = TTSEngineSelector.shared.engine(for: modelID) else {
+            nlLog("[Preview] No TTS engine resolved for persona '\(modelID)'", level: .error)
+            // Restore overrides before bailing.
+            if isJapaneseModel {
+                PersonaVoiceStore.shared.setVoicevoxSpeakerID(previousVoicevox, for: modelID)
+            } else {
+                PersonaVoiceStore.shared.setKokoroVoiceID(previousKokoro, for: modelID)
+            }
+            TTSEngineSelector.shared.invalidateCache(for: modelID)
+            return
+        }
+
+        // Save the engine's existing callback (LocalLLMManager wires this up
+        // for chat synthesis) so we can restore it when the preview ends.
+        // Without this, the next chat turn's PCM buffers would be routed to
+        // the freed preview player.
+        let previousCallback = engine.onBufferReady
+        engine.onBufferReady = { [weak localPreviewPlayer] buffer in
+            DispatchQueue.main.async { localPreviewPlayer?.schedule(buffer) }
+        }
+
+        do {
+            try await engine.initialize()
+            try await engine.speak(text, persona: modelID)
+        } catch {
+            nlLog("[Preview] Local TTS preview failed: \(error)", level: .error)
+        }
+
+        // Restore both the engine callback and the persona voice override.
+        engine.onBufferReady = previousCallback
+        if isJapaneseModel {
+            PersonaVoiceStore.shared.setVoicevoxSpeakerID(previousVoicevox, for: modelID)
+        } else {
+            PersonaVoiceStore.shared.setKokoroVoiceID(previousKokoro, for: modelID)
+        }
+        TTSEngineSelector.shared.invalidateCache(for: modelID)
     }
 }
 

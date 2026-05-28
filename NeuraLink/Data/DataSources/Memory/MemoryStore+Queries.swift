@@ -277,12 +277,29 @@ extension MemoryStore {
         return facts
     }
 
+    /// Returns facts from two sources, unified by timestamp DESC:
+    ///   1. `knowledge_graph` — structured S/P/O entries written by the
+    ///      `rememberFact` skill.
+    ///   2. `memories` WHERE source='fact' — flat-text facts written by
+    ///      `LocalLLMFactExtractor` during compaction.
+    ///
+    /// Memory-table facts surface in the UI with the full text in `subject`
+    /// and empty `predicate`/`object`. IDs from the memories table are
+    /// returned as their negative value so callers can distinguish the two
+    /// sources for delete / update routing (see `deleteFact(id:)`).
     func fetchAllFacts(limit: Int, offset: Int) -> [FactItem] {
         lock.lock()
         defer { lock.unlock() }
         let query = """
-        SELECT id, subject, predicate, object, timestamp
-        FROM knowledge_graph ORDER BY timestamp DESC LIMIT ? OFFSET ?;
+        SELECT id, subject, predicate, object, timestamp, source FROM (
+            SELECT id, subject, predicate, object, timestamp, 'kg' AS source
+              FROM knowledge_graph
+            UNION ALL
+            SELECT -id AS id, text AS subject, '' AS predicate, '' AS object,
+                   timestamp, 'mem' AS source
+              FROM memories WHERE source = 'fact'
+        )
+        ORDER BY timestamp DESC LIMIT ? OFFSET ?;
         """
         var statement: OpaquePointer?
         var facts: [FactItem] = []
@@ -300,9 +317,14 @@ extension MemoryStore {
     func countFacts() -> Int {
         lock.lock()
         defer { lock.unlock() }
+        let query = """
+        SELECT
+          (SELECT COUNT(*) FROM knowledge_graph) +
+          (SELECT COUNT(*) FROM memories WHERE source = 'fact');
+        """
         var statement: OpaquePointer?
         var count = 0
-        if sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM knowledge_graph;", -1, &statement, nil) == SQLITE_OK,
+        if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK,
            sqlite3_step(statement) == SQLITE_ROW {
             count = Int(sqlite3_column_int(statement, 0))
         }
@@ -310,27 +332,59 @@ extension MemoryStore {
         return count
     }
 
+    /// Clears both fact sources: the structured `knowledge_graph` and the
+    /// `memories` rows tagged with source='fact'.
     func deleteAllFacts() {
         lock.lock()
         defer { lock.unlock() }
         _ = sqlite3_exec(db, "DELETE FROM knowledge_graph;", nil, nil, nil)
+        _ = sqlite3_exec(db, "DELETE FROM memories WHERE source = 'fact';", nil, nil, nil)
     }
 
+    /// Routes the delete to the right table by ID sign. `fetchAllFacts`
+    /// negates memory IDs so the UI can pass the same opaque Int64 here.
     func deleteFact(id: Int64) {
         lock.lock()
         defer { lock.unlock() }
-        let query = "DELETE FROM knowledge_graph WHERE id = ?;"
+        let query: String
+        let actualID: Int64
+        if id < 0 {
+            query = "DELETE FROM memories WHERE id = ?;"
+            actualID = -id
+        } else {
+            query = "DELETE FROM knowledge_graph WHERE id = ?;"
+            actualID = id
+        }
         var statement: OpaquePointer?
         if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
-            sqlite3_bind_int64(statement, 1, id)
+            sqlite3_bind_int64(statement, 1, actualID)
             _ = sqlite3_step(statement)
         }
         sqlite3_finalize(statement)
     }
 
+    /// Updates a knowledge_graph row. Memory-table facts (negative IDs) are
+    /// flat-text and don't have S/P/O fields to update — for those, the call
+    /// rewrites the `text` column from the concatenation of the three fields
+    /// so the user's edit is still preserved.
     func updateFact(id: Int64, subject: String, predicate: String, object: String) {
         lock.lock()
         defer { lock.unlock() }
+        if id < 0 {
+            let combined = [subject, predicate, object]
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+                .joined(separator: " ")
+            let query = "UPDATE memories SET text = ? WHERE id = ?;"
+            var statement: OpaquePointer?
+            if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
+                sqlite3_bind_text(statement, 1, (combined as NSString).utf8String, -1, nil)
+                sqlite3_bind_int64(statement, 2, -id)
+                _ = sqlite3_step(statement)
+            }
+            sqlite3_finalize(statement)
+            return
+        }
         let query = "UPDATE knowledge_graph SET subject = ?, predicate = ?, object = ? WHERE id = ?;"
         var statement: OpaquePointer?
         if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {

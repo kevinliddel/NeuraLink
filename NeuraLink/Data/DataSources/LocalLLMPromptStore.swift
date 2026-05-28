@@ -5,17 +5,32 @@
 //  Persists user-edited system prompts for local LLM characters.
 //  Separate from PersonaStore which holds OpenAI persona instructions and voice names.
 //
+//  Belt-and-suspenders persistence: protected JSON file + UserDefaults backup.
+//  See PersonaStore.swift for the rationale.
+//
+//  Notes on the class shape: this is a plain `final class`, *not* `@Observable`.
+//  An earlier revision used `@Observable` + `@ObservationIgnored private var saved`,
+//  which under Xcode 26 / Swift 6.2 / `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`
+//  produced a reproducible bug where mutating `saved` triggered a second `[:]`
+//  flush moments after a successful save — wiping the file on disk. Removing the
+//  macro entirely makes the property a normal stored ivar with no synthesized
+//  accessors, and persistence becomes deterministic. No view in the app observes
+//  this store's properties, so dropping `@Observable` has no UI side-effect.
+//
 //  Created by Dedicatus on 30/04/2026.
 //
 
 import Foundation
-import SwiftUI
 
-@Observable
+@MainActor
 final class LocalLLMPromptStore {
     static let shared = LocalLLMPromptStore()
 
-    private let key = "com.neuralink.local-llm-prompts.v1"
+    private let legacyKey = "com.neuralink.local-llm-prompts.v1"
+    private let backupKey = "com.neuralink.local-llm-prompts.v2.backup"
+
+    /// Authoritative in-memory cache. Disk + UserDefaults backup are the
+    /// durable layers. Plain stored property — no observation macro.
     private var saved: [String: String] = [:]
 
     private var fileURL: URL? {
@@ -29,33 +44,42 @@ final class LocalLLMPromptStore {
     }
 
     private init() {
-        guard let url = fileURL else { return }
-        let fileManager = FileManager.default
-        
-        if fileManager.fileExists(atPath: url.path) {
-            if let data = try? Data(contentsOf: url),
-               let decoded = try? JSONDecoder().decode([String: String].self, from: data) {
-                saved = decoded
-            } else {
-                nlLog("[LocalLLMPromptStore] Failed to read or decode local LLM prompts from \(url.path)", level: .error)
-            }
-        } else {
-            // Perform one-shot migration if legacy UserDefaults data is found
-            if let legacyData = UserDefaults.standard.data(forKey: key) {
-                nlLog("[LocalLLMPromptStore] Migrating legacy prompts from UserDefaults to secure file storage...", level: .info)
-                do {
-                    try legacyData.write(to: url, options: .atomic)
-                    try ProtectedStorage.protect(url)
-                    UserDefaults.standard.removeObject(forKey: key)
-                    nlLog("[LocalLLMPromptStore] Migration successful. Erased legacy UserDefaults key.", level: .info)
-                    if let decoded = try? JSONDecoder().decode([String: String].self, from: legacyData) {
-                        saved = decoded
-                    }
-                } catch {
-                    nlLog("[LocalLLMPromptStore] Migration failed to write secure file: \(error)", level: .error)
-                }
-            }
+        saved = loadInitialFromDisk()
+        nlLog("[LocalLLMPromptStore] Initialized with \(saved.count) saved prompt(s).", level: .info)
+    }
+
+    private func loadInitialFromDisk() -> [String: String] {
+        // Layer 1 — protected file.
+        if let url = fileURL,
+           FileManager.default.fileExists(atPath: url.path),
+           let data = try? Data(contentsOf: url),
+           let decoded = try? JSONDecoder().decode([String: String].self, from: data) {
+            nlLog("[LocalLLMPromptStore] Loaded \(decoded.count) prompt(s) from \(url.path)", level: .info)
+            return decoded
         }
+
+        // Layer 2 — UserDefaults backup.
+        if let backupData = UserDefaults.standard.data(forKey: backupKey),
+           let decoded = try? JSONDecoder().decode([String: String].self, from: backupData) {
+            nlLog("[LocalLLMPromptStore] Loaded \(decoded.count) prompt(s) from UserDefaults backup.", level: .info)
+            return decoded
+        }
+
+        // Layer 3 — legacy migration.
+        if let legacyData = UserDefaults.standard.data(forKey: legacyKey),
+           let decoded = try? JSONDecoder().decode([String: String].self, from: legacyData) {
+            nlLog("[LocalLLMPromptStore] Loaded \(decoded.count) prompt(s) from legacy UserDefaults key.", level: .info)
+            UserDefaults.standard.set(legacyData, forKey: backupKey)
+            if let url = fileURL {
+                _ = try? legacyData.write(to: url, options: .atomic)
+                try? ProtectedStorage.protect(url)
+            }
+            UserDefaults.standard.removeObject(forKey: legacyKey)
+            return decoded
+        }
+
+        nlLog("[LocalLLMPromptStore] No saved prompts found — starting fresh.", level: .info)
+        return [:]
     }
 
     // MARK: - Public API
@@ -66,7 +90,12 @@ final class LocalLLMPromptStore {
         config: LocalModelDownloadManager.ModelConfiguration? = nil
     ) -> String {
         let k = storeKey(for: characterName, config: config)
-        return saved[k] ?? Self.defaultPrompt(for: characterName, config: config)
+        if let stored = saved[k] {
+            nlLog("[LocalLLMPromptStore] effectivePrompt('\(k)') → SAVED (\(stored.count) chars)", level: .info)
+            return stored
+        }
+        nlLog("[LocalLLMPromptStore] effectivePrompt('\(k)') → DEFAULT (no saved entry; cache has keys: \(Array(saved.keys).sorted()))", level: .info)
+        return Self.defaultPrompt(for: characterName, config: config)
     }
 
     func savePrompt(
@@ -74,16 +103,20 @@ final class LocalLLMPromptStore {
         for characterName: String,
         config: LocalModelDownloadManager.ModelConfiguration? = nil
     ) {
-        saved[storeKey(for: characterName, config: config)] = prompt
-        persist()
+        let key = storeKey(for: characterName, config: config)
+        saved[key] = prompt
+        nlLog("[LocalLLMPromptStore] Saving prompt for '\(key)' (length=\(prompt.count), cache now has \(saved.count) entry/ies)", level: .info)
+        flushToBothLayers()
     }
 
     func resetPrompt(
         for characterName: String,
         config: LocalModelDownloadManager.ModelConfiguration? = nil
     ) {
-        saved.removeValue(forKey: storeKey(for: characterName, config: config))
-        persist()
+        let key = storeKey(for: characterName, config: config)
+        saved.removeValue(forKey: key)
+        nlLog("[LocalLLMPromptStore] Reset prompt for '\(key)'", level: .info)
+        flushToBothLayers()
     }
 
     // MARK: - Internals
@@ -96,16 +129,23 @@ final class LocalLLMPromptStore {
         return config == .japaneseLlama1b ? "\(base)_jp" : base
     }
 
-    private func persist() {
-        guard let url = fileURL else { return }
-        if let data = try? JSONEncoder().encode(saved) {
-            do {
-                try data.write(to: url, options: .atomic)
-                try ProtectedStorage.protect(url)
-            } catch {
-                nlLog("[LocalLLMPromptStore] Failed to write secure prompt file: \(error)", level: .error)
-            }
+    private func flushToBothLayers() {
+        guard let encoded = try? JSONEncoder().encode(saved) else {
+            nlLog("[LocalLLMPromptStore] flushToBothLayers: failed to encode \(saved.count) prompt(s).", level: .error)
+            return
         }
+        if let url = fileURL {
+            do {
+                try encoded.write(to: url, options: .atomic)
+                try? ProtectedStorage.protect(url)
+                nlLog("[LocalLLMPromptStore] flushToBothLayers: wrote \(encoded.count) bytes to \(url.lastPathComponent) (cache size: \(saved.count))", level: .info)
+            } catch {
+                nlLog("[LocalLLMPromptStore] flushToBothLayers: file write failed: \(error)", level: .error)
+            }
+        } else {
+            nlLog("[LocalLLMPromptStore] flushToBothLayers: no fileURL — file layer skipped.", level: .error)
+        }
+        UserDefaults.standard.set(encoded, forKey: backupKey)
     }
 
     // MARK: - Built-in defaults
@@ -124,21 +164,8 @@ final class LocalLLMPromptStore {
         for characterName: String,
         config: LocalModelDownloadManager.ModelConfiguration?
     ) -> String {
-        // CharacterPersona.emotionInstructions uses set_emotion() function-call syntax
-        // designed for the OpenAI realtime path. Local models use [emotion:duration] text
-        // tags parsed by parseAndTriggerEmotion — so we define the format inline here.
-        //
-        // Role-boundary text ("AI vs user", "use [User Information] block")
-        // lives in `LocalLLMMemoryHierarchy.buildEnglishRoleClarification`
-        // rather than here — that layer knows whether the user has set a
-        // display name and can mirror the JP-side fix consistently. Inline
-        // "you don't know personal details" / "I must say I don't know yet"
-        // text previously contradicted the [User Information] block that
-        // `UserSettings.systemPromptContext` appends right after.
         let emotionTag = "Use [emotion:seconds] tags (e.g. [happy:2], [sad:1]) in your reply. Never say the emotion name aloud.\n"
 
-        // Llama 1B: same attention budget as the Japanese model — keep
-        // the persona to ~2 lines so it doesn't crowd out the user message.
         if config == .llama1b {
             let tool = "For iOS actions output only: <tool name=\"TOOL_NAME\">{\"arg\":\"value\"}</tool>\n"
             switch characterName.lowercased() {
@@ -154,11 +181,6 @@ final class LocalLLMPromptStore {
             }
         }
 
-        // Qwen tiers can handle a richer prompt. Persona stays in
-        // second-person ("You are X") to match how Qwen-Instruct was
-        // trained — the role-clarification block in
-        // LocalLLMMemoryHierarchy uses third-person framing that doesn't
-        // conflict with either voice.
         let toolInstruction = """
         For iOS actions (reminders, notes, apps), output ONLY: <tool name="TOOL_NAME">{"arg":"value"}</tool>
         Tools: \(AppFunctionTool.getWeather), \(AppFunctionTool.searchWeb), \(AppFunctionTool.playMusic), \
@@ -183,18 +205,6 @@ final class LocalLLMPromptStore {
     }
 
     private static func defaultJapanesePrompt(for characterName: String) -> String {
-        // Keep this prompt short. A 1B model loses instruction-following
-        // ability with prompts over ~10 lines — it starts repeating the
-        // prompt instead of responding.
-        //
-        // Role disambiguation ("私" = AI, "あなた" = user) lives in
-        // `LocalLLMMemoryHierarchy.buildJPRoleClarification` rather than
-        // here — that layer knows the user's display name and can name
-        // both sides of the conversation explicitly. The previous static
-        // `selfBoundary` text told the model to *always* say "I don't
-        // know yet" when asked about the user, which contradicted the
-        // adjacent "ユーザーの名前は{name}" context line and left the 1B
-        // genuinely confused about whose name was whose.
         let emotionTag = "感情タグ[感情:秒数]（例:[happy:2],[sad:1]）を返答に自然に含めること。感情名は声に出さないこと。\n"
         let tool = "iOSアクションは次の形式のみ出力: <tool name=\"TOOL_NAME\">{\"arg\":\"value\"}</tool>\n"
         switch characterName.lowercased() {
