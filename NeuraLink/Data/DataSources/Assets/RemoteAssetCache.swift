@@ -80,16 +80,15 @@ actor RemoteAssetCache {
 
     private func bundledURL(for asset: RemoteAssetRegistry) -> URL? {
         let resource = (asset.filename as NSString).deletingPathExtension
-        let ext = (asset.filename as NSString).pathExtension
+        let rawExt = (asset.filename as NSString).pathExtension
+        let ext: String? = rawExt.isEmpty ? nil : rawExt
         if let url = Bundle.main.url(forResource: resource, withExtension: ext) {
             return url
         }
-        // Some scenes were historically nested under `Models/Environments/`
-        // in the bundle; keep the second lookup so existing local builds
-        // resolve without a project file edit.
+        guard let subdir = asset.bundleSubdirectory else { return nil }
         return Bundle.main.url(
             forResource: resource, withExtension: ext,
-            subdirectory: "Models/Environments")
+            subdirectory: subdir)
     }
 
     private static func cachedURL(for asset: RemoteAssetRegistry) -> URL? {

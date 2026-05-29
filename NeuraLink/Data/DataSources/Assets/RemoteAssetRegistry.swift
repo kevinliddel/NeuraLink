@@ -7,16 +7,16 @@
 // the in-repo path of the shared `Dedicatus/NeuraLink` HuggingFace
 // dataset so `RemoteAssetCache` can fetch directly over HTTPS.
 //
-// The in-repo folder layout (`scenes/`, `tts/kokoro/`, future
-// `tts/voicevox/`) is what keeps categories isolated even though they
-// share a single dataset repo and a single download path.
+// The in-repo folder layout (`scenes/`, `tts/kokoro/`, `tts/voicevox/`)
+// is what keeps categories isolated even though they share a single
+// dataset repo and a single download path.
 //
 // `Bundle.main` lookup is the cache's first fallback, so adding a case
 // here without removing the bundled file is a no-op until the upload +
 // strip steps land — that's what makes this safe to ship incrementally.
 //
 // Renamed from `SceneAssetRegistry` on 29/05/2026 when the first TTS
-// cases joined the enum.
+// cases joined the enum. VoiceVox cases added 29/05/2026.
 //
 
 import Foundation
@@ -31,16 +31,22 @@ enum RemoteAssetRegistry: Hashable, Sendable {
     case kokoroVoices
     case kokoroCMU
 
+    // VOICEVOX TTS data (§4.5) — per-speaker .vvm + Open JTalk dict files.
+    case voicevoxSpeaker(Int)
+    case jtalkDictFile(String)
+
     /// On-disk filename — the basename only. Used for `Bundle.main`
     /// lookup and as the local cache filename. Folder prefix comes
     /// from `pathInRepo`.
     var filename: String {
         switch self {
-        case .city:         return "city.glb"
-        case .campus:       return "campus.glb"
-        case .kokoroModel:  return "kokoro.onnx"
-        case .kokoroVoices: return "voices.bin"
-        case .kokoroCMU:    return "cmu.txt"
+        case .city:                    return "city.glb"
+        case .campus:                  return "campus.glb"
+        case .kokoroModel:             return "kokoro.onnx"
+        case .kokoroVoices:            return "voices.bin"
+        case .kokoroCMU:               return "cmu.txt"
+        case .voicevoxSpeaker(let id): return "\(id).vvm"
+        case .jtalkDictFile(let name): return name
         }
     }
 
@@ -54,6 +60,25 @@ enum RemoteAssetRegistry: Hashable, Sendable {
             return "scenes/\(filename)"
         case .kokoroModel, .kokoroVoices, .kokoroCMU:
             return "tts/kokoro/\(filename)"
+        case .voicevoxSpeaker:
+            return "tts/voicevox/\(filename)"
+        case .jtalkDictFile:
+            return "tts/voicevox/open_jtalk_dic/\(filename)"
+        }
+    }
+
+    /// Subdirectory hint for `Bundle.main` lookup when the asset is
+    /// shipped inside a folder rather than at bundle root. Lets the
+    /// cache resolve bundled assets that aren't in `Resources/`'s flat
+    /// search path. `nil` means root-level lookup is sufficient.
+    var bundleSubdirectory: String? {
+        switch self {
+        case .city, .campus:
+            return "Models/Environments"
+        case .jtalkDictFile:
+            return "open_jtalk_dic_utf_8-1.11"
+        case .kokoroModel, .kokoroVoices, .kokoroCMU, .voicevoxSpeaker:
+            return nil
         }
     }
 
@@ -62,13 +87,43 @@ enum RemoteAssetRegistry: Hashable, Sendable {
     /// folder structure above is what isolates categories.
     static let repoID: String = "Dedicatus/NeuraLink"
 
+    /// Manifest of every file inside the bundled Open JTalk dictionary
+    /// (`open_jtalk_dic_utf_8-1.11/`). VOICEVOX needs the whole set —
+    /// missing any one file makes `voicevox_open_jtalk_rc_new` fail.
+    /// Order is irrelevant; downloads fan out in parallel.
+    static let jtalkDictFilenames: [String] = [
+        "COPYING",
+        "char.bin",
+        "left-id.def",
+        "matrix.bin",
+        "pos-id.def",
+        "rewrite.def",
+        "right-id.def",
+        "sys.dic",
+        "unk.dic"
+    ]
+
+    /// All speaker `.vvm` filename IDs shipped today. Source of truth is
+    /// the `VoiceVoxSpeaker.allBuiltIn` array but kept duplicated here
+    /// to avoid a layering import (registry shouldn't know about the
+    /// VoiceVox speaker type).
+    static let voicevoxSpeakerIDs: [Int] = [2, 3, 8, 9, 14, 20]
+
     /// True when this asset is resolvable from local disk (bundle or
     /// downloads cache) without a network round-trip. Sync for use in
     /// non-async contexts like `TTSEngineSelector` resolution.
     var isCachedLocally: Bool {
         let resource = (filename as NSString).deletingPathExtension
-        let ext = (filename as NSString).pathExtension
+        let rawExt = (filename as NSString).pathExtension
+        let ext: String? = rawExt.isEmpty ? nil : rawExt
         if Bundle.main.url(forResource: resource, withExtension: ext) != nil {
+            return true
+        }
+        if let subdir = bundleSubdirectory,
+           Bundle.main.url(
+            forResource: resource,
+            withExtension: ext,
+            subdirectory: subdir) != nil {
             return true
         }
         guard

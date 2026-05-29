@@ -18,7 +18,9 @@ struct PersonaSettingsView: View {
     let selectedConfig: LocalModelDownloadManager.ModelConfiguration
     @State private var persona: CharacterPersona
     @State private var localPrompt: String
-    @State private var voicevoxSpeakerID: Int
+    // Default-internal so PersonaSettingsView+VoiceVoxDownload can read
+    // the currently-selected speaker when scheduling the .vvm download.
+    @State var voicevoxSpeakerID: Int
     @State private var kokoroVoiceID: String
     @Environment(\.dismiss) private var dismiss
 
@@ -31,6 +33,9 @@ struct PersonaSettingsView: View {
     @State var kokoroAvailable: Bool = KokoroModelAccess.isAvailable
     @State var isDownloadingKokoro = false
     @State var kokoroDownloadError: String?
+    @State var voicevoxAvailable: Bool = VoiceVoxModelAccess.isDictionaryAvailable
+    @State var isDownloadingVoiceVox = false
+    @State var voicevoxDownloadError: String?
 
     private let voices = [
         "alloy", "ash", "ballad", "coral", "echo", "marin", "sage", "shimmer", "verse"
@@ -220,12 +225,13 @@ struct PersonaSettingsView: View {
                 }
             }
             .pickerStyle(.menu)
+            if !voicevoxAvailable {
+                voicevoxDownloadButton
+            }
         } header: {
             Text("Voice (VOICEVOX)")
         } footer: {
-            Text("Used by the Japanese local LLM.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            voicevoxFooter
         }
     }
 
