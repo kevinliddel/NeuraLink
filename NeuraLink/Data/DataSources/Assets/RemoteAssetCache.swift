@@ -26,8 +26,6 @@
 // the `huggingface.co/datasets/<repo>/resolve/main/<path>` URL bypasses
 // auth entirely — that endpoint is anonymous-readable for public datasets.
 //
-// Scaffolding for docs/app_size_reduction_plan.md §4.2.
-//
 // Created by Dedicatus on 29/05/2026.
 //
 
@@ -59,7 +57,8 @@ actor RemoteAssetCache {
             return bundled
         }
         if let onDisk = Self.cachedURL(for: asset),
-            FileManager.default.fileExists(atPath: onDisk.path) {
+            FileManager.default.fileExists(atPath: onDisk.path)
+        {
             resolved[asset] = onDisk
             return onDisk
         }
@@ -136,9 +135,11 @@ actor RemoteAssetCache {
         }
 
         do {
-            let (downloadedTempURL, response) = try await URLSession.shared.download(from: remoteURL)
+            let (downloadedTempURL, response) = try await URLSession.shared.download(
+                from: remoteURL)
             if let http = response as? HTTPURLResponse,
-                !(200..<300).contains(http.statusCode) {
+                !(200..<300).contains(http.statusCode)
+            {
                 try? FileManager.default.removeItem(at: downloadedTempURL)
                 throw CacheError.httpStatus(http.statusCode)
             }

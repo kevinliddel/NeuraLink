@@ -12,6 +12,8 @@
 
 Reduce the installed app bundle from **~1.16 GB (Release, measured 2026-05-29)** down to a **target ceiling of ≤200 MB**.
 
+> **Outcome: 181 MB measured 2026-05-29 after §4.2 + §4.5.** Target hit. `−1,031 MB / −85%` off the baseline. §4.4 + §10 follow-ups remain available if pushing toward the original ≤100 MB stretch goal becomes a priority.
+
 Measured via `du -sh NeuraLink.app` on `Build/Products/Release-iphoneos/NeuraLink.app`.
 
 > **Target revised 2026-05-29.** The original 80–100 MB band was set against the plan's 290 MB Release estimate, which assumed a 5–8 MB stripped binary. The actual stripped binary is **62 MB** (MLX-Swift kernels, WhisperKit, generated Swift concurrency code), so the 80 MB target is unreachable without binary surgery that's out of scope here. ≤200 MB is the iOS "large download over cellular" warning threshold (raised from 150 MB in iOS 13) — clearing it removes the user-visible install friction without forcing the binary refactor. Aggressive binary work is tracked as an out-of-scope follow-up in §10.
