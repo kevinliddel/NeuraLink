@@ -41,9 +41,16 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
 
         ttsBuffer += cleanText
 
+        // Earlier chunk emission so the user hears audio sooner — especially
+        // on iPhone 11 where decode can drop to <1 tok/s under thermal stress
+        // (`thermal=fair|serious|critical` in [Bench]). Lowered from 32 to 20
+        // chars: at 4 tok/s avg ~3 chars/token, that's ~1.5 s sooner per
+        // chunk, every chunk. Punctuation triggers (./!/?/./,/。/\n) still
+        // win when present; the count gate is purely the safety net for
+        // sentences without internal punctuation.
         if cleanText.contains(".") || cleanText.contains("!") || cleanText.contains("?")
             || cleanText.contains("。") || cleanText.contains(",") || cleanText.contains("\n")
-            || (ttsBuffer.count >= 32 && ttsBuffer.contains(" ")) {
+            || (ttsBuffer.count >= 20 && ttsBuffer.contains(" ")) {
             let chunkToSpeak = ttsBuffer
             ttsBuffer = ""
             speakChunk(chunkToSpeak)

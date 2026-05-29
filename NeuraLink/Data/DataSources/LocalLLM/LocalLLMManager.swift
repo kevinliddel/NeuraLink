@@ -147,6 +147,21 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             // ~17 s ttft that an empty KV cache costs on iPhone 11.
             warmupPrefill()
         }
+        // Parallel TTS engine pre-warm: builds the bridge (ONNX session for
+        // Kokoro, OpenJTalk + synthesizer for VoiceVox) ahead of the first
+        // speakChunk so the user's perceived first-audio latency drops by
+        // the engine's init cost (~500 ms–1 s on iPhone 11). Independent of
+        // LLM loading — runs in parallel with `loadModel()`.
+        Task { @MainActor in
+            let persona = state.selectedCharacterName
+            guard let engine = TTSEngineSelector.shared.engine(for: persona) else { return }
+            do {
+                try await engine.initialize()
+                nlLog("[LocalLLM] TTS engine pre-warmed for '\(persona)'", level: .info)
+            } catch {
+                nlLog("[LocalLLM] TTS pre-warm failed for '\(persona)': \(error)", level: .warning)
+            }
+        }
     }
 
     func startListening() {
@@ -303,13 +318,20 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
                 config: mgr.selectedConfig, systemPrompt: basePrompt)
         else { return }
 
+        let filename = URL(fileURLWithPath: path).lastPathComponent
+
         // No file at all = nothing to verify and nothing to purge —
-        // fresh install / first-ever launch with this persona.
-        guard FileManager.default.fileExists(atPath: path) else { return }
+        // fresh install / first-ever launch with this persona hash
+        // (e.g. after a persona-prompt edit invalidated the prior cache).
+        guard FileManager.default.fileExists(atPath: path) else {
+            nlLog("[KVCache] No prior cache at \(filename) — cold prefill on first turn",
+                  level: .info)
+            return
+        }
 
         guard LocalLLMKVCache.verifyIntegrity(at: path) else {
             nlLog(
-                "[LocalLLMManager] KV cache integrity check failed; purging and falling back to cold prefill",
+                "[KVCache] Integrity check failed at \(filename); purging and falling back to cold prefill",
                 level: .warning)
             LocalLLMKVCache.purge(at: path)
             return
@@ -320,6 +342,9 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             // If we restored from disk, treat the cache as already
             // persisted — no need to rewrite the same bytes.
             kvCachePersistedThisSession = true
+        } else {
+            nlLog("[KVCache] Load returned 0 tokens from \(filename); next save will overwrite",
+                  level: .warning)
         }
     }
 
@@ -335,6 +360,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             let path = LocalLLMKVCache.path(
                 config: config, systemPrompt: systemPrompt)
         else { return }
+        let filename = URL(fileURLWithPath: path).lastPathComponent
         let saved = await llmEngine.saveKVCache(to: path)
         if saved {
             // Sign immediately after a successful save so the
@@ -342,6 +368,9 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             // weren't tampered with while the app was backgrounded.
             LocalLLMKVCache.signIntegrity(at: path)
             kvCachePersistedThisSession = true
+        } else {
+            nlLog("[KVCache] Save returned 0 bytes for \(filename) — bridge may be empty",
+                  level: .warning)
         }
     }
 

@@ -121,12 +121,17 @@ extension GGUFLlamaEngine {
                 // persist attempt simply skips this turn; we'll retry on
                 // the next warmup completion.
                 guard self.bridgeLock.try() else {
+                    nlLog("[KVCache] Save skipped — bridge busy; will retry on next warmup",
+                          level: .info)
                     continuation.resume(returning: false); return
                 }
                 defer { self.bridgeLock.unlock() }
                 let bytes = bridge.saveKVState(path: path)
                 if bytes > 0 {
                     nlLog("[KVCache] Saved \(bridge.kvTokenCount) tokens, \(bytes) bytes to \(URL(fileURLWithPath: path).lastPathComponent)", level: .info)
+                } else {
+                    nlLog("[KVCache] Save returned 0 bytes — kvTokenCount=\(bridge.kvTokenCount)",
+                          level: .warning)
                 }
                 continuation.resume(returning: bytes > 0)
             }
