@@ -14,6 +14,8 @@
   <img src="https://custom-icon-badges.demolab.com/badge/Qwen-605CEC?logo=qwen&logoColor=fff" alt="Qwen" />
   <img src="https://custom-icon-badges.demolab.com/badge/WebRTC-gray?style=flat&logo=webrtc" alt="WebRTC" />
   <img src="https://custom-icon-badges.demolab.com/badge/WhisperKit-gray?logo=swift" alt="WhisperKit" />
+  <img src="https://img.shields.io/badge/VoiceVOX-brightgreen?style=flat&logo=v&logoColor=fff" alt="Voice VOX" />
+  <img src="https://custom-icon-badges.demolab.com/badge/KokoroTTS-gray?style=flat&logo=p&logoColor=orange" alt="Kokoro TTS" />
   <img src="https://custom-icon-badges.demolab.com/badge/Silero-VAD-red?style=flat&logo=silero" alt="Silero VAD" />
   <a href="https://deepwiki.com/kevinliddel/NeuraLink"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki" /></a>
 </p>
@@ -301,6 +303,25 @@ When the system falls through to the iOS speech synthesizer (no Kokoro pack, no 
 ### 🛠️ Implementation Details
 - [TTSEngineSelector.swift](./NeuraLink/Data/DataSources/TTS/TTSEngineSelector.swift) — engine resolution per persona + model tier.
 - [LocalLLMManager+TTS.swift](./NeuraLink/Data/DataSources/LocalLLM/LocalLLMManager+TTS.swift) — chunked synthesis pipeline that pumps engine PCM buffers into the playback graph.
+
+---
+
+## 🔒 Security & Privacy
+
+NeuraLink is designed for the realistic threat model of a **lost, stolen, or filesystem-dumped iPhone** — not a runtime debugger on a jailbroken device. Every piece of on-disk state has a defense layer matched to its sensitivity, and conversation content stays out of release-build system logs.
+
+| Layer | What it protects | How |
+|---|---|---|
+| **Keychain (Secure Enclave-derived)** | OpenAI API key, SQLCipher page key, KV-cache HMAC key | `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` — unreadable from a cold-boot extraction. Never iCloud-synced, never restored to a different device. |
+| **iOS Data Protection** | Conversation DB, personas, local-LLM prompts, transient audio | `.completeUntilFirstUserAuthentication` on `Application Support/private/` — unreadable until the user unlocks the device once after boot. |
+| **SQLCipher (opt-in)** | Per-message page-level crypto on the conversation DB | AES-CBC + HMAC pages keyed from a 32-byte Keychain secret. Off by default; flag-gated as the foundation for a future passphrase mode. |
+| **HMAC integrity** | Persistent KV cache blobs | HMAC-SHA256 over `(blob ‖ filename)` with a 32-byte Keychain key. A tampered blob fails verification and falls back to a cold prefill. |
+| **Sensitive logging** | Chat transcripts, persona prompts, RAG memory bodies | `nlLogSensitive` marks payloads as `.private` so they're redacted in observer-readable Console.app captures (TestFlight testers, MDM log capture). Release builds compile out all `nlLog` calls entirely. |
+| **Transient files** | Whisper audio segments | Written to `tmp/whisper_<UUID>.wav` and deleted after one transcribe call. |
+
+**Explicitly out of scope** (closing these would require a different threat model): runtime debugger on a jailbroken device, server-side compromise at OpenAI, screen-recording leaks, side-channel attacks on the Apple Neural Engine.
+
+**[Full security architecture](./docs/APP_SECURITY.md)** — covers the storage inventory, Keychain layout, HMAC binding rationale, and the full threat model.
 
 ---
 
