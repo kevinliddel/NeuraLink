@@ -13,10 +13,6 @@ extension VRMRenderer {
     // MARK: - Setup
 
     func setupCity() {
-        guard let url = findCityGLB(named: "city") else {
-            nlLog("[CityRenderer] city.glb not found in bundle")
-            return
-        }
         let renderer = CityRenderer(
             device: device,
             instanceConfig: (x: 0, y: -0.02, z: 0, rotY: 0, scale: 1.0)
@@ -26,9 +22,10 @@ extension VRMRenderer {
 
         Task.detached(priority: .userInitiated) { [weak renderer] in
             do {
+                let url = try await RemoteAssetCache.shared.url(for: .city)
                 try await renderer?.load(url: url)
             } catch {
-                nlLog("[CityRenderer] city.glb load failed: \(error)")
+                nlLog("[CityRenderer] city.glb resolve/load failed: \(error)")
             }
         }
     }
@@ -84,17 +81,4 @@ extension VRMRenderer {
         )
     }
 
-    // MARK: - Bundle lookup
-
-    private func findCityGLB(named name: String) -> URL? {
-        if let url = Bundle.main.url(forResource: name, withExtension: "glb") {
-            return url
-        }
-        if let url = Bundle.main.url(
-            forResource: name, withExtension: "glb",
-            subdirectory: "Models/Environments") {
-            return url
-        }
-        return nil
-    }
 }

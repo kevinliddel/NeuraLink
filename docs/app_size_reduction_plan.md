@@ -10,38 +10,68 @@
 
 ## 1. Goal
 
-Reduce the installed app bundle from **~338 MB (Debug) / ~290 MB (Release estimated)** down to a **target band of 80–100 MB**.
+Reduce the installed app bundle from **~1.16 GB (Release, measured 2026-05-29)** down to a **target ceiling of ≤200 MB**.
 
-Measured via Xcode's organizer / `du -sh NeuraLink.app` on the build output.
+Measured via `du -sh NeuraLink.app` on `Build/Products/Release-iphoneos/NeuraLink.app`.
 
-Target rationale: under 100 MB lets the app be downloaded over cellular without the iOS "large download" warning, and brings App Store install footprint into the same band as comparable voice-AI apps.
+> **Target revised 2026-05-29.** The original 80–100 MB band was set against the plan's 290 MB Release estimate, which assumed a 5–8 MB stripped binary. The actual stripped binary is **62 MB** (MLX-Swift kernels, WhisperKit, generated Swift concurrency code), so the 80 MB target is unreachable without binary surgery that's out of scope here. ≤200 MB is the iOS "large download over cellular" warning threshold (raised from 150 MB in iOS 13) — clearing it removes the user-visible install friction without forcing the binary refactor. Aggressive binary work is tracked as an out-of-scope follow-up in §10.
 
-Out of scope: peak runtime RAM (covered by [local_llm_memory_plan.md](local_llm_memory_plan.md)), download speed of optional models (already on-demand), VRM render performance, model quality.
+Target rationale: ≤200 MB removes the iOS cellular-install warning and brings the App Store install footprint into the same band as comparable voice-AI apps.
+
+Out of scope: peak runtime RAM (covered by [local_llm_memory_plan.md](local_llm_memory_plan.md)), download speed of optional models (already on-demand), VRM render performance, model quality, binary-size surgery (see §10).
 
 ---
 
 ## 2. Inventory — where the bundle weight lives
 
-> **Inventory aged out (2026-05-28).** The table below is from 2026-05-21, before VOICEVOX + Kokoro TTS engines landed. Re-measured 2026-05-28 on the Debug simulator bundle: total is **~1.4 GB**, dominated by **~830 MB of TTS data files** that didn't exist in the original inventory. Those are addressed in the new §4.5 below; the original §4.2 / §4.3 (scenes + characters) remain the right shape, just no longer the largest lever. The table is preserved as the pre-TTS picture.
->
-> | Asset class added since 2026-05-21 | Files | Size | Cuttable? |
-> |---|---|---:|---|
-> | **VOICEVOX voice models** | `2.vvm`, `3.vvm`, `8.vvm`, `9.vvm`, `14.vvm`, `20.vvm` | **345 MB** | Yes — see §4.5 |
-> | **Kokoro ONNX model** | `kokoro.onnx` | **328 MB** | Yes — see §4.5 |
-> | **VOICEVOX Open JTalk dictionary** | `open_jtalk_dic_utf_8-1.11/` | **102 MB** | Yes — see §4.5 |
-> | **Kokoro voice style table** | `voices.bin` | **51 MB** | Yes — see §4.5 |
-> | **VOICEVOX ONNX Runtime framework** | `voicevox_onnxruntime.framework` | **25 MB** | No — needed for any JP TTS |
-> | **Kokoro CMU pronunciation dictionary** | `cmu.txt` | **3.5 MB** | Yes — see §4.5 |
->
-> TTS data alone (excluding the 30 MB of TTS frameworks that must stay resident) accounts for ~60% of today's bundle. After §4.5 lands, the bundle baseline drops back below the 2026-05-21 inventory, and §4.2 / §4.3 become the levers that complete the cut.
+### Current inventory — Release build, 2026-05-29
 
-Captured 2026-05-21 from `Build/Products/Debug-iphoneos/NeuraLink.app`:
+Measured against `Build/Products/Release-iphoneos/NeuraLink.app` (**1,212,532 KB ≈ 1.16 GB total**):
+
+| Group | Files | Size | Cuttable via |
+|---|---|---:|---|
+| **Kokoro TTS data** | `kokoro.onnx` (328 MB) + `voices.bin` (51 MB) + `cmu.txt` (3.5 MB) | **382 MB** | §4.5 |
+| **VOICEVOX TTS data** | 6× `.vvm` (~57 MB each = ~345 MB) + `sys.dic` (98 MB, part of Open JTalk dict) | **343 MB** | §4.5 |
+| **Scene GLBs** | `city.glb` (97 MB) + `campus.glb` (79 MB). `tree.glb` and `grass.glb` are NOT in the Release bundle | **176 MB** | §4.2 |
+| **App binary** | `NeuraLink` (stripped) | **62 MB** | Out of scope — see §10 |
+| **VRM characters** | `Ekaterina.vrm` (14 MB) + `Sonya.vrm` (15 MB) | **29 MB** | No — VRMs stay bundled (see §4.3) |
+| **RealTimeCutVAD framework** | `RealTimeCutVADCXXLibrary.framework` | **26 MB** | §4.4 (best-effort) |
+| **voicevox_onnxruntime framework** | static ORT binary used by VOICEVOX | **12 MB** | No — runtime dep |
+| **WebRTC framework** | OpenAI realtime path | **11 MB** | No — runtime dep |
+| **llama framework** | `llama` (local LLM) | **5 MB** | No — runtime dep |
+| **Assets.car, metallibs, smaller bits** | various | ~10 MB | No |
+
+**Five files account for >75% of the bundle:** `kokoro.onnx` (328), `voices.bin` (51), `city.glb` (97), `campus.glb` (79), and `sys.dic` (98). Plus the six VVMs collectively at ~345 MB. The four ≥50 MB single files alone are 553 MB.
+
+### Math against the ≤200 MB target
+
+| Phase | Action | MB saved |
+|---|---|---:|
+| §4.2 | Scenes on-demand (`city.glb` + `campus.glb`) | −176 |
+| ~~§4.3~~ | ~~`Sonya.vrm` on-demand~~ — dropped (VRMs stay bundled) | 0 |
+| §4.5 | Kokoro on-demand (`kokoro.onnx` + `voices.bin` + `cmu.txt`) | −382 |
+| §4.5 | VOICEVOX on-demand (6 VVMs + JTalk dict) | −343 |
+| §4.4 | RealTimeCutVAD framework slim (best-case ~5–10 MB) | −5 to −10 |
+| **Subtotal** | | **≈ −921 to −926** |
+| **Remaining bundle** | | **≈ 285–290 MB** |
+
+That's ~85 MB above the ≤200 MB target. The closeable gap, in priority order:
+
+- **MLX-Swift binary contribution to the 62 MB executable** — only F5-TTS uses MLX on the 8 GB tier. Lazy-loading via `dlopen` or a separate framework target would cut ~20–30 MB from the binary on tiers that never run F5-TTS. Out of scope here, tracked in §10.
+- **Compress JTalk dict** — `sys.dic` is 98 MB of mostly text; a one-shot recompression at build-time could reclaim 30–50 MB. Adds CPU at TTS init; needs a feasibility test.
+- **Compress `kokoro.onnx`** — int8 quant exists upstream (~80 MB vs 328 MB). Quality is "slightly degraded" per the model card; A/B before adopting. Tracked in [local_llm_tts_plan.md](local_llm_tts_plan.md) §9.
+
+For Phases 1–5 of this plan, the **≤290 MB intermediate** is a clear win. Reaching the ≤200 MB ceiling needs one of the three follow-ups above; they can be sequenced after Phase 5 ships.
+
+### Pre-TTS inventory (preserved for context)
+
+The 2026-05-21 inventory below is the pre-TTS picture; refer to the table above for current numbers.
 
 | Category | Files | Size | Cuttable? |
 |---|---|---:|---|
 | **Scene `.glb` assets** | `city.glb`, `campus.glb`, `tree.glb`, `grass.glb` | **201 MB** | Yes — move on-demand |
 | Debug binary | `NeuraLink.debug.dylib` | 36 MB | Yes — Release strip drops to ~5–8 MB |
-| **VRM characters** | `Sonya.vrm`, `Ekaterina.vrm` | **29 MB** | Yes — one bundled, rest on-demand |
+| **VRM characters** | `Sonya.vrm`, `Ekaterina.vrm` | **29 MB** | No — VRMs stay bundled (decision recorded in §4.3) |
 | RealTimeCutVADCXXLibrary framework | (statically-linked ONNX Runtime) | 26 MB | Possibly — investigate arch slices |
 | WebRTC framework | `WebRTC` | 11 MB | No — needed at launch for OpenAI realtime |
 | llama framework | `llama` | 5 MB | No — needed at launch for local LLM |
@@ -63,7 +93,7 @@ Captured 2026-05-21 from `Build/Products/Debug-iphoneos/NeuraLink.app`:
 | Scene loaders | [VRMRenderer+City.swift](../NeuraLink/Core/Engine/VRM/Rendering/VRMRenderer+City.swift), [VRMRenderer+Campus.swift](../NeuraLink/Core/Engine/VRM/Rendering/VRMRenderer+Campus.swift) — the two `Bundle.main.url(forResource:withExtension:"glb")` call sites |
 | Character registry | [ContentView.swift](../NeuraLink/App/ContentView.swift) — `VRMModelRegistry` enum (lines 127+) and the `selectedModelURL` state |
 | Build settings | `NeuraLink.xcodeproj/project.pbxproj` — drop the four GLB files and one VRM from "Copy Bundle Resources" |
-| New code | `NeuraLink/Data/DataSources/Assets/SceneAssetRegistry.swift`, `SceneAssetDownloader.swift`, `VRMCharacterDownloader.swift`, `RemoteAssetCache.swift` |
+| New code | `NeuraLink/Data/DataSources/Assets/SceneAssetRegistry.swift`, `SceneAssetDownloader.swift`, `RemoteAssetCache.swift` (VRM downloader dropped — see §4.3) |
 | First-launch UX | New view (under `Presentation/Views/Overlays/`) for progress + retry |
 
 ### Out of scope
@@ -105,13 +135,17 @@ The four GLB scene files total 201 MB. They are environment backgrounds — only
 - UX: a download progress overlay on first scene switch. Background download permitted via `URLSessionConfiguration.background` so the user can leave the app.
 - Failure mode: if download fails, fall back to a tiny bundled "loading" scene (~1 MB plane + sky) so the avatar still has somewhere to stand. This stays bundled as a permanent safety net.
 
-Expected: **Bundle: 310 → ~109 MB.** This is the only intervention that meaningfully shifts the needle.
+Expected: **−176 MB.** Largest single-phase cut among §4.2 / §4.4.
 
-### 4.3 On-demand character VRMs (cleanup pass)
+### 4.3 ~~On-demand character VRMs~~ — dropped 2026-05-29
 
-Same pattern for `Sonya.vrm`. Default character (`Ekaterina.vrm`, 14 MB) stays bundled so first launch is always functional. `VRMModelRegistry.all` already enumerates characters — extend each entry with a remote URL and a `requiresDownload` flag; `selectedModelURL` becomes async/optional.
-
-Expected: **Bundle: 109 → ~95 MB.** Lands in the 80–100 MB target band.
+> **Decision: VRMs stay bundled.** `Ekaterina.vrm` (14 MB) and `Sonya.vrm` (15 MB) — and any future character — ship inside the app permanently. Same rule applies to `.vrma` animation files and any persona thumbnail PNGs.
+>
+> Rationale: VRMs are user-recognisable identity assets. First-launch UX should always offer a working set of characters without a download; making *every* character on-demand pushes initial install friction into the chrome that the user notices most. The asset categories that DO move on-demand (scenes, TTS data) are background machinery the user doesn't directly identify with.
+>
+> Net target impact: +15 MB to the post-cut floor (Sonya stays). Still within the ≤200 MB ceiling once §10 follow-ups close the remaining gap.
+>
+> The §4.5 in-scope list explicitly excludes `.vrm` / `.vrma` / images for the same reason.
 
 ### 4.4 Investigate RealTimeCutVADCXXLibrary (26 MB)
 
@@ -140,7 +174,7 @@ Per-asset on-demand strategy:
 | `3.vvm` / `8.vvm` / `9.vvm` / `14.vvm` / `20.vvm` | ~57 MB each | Same — when the persona maps to that ID | `Application Support/tts/voicevox/<id>.vvm` | Average user only ever downloads 1–2 of the 6 |
 | Open JTalk dict (`open_jtalk_dic_utf_8-1.11/`) | 102 MB | First time the user enables `.japaneseLlama1b` AND any VOICEVOX speaker resolves | `Application Support/tts/voicevox/open_jtalk_dic/` | Required for JP linguistic analysis; one-time per user. ~100 MB is unavoidable for the dict |
 
-Expected reduction: **~830 MB → ~0 MB** of bundled TTS data. Combined with §4.2 / §4.3, that puts the bundle floor at the ~95 MB target with significant headroom.
+Expected reduction: **−725 MB** of bundled TTS data (382 MB Kokoro + 343 MB VOICEVOX). Combined with §4.2 / §4.4, the bundle floor lands at **~300 MB** — clears the iOS cellular-install threshold with room for ongoing growth, ~100 MB above the ≤200 MB ceiling. Closing that gap needs one of the §10 follow-ups (binary surgery, JTalk dict compression, or Kokoro int8 quant).
 
 Implementation notes (for the future phase):
 
@@ -187,8 +221,7 @@ gantt
     section Phase 5 — Strip scene GLBs from bundle
     Drop from Copy Bundle Resources, smoke-test default scene   :p5, after p4, 1d
 
-    section Phase 6 — Character VRM on-demand
-    VRMCharacterDownloader, Sonya removed from bundle           :p6, after p5, 1d
+    %% Phase 6 (Character VRM on-demand) dropped 2026-05-29 — VRMs stay bundled per §4.3.
 
     section Phase 7 — VAD framework investigation
     lipo / nm / ORT op-stripping (best-effort, may no-op)       :p7, after p6, 1d
@@ -207,7 +240,6 @@ Total active work: ~9 days excluding review. No external dependencies beyond upl
 | `Data/DataSources/Assets/SceneAssetRegistry.swift` | ~80 | Enum of remote scenes (`city`, `campus`, `tree`, `grass`) with URL + SHA-256 |
 | `Data/DataSources/Assets/RemoteAssetCache.swift` | ~150 | Single-flight async URL resolver, on-disk cache, integrity verification |
 | `Data/DataSources/Assets/SceneAssetDownloader.swift` | ~120 | Background `URLSession` download + progress reporting |
-| `Data/DataSources/Assets/VRMCharacterDownloader.swift` | ~100 | Same as `SceneAssetDownloader` for `.vrm` files; thin wrapper |
 | `Presentation/Views/Overlays/AssetDownloadOverlay.swift` | ~120 | Progress UI + retry / error states |
 
 ### Modified files
@@ -236,7 +268,7 @@ Total active work: ~9 days excluding review. No external dependencies beyond upl
 
 | Check | Target |
 |---|---|
-| `du -sh NeuraLink.app` (Release) | **≤ 100 MB** |
+| `du -sh NeuraLink.app` (Release) | **≤ 300 MB** after §4.2 / §4.4 / §4.5; **≤ 200 MB** is the post-§10 goal |
 | First-launch flow with no network | App opens, default Ekaterina avatar visible, "default" scene renders, scene picker shows "(download required)" badges |
 | First scene download on cellular | Completes without iOS "large download" warning (the 200 MB warning threshold) |
 | Existing functionality | Local LLM inference unchanged on iPhone 11; OpenAI realtime unchanged; VRM animation parity |
@@ -277,12 +309,23 @@ The bundled scene GLBs are simply re-added to Copy Bundle Resources. The `Remote
 
 Tracked here so they don't get lost:
 
-0. **On-demand TTS assets (§4.5)** — planned future phase, ~830 MB potential reduction. Execution deferred until §4.2 / §4.3 land the `RemoteAssetCache` infrastructure this phase will reuse. Cross-reference: [local_llm_tts_plan.md](local_llm_tts_plan.md) §4 already anticipates `.vvm` downloads; this is the bundle-side counterpart.
+0. **On-demand TTS assets (§4.5)** — planned future phase, ~725 MB potential reduction (382 Kokoro + 343 VOICEVOX). Execution deferred until §4.2 / §4.3 land the `RemoteAssetCache` infrastructure this phase will reuse. Cross-reference: [local_llm_tts_plan.md](local_llm_tts_plan.md) §4 already anticipates `.vvm` downloads; this is the bundle-side counterpart.
 
-1. **Draco mesh compression + KTX2 texture compression** on the GLB files. Typical 60–80% reduction. Would shrink download time (not bundle size, which is the focus here). Likely a Phase 8 if scene downloads feel too slow in practice.
-2. **On-Demand Resources (Apple)** as a replacement for the third-party bucket. Apple-managed CDN, App Store-aware, but more setup and only works on App Store builds. Worth considering once we have a feel for the hosting cost on whichever bucket we pick.
-3. **Lazy framework loading** for the OpenAI path (WebRTC at 11 MB) — only load WebRTC.framework when the user first selects OpenAI mode. Requires `dlopen` plumbing; complex enough to defer until 100 MB target isn't enough.
-4. **Strip simulator slices from third-party `.xcframework`s** at archive time. Build setting `ONLY_ACTIVE_ARCH = YES` for Release usually handles this, but `RealTimeCutVADCXXLibrary` is suspiciously large and may not be honoring it — flagged for Phase 7 investigation.
+1. **Lazy-load MLX-Swift to shrink the 62 MB app binary** — MLX is only used by F5-TTS on the 8 GB tier. On every other tier, the MLX kernels embedded in the executable are dead weight. Plausible save: 20–30 MB from the executable. Approach: extract F5-TTS into a separate framework target loaded via `dlopen` only when a clone-trained persona resolves on `.qwen7b`. The single biggest closeable gap toward the ≤200 MB target after Phases 1–5 ship.
+
+2. **Recompress VOICEVOX Open JTalk dictionary** — `sys.dic` is 98 MB of mostly text. A one-shot gzip / xz pass at build time + runtime decompression on JTalk init could reclaim 30–50 MB. Adds ~100–300 ms to JP-TTS init on iPhone 11; needs a feasibility test that the JTalk C library can be patched to read decompressed bytes from disk vs. an in-memory buffer.
+
+3. **Kokoro int8 quantization** — upstream Kokoro publishes an int8 quant (~80 MB vs 328 MB). Quality is "slightly degraded" per the model card; A/B against the current f32 model required before adoption. Tracked separately in [local_llm_tts_plan.md](local_llm_tts_plan.md) §9.
+
+4. **Draco mesh compression + KTX2 texture compression** on the GLB files. Typical 60–80% reduction. Would shrink download time (not bundle size, which is the focus here). Likely a Phase 8 if scene downloads feel too slow in practice.
+
+5. **On-Demand Resources (Apple)** as a replacement for the third-party bucket. Apple-managed CDN, App Store-aware, but more setup and only works on App Store builds. Worth considering once we have a feel for the hosting cost on whichever bucket we pick.
+
+6. **Lazy framework loading** for the OpenAI path (WebRTC at 11 MB) — only load WebRTC.framework when the user first selects OpenAI mode. Requires `dlopen` plumbing; same pattern as the MLX lazy-load above.
+
+7. **Strip simulator slices from third-party `.xcframework`s** at archive time. Build setting `ONLY_ACTIVE_ARCH = YES` for Release usually handles this, but `RealTimeCutVADCXXLibrary` is suspiciously large and may not be honoring it — flagged for Phase 7 investigation.
+
+8. **Enable LLVM thin LTO** (`LLVM_LTO = YES_THIN`) — typically 3–8% binary reduction at modest build-time cost. Deferred until after §4.2 / §4.3 / §4.5 land so we can A/B the binary delta cleanly without confounding asset changes. Worth ~2–5 MB off the 62 MB binary.
 
 ---
 
