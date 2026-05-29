@@ -425,7 +425,6 @@ extension OpenAIRealtimeManager: RTCDataChannelDelegate {
                     // `invalid_value` at this key. Audio is what we want;
                     // the transcript still streams via
                     // `response.output_audio_transcript.delta` regardless
-                    // (see §4 of docs/openai_realtime_chat.md).
                     "output_modalities": ["audio"],
                     "instructions": finalInstructions,
                     "tools": AppFunctionTool.all,
@@ -450,8 +449,6 @@ extension OpenAIRealtimeManager: RTCDataChannelDelegate {
                                 "type": "near_field"
                             ]
                         ]
-                        // `audio.output.voice` deliberately omitted — see
-                        // comment above and `requestEphemeralKey`.
                     ]
                 ]
             ]
