@@ -6,7 +6,7 @@ NeuraLink's AI companion can interact with native iOS apps directly from convers
 
 ## How It Works
 
-Function calling is built on the **OpenAI Realtime API's native tool system**. During session setup, NeuraLink declares a set of typed tools via `session.update` — under the GA schema, that's `session.tools` alongside `session.tool_choice` and the rest of the audio config (see [openai_realtime_ga_migration.md](openai_realtime_ga_migration.md) for the full session body shape). When the AI decides a tool is needed, it streams arguments through the data channel and NeuraLink executes the action locally on-device.
+Function calling is built on the **OpenAI Realtime API's native tool system**. During session setup, NeuraLink declares a set of typed tools via `session.update` — under the GA schema, that's `session.tools` alongside `session.tool_choice` and the rest of the audio config (see [openai_realtime_chat.md](openai_realtime_chat.md) for the full session body shape). When the AI decides a tool is needed, it streams arguments through the data channel and NeuraLink executes the action locally on-device.
 
 The function-call event names (`response.output_item.added`, `response.function_call_arguments.{delta,done}`, `response.done`) were **not** renamed in the GA migration — only the transcript events were. The flow in this doc applies to both beta and GA sessions.
 
