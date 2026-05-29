@@ -42,15 +42,15 @@ actor RemoteAssetCache {
         case httpStatus(Int)
     }
 
-    private var resolved: [SceneAssetRegistry: URL] = [:]
-    private var inFlight: [SceneAssetRegistry: Task<URL, Error>] = [:]
+    private var resolved: [RemoteAssetRegistry: URL] = [:]
+    private var inFlight: [RemoteAssetRegistry: Task<URL, Error>] = [:]
 
     private init() {}
 
     /// Resolves the on-disk URL for `asset`. Cheap when the bundle or the
     /// in-actor resolved cache satisfies the lookup; only the cold path
     /// touches the network.
-    func url(for asset: SceneAssetRegistry) async throws -> URL {
+    func url(for asset: RemoteAssetRegistry) async throws -> URL {
         if let cached = resolved[asset] {
             return cached
         }
@@ -78,7 +78,7 @@ actor RemoteAssetCache {
 
     // MARK: - Path resolution
 
-    private func bundledURL(for asset: SceneAssetRegistry) -> URL? {
+    private func bundledURL(for asset: RemoteAssetRegistry) -> URL? {
         let resource = (asset.filename as NSString).deletingPathExtension
         let ext = (asset.filename as NSString).pathExtension
         if let url = Bundle.main.url(forResource: resource, withExtension: ext) {
@@ -92,7 +92,7 @@ actor RemoteAssetCache {
             subdirectory: "Models/Environments")
     }
 
-    private static func cachedURL(for asset: SceneAssetRegistry) -> URL? {
+    private static func cachedURL(for asset: RemoteAssetRegistry) -> URL? {
         guard let base = hfDownloadBase() else { return nil }
         return base.appendingPathComponent(asset.pathInRepo)
     }
@@ -120,7 +120,7 @@ actor RemoteAssetCache {
     /// HTTPS — no auth, no token discovery, no HubApi caching layer.
     /// Resolves redirects automatically (URLSession default) so the CDN
     /// hop to xet-bridge is transparent.
-    private static func download(asset: SceneAssetRegistry) async throws -> URL {
+    private static func download(asset: RemoteAssetRegistry) async throws -> URL {
         guard let target = cachedURL(for: asset) else {
             throw CacheError.assetNotFound
         }
@@ -131,7 +131,7 @@ actor RemoteAssetCache {
         }
 
         let urlString =
-            "https://huggingface.co/datasets/\(SceneAssetRegistry.repoID)/resolve/main/\(asset.pathInRepo)"
+            "https://huggingface.co/datasets/\(RemoteAssetRegistry.repoID)/resolve/main/\(asset.pathInRepo)"
         guard let remoteURL = URL(string: urlString) else {
             throw CacheError.assetNotFound
         }

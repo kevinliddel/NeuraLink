@@ -26,6 +26,11 @@ struct PersonaSettingsView: View {
     @State private var previewPlayer = VoicePreviewPlayer()
     @State private var localPreviewPlayer = LocalTTSPreviewPlayer()
     @State private var isLoadingPreview = false
+    // Default-internal so PersonaSettingsView+KokoroDownload can drive
+    // the download UX without making the entire view non-private.
+    @State var kokoroAvailable: Bool = KokoroModelAccess.isAvailable
+    @State var isDownloadingKokoro = false
+    @State var kokoroDownloadError: String?
 
     private let voices = [
         "alloy", "ash", "ballad", "coral", "echo", "marin", "sage", "shimmer", "verse"
@@ -232,21 +237,13 @@ struct PersonaSettingsView: View {
                 }
             }
             .pickerStyle(.menu)
+            if !kokoroAvailable {
+                kokoroDownloadButton
+            }
         } header: {
             Text("Voice (Kokoro)")
         } footer: {
-            if KokoroModelAccess.isAvailable {
-                Text("Used by the on-device LLM for English speech synthesis.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
-                Label(
-                    "Kokoro voice pack not installed — falls back to the iOS system voice.",
-                    systemImage: "exclamationmark.triangle"
-                )
-                .font(.caption)
-                .foregroundStyle(.orange)
-            }
+            kokoroFooter
         }
     }
 
