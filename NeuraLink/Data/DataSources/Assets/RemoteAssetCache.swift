@@ -57,8 +57,7 @@ actor RemoteAssetCache {
             return bundled
         }
         if let onDisk = Self.cachedURL(for: asset),
-            FileManager.default.fileExists(atPath: onDisk.path)
-        {
+            FileManager.default.fileExists(atPath: onDisk.path) {
             resolved[asset] = onDisk
             return onDisk
         }
@@ -138,8 +137,7 @@ actor RemoteAssetCache {
             let (downloadedTempURL, response) = try await URLSession.shared.download(
                 from: remoteURL)
             if let http = response as? HTTPURLResponse,
-                !(200..<300).contains(http.statusCode)
-            {
+                !(200..<300).contains(http.statusCode) {
                 try? FileManager.default.removeItem(at: downloadedTempURL)
                 throw CacheError.httpStatus(http.statusCode)
             }

@@ -37,7 +37,6 @@ DerivedData/
 model.safetensors
 vocab.txt
 vocos.safetensors
-NeuraLink/Dependencies/Kokoro/Resources/kokoro.onnx
 
 # AI Agent files
 RULES.md
