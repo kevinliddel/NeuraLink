@@ -12,11 +12,18 @@ static std::vector<float> trim_audio(const std::vector<float>& audio, int sample
     return audio; 
 }
 
-Kokoro::Kokoro(const std::string& model_path, const std::string& voices_path, const std::string& vocab_path, const std::string& dict_path)
+Kokoro::Kokoro(const std::string& model_path,
+               const std::string& voices_path,
+               const std::string& vocab_path,
+               const std::string& dict_path,
+               int intra_op_num_threads)
     : env_(ORT_LOGGING_LEVEL_WARNING, "Kokoro")
 {
     Ort::SessionOptions session_options;
-    session_options.SetIntraOpNumThreads(1);
+    // Caller picks the intra-op count from device RAM tier. iPhone 11 stays
+    // at 1 (combined RSS with a 1B local LLM pushes the jetsam ceiling);
+    // 6 GB+ devices get 2, matching the P-core count on A14–A17.
+    session_options.SetIntraOpNumThreads(intra_op_num_threads > 0 ? intra_op_num_threads : 1);
     session_options.SetInterOpNumThreads(1);
     session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_BASIC);
     session_options.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
@@ -261,6 +268,43 @@ std::pair<std::vector<float>, int> Kokoro::_create_audio(
     return {audio, SAMPLE_RATE};
 }
 
+void Kokoro::create_streaming(
+    const std::string& text,
+    const std::vector<float>& voice_style,
+    float speed,
+    bool is_phonemes,
+    bool trim,
+    const BatchCallback& on_batch
+) {
+    std::string phonemes = text;
+    if (!is_phonemes) {
+        phonemes = tokenizer_->phonemize(text);
+    }
+
+    auto batched_phonemes = _split_phonemes(phonemes);
+
+    for (const auto& batch : batched_phonemes) {
+        auto [audio_part, sr] = _create_audio(batch, voice_style, speed);
+        if (trim) {
+            audio_part = trim_audio(audio_part, sr);
+        }
+        if (!audio_part.empty() && on_batch) {
+            on_batch(audio_part.data(), audio_part.size());
+        }
+    }
+}
+
+void Kokoro::create_streaming(
+    const std::string& text,
+    const std::string& voice_name,
+    float speed,
+    bool is_phonemes,
+    bool trim,
+    const BatchCallback& on_batch
+) {
+    create_streaming(text, get_voice_style(voice_name), speed, is_phonemes, trim, on_batch);
+}
+
 std::pair<std::vector<float>, int> Kokoro::create(
     const std::string& text,
     const std::vector<float>& voice_style,
@@ -268,22 +312,11 @@ std::pair<std::vector<float>, int> Kokoro::create(
     bool is_phonemes,
     bool trim
 ) {
-    std::string phonemes = text;
-    if (!is_phonemes) {
-        phonemes = tokenizer_->phonemize(text);
-    }
-    
-    auto batched_phonemes = _split_phonemes(phonemes);
     std::vector<float> full_audio;
-    
-    for (const auto& batch : batched_phonemes) {
-        auto [audio_part, sr] = _create_audio(batch, voice_style, speed);
-        if (trim) {
-            audio_part = trim_audio(audio_part, sr);
-        }
-        full_audio.insert(full_audio.end(), audio_part.begin(), audio_part.end());
-    }
-    
+    create_streaming(text, voice_style, speed, is_phonemes, trim,
+                     [&full_audio](const float* data, size_t count) {
+                         full_audio.insert(full_audio.end(), data, data + count);
+                     });
     return {full_audio, SAMPLE_RATE};
 }
 

@@ -8,6 +8,7 @@
 #include <iostream>
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include "onnxruntime_cxx_api.h"
 #include "Tokenizer.h"
 
@@ -16,10 +17,40 @@ const int SAMPLE_RATE = 24000;
 
 class Kokoro {
 public:
-    Kokoro(const std::string& model_path, const std::string& voices_path, const std::string& vocab_path, const std::string& dict_path);
+    /// Invoked once per phoneme batch as PCM becomes available. `samples`
+    /// points to `count` float32 mono samples at SAMPLE_RATE Hz. The pointer
+    /// is only valid for the duration of the callback — copy if you need it.
+    using BatchCallback = std::function<void(const float* samples, size_t count)>;
+
+    Kokoro(const std::string& model_path,
+           const std::string& voices_path,
+           const std::string& vocab_path,
+           const std::string& dict_path,
+           int intra_op_num_threads = 1);
     ~Kokoro();
 
     std::vector<float> get_voice_style(const std::string& name);
+
+    /// Streaming synthesis: emits a PCM batch via `on_batch` as each phoneme
+    /// segment finishes. First-audio latency drops from "all batches" to
+    /// "first batch" for multi-sentence inputs.
+    void create_streaming(
+        const std::string& text,
+        const std::string& voice_name,
+        float speed,
+        bool is_phonemes,
+        bool trim,
+        const BatchCallback& on_batch
+    );
+
+    void create_streaming(
+        const std::string& text,
+        const std::vector<float>& voice_style,
+        float speed,
+        bool is_phonemes,
+        bool trim,
+        const BatchCallback& on_batch
+    );
 
     std::pair<std::vector<float>, int> create(
         const std::string& text,

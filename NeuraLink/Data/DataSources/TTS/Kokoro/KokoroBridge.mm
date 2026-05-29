@@ -8,7 +8,8 @@
 - (nullable instancetype)initWithModelPath:(NSString *)modelPath
                                 voicesPath:(NSString *)voicesPath
                                  vocabPath:(NSString *)vocabPath
-                                  dictPath:(NSString *)dictPath {
+                                  dictPath:(NSString *)dictPath
+                            intraOpThreads:(int)intraOpThreads {
     self = [super init];
     if (self) {
         try {
@@ -16,7 +17,8 @@
                 [modelPath UTF8String],
                 [voicesPath UTF8String],
                 [vocabPath UTF8String],
-                [dictPath UTF8String]
+                [dictPath UTF8String],
+                intraOpThreads
             );
         } catch (const std::exception &e) {
             NSLog(@"[KokoroBridge] Error initializing Kokoro: %s", e.what());
@@ -26,30 +28,35 @@
     return self;
 }
 
-- (nullable NSData *)synthesizeText:(NSString *)text
-                          voiceName:(NSString *)voiceName
-                              speed:(float)speed
-                              error:(NSError **)error {
+- (BOOL)synthesizeStreamingText:(NSString *)text
+                      voiceName:(NSString *)voiceName
+                          speed:(float)speed
+                        onBatch:(void (^)(NSData *batchPCM))onBatch
+                          error:(NSError **)error {
     if (!_kokoro) {
         if (error) {
             *error = [NSError errorWithDomain:@"com.dedicatus.NeuraLink.Kokoro"
                                          code:-1
                                      userInfo:@{NSLocalizedDescriptionKey: @"Engine not initialized"}];
         }
-        return nil;
+        return NO;
     }
-    
+
     try {
-        auto result = _kokoro->create(
+        _kokoro->create_streaming(
             [text UTF8String],
             [voiceName UTF8String],
             speed,
             false, // is_phonemes
-            true   // trim
+            true,  // trim
+            [onBatch](const float* samples, size_t count) {
+                if (!onBatch || count == 0) return;
+                NSData *pcm = [NSData dataWithBytes:samples
+                                             length:count * sizeof(float)];
+                onBatch(pcm);
+            }
         );
-        
-        const auto& audio = result.first;
-        return [NSData dataWithBytes:audio.data() length:audio.size() * sizeof(float)];
+        return YES;
     } catch (const std::exception &e) {
         if (error) {
             NSString *msg = [NSString stringWithUTF8String:e.what()];
@@ -57,7 +64,7 @@
                                          code:-2
                                      userInfo:@{NSLocalizedDescriptionKey: msg}];
         }
-        return nil;
+        return NO;
     }
 }
 

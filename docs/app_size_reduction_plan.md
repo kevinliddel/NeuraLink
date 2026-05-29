@@ -20,7 +20,20 @@ Out of scope: peak runtime RAM (covered by [local_llm_memory_plan.md](local_llm_
 
 ---
 
-## 2. Inventory — where the 338 MB lives
+## 2. Inventory — where the bundle weight lives
+
+> **Inventory aged out (2026-05-28).** The table below is from 2026-05-21, before VOICEVOX + Kokoro TTS engines landed. Re-measured 2026-05-28 on the Debug simulator bundle: total is **~1.4 GB**, dominated by **~830 MB of TTS data files** that didn't exist in the original inventory. Those are addressed in the new §4.5 below; the original §4.2 / §4.3 (scenes + characters) remain the right shape, just no longer the largest lever. The table is preserved as the pre-TTS picture.
+>
+> | Asset class added since 2026-05-21 | Files | Size | Cuttable? |
+> |---|---|---:|---|
+> | **VOICEVOX voice models** | `2.vvm`, `3.vvm`, `8.vvm`, `9.vvm`, `14.vvm`, `20.vvm` | **345 MB** | Yes — see §4.5 |
+> | **Kokoro ONNX model** | `kokoro.onnx` | **328 MB** | Yes — see §4.5 |
+> | **VOICEVOX Open JTalk dictionary** | `open_jtalk_dic_utf_8-1.11/` | **102 MB** | Yes — see §4.5 |
+> | **Kokoro voice style table** | `voices.bin` | **51 MB** | Yes — see §4.5 |
+> | **VOICEVOX ONNX Runtime framework** | `voicevox_onnxruntime.framework` | **25 MB** | No — needed for any JP TTS |
+> | **Kokoro CMU pronunciation dictionary** | `cmu.txt` | **3.5 MB** | Yes — see §4.5 |
+>
+> TTS data alone (excluding the 30 MB of TTS frameworks that must stay resident) accounts for ~60% of today's bundle. After §4.5 lands, the bundle baseline drops back below the 2026-05-21 inventory, and §4.2 / §4.3 become the levers that complete the cut.
 
 Captured 2026-05-21 from `Build/Products/Debug-iphoneos/NeuraLink.app`:
 
@@ -109,6 +122,42 @@ Silero VAD's own ONNX models are 4 MB combined and live next to the framework. T
 - Check whether ORT can be configured to drop unused operators (microphone-VAD uses a tiny subset).
 
 Worst-case outcome: no change. Best case: another 5–10 MB. Not required to hit target — strictly a bonus pass.
+
+### 4.5 On-demand TTS assets (planned — separate future phase)
+
+> **Status: planning only.** This section captures the inventory + strategy so it isn't lost; execution is deferred until the §4.2 / §4.3 work establishes the `RemoteAssetCache` infrastructure that this phase will reuse. No code change in this round.
+
+The TTS engines added between 2026-05-21 and 2026-05-28 contributed **~830 MB of data files** that the 2026-05-21 inventory in §2 doesn't reflect. None of these need to ship inside the bundle — they map cleanly to the on-demand pattern §4.2 establishes for scenes.
+
+Per-asset on-demand strategy:
+
+| Asset | Size | Trigger to download | Cache location | Notes |
+|---|---:|---|---|---|
+| `kokoro.onnx` | 328 MB | First time English persona resolves to `KokoroEngine` AND user has explicitly enabled local LLM | `Application Support/tts/kokoro/kokoro.onnx` | One-time. ~13 MB int8 quant is a separate quality call — out of scope here |
+| `voices.bin` | 51 MB | Same as `kokoro.onnx` (bundle-fetch together) | `Application Support/tts/kokoro/voices.bin` | Useless without `kokoro.onnx`; co-download |
+| `cmu.txt` | 3.5 MB | Same as `kokoro.onnx` | `Application Support/tts/kokoro/cmu.txt` | Pronunciation dict — small but co-download for atomicity |
+| `2.vvm` (Sonya/Dedicatus → Metan) | 56 MB | First time the persona resolves to that VOICEVOX speaker | `Application Support/tts/voicevox/<id>.vvm` | Per-speaker download; user owns the choice in PersonaSettings |
+| `3.vvm` / `8.vvm` / `9.vvm` / `14.vvm` / `20.vvm` | ~57 MB each | Same — when the persona maps to that ID | `Application Support/tts/voicevox/<id>.vvm` | Average user only ever downloads 1–2 of the 6 |
+| Open JTalk dict (`open_jtalk_dic_utf_8-1.11/`) | 102 MB | First time the user enables `.japaneseLlama1b` AND any VOICEVOX speaker resolves | `Application Support/tts/voicevox/open_jtalk_dic/` | Required for JP linguistic analysis; one-time per user. ~100 MB is unavoidable for the dict |
+
+Expected reduction: **~830 MB → ~0 MB** of bundled TTS data. Combined with §4.2 / §4.3, that puts the bundle floor at the ~95 MB target with significant headroom.
+
+Implementation notes (for the future phase):
+
+- **Mirror §4.2's `RemoteAssetCache`.** Same pattern, same SHA-256 manifest, same first-launch overlay. The TTS phase only adds three new `Asset` enum cases and three downloader call-sites.
+- **VVM-aware persona picker.** `PersonaSettingsView`'s voice picker today shows all 6 VOICEVOX speakers as instantly-selectable. After this phase, unselected speakers show a download badge (~57 MB) — same pattern as `ModelLibraryView` already uses for GGUFs.
+- **First-use download UX.** Selecting a persona that needs a TTS asset triggers the download overlay; speech happens silently in the background using `SystemTTSEngine` until the download completes (per §3.1 of [local_llm_tts_plan.md](local_llm_tts_plan.md)'s fallback rule).
+- **Hosting.** HF dataset repo same as scenes. VVMs are MIT-licensed redistributable; the bundled Kokoro ONNX is Apache-2.0; Open JTalk dict is BSD-style. No re-licensing risk.
+- **Resume + integrity.** SHA-256 verify each asset after download — particularly important for `kokoro.onnx` because a truncated 328 MB file would fail to load with a cryptic ORT error.
+- **Eager vs lazy in-memory.** Orthogonal to bundle size — covered separately in the TTS perf work (Kokoro slowness investigation). Bundle eviction here is purely about file-system bytes.
+
+Risks specific to this phase:
+
+| Risk | Mitigation |
+|---|---|
+| User on cellular installs the app, picks Japanese persona, eats 56 MB for the speaker plus 102 MB for JTalk dict in one go | Single combined progress overlay surfaces the 158 MB total up front, same warning shape as the GGUF model download flow today |
+| First English speak with local LLM enabled hits a 379 MB download (kokoro + voices) before any audio plays | Detect offline / pre-download condition and fall back to `SystemTTSEngine` for that utterance; queue the Kokoro download in the background so subsequent turns use Kokoro |
+| Removing 830 MB from "Copy Bundle Resources" must be done without breaking the existing `KokoroModelAccess` / `VoiceVoxModelAccess` path resolvers | Both classes already have a single source of truth for file paths; widen them to check `Application Support/tts/` first, fall through to `Bundle.main` second. Keeps the local dev flow (assets in source repo) working |
 
 ---
 
@@ -227,6 +276,8 @@ The bundled scene GLBs are simply re-added to Copy Bundle Resources. The `Remote
 ## 10. Out-of-scope follow-ups
 
 Tracked here so they don't get lost:
+
+0. **On-demand TTS assets (§4.5)** — planned future phase, ~830 MB potential reduction. Execution deferred until §4.2 / §4.3 land the `RemoteAssetCache` infrastructure this phase will reuse. Cross-reference: [local_llm_tts_plan.md](local_llm_tts_plan.md) §4 already anticipates `.vvm` downloads; this is the bundle-side counterpart.
 
 1. **Draco mesh compression + KTX2 texture compression** on the GLB files. Typical 60–80% reduction. Would shrink download time (not bundle size, which is the focus here). Likely a Phase 8 if scene downloads feel too slow in practice.
 2. **On-Demand Resources (Apple)** as a replacement for the third-party bucket. Apple-managed CDN, App Store-aware, but more setup and only works on App Store builds. Worth considering once we have a feel for the hosting cost on whichever bucket we pick.
