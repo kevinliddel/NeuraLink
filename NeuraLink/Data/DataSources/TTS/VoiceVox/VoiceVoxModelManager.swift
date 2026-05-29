@@ -24,11 +24,11 @@ final class VoiceVoxModelManager {
     }
 
     func refreshStatus() {
-        isDictionaryAvailable = VoiceVoxModelAccess.dictionaryPath() != nil
+        isDictionaryAvailable = VoiceVoxModelAccess.isDictionaryAvailable
 
         var foundIDs = Set<Int>()
         for speaker in VoiceVoxSpeaker.allBuiltIn
-        where VoiceVoxModelAccess.modelURL(forSpeakerID: speaker.id) != nil {
+        where VoiceVoxModelAccess.isSpeakerAvailable(speakerID: speaker.id) {
             foundIDs.insert(speaker.id)
         }
         downloadedSpeakerIDs = foundIDs
@@ -40,7 +40,7 @@ final class VoiceVoxModelManager {
     }
 
     func isSpeakerReady(_ id: Int) -> Bool {
-        isDictionaryAvailable && VoiceVoxModelAccess.modelURL(forSpeakerID: id) != nil
+        isDictionaryAvailable && VoiceVoxModelAccess.isSpeakerAvailable(speakerID: id)
     }
 
     /// Placeholder for the actual `.vvm` download flow. Real download wiring

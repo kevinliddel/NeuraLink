@@ -78,10 +78,11 @@ extension OpenAIRealtimeManager {
                     // The model calls this before speaking, so the face updates
                     // before audio starts. Sending the result + response.create
                     // continues the conversation into the spoken audio response.
-                    let args = (try? JSONSerialization.jsonObject(
-                        with: Data(pendingFunctionArgsJSON.utf8)) as? [String: Any]) ?? [:]
+                    let args =
+                        (try? JSONSerialization.jsonObject(
+                            with: Data(pendingFunctionArgsJSON.utf8)) as? [String: Any]) ?? [:]
                     if let emotion = args["emotion"] as? String,
-                       let duration = args["duration"] as? Double {
+                        let duration = args["duration"] as? Double {
                         state.triggerEmotion(emotion, duration: Float(duration))
                         nlLog(
                             "֎ [FunctionCall] set_emotion → \(emotion) for \(duration)s (synchronous, pre-speech)",
@@ -108,7 +109,7 @@ extension OpenAIRealtimeManager {
             case "response.done":
                 nlLogSensitive("[OpenAI] Full response: \(state.aiTranscript)", level: .info)
                 state.status = .ready
-                
+
                 // RAG: Store AI response in long-term memory
                 RAGManager.shared.store(text: state.aiTranscript, source: "ai")
                 ChatTimelineStore.logAIMessage(state.aiTranscript)
@@ -140,8 +141,9 @@ extension OpenAIRealtimeManager {
             // per the persona, now speaks English" + "user context and
             // date/time aren't applied". Both fit a dropped session.update.
             case "error":
-                let preview = (try? JSONSerialization.data(
-                    withJSONObject: json, options: [.prettyPrinted]))
+                let preview =
+                    (try? JSONSerialization.data(
+                        withJSONObject: json, options: [.prettyPrinted]))
                     .flatMap { String(data: $0, encoding: .utf8) }?.prefix(800) ?? ""
                 nlLog("[AI ERROR EVENT]: \(preview)", level: .warning)
 
@@ -150,10 +152,14 @@ extension OpenAIRealtimeManager {
             case "session.updated", "session.created":
                 let sess = (json["session"] as? [String: Any]) ?? [:]
                 let instr = (sess["instructions"] as? String) ?? "(none)"
-                let voice = ((sess["audio"] as? [String: Any])?["output"] as? [String: Any])?["voice"] as? String ?? "(default)"
-                let instrPreview = String(instr.prefix(120)).replacingOccurrences(of: "\n", with: " ")
+                let voice =
+                    ((sess["audio"] as? [String: Any])?["output"] as? [String: Any])?["voice"]
+                    as? String ?? "(default)"
+                let instrPreview = String(instr.prefix(120)).replacingOccurrences(
+                    of: "\n", with: " ")
                 nlLog("[AI \(type)]: voice=\(voice)", level: .info)
-                nlLogSensitive("[AI \(type)]: instructions_preview=\"\(instrPreview)\"", level: .info)
+                nlLogSensitive(
+                    "[AI \(type)]: instructions_preview=\"\(instrPreview)\"", level: .info)
 
             default:
                 break
@@ -368,9 +374,11 @@ extension OpenAIRealtimeManager: RTCDataChannelDelegate {
             // or just the persona-related memories. For now, we'll fetch context
             // based on the character's core identity to ground the session.
             let userContext = UserSettings.shared.systemPromptContext
-            let memoryContext = await RAGManager.shared.fetchContext(for: persona.instructions, limit: 5)
+            let memoryContext = await RAGManager.shared.fetchContext(
+                for: persona.instructions, limit: 5)
             let kgFacts = KnowledgeGraphManager.shared.getFormattedFacts()
-            let companion = CompanionStateManager.shared.promptContext(characterName: state.selectedCharacterName)
+            let companion = CompanionStateManager.shared.promptContext(
+                characterName: state.selectedCharacterName)
 
             // Heavy personas (Ekaterina/Sonya) consume the model's attention
             // budget on character behaviour and de-prioritise tool calls. This
@@ -380,22 +388,22 @@ extension OpenAIRealtimeManager: RTCDataChannelDelegate {
             // explicit tool instructions.
             let factsTriggerInstruction = """
 
-            TOOL USAGE — remember_fact:
-              Whenever the user reveals a personal detail about themselves or \
-              their life (name, family member, pet, job, hobby, preference, \
-              location, relationship, dislike, etc.), call the `remember_fact` \
-              function in addition to your spoken reply. Use S/P/O shape:
-                subject  = "User" (or the named entity, e.g. the sister's name)
-                predicate = the relationship (e.g. "has_sister", "likes", "lives_in")
-                object   = the value (e.g. "Manohy", "sushi", "Tokyo")
-              Do not announce the call in speech; just emit it silently.
-            """
+                TOOL USAGE — remember_fact:
+                  Whenever the user reveals a personal detail about themselves or \
+                  their life (name, family member, pet, job, hobby, preference, \
+                  location, relationship, dislike, etc.), call the `remember_fact` \
+                  function in addition to your spoken reply. Use S/P/O shape:
+                    subject  = "User" (or the named entity, e.g. the sister's name)
+                    predicate = the relationship (e.g. "has_sister", "likes", "lives_in")
+                    object   = the value (e.g. "Manohy", "sushi", "Tokyo")
+                  Do not announce the call in speech; just emit it silently.
+                """
 
             let finalInstructions =
                 persona.instructions + "\n"
                 + userContext + memoryContext + kgFacts + companion
                 + factsTriggerInstruction
-            
+
             // GA session shape. Key differences from the beta body:
             //   - `session.type = "realtime"` is now required (was implicit).
             //   - `modalities` → `output_modalities` (same semantics).
@@ -417,7 +425,6 @@ extension OpenAIRealtimeManager: RTCDataChannelDelegate {
                     // `invalid_value` at this key. Audio is what we want;
                     // the transcript still streams via
                     // `response.output_audio_transcript.delta` regardless
-                    // (see §4 of docs/openai_realtime_ga_migration.md).
                     "output_modalities": ["audio"],
                     "instructions": finalInstructions,
                     "tools": AppFunctionTool.all,
@@ -442,8 +449,6 @@ extension OpenAIRealtimeManager: RTCDataChannelDelegate {
                                 "type": "near_field"
                             ]
                         ]
-                        // `audio.output.voice` deliberately omitted — see
-                        // comment above and `requestEphemeralKey`.
                     ]
                 ]
             ]
@@ -452,7 +457,9 @@ extension OpenAIRealtimeManager: RTCDataChannelDelegate {
 
             let buffer = RTCDataBuffer(data: data, isBinary: false)
             remoteDataChannel?.sendData(buffer)
-            nlLog("[AI]: Sent initial session.update with \(AppFunctionTool.all.count) tools and instructions: \(finalInstructions.prefix(100))...", level: .info)
+            nlLog(
+                "[AI]: Sent initial session.update with \(AppFunctionTool.all.count) tools and instructions: \(finalInstructions.prefix(100))...",
+                level: .info)
         }
     }
 

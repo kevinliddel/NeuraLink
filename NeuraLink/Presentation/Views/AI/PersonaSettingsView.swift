@@ -18,7 +18,9 @@ struct PersonaSettingsView: View {
     let selectedConfig: LocalModelDownloadManager.ModelConfiguration
     @State private var persona: CharacterPersona
     @State private var localPrompt: String
-    @State private var voicevoxSpeakerID: Int
+    // Default-internal so PersonaSettingsView+VoiceVoxDownload can read
+    // the currently-selected speaker when scheduling the .vvm download.
+    @State var voicevoxSpeakerID: Int
     @State private var kokoroVoiceID: String
     @Environment(\.dismiss) private var dismiss
 
@@ -26,6 +28,14 @@ struct PersonaSettingsView: View {
     @State private var previewPlayer = VoicePreviewPlayer()
     @State private var localPreviewPlayer = LocalTTSPreviewPlayer()
     @State private var isLoadingPreview = false
+    // Default-internal so PersonaSettingsView+KokoroDownload can drive
+    // the download UX without making the entire view non-private.
+    @State var kokoroAvailable: Bool = KokoroModelAccess.isAvailable
+    @State var isDownloadingKokoro = false
+    @State var kokoroDownloadError: String?
+    @State var voicevoxAvailable: Bool = VoiceVoxModelAccess.isDictionaryAvailable
+    @State var isDownloadingVoiceVox = false
+    @State var voicevoxDownloadError: String?
 
     private let voices = [
         "alloy", "ash", "ballad", "coral", "echo", "marin", "sage", "shimmer", "verse"
@@ -215,12 +225,13 @@ struct PersonaSettingsView: View {
                 }
             }
             .pickerStyle(.menu)
+            if !voicevoxAvailable {
+                voicevoxDownloadButton
+            }
         } header: {
             Text("Voice (VOICEVOX)")
         } footer: {
-            Text("Used by the Japanese local LLM.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            voicevoxFooter
         }
     }
 
@@ -232,21 +243,13 @@ struct PersonaSettingsView: View {
                 }
             }
             .pickerStyle(.menu)
+            if !kokoroAvailable {
+                kokoroDownloadButton
+            }
         } header: {
             Text("Voice (Kokoro)")
         } footer: {
-            if KokoroModelAccess.isAvailable {
-                Text("Used by the on-device LLM for English speech synthesis.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
-                Label(
-                    "Kokoro voice pack not installed — falls back to the iOS system voice.",
-                    systemImage: "exclamationmark.triangle"
-                )
-                .font(.caption)
-                .foregroundStyle(.orange)
-            }
+            kokoroFooter
         }
     }
 

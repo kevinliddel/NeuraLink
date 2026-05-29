@@ -46,17 +46,28 @@ final class KokoroEngine: NSObject, @unchecked Sendable, TTSEngineProtocol {
 
         let threads = Self.intraOpThreadCount()
 
+        // Pre-resolve asset URLs. Resolves instantly when bundled or
+        // cached; triggers an HF download on first run for users whose
+        // bundle has been stripped of kokoro.onnx / voices.bin / cmu.txt.
+        let modelURL: URL
+        let voicesURL: URL
+        let cmuURL: URL
+        do {
+            modelURL = try await KokoroModelAccess.kokoroModel()
+            voicesURL = try await KokoroModelAccess.voicesBin()
+            cmuURL = try await KokoroModelAccess.cmuDict()
+        } catch {
+            nlLog("[Kokoro] Asset resolve failed: \(error)", level: .warning)
+            throw TTSError.modelNotFound
+        }
+        let vocabURL = KokoroModelAccess.vocabTxt
+
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
             queue.async {
-                guard KokoroModelAccess.isAvailable else {
-                    cont.resume(throwing: TTSError.modelNotFound)
-                    return
-                }
-
-                let modelPath = KokoroModelAccess.kokoroModel.path
-                let voicesPath = KokoroModelAccess.voicesBin.path
-                let vocabPath = KokoroModelAccess.vocabTxt.path
-                let dictPath = KokoroModelAccess.cmuDict.path
+                let modelPath = modelURL.path
+                let voicesPath = voicesURL.path
+                let vocabPath = vocabURL.path
+                let dictPath = cmuURL.path
 
                 nlLog("[Kokoro] Initializing bridge: model=\(modelPath), voices=\(voicesPath), threads=\(threads)", level: .info)
 

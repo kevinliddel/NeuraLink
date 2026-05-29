@@ -57,12 +57,22 @@ final class VoiceVoxEngine: NSObject, @unchecked Sendable, TTSEngineProtocol {
         isInitializing = true
         defer { isInitializing = false }
 
+        // Pre-resolve the Open JTalk dict path. Triggers a parallel
+        // download of all dict files on first run for users whose
+        // bundle has been stripped; returns instantly otherwise.
+        let dicPath: String
+        do {
+            guard let path = try await VoiceVoxModelAccess.dictionaryPath() else {
+                throw TTSError.modelNotFound
+            }
+            dicPath = path
+        } catch {
+            nlLog("[VoiceVox] Dictionary resolve failed: \(error)", level: .warning)
+            throw TTSError.modelNotFound
+        }
+
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
             queue.async {
-                guard let dicPath = VoiceVoxModelAccess.dictionaryPath() else {
-                    cont.resume(throwing: TTSError.modelNotFound)
-                    return
-                }
 
                 let ortResult = voicevox_onnxruntime_init_once(&self.onnxRuntime)
                 guard Int32(ortResult) == 0 else {
@@ -156,18 +166,30 @@ final class VoiceVoxEngine: NSObject, @unchecked Sendable, TTSEngineProtocol {
         let cleanText = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanText.isEmpty else { return Data() }
 
+        // Pre-resolve the speaker `.vvm` URL. Triggers a download on
+        // first use of this speaker for users whose bundle has been
+        // stripped; returns instantly for bundled or already-cached
+        // speakers. Pre-resolving here keeps the cache lookup off the
+        // synthesis queue and avoids re-entering Swift concurrency
+        // from inside the C bridge call.
+        let mapping = VoiceVoxSpeaker.map(speakerID)
+        let characterID = mapping.filenameID
+        let internalStyleID = mapping.internalStyleID
+        let resolvedModelURL: URL
+        do {
+            guard let url = try await VoiceVoxModelAccess.modelURL(forSpeakerID: characterID) else {
+                throw TTSError.modelNotFound
+            }
+            resolvedModelURL = url
+        } catch {
+            nlLog("[VoiceVox] Speaker resolve failed (id=\(characterID)): \(error)", level: .warning)
+            throw TTSError.modelNotFound
+        }
+
         return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Data, Error>) in
             queue.async {
-                let mapping = VoiceVoxSpeaker.map(speakerID)
-                let characterID = mapping.filenameID
-                let internalStyleID = mapping.internalStyleID
-
                 if !self.loadedModelIDs.contains("\(characterID)") {
-                    guard let modelPath = VoiceVoxModelAccess
-                        .modelURL(forSpeakerID: characterID)?.path else {
-                        cont.resume(throwing: TTSError.modelNotFound)
-                        return
-                    }
+                    let modelPath = resolvedModelURL.path
 
                     var file: OpaquePointer?
                     let openResult = voicevox_voice_model_file_open(
