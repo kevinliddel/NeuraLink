@@ -43,7 +43,7 @@ final class LocalLLMMemoryHierarchy {
     /// compactor will over- or under-evict relative to actual KV capacity.
     static func nCtx(for config: LocalModelDownloadManager.ModelConfiguration) -> Int {
         switch config {
-        case .llama1b, .japaneseLlama1b:
+        case .llama1b, .japaneseGemma2b:
             return 1_024
         default:
             return nCtxDefault
@@ -83,7 +83,7 @@ final class LocalLLMMemoryHierarchy {
         characterName: String,
         baseSystemPrompt: String
     ) async -> [LLMChatMessage] {
-        let isJP = (config == .japaneseLlama1b)
+        let isJP = (config == .japaneseGemma2b)
 
         let systemContent = buildSystemContent(
             base: baseSystemPrompt,
@@ -134,7 +134,7 @@ final class LocalLLMMemoryHierarchy {
         characterName: String,
         baseSystemPrompt: String
     ) async -> [LLMChatMessage] {
-        let isJP = (config == .japaneseLlama1b)
+        let isJP = (config == .japaneseGemma2b)
         let systemContent = buildSystemContent(
             base: baseSystemPrompt,
             characterName: characterName,

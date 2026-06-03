@@ -38,8 +38,8 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             return GGUFQwen7BEngine.shared as any LLMEngineProtocol
         case .llama1b:
             return GGUFLlamaEngine.shared
-        case .japaneseLlama1b:
-            return GGUFJapaneseLlamaEngine.shared
+        case .japaneseGemma2b:
+            return GGUFGemma2BJPEngine.shared
         }
     }
 
@@ -237,7 +237,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
                 .qwen2b, .qwen3b, .qwen7b
             ]
             let useQwen = mgr.isAvailable && isQwenFamily.contains(mgr.selectedConfig)
-            let isJapaneseLlama = mgr.selectedConfig == .japaneseLlama1b
+            let isJapaneseLlama = mgr.selectedConfig == .japaneseGemma2b
 
             // Build the 3-tier prompt via LocalLLMMemoryHierarchy:
             //   Tier 1: system + persona + (English-only: user context + companion)
@@ -253,10 +253,12 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             )
 
             // Engine formats via the model's own GGUF chat template; falls
-            // back to a hand-rolled template if the model has none.
+            // back to a hand-rolled template if the model has none. The JP
+            // slot now hosts Gemma 2 2B, which needs Gemma formatting in the
+            // fallback (its `<start_of_turn>` tokens differ from Llama-3).
             let prompt =
                 llmEngine.applyChatTemplate(messages: messages)
-                ?? fallbackChatPrompt(messages: messages, useQwen: useQwen)
+                ?? fallbackChatPrompt(messages: messages, useQwen: useQwen, isGemma: isJapaneseLlama)
 
             // Token caps tuned to local TTS speech rate, not raw quality:
             //   - Llama-1B on iPhone 11 decodes at ~4 tok/s. 60 tokens =
@@ -372,26 +374,6 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             nlLog("[KVCache] Save returned 0 bytes for \(filename) — bridge may be empty",
                   level: .warning)
         }
-    }
-
-    /// Hand-rolled chat template used when the model's GGUF has no embedded
-    /// template (rare but possible with community quants). Llama-3 and ChatML
-    /// formats cover every model we ship today.
-    private func fallbackChatPrompt(messages: [LLMChatMessage], useQwen: Bool) -> String {
-        if useQwen {
-            var s = ""
-            for m in messages {
-                s += "<|im_start|>\(m.role)\n\(m.content)<|im_end|>\n"
-            }
-            s += "<|im_start|>assistant\n"
-            return s
-        }
-        var s = ""
-        for m in messages {
-            s += "<|start_header_id|>\(m.role)<|end_header_id|>\n\n\(m.content)<|eot_id|>"
-        }
-        s += "<|start_header_id|>assistant<|end_header_id|>\n\n"
-        return s
     }
 
     func stop() {

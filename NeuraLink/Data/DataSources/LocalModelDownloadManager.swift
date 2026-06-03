@@ -53,7 +53,13 @@ final class LocalModelDownloadManager: @unchecked Sendable {
         case qwen3b = "Qwen2.5 3B"
         case qwen2b = "Qwen3-VL 2B"
         case llama1b = "Llama-3.2 1B"
-        case japaneseLlama1b = "Llama-3.2 1B (JP)"
+        // Renamed from `japaneseLlama1b` when the JP slot moved to Gemma 2 2B.
+        // The persisted KV-cache key string in LocalLLMKVCache deliberately
+        // stays "japaneseLlama1b" to avoid orphaning existing cache blobs.
+        // Changing this rawValue resets a user's persisted JP selection to the
+        // device default — acceptable, mirrors the re-download on a model-file
+        // change.
+        case japaneseGemma2b = "Gemma 2 2B (JP)"
 
         var id: String { rawValue }
 
@@ -63,7 +69,7 @@ final class LocalModelDownloadManager: @unchecked Sendable {
             case .qwen3b: return GGUFQwen3BModelAccess.repoID
             case .qwen7b: return GGUFQwen7BModelAccess.repoID
             case .llama1b: return GGUFModelAccess.repoID
-            case .japaneseLlama1b: return GGUFJapaneseLlamaModelAccess.repoID
+            case .japaneseGemma2b: return GGUFGemma2BJPModelAccess.repoID
             }
         }
 
@@ -72,9 +78,10 @@ final class LocalModelDownloadManager: @unchecked Sendable {
             case .qwen2b: return 1.1
             case .qwen3b: return 1.93
             case .qwen7b: return 4.68
-            // IQ4_XS — see quantizationLabel.
-            case .llama1b: return 0.74
-            case .japaneseLlama1b: return 0.74
+            // Q8_0 — see quantizationLabel.
+            case .llama1b: return 1.32
+            // Gemma 2 2B Q4_K_M — see quantizationLabel.
+            case .japaneseGemma2b: return 1.71
             }
         }
 
@@ -82,11 +89,14 @@ final class LocalModelDownloadManager: @unchecked Sendable {
             switch self {
             case .qwen2b, .qwen3b, .qwen7b:
                 return "Q4_K_M"
-            case .llama1b, .japaneseLlama1b:
-                // ARM-NEON tuned quant, ~8% smaller than Q4_K_M with similar
-                // quality — picked specifically to save RAM headroom on
-                // iPhone 11/12/13 (4 GB). See GGUFModelAccess.swift.
-                return "IQ4_XS"
+            case .llama1b:
+                // Max-available quant: near-lossless quality at ~1.32 GB.
+                // See GGUFModelAccess.swift.
+                return "Q8_0"
+            case .japaneseGemma2b:
+                // Gemma 2 2B (JP), Q4_K_M (~1.71 GB). See
+                // GGUFGemma2BJPModelAccess.swift.
+                return "Q4_K_M"
             }
         }
 
@@ -100,8 +110,8 @@ final class LocalModelDownloadManager: @unchecked Sendable {
                 return "Top quality. Recommended for iPhone 15 Pro Max, 16, 17 families (8 GB RAM)."
             case .llama1b:
                 return "Memory efficient. Recommended for iPhone 11, 12 or 13 families (4 GB+ RAM)."
-            case .japaneseLlama1b:
-                return "Japanese-oriented Llama-3.2 1B. Best for Japanese conversation on iPhone 11, 12 or 13 (4 GB RAM)."
+            case .japaneseGemma2b:
+                return "Japanese-tuned Gemma 2 2B (Google). Best Japanese quality; ~1.7 GB. Runs on iPhone 11/12/13 (4 GB) but is tight — smoothest on 6 GB+ devices."
             }
         }
     }
@@ -219,7 +229,7 @@ final class LocalModelDownloadManager: @unchecked Sendable {
         case .qwen3b: GGUFQwen3BModelAccess.clearCache()
         case .qwen7b: GGUFQwen7BModelAccess.clearCache()
         case .llama1b: GGUFModelAccess.clearCache()
-        case .japaneseLlama1b: GGUFJapaneseLlamaModelAccess.clearCache()
+        case .japaneseGemma2b: GGUFGemma2BJPModelAccess.clearCache()
         }
         if isSelected {
             state = .notDownloaded
@@ -247,7 +257,7 @@ final class LocalModelDownloadManager: @unchecked Sendable {
         case .qwen3b: url = GGUFQwen3BModelAccess.modelURL()
         case .qwen7b: url = GGUFQwen7BModelAccess.modelURL()
         case .llama1b: url = GGUFModelAccess.modelURL()
-        case .japaneseLlama1b: url = GGUFJapaneseLlamaModelAccess.modelURL()
+        case .japaneseGemma2b: url = GGUFGemma2BJPModelAccess.modelURL()
         }
         
         guard let fileURL = url else { return 0 }
@@ -282,7 +292,7 @@ final class LocalModelDownloadManager: @unchecked Sendable {
         case .qwen3b: return GGUFQwen3BModelAccess.isDownloaded
         case .qwen7b: return GGUFQwen7BModelAccess.isDownloaded
         case .llama1b: return GGUFModelAccess.isDownloaded
-        case .japaneseLlama1b: return GGUFJapaneseLlamaModelAccess.isDownloaded
+        case .japaneseGemma2b: return GGUFGemma2BJPModelAccess.isDownloaded
         }
     }
 
@@ -327,8 +337,8 @@ final class LocalModelDownloadManager: @unchecked Sendable {
                         self?.state = .downloading(progress: progress)
                     }
                 }
-            case .japaneseLlama1b:
-                try await GGUFJapaneseLlamaDownloader.download(api: api) { [weak self] progress in
+            case .japaneseGemma2b:
+                try await GGUFGemma2BJPDownloader.download(api: api) { [weak self] progress in
                     Task { @MainActor [weak self] in
                         guard case .downloading = self?.state else { return }
                         self?.state = .downloading(progress: progress)

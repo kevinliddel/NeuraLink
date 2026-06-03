@@ -8,7 +8,7 @@
 //
 //  Selection rules per docs/local_llm_tts_plan.md §3.1:
 //    1. F5-TTS clone trained AND .qwen7b tier             -> F5TTSEngine
-//    2. .japaneseLlama1b active                           -> VoiceVoxEngine
+//    2. .japaneseGemma2b active                           -> VoiceVoxEngine
 //    3. Kokoro voices downloaded                          -> KokoroEngine (deferred, returns nil)
 //    4. Else                                              -> SystemTTSEngine
 //
@@ -75,7 +75,7 @@ final class TTSEngineSelector {
             return makeF5TTSEngine(for: persona)
         }
 
-        if config == .japaneseLlama1b {
+        if config == .japaneseGemma2b {
             return makeVoiceVoxEngine(for: persona)
         }
 

@@ -1,8 +1,8 @@
 //
-//  GGUFJapaneseLlamaEngine+Generate.swift
+//  GGUFGemma2BJPEngine+Generate.swift
 //  NeuraLink
 //
-//  Token generation loop for GGUFJapaneseLlamaEngine.
+//  Token generation loop for GGUFGemma2BJPEngine.
 //  Identical flow to GGUFLlamaEngine+Generate — blocking C call dispatched
 //  to a GCD thread so the Swift cooperative pool stays free.
 //
@@ -11,7 +11,7 @@
 
 import Foundation
 
-extension GGUFJapaneseLlamaEngine {
+extension GGUFGemma2BJPEngine {
 
     // MARK: - LLMEngineProtocol — generate
 
@@ -27,7 +27,7 @@ extension GGUFJapaneseLlamaEngine {
         generationLock.unlock()
 
         guard !alreadyRunning else {
-            nlLog("[GGUFJapaneseLlama] Dropped generate — already in progress", level: .info)
+            nlLog("[GGUFGemma2BJP] Dropped generate — already in progress", level: .info)
             Task { @MainActor [weak self] in
                 self?.delegate?.localLLM(didFinishGeneration: "")
             }

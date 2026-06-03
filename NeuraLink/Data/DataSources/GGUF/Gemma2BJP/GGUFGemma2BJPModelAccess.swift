@@ -1,26 +1,34 @@
 //
-//  GGUFJapaneseLlamaModelAccess.swift
+//  GGUFGemma2BJPModelAccess.swift
 //  NeuraLink
 //
-//  Resolves the on-disk path of the Japanese-oriented Llama-3.2-1B GGUF model.
-//  Model: grapevine-AI/Llama-3.2-1B-Instruct-GGUF (Q4_K_M, ~808 MB)
+//  Resolves the on-disk path of the Japanese local model GGUF file.
+//  Model: grapevine-AI/gemma-2-2b-jpn-it-gguf (Q4_K_M, ~1.71 GB) — Google's
+//  official Japanese-tuned Gemma 2 2B. Replaced the grapevine Llama-3.2-1B
+//  build (IQ4_XS, ~743 MB) in 2026-06 for materially better Japanese. The
+//  model enum case was renamed to `.japaneseGemma2b` at the same time, but
+//  the persisted KV-cache key string stays "japaneseLlama1b" to avoid
+//  orphaning existing cache blobs (see LocalLLMKVCache).
 //
 //  Created by Dedicatus on 06/05/2026.
 //
 
 import Foundation
 
-enum GGUFJapaneseLlamaModelAccess {
+enum GGUFGemma2BJPModelAccess {
 
     // MARK: - Constants
 
-    static let repoID   = "grapevine-AI/Llama-3.2-1B-Instruct-GGUF"
-    // See GGUFModelAccess for IQ4_XS rationale. Previous Q4_K_M filename
-    // was "Llama-3.2-1B-Instruct-Q4_K_M.gguf".
-    static let filename = "Llama-3.2-1B-Instruct-IQ4_XS.gguf"
+    static let repoID   = "grapevine-AI/gemma-2-2b-jpn-it-gguf"
+    // Previous JP model was "Llama-3.2-1B-Instruct-IQ4_XS.gguf" from
+    // grapevine-AI/Llama-3.2-1B-Instruct-GGUF. `modelURL()` validates the
+    // persisted path against `filename`, so this swap triggers a re-download
+    // for users who still have the old Llama file cached. Note the capital
+    // "B" in the upstream filename ("2B").
+    static let filename = "gemma-2-2B-jpn-it-Q4_K_M.gguf"
 
-    private static let pathKey = "LocalModel_GGUFJapaneseLlamaPath"
-    private static let hubSlug = "models--grapevine-AI--Llama-3.2-1B-Instruct-GGUF"
+    private static let pathKey = "LocalModel_GGUFGemma2BJPPath"
+    private static let hubSlug = "models--grapevine-AI--gemma-2-2b-jpn-it-gguf"
 
     // MARK: - URL resolution
 

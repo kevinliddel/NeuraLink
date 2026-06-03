@@ -1,23 +1,26 @@
 //
-//  GGUFJapaneseLlamaEngine.swift
+//  GGUFGemma2BJPEngine.swift
 //  NeuraLink
 //
-//  LLMEngineProtocol implementation for the Japanese-oriented Llama-3.2-1B model
-//  (grapevine-AI/Llama-3.2-1B-Instruct-GGUF). Uses the same llama.cpp bridge and
-//  Metal GPU path as GGUFLlamaEngine — only the model file differs.
+//  LLMEngineProtocol implementation for the Japanese local model
+//  (grapevine-AI/gemma-2-2b-jpn-it-gguf — Google's Gemma 2 2B, JP-tuned).
+//  Uses the same llama.cpp bridge and Metal GPU path as GGUFLlamaEngine —
+//  only the model file differs. The Gemma chat template is read from the
+//  GGUF metadata by LlamaBridge.applyChatTemplate, so no prompt-format
+//  changes are needed despite the architecture switch.
 //
-//  See GGUFJapaneseLlamaEngine+Generate.swift for the token generation loop.
+//  See GGUFGemma2BJPEngine+Generate.swift for the token generation loop.
 //
 //  Created by Dedicatus on 06/05/2026.
 //
 
 import Foundation
 
-final class GGUFJapaneseLlamaEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
+final class GGUFGemma2BJPEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
 
     // MARK: - Singleton
 
-    static let shared = GGUFJapaneseLlamaEngine()
+    static let shared = GGUFGemma2BJPEngine()
 
     // MARK: - Protocol properties
 
@@ -50,15 +53,20 @@ final class GGUFJapaneseLlamaEngine: NSObject, @unchecked Sendable, LLMEnginePro
         let task: Task<Void, Error> = loadLock.withLock {
             if let existing = loadTask { return existing }
             let t = Task<Void, Error> {
-                guard let url = GGUFJapaneseLlamaModelAccess.modelURL() else {
+                guard let url = GGUFGemma2BJPModelAccess.modelURL() else {
                     throw LLMError.modelNotFound
                 }
-                nlLog("[GGUFJapaneseLlama] Loading \(url.lastPathComponent)…", level: .info)
+                nlLog("[GGUFGemma2BJP] Loading \(url.lastPathComponent)…", level: .info)
 
                 let loaded: LlamaBridge = try await withCheckedThrowingContinuation { cont in
                     DispatchQueue.global(qos: .userInitiated).async {
                         // 4 GB devices (iPhone 11/12/13): see GGUFLlamaEngine
-                        // for the threads=2 and n_ctx=1024 rationale.
+                        // for the threads=2 and n_ctx=1024 rationale. NOTE:
+                        // Gemma 2 2B at Q4_K_M is ~1.71 GB — ~2.3× the old
+                        // Llama-1B JP file. The conservative 1024-ctx / 2-thread
+                        // profile is deliberately kept to hold the memory
+                        // footprint down on 4 GB devices; OOM/jetsam risk here
+                        // is higher than for the 1B model it replaced.
                         // PLD tuned for Japanese: n=2, nDraft=3. The default
                         // n=3, nDraft=5 was calibrated on English where
                         // 3-token n-grams repeat constantly ("I think the",
@@ -74,7 +82,7 @@ final class GGUFJapaneseLlamaEngine: NSObject, @unchecked Sendable, LLMEnginePro
                             gpuLayers: 999,
                             pldN: 2,
                             pldNDraft: 3,
-                            label: "Llama-1B-JP"
+                            label: "Gemma-2B-JP"
                         ) {
                             cont.resume(returning: b)
                         } else {
@@ -85,7 +93,7 @@ final class GGUFJapaneseLlamaEngine: NSObject, @unchecked Sendable, LLMEnginePro
 
                 self.bridge   = loaded
                 self.isLoaded = true
-                nlLog("[GGUFJapaneseLlama] Ready. llama.cpp \(loaded.version)", level: .info)
+                nlLog("[GGUFGemma2BJP] Ready. llama.cpp \(loaded.version)", level: .info)
             }
             self.loadTask = t
             return t
@@ -103,7 +111,7 @@ final class GGUFJapaneseLlamaEngine: NSObject, @unchecked Sendable, LLMEnginePro
         bridge   = nil
         isLoaded = false
         loadLock.withLock { loadTask = nil }
-        nlLog("[GGUFJapaneseLlama] Unloaded.", level: .info)
+        nlLog("[GGUFGemma2BJP] Unloaded.", level: .info)
     }
 
     func stop() {

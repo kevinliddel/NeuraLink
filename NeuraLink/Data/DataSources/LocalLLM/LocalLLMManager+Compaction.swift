@@ -21,16 +21,16 @@ extension LocalLLMManager {
     /// that have aged out of the verbatim window since the last
     /// compaction. No-ops when:
     ///   - the active engine isn't loaded,
-    ///   - the active model is a 1B tier (`.llama1b` / `.japaneseLlama1b`):
-    ///     too small to summarise reliably (mostly hallucinates) and the JP
-    ///     tier doesn't inject Tier 3 facts into prompts anyway, so the
-    ///     output would be pure waste,
+    ///   - the active model is `.llama1b` (too small to summarise reliably —
+    ///     mostly hallucinates) or `.japaneseGemma2b` (the JP tier doesn't
+    ///     inject Tier 3 facts into prompts anyway, so the output would be
+    ///     pure waste),
     ///   - there are no new candidates beyond the verbatim window, or
     ///   - a previous compaction is still running.
     func maybeRunCompaction() {
         guard llmEngine.isLoaded else { return }
         let config = LocalModelDownloadManager.shared.selectedConfig
-        if config == .llama1b || config == .japaneseLlama1b { return }
+        if config == .llama1b || config == .japaneseGemma2b { return }
 
         let hierarchy = LocalLLMMemoryHierarchy.shared
         let candidates = hierarchy.compactionCandidates()
