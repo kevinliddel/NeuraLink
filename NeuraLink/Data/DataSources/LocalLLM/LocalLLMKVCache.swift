@@ -37,7 +37,9 @@ enum LocalLLMKVCache {
         let configKey: String
         switch config {
         case .llama1b: configKey = "llama1b"
-        case .japaneseLlama1b: configKey = "japaneseLlama1b"
+        // Key string kept as the pre-rename "japaneseLlama1b" (the case is now
+        // `.japaneseGemma2b`) so the model swap doesn't orphan cache blobs.
+        case .japaneseGemma2b: configKey = "japaneseLlama1b"
         case .qwen2b: configKey = "qwen2b"
         case .qwen3b: configKey = "qwen3b"
         case .qwen7b: configKey = "qwen7b"

@@ -126,7 +126,7 @@ final class LocalLLMPromptStore {
         config: LocalModelDownloadManager.ModelConfiguration?
     ) -> String {
         let base = characterName.lowercased()
-        return config == .japaneseLlama1b ? "\(base)_jp" : base
+        return config == .japaneseGemma2b ? "\(base)_jp" : base
     }
 
     private func flushToBothLayers() {
@@ -154,7 +154,7 @@ final class LocalLLMPromptStore {
         for characterName: String,
         config: LocalModelDownloadManager.ModelConfiguration? = nil
     ) -> String {
-        if config == .japaneseLlama1b {
+        if config == .japaneseGemma2b {
             return defaultJapanesePrompt(for: characterName)
         }
         return defaultEnglishPrompt(for: characterName, config: config)

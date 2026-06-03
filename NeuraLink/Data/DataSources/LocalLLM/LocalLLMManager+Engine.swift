@@ -142,7 +142,7 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
         // queries mixed with Japanese AI responses produce low-quality embeddings that
         // degrade future RAG retrieval across all models sharing the same memory store.
         let userText = state.userTranscript
-        let isJapaneseLlama = LocalModelDownloadManager.shared.selectedConfig == .japaneseLlama1b
+        let isJapaneseLlama = LocalModelDownloadManager.shared.selectedConfig == .japaneseGemma2b
         if !isJapaneseLlama {
             RAGManager.shared.store(text: userText, source: "user")
         }

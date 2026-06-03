@@ -15,15 +15,16 @@ enum GGUFModelAccess {
     // MARK: - Constants
 
     static let repoID   = "bartowski/Llama-3.2-1B-Instruct-GGUF"
-    // Switched from Q4_K_M to IQ4_XS in 2026-05: ARM-NEON tuned quant,
-    // ~65 MB smaller (743 vs 808 MB) and typically a touch faster on
-    // A-series CPUs at near-identical quality for instruction-tuned 1B
-    // models. The previous Q4_K_M filename was
-    //   "Llama-3.2-1B-Instruct-Q4_K_M.gguf"
+    // Switched from IQ4_XS to Q8_0 in 2026-06: max-available quant at
+    // ~1.32 GB, "extremely high quality" per the repo card — trades a
+    // larger footprint for near-lossless output vs the F16 weights
+    // (2.48 GB), which the repo notes are generally unneeded. The
+    // previous IQ4_XS filename was
+    //   "Llama-3.2-1B-Instruct-IQ4_XS.gguf"
     // — kept here as a comment because `modelURL()` validates the
     // persisted UserDefaults path against `filename` and will trigger a
     // re-download if a user still has the old file cached.
-    static let filename = "Llama-3.2-1B-Instruct-IQ4_XS.gguf"
+    static let filename = "Llama-3.2-1B-Instruct-Q8_0.gguf"
 
     private static let pathKey  = "LocalModel_GGUFPath"
     private static let hubSlug  = "models--bartowski--Llama-3.2-1B-Instruct-GGUF"
