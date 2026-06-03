@@ -96,6 +96,14 @@ final class VoiceVoxEngine: NSObject, @unchecked Sendable, TTSEngineProtocol {
                 var options = voicevox_make_default_initialize_options()
                 options.cpu_num_threads = 4  // sweet spot for iPhone, avoids contention
 
+                // The default acceleration_mode is AUTO, which probes the
+                // GPU/CoreML ONNX path. On the iOS Simulator that path aborts
+                // (SIGABRT) inside the VOICEVOX Rust core instead of falling
+                // back, so force CPU there. Real devices keep AUTO.
+                #if targetEnvironment(simulator)
+                options.acceleration_mode = VoicevoxAccelerationMode(VOICEVOX_ACCELERATION_MODE_CPU)
+                #endif
+
                 let synthResult = voicevox_synthesizer_new(
                     self.onnxRuntime, self.openJtalk, options, &self.synthesizer
                 )
