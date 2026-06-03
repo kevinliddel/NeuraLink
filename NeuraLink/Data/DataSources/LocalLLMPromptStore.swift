@@ -167,7 +167,7 @@ final class LocalLLMPromptStore {
         let emotionTag = "Use [emotion:seconds] tags (e.g. [happy:2], [sad:1]) in your reply. Never say the emotion name aloud.\n"
 
         if config == .llama1b {
-            let tool = "For iOS actions output only: <tool name=\"TOOL_NAME\">{\"arg\":\"value\"}</tool>\n"
+            let tool = "To save a user fact output only: <tool name=\"\(AppFunctionTool.rememberFact)\">{\"subject\":\"User\",\"predicate\":\"likes\",\"object\":\"X\"}</tool>\n"
             switch characterName.lowercased() {
             case "ekaterina":
                 return emotionTag + tool
@@ -182,10 +182,8 @@ final class LocalLLMPromptStore {
         }
 
         let toolInstruction = """
-        For iOS actions (reminders, notes, apps), output ONLY: <tool name="TOOL_NAME">{"arg":"value"}</tool>
-        Tools: \(AppFunctionTool.getWeather), \(AppFunctionTool.searchWeb), \(AppFunctionTool.playMusic), \
-        \(AppFunctionTool.createReminder), \(AppFunctionTool.createNote), \(AppFunctionTool.openApp), \
-        \(AppFunctionTool.analyzeCamera), \(AppFunctionTool.rememberFact), \(AppFunctionTool.poseForPhoto). \
+        To save a fact about the user, output ONLY: \
+        <tool name="\(AppFunctionTool.rememberFact)">{"subject":"User","predicate":"likes","object":"Sushi"}</tool> \
         No other text with the tool call.
         """
         switch characterName.lowercased() {
@@ -206,7 +204,7 @@ final class LocalLLMPromptStore {
 
     private static func defaultJapanesePrompt(for characterName: String) -> String {
         let emotionTag = "感情タグ[感情:秒数]（例:[happy:2],[sad:1]）を返答に自然に含めること。感情名は声に出さないこと。\n"
-        let tool = "iOSアクションは次の形式のみ出力: <tool name=\"TOOL_NAME\">{\"arg\":\"value\"}</tool>\n"
+        let tool = "ユーザーの情報を保存する時のみ出力: <tool name=\"\(AppFunctionTool.rememberFact)\">{\"subject\":\"User\",\"predicate\":\"likes\",\"object\":\"X\"}</tool>\n"
         switch characterName.lowercased() {
         case "ekaterina":
             return emotionTag + tool

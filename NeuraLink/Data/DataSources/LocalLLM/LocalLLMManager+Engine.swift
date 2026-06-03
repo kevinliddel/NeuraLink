@@ -120,9 +120,14 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
         // tags before LocalToolCallParser / drainTagBuffer strip them out).
         nlLog("[LocalLLM] Full AI response: \(fullText)", level: .debug)
 
-        // Local tool-calling: if a <tool name="...">{json}</tool> block is present,
-        // execute it via the same Skill system used by OpenAI realtime.
-        if let tool = LocalToolCallParser.firstToolCall(in: fullText) {
+        // Local tool-calling is intentionally limited to `remember_fact` only.
+        // All other iOS-action tools were dropped for local SLMs (shorter
+        // prompt = faster cold-start prefill, and 1–2B models emit unreliable
+        // tool JSON). Any stray non-emotion tool the model still produces is
+        // ignored here and stripped from the transcript by `strippedText`
+        // below. Emotion stays separate ([emotion:n] tags via tagBuffer).
+        if let tool = LocalToolCallParser.firstToolCall(in: fullText),
+           tool.name == AppFunctionTool.rememberFact {
             nlLog(
                 "֎ [FunctionCall] LocalLLM emitted <tool name=\"\(tool.name)\"> with args \(tool.arguments)",
                 level: .info
