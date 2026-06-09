@@ -66,13 +66,22 @@ final class GGUFSpeculativeEngine: NSObject, @unchecked Sendable, LLMEngineProto
 
                 let loaded: LlamaSpeculativeBridge = try await withCheckedThrowingContinuation { cont in
                     DispatchQueue.global(qos: .userInitiated).async {
+                        // Target tier params (KV / flash-attn / threads / ctx)
+                        // come from the shared 8 GB profile; they apply to both
+                        // the target and draft contexts. `nDraft` is the
+                        // speculative draft-model depth, distinct from PLD and
+                        // kept local to this engine.
+                        let profile = LLMRuntimeProfile.resolve(for: .qwen7b)
                         if let b = LlamaSpeculativeBridge(
                             targetPath: targetURL.path,
                             draftPath: draftURL.path,
-                            contextLength: 2048,
-                            threads: 6,
-                            gpuLayers: 999,
-                            nDraft: 4
+                            contextLength: profile.contextLength,
+                            threads: profile.threads,
+                            gpuLayers: profile.gpuLayers,
+                            nDraft: 4,
+                            kType: profile.kType,
+                            vType: profile.vType,
+                            flashAttn: profile.flashAttn
                         ) {
                             cont.resume(returning: b)
                         } else {

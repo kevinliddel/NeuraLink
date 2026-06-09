@@ -6,13 +6,17 @@
 //
 //  Cache key components:
 //    - model configuration ("llama1b" / "japaneseLlama1b")
+//    - llama.cpp sequence-state format version (LLAMA_STATE_SEQ_VERSION) so an
+//      upgrade that changes the on-disk format orphans old blobs deterministically
+//      (and reuses them when the format is unchanged)
 //    - SHA-256 prefix of the system prompt (so persona edits invalidate
 //      the cache automatically rather than restoring a stale prefix)
 //
 //  The cache file is opaque to Swift — llama.cpp owns the serialisation
-//  format via `llama_state_seq_save_file`. Format changes between
-//  llama.cpp versions will cause `load_state` to fail gracefully (returns
-//  0), at which point the warmup falls through to a fresh prefill.
+//  format via `llama_state_seq_save_file`. The version key above prevents a
+//  cross-version blob from even being attempted; should one ever slip through
+//  (format change without a version bump), `load_state` still fails gracefully
+//  (returns 0) and the warmup falls through to a fresh prefill.
 //
 //  Created by Dedicatus on 20/05/2026.
 //
@@ -45,8 +49,19 @@ enum LocalLLMKVCache {
         case .qwen7b: configKey = "qwen7b"
         }
         let personaKey = sha256Prefix(systemPrompt, length: 16)
+        let versionKey = "v\(LlamaBridge.stateSeqVersion)"
 
-        return dir.appendingPathComponent("\(configKey)_\(personaKey).kv").path
+        // One-time migration: the pre-versioning blob for this exact
+        // config+persona (filename without the version token) can never be
+        // safely loaded by a newer state format. Remove it and its sidecar so
+        // it doesn't linger as dead disk after the upgrade. Deterministic —
+        // targets only this persona's legacy file, no directory globbing.
+        let legacy = dir.appendingPathComponent("\(configKey)_\(personaKey).kv").path
+        if FileManager.default.fileExists(atPath: legacy) {
+            purge(at: legacy)
+        }
+
+        return dir.appendingPathComponent("\(configKey)_\(versionKey)_\(personaKey).kv").path
     }
 
     // MARK: - Integrity

@@ -63,6 +63,10 @@ int32_t llama_bridge_kv_token_count(LlamaBridgeHandle* handle) {
     return static_cast<int32_t>(handle->kv_tokens.size());
 }
 
+int32_t llama_bridge_state_seq_version(void) {
+    return static_cast<int32_t>(LLAMA_STATE_SEQ_VERSION);
+}
+
 void llama_bridge_get_pld_stats(
     LlamaBridgeHandle* handle,
     int32_t*           out_rounds,

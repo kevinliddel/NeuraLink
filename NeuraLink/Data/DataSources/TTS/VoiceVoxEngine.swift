@@ -94,18 +94,40 @@ final class VoiceVoxEngine: NSObject, @unchecked Sendable, TTSEngineProtocol {
                 }
 
                 var options = voicevox_make_default_initialize_options()
-                options.cpu_num_threads = 4  // sweet spot for iPhone, avoids contention
 
-                // The default acceleration_mode is AUTO, which probes the
-                // GPU/CoreML ONNX path. On the iOS Simulator that path aborts
-                // (SIGABRT) inside the VOICEVOX Rust core instead of falling
-                // back, so force CPU there. Real devices keep AUTO.
-                #if targetEnvironment(simulator)
-                // 1 == VOICEVOX_ACCELERATION_MODE_CPU. Assigned as the raw
-                // Int32 because the cbindgen enum constant imports as a
-                // distinct type that won't convert to the Int32 field.
-                options.acceleration_mode = 1
+                // cpu_num_threads: VOICEVOX intra-op CPU parallelism — the main
+                // tuning knob now that GPU is unreachable on iOS. The A13
+                // (iPhone 11) has 2 performance + 4 efficiency cores; pushing
+                // past the P-core count spills onto slow E-cores and the
+                // intra-op barrier waits on those stragglers, so 2–4 is the
+                // useful range. Default 4. Sweep on-device against the
+                // `[VoiceVox] Synthesised … in Xs` line; in DEBUG the
+                // `nl.voicevox.threads` UserDefaults key overrides it without a
+                // recompile.
+                var threads: UInt16 = 4
+                #if DEBUG
+                let threadsOverride = UserDefaults.standard.integer(forKey: "nl.voicevox.threads")
+                if threadsOverride > 0 {
+                    threads = UInt16(min(threadsOverride, 16))
+                    nlLog("[VoiceVox] DEBUG cpu_num_threads override → \(threads)", level: .info)
+                }
                 #endif
+                options.cpu_num_threads = threads
+
+                // VOICEVOX CORE on iOS is CPU-only — there is no reachable GPU
+                // path. acceleration_mode (raw Int32; the cbindgen enum imports
+                // as a distinct type that won't convert to the field):
+                //   1 == VOICEVOX_ACCELERATION_MODE_CPU
+                //   2 == VOICEVOX_ACCELERATION_MODE_GPU
+                // Mode GPU targets CUDA/DirectML, neither of which exists on
+                // iOS, so it fails at synthesizer creation and degrades to CPU
+                // (verified on iPhone 11). The bundled ONNX Runtime *does* ship
+                // a CoreMLExecutionProvider, but VOICEVOX's public API exposes
+                // no way to select it — VoicevoxInitializeOptions has only
+                // acceleration_mode + cpu_num_threads. So CPU is the only mode
+                // we can actually reach; set it explicitly to skip the AUTO
+                // GPU-probe and the doomed GPU attempt.
+                options.acceleration_mode = 1  // CPU (only supported mode on iOS)
 
                 let synthResult = voicevox_synthesizer_new(
                     self.onnxRuntime, self.openJtalk, options, &self.synthesizer

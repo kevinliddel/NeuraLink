@@ -26,6 +26,14 @@ final class LlamaBridge {
         String(cString: llama_bridge_version())
     }
 
+    /// llama.cpp's on-disk sequence-state format version
+    /// (`LLAMA_STATE_SEQ_VERSION`). Folded into the KV-cache filename so blobs
+    /// auto-orphan when an upgrade changes the format, and reuse when it
+    /// doesn't. Stateless — safe to read without a live bridge instance.
+    static var stateSeqVersion: Int32 {
+        llama_bridge_state_seq_version()
+    }
+
     // MARK: - Init / deinit
 
     /// Returns `nil` if the model file is missing or memory allocation fails.
@@ -35,8 +43,14 @@ final class LlamaBridge {
     ///   - contextLength: KV-cache token capacity (2048 for 4 GB devices).
     ///   - threads:       CPU threads for non-Metal ops (4 on A13 Bionic).
     ///   - gpuLayers:     Transformer layers to offload to Metal (999 = all).
+    ///                    The proactive Simulator / < 5 GB → 0 decision now
+    ///                    lives in `LLMRuntimeProfile.resolve`; this init only
+    ///                    keeps the *reactive* retry for real Metal-init errors.
     ///   - kType:         KV cache K quantization (default: .q4_0).
     ///   - vType:         KV cache V quantization (default: .q4_0).
+    ///   - flashAttn:     Flash-attention mode (default: .enabled). Note that
+    ///                    an efficient quantized V cache effectively requires
+    ///                    flash-attention — disable it only with an f16 V type.
     ///   - label:         Short tag prepended to benchmark logs. Defaults to
     ///                    the model filename stem.
     ///   - pldN / pldNDraft: Override prompt-lookup decoding params. Zero
@@ -50,6 +64,7 @@ final class LlamaBridge {
         gpuLayers: Int32 = 999,
         kType: LlamaKVType = .q4_0,
         vType: LlamaKVType = .q4_0,
+        flashAttn: FlashAttnMode = .enabled,
         promptLookup: Bool = true,
         pldN: Int32 = 0,
         pldNDraft: Int32 = 0,
@@ -58,27 +73,19 @@ final class LlamaBridge {
         self.label = label.isEmpty
             ? URL(fileURLWithPath: modelPath).deletingPathExtension().lastPathComponent
             : label
-        var layers = gpuLayers
-        #if targetEnvironment(simulator)
-        layers = 0 // CPU-only in Simulator to avoid MTLCompilerService crashes
-        #else
-        // On real older devices with < 5.0 GB of RAM (like iPhone 11/12/13), Metal shader compilation
-        // spikes memory usage and triggers jetsam/compiler daemon crashes. Force CPU-only to guarantee stability.
-        let gb = Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824.0
-        if gb < 5.0 {
-            nlLog("[LlamaBridge] Device RAM (\(String(format: "%.1f", gb)) GB) is under 5.0 GB. Forcing CPU-only execution for rock-solid stability.", level: .info)
-            layers = 0
-        }
-        #endif
-        handle = llama_bridge_create(modelPath, contextLength, threads, layers, kType.rawValue, vType.rawValue)
-        
+        // `gpuLayers` already reflects the proactive CPU-only decision made in
+        // `LLMRuntimeProfile.resolve` (Simulator / < 5 GB → 0). Here we only
+        // need the reactive fallback below for real Metal-init failures.
+        let layers = gpuLayers
+        handle = llama_bridge_create(modelPath, contextLength, threads, layers, kType.rawValue, vType.rawValue, flashAttn.rawValue)
+
         // If Metal/GPU initialization fails on real hardware (e.g. pre-A14 devices or MTLCompilerService XPC error),
         // gracefully fall back to CPU-only execution.
         if handle == nil && layers > 0 {
             nlLog("[LlamaBridge] Metal/GPU initialization failed. Retrying with CPU-only (gpuLayers = 0)...", level: .error)
-            handle = llama_bridge_create(modelPath, contextLength, threads, 0, kType.rawValue, vType.rawValue)
+            handle = llama_bridge_create(modelPath, contextLength, threads, 0, kType.rawValue, vType.rawValue, flashAttn.rawValue)
         }
-        
+
         guard handle != nil else { return nil }
         // Prompt-Lookup Decoding is on by default for every engine: it's a
         // free 1.5–2× tok/s win on conversational repetition and gracefully

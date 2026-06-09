@@ -35,23 +35,19 @@ final class LlamaSpeculativeBridge {
         gpuLayers: Int32 = 999,
         nDraft: Int32 = 4,
         kType: LlamaKVType = .q4_0,
-        vType: LlamaKVType = .q4_0
+        vType: LlamaKVType = .q4_0,
+        flashAttn: FlashAttnMode = .enabled
     ) {
-        var layers = gpuLayers
-        #if targetEnvironment(simulator)
-        layers = 0  // CPU-only in Simulator to mirror LlamaBridge's posture.
-        #else
-        // < 5 GB devices never reach the speculative engine (they default
-        // to .llama1b which doesn't use this bridge), but keep the same
-        // defensive posture for safety in case selectedConfig is forced.
-        let gb = Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824.0
-        if gb < 5.0 { layers = 0 }
-        #endif
+        // `gpuLayers` already reflects the proactive CPU-only decision from
+        // `LLMRuntimeProfile.resolve` (Simulator / < 5 GB → 0). Only the
+        // reactive retry below remains for real Metal-init failures.
+        let layers = gpuLayers
 
         handle = llama_bridge_spec_create(
             targetPath, draftPath,
             contextLength, threads, layers,
             kType.rawValue, vType.rawValue,
+            flashAttn.rawValue,
             nDraft
         )
         // Retry CPU-only if Metal init failed on real hardware.
@@ -61,6 +57,7 @@ final class LlamaSpeculativeBridge {
                 targetPath, draftPath,
                 contextLength, threads, 0,
                 kType.rawValue, vType.rawValue,
+                flashAttn.rawValue,
                 nDraft
             )
         }

@@ -45,11 +45,17 @@ final class GGUFQwenEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
                     DispatchQueue.global(qos: .userInitiated).async {
                         // Qwen models generally have longer context windows. 
                         // Using 2048 to support slightly longer conversations.
+                        let profile = LLMRuntimeProfile.resolve(for: .qwen2b)
                         if let b = LlamaBridge(
                             modelPath: url.path,
-                            contextLength: 2048,
-                            threads: 4,
-                            gpuLayers: 999
+                            contextLength: profile.contextLength,
+                            threads: profile.threads,
+                            gpuLayers: profile.gpuLayers,
+                            kType: profile.kType,
+                            vType: profile.vType,
+                            flashAttn: profile.flashAttn,
+                            pldN: profile.pldN,
+                            pldNDraft: profile.pldNDraft
                         ) {
                             cont.resume(returning: b)
                         } else {

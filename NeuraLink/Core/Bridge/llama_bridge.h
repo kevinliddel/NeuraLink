@@ -34,13 +34,17 @@ typedef void (*LlamaFinishCallback)(void* context);
 ///
 /// The sampler chain is built with sensible defaults
 /// (top_k=40, top_p=0.9, temp=0.7, rep_penalty=1.1 over last 64 tokens).
+///
+/// `flash_attn` maps to `enum llama_flash_attn_type`: -1 = AUTO (let llama.cpp
+/// decide per backend), 0 = DISABLED, 1 = ENABLED.
 LlamaBridgeHandle* llama_bridge_create(
     const char* model_path,
     int32_t     n_ctx,
     int32_t     n_threads,
     int32_t     n_gpu_layers,
     int32_t     k_type,
-    int32_t     v_type
+    int32_t     v_type,
+    int32_t     flash_attn
 );
 
 /// Destroy the context and release all memory.
@@ -144,6 +148,14 @@ int32_t llama_bridge_load_kv_state(
 /// useful for benchmark logs ("loaded N tokens from disk cache").
 int32_t llama_bridge_kv_token_count(LlamaBridgeHandle* handle);
 
+/// Returns LLAMA_STATE_SEQ_VERSION — the on-disk format version for the
+/// sequence-state files written by `llama_bridge_save_kv_state`. It bumps
+/// whenever saved blobs become incompatible with the linked llama.cpp, so
+/// callers can fold it into the cache filename to auto-orphan stale blobs
+/// across upgrades (and reuse them across compatible ones). Stateless — does
+/// not require a handle or backend init.
+int32_t llama_bridge_state_seq_version(void);
+
 /// Read the most recent PLD telemetry. `rounds` is the number of iterations
 /// of the speculative decoding loop in the last `llama_bridge_generate`
 /// call; `hits` is how many of those rounds actually found and verified an
@@ -198,6 +210,7 @@ LlamaBridgeSpecHandle* llama_bridge_spec_create(
     int32_t     n_gpu_layers,
     int32_t     k_type,
     int32_t     v_type,
+    int32_t     flash_attn,
     int32_t     n_draft
 );
 

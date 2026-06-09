@@ -54,11 +54,17 @@ final class GGUFQwen7BEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
 
                 let loaded: LlamaBridge = try await withCheckedThrowingContinuation { cont in
                     DispatchQueue.global(qos: .userInitiated).async {
+                        let profile = LLMRuntimeProfile.resolve(for: .qwen7b)
                         if let b = LlamaBridge(
                             modelPath: url.path,
-                            contextLength: 2048,
-                            threads: 6,
-                            gpuLayers: 999
+                            contextLength: profile.contextLength,
+                            threads: profile.threads,
+                            gpuLayers: profile.gpuLayers,
+                            kType: profile.kType,
+                            vType: profile.vType,
+                            flashAttn: profile.flashAttn,
+                            pldN: profile.pldN,
+                            pldNDraft: profile.pldNDraft
                         ) {
                             cont.resume(returning: b)
                         } else {

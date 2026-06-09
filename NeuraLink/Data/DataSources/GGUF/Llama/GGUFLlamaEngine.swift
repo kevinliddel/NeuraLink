@@ -77,11 +77,17 @@ final class GGUFLlamaEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
                         // saves ~50 MB of RSS and shortens per-token attention
                         // cost (linear in cached length). Must match the
                         // `nCtx` passed to `fitToBudget` in the hierarchy.
+                        let profile = LLMRuntimeProfile.resolve(for: .llama1b)
                         if let b = LlamaBridge(
                             modelPath: url.path,
-                            contextLength: 1024,
-                            threads: 2,
-                            gpuLayers: 999,
+                            contextLength: profile.contextLength,
+                            threads: profile.threads,
+                            gpuLayers: profile.gpuLayers,
+                            kType: profile.kType,
+                            vType: profile.vType,
+                            flashAttn: profile.flashAttn,
+                            pldN: profile.pldN,
+                            pldNDraft: profile.pldNDraft,
                             label: "Llama-1B"
                         ) {
                             cont.resume(returning: b)

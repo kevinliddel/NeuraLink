@@ -75,13 +75,17 @@ final class GGUFGemma2BJPEngine: NSObject, @unchecked Sendable, LLMEngineProtoco
                         // default wastes batch-decode cycles on misses.
                         // The `pld=hits/rounds(%)` field in `[Bench]`
                         // confirms whether this pays off.
+                        let profile = LLMRuntimeProfile.resolve(for: .japaneseGemma2b)
                         if let b = LlamaBridge(
                             modelPath: url.path,
-                            contextLength: 1024,
-                            threads: 2,
-                            gpuLayers: 999,
-                            pldN: 2,
-                            pldNDraft: 3,
+                            contextLength: profile.contextLength,
+                            threads: profile.threads,
+                            gpuLayers: profile.gpuLayers,
+                            kType: profile.kType,
+                            vType: profile.vType,
+                            flashAttn: profile.flashAttn,
+                            pldN: profile.pldN,
+                            pldNDraft: profile.pldNDraft,
                             label: "Gemma-2B-JP"
                         ) {
                             cont.resume(returning: b)

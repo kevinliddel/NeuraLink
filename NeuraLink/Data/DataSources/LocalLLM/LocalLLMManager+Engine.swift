@@ -43,14 +43,26 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
 
         // Earlier chunk emission so the user hears audio sooner — especially
         // on iPhone 11 where decode can drop to <1 tok/s under thermal stress
-        // (`thermal=fair|serious|critical` in [Bench]). Lowered from 32 to 20
-        // chars: at 4 tok/s avg ~3 chars/token, that's ~1.5 s sooner per
-        // chunk, every chunk. Punctuation triggers (./!/?/./,/。/\n) still
-        // win when present; the count gate is purely the safety net for
-        // sentences without internal punctuation.
-        if cleanText.contains(".") || cleanText.contains("!") || cleanText.contains("?")
-            || cleanText.contains("。") || cleanText.contains(",") || cleanText.contains("\n")
-            || (ttsBuffer.count >= 20 && ttsBuffer.contains(" ")) {
+        // (`thermal=fair|serious|critical` in [Bench]) and VoiceVox CPU
+        // synthesis runs ~13× real-time. A shorter first clause means audio
+        // starts far sooner. Break chars now include Japanese clause/sentence
+        // punctuation (。、！？，…) — previously JP only broke at full
+        // sentences because `、` was missing and the count gate below required
+        // a space, which Japanese text never has.
+        let breakChars: Set<Character> = [
+            ".", "!", "?", ",", "\n",        // ASCII / Latin
+            "。", "、", "！", "？", "，", "…"   // Japanese (incl. clause comma 、)
+        ]
+        let hasBoundary = cleanText.contains { breakChars.contains($0) }
+        // Count safety net for runs without punctuation. English requires a
+        // space so we never split mid-word; CJK has no spaces, so allow a pure
+        // count gate when the buffer contains kana/ideographs.
+        let isCJK = ttsBuffer.unicodeScalars.contains { s in
+            (0x3040...0x30FF).contains(s.value)     // Hiragana + Katakana
+                || (0x4E00...0x9FFF).contains(s.value)  // CJK Unified Ideographs
+        }
+        let countGate = ttsBuffer.count >= 20 && (ttsBuffer.contains(" ") || isCJK)
+        if hasBoundary || countGate {
             let chunkToSpeak = ttsBuffer
             ttsBuffer = ""
             speakChunk(chunkToSpeak)

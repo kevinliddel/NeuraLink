@@ -85,6 +85,7 @@ LlamaBridgeSpecHandle* llama_bridge_spec_create(
     int32_t     n_gpu_layers,
     int32_t     k_type,
     int32_t     v_type,
+    int32_t     flash_attn,
     int32_t     n_draft)
 {
     llama_backend_init();
@@ -97,7 +98,7 @@ LlamaBridgeSpecHandle* llama_bridge_spec_create(
 
     llama_model* draft_model = llama_model_load_from_file(draft_path, mp);
     if (!draft_model) {
-        llama_free_model(target_model);
+        llama_model_free(target_model);
         llama_backend_free();
         return nullptr;
     }
@@ -107,8 +108,8 @@ LlamaBridgeSpecHandle* llama_bridge_spec_create(
     const auto* tv = llama_model_get_vocab(target_model);
     const auto* dv = llama_model_get_vocab(draft_model);
     if (llama_vocab_n_tokens(tv) != llama_vocab_n_tokens(dv)) {
-        llama_free_model(draft_model);
-        llama_free_model(target_model);
+        llama_model_free(draft_model);
+        llama_model_free(target_model);
         llama_backend_free();
         return nullptr;
     }
@@ -118,18 +119,18 @@ LlamaBridgeSpecHandle* llama_bridge_spec_create(
     cp.n_threads       = static_cast<uint32_t>(n_threads);
     cp.type_k          = static_cast<enum ggml_type>(k_type);
     cp.type_v          = static_cast<enum ggml_type>(v_type);
-    cp.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_ENABLED;
+    cp.flash_attn_type = static_cast<enum llama_flash_attn_type>(flash_attn);
 
-    llama_context* target_ctx = llama_new_context_with_model(target_model, cp);
-    llama_context* draft_ctx  = llama_new_context_with_model(draft_model,  cp);
+    llama_context* target_ctx = llama_init_from_model(target_model, cp);
+    llama_context* draft_ctx  = llama_init_from_model(draft_model,  cp);
     llama_sampler* sampler    = spec_build_default_sampler();
 
     if (!target_ctx || !draft_ctx || !sampler) {
         if (sampler)    { llama_sampler_free(sampler); }
         if (target_ctx) { llama_free(target_ctx); }
         if (draft_ctx)  { llama_free(draft_ctx); }
-        llama_free_model(draft_model);
-        llama_free_model(target_model);
+        llama_model_free(draft_model);
+        llama_model_free(target_model);
         llama_backend_free();
         return nullptr;
     }
@@ -149,8 +150,8 @@ void llama_bridge_spec_free(LlamaBridgeSpecHandle* h) {
     if (h->target_sampler) { llama_sampler_free(h->target_sampler); }
     if (h->target_ctx)     { llama_free(h->target_ctx); }
     if (h->draft_ctx)      { llama_free(h->draft_ctx); }
-    if (h->target_model)   { llama_free_model(h->target_model); }
-    if (h->draft_model)    { llama_free_model(h->draft_model); }
+    if (h->target_model)   { llama_model_free(h->target_model); }
+    if (h->draft_model)    { llama_model_free(h->draft_model); }
     llama_backend_free();
     delete h;
 }

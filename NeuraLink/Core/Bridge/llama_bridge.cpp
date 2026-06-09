@@ -54,7 +54,8 @@ LlamaBridgeHandle* llama_bridge_create(
     int32_t     n_threads,
     int32_t     n_gpu_layers,
     int32_t     k_type,
-    int32_t     v_type)
+    int32_t     v_type,
+    int32_t     flash_attn)
 {
     llama_backend_init();
 
@@ -69,16 +70,16 @@ LlamaBridgeHandle* llama_bridge_create(
     cp.n_threads       = static_cast<uint32_t>(n_threads);
     cp.type_k          = static_cast<enum ggml_type>(k_type);
     cp.type_v          = static_cast<enum ggml_type>(v_type);
-    cp.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_ENABLED;
+    cp.flash_attn_type = static_cast<enum llama_flash_attn_type>(flash_attn);
 
-    llama_context* ctx = llama_new_context_with_model(model, cp);
+    llama_context* ctx = llama_init_from_model(model, cp);
     if (!ctx) {
-        llama_free_model(model); llama_backend_free(); return nullptr;
+        llama_model_free(model); llama_backend_free(); return nullptr;
     }
 
     llama_sampler* sampler = build_default_sampler();
     if (!sampler) {
-        llama_free(ctx); llama_free_model(model); llama_backend_free();
+        llama_free(ctx); llama_model_free(model); llama_backend_free();
         return nullptr;
     }
 
@@ -93,7 +94,7 @@ void llama_bridge_free(LlamaBridgeHandle* handle) {
     if (!handle) { return; }
     if (handle->sampler) { llama_sampler_free(handle->sampler); }
     if (handle->ctx)     { llama_free(handle->ctx); }
-    if (handle->model)   { llama_free_model(handle->model); }
+    if (handle->model)   { llama_model_free(handle->model); }
     llama_backend_free();
     delete handle;
 }
