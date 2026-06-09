@@ -223,7 +223,11 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     }
 
     /// Receives transcribed text from the user, updates UI, and triggers the local LLM with RAG context.
-    func handleUserInput(_ text: String) {
+    /// - Parameter logToTimeline: whether to persist this turn as a user
+    ///   message in the chat timeline. Real spoken/typed input logs; physical
+    ///   interaction events (head pat etc.) pass `false` so they don't clutter
+    ///   the timeline as if the user had said `*head pat*`.
+    func handleUserInput(_ text: String, logToTimeline: Bool = true) {
         turnStartNs = DispatchTime.now().uptimeNanoseconds
         firstTokenLatencyLogged = false
         firstAudioLatencyLogged = false
@@ -236,7 +240,11 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         }
 
         ProactiveVisionManager.shared.notifyUserSpoke()
-        ChatTimelineStore.logUserMessage(text)
+        // `logUserMessage` already drops empty/whitespace turns; the flag
+        // additionally excludes physical-interaction actions.
+        if logToTimeline {
+            ChatTimelineStore.logUserMessage(text)
+        }
 
         Task {
             let mgr = LocalModelDownloadManager.shared
@@ -453,8 +461,10 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     func handleInteractionEvent(_ action: String) {
         // We reuse handleUserInput but we might want to wrap the action in a way
         // that the model understands it's a physical action, not spoken text.
+        // Don't log it to the timeline — it's an action, not something the user
+        // said, so persisting `*head pat*` as a user message just adds noise.
         let text = "*\(action)*"
-        handleUserInput(text)
+        handleUserInput(text, logToTimeline: false)
     }
 
     @MainActor

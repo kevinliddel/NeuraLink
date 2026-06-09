@@ -10,6 +10,9 @@ import Foundation
 enum ChatTimelineStore {
     static func logUserMessage(_ text: String) {
         guard MemorySettings.shared.isEnabled else { return }
+        // Never persist empty/whitespace-only user turns (e.g. a blank
+        // transcription) — keeps the timeline clean.
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         MemoryStore.shared.insertChatEvent(role: "user", kind: "message", title: "You", detail: text)
         pruneIfNeeded()
         CompanionStateStore.shared.refresh()
