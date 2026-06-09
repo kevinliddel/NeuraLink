@@ -22,7 +22,9 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
             !cleanText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             firstTokenLatencyLogged = true
             let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000.0
-            nlLog("[LocalLLM] First token latency: \(String(format: "%.1f", elapsedMs)) ms", level: .info)
+            nlLog(
+                "[LocalLLM] First token latency: \(String(format: "%.1f", elapsedMs)) ms",
+                level: .info)
         }
 
         Task { @MainActor in
@@ -41,32 +43,69 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
 
         ttsBuffer += cleanText
 
-        // Earlier chunk emission so the user hears audio sooner — especially
-        // on iPhone 11 where decode can drop to <1 tok/s under thermal stress
-        // (`thermal=fair|serious|critical` in [Bench]) and VoiceVox CPU
-        // synthesis runs ~13× real-time. A shorter first clause means audio
-        // starts far sooner. Break chars now include Japanese clause/sentence
-        // punctuation (。、！？，…) — previously JP only broke at full
-        // sentences because `、` was missing and the count gate below required
-        // a space, which Japanese text never has.
-        let breakChars: Set<Character> = [
-            ".", "!", "?", ",", "\n",        // ASCII / Latin
-            "。", "、", "！", "？", "，", "…"   // Japanese (incl. clause comma 、)
-        ]
-        let hasBoundary = cleanText.contains { breakChars.contains($0) }
-        // Count safety net for runs without punctuation. English requires a
-        // space so we never split mid-word; CJK has no spaces, so allow a pure
-        // count gate when the buffer contains kana/ideographs.
+        // Two-tier sentence/clause chunking : emit whole
+        // sentences where possible for natural TTS prosody and fewer (slow)
+        // synthesis calls, but break at a clause boundary once a sentence runs
+        // long, and break aggressively for the *first* chunk of the turn so
+        // audio starts as soon as possible
         let isCJK = ttsBuffer.unicodeScalars.contains { s in
-            (0x3040...0x30FF).contains(s.value)     // Hiragana + Katakana
+            (0x3040...0x30FF).contains(s.value)  // Hiragana + Katakana
                 || (0x4E00...0x9FFF).contains(s.value)  // CJK Unified Ideographs
         }
-        let countGate = ttsBuffer.count >= 20 && (ttsBuffer.contains(" ") || isCJK)
-        if hasBoundary || countGate {
+        // Hard sentence ends: JP 。！？, newline, and Latin ". "/"! "/"? ". A
+        // bare "." is NOT a break — avoids splitting decimals/abbreviations
+        // like "3.14" or "Mr." mid-number (`hasLatinSentenceEnd`).
+        let endsSentence =
+            ttsBuffer.contains { "。！？\n".contains($0) }
+            || hasLatinSentenceEnd(ttsBuffer)
+        // Soft clause boundaries: JP 、，…, and Latin ", ".
+        let hasClause =
+            ttsBuffer.contains { "、，…".contains($0) }
+            || ttsBuffer.contains(", ")
+        let len = ttsBuffer.count
+        // English needs a space so we never split mid-word; CJK has no spaces,
+        // so the count gates apply once the buffer holds kana/ideographs.
+        let hasSpaceOrCJK = ttsBuffer.contains(" ") || isCJK
+
+        let shouldFlush: Bool
+        if firstTTSChunkPending {
+            // First chunk: flush at the earliest boundary or a short run.
+            shouldFlush = endsSentence || hasClause || (len >= 12 && hasSpaceOrCJK)
+        } else {
+            // Later chunks: whole sentences; clause only once the run is long;
+            // hard count cap as the runaway safety net.
+            shouldFlush =
+                endsSentence
+                || (hasClause && len >= 40)
+                || (len >= 64 && hasSpaceOrCJK)
+        }
+
+        if shouldFlush {
             let chunkToSpeak = ttsBuffer
             ttsBuffer = ""
+            firstTTSChunkPending = false
             speakChunk(chunkToSpeak)
         }
+    }
+
+    /// True if `s` contains a Latin sentence terminator that should break a
+    /// TTS chunk: ".", "!" or "?" immediately followed by whitespace or the
+    /// end of the buffer. A "." sitting between two digits (e.g. "3.14") is
+    /// ignored so decimals — and, by the trailing-flush at end of generation,
+    /// abbreviations like "Mr." mid-stream — don't fragment the audio.
+    private func hasLatinSentenceEnd(_ s: String) -> Bool {
+        let chars = Array(s)
+        for i in chars.indices {
+            let c = chars[i]
+            guard c == "." || c == "!" || c == "?" else { continue }
+            let next: Character = (i + 1 < chars.count) ? chars[i + 1] : " "
+            if c == "." {
+                let prev: Character = (i > 0) ? chars[i - 1] : " "
+                if prev.isNumber && next.isNumber { continue }  // decimal, e.g. 3.14
+            }
+            if next == " " || next == "\n" { return true }
+        }
+        return false
     }
 
     // Drains tagBuffer: returns (cleanText, [(emotion, duration)]).
@@ -108,15 +147,16 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
     }
 
     private func matchEmotionTag(_ s: String) -> (String, Float)? {
-        let pattern = #"(?i)^\[(happy|angry|sad|relaxed|surprised|shocked|shy|embarrassed|bored|confused|wink|neutral):(\d+(?:\.\d+)?)\]$"#
+        let pattern =
+            #"(?i)^\[(happy|angry|sad|relaxed|surprised|shocked|shy|embarrassed|bored|confused|wink|neutral):(\d+(?:\.\d+)?)\]$"#
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
         let ns = s as NSString
         let range = NSRange(location: 0, length: ns.length)
         guard let m = regex.firstMatch(in: s, range: range),
-              m.numberOfRanges >= 3,
-              let r1 = Range(m.range(at: 1), in: s),
-              let r2 = Range(m.range(at: 2), in: s),
-              let duration = Float(s[r2])
+            m.numberOfRanges >= 3,
+            let r1 = Range(m.range(at: 1), in: s),
+            let r2 = Range(m.range(at: 2), in: s),
+            let duration = Float(s[r2])
         else { return nil }
         return (String(s[r1]).lowercased(), duration)
     }
@@ -124,7 +164,9 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
     func localLLM(didFinishGeneration fullText: String) {
         if let start = turnStartNs {
             let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000.0
-            nlLog("[LocalLLM] Turn total latency: \(String(format: "%.1f", elapsedMs)) ms", level: .info)
+            nlLog(
+                "[LocalLLM] Turn total latency: \(String(format: "%.1f", elapsedMs)) ms",
+                level: .info)
         }
 
         // Full final response at debug level — useful for inspecting what the
@@ -139,13 +181,14 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
         // ignored here and stripped from the transcript by `strippedText`
         // below. Emotion stays separate ([emotion:n] tags via tagBuffer).
         if let tool = LocalToolCallParser.firstToolCall(in: fullText),
-           tool.name == AppFunctionTool.rememberFact {
+            tool.name == AppFunctionTool.rememberFact {
             nlLog(
                 "֎ [FunctionCall] LocalLLM emitted <tool name=\"\(tool.name)\"> with args \(tool.arguments)",
                 level: .info
             )
             Task { @MainActor in
-                let result = await AppFunctionExecutor.shared.execute(name: tool.name, arguments: tool.arguments)
+                let result = await AppFunctionExecutor.shared.execute(
+                    name: tool.name, arguments: tool.arguments)
                 ChatTimelineStore.logToolCall(name: tool.name, result: result)
                 self.state.aiTranscript = result
                 self.speakChunk(result)

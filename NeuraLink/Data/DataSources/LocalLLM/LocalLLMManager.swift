@@ -80,6 +80,12 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     internal var firstTokenLatencyLogged = false
     internal var firstAudioLatencyLogged = false
 
+    // TTS chunking: true until the first chunk of the current turn is emitted.
+    // The first chunk flushes at the earliest clause boundary so audio starts
+    // ASAP; later chunks prefer whole sentences for natural prosody. Reset per
+    // turn in handleUserInput. See the chunker in LocalLLMManager+Engine.
+    internal var firstTTSChunkPending = true
+
     // Self-loop guard: timestamp (system uptime) until which mic frames are
     // dropped before reaching the VAD. Bumped forward by the audio tap on
     // every .thinking/.speaking sample observed, then naturally expires
@@ -221,6 +227,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         turnStartNs = DispatchTime.now().uptimeNanoseconds
         firstTokenLatencyLogged = false
         firstAudioLatencyLogged = false
+        firstTTSChunkPending = true
 
         Task { @MainActor in
             state.userTranscript = text
