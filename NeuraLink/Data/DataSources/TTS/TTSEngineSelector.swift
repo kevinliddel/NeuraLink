@@ -69,11 +69,14 @@ final class TTSEngineSelector {
 
         // Pre-warm the replacement engine in the background so the first
         // `speakChunk` after a persona switch doesn't pay ONNX/CoreML init
-        // latency (~500 ms–1 s on iPhone 11). `resolveEngine` builds the new
-        // instance; `initialize()` is async and idempotent.
+        // latency (~500 ms–1 s on iPhone 11). Goes through `engine(for:)`
+        // (not bare `resolveEngine`) so the warmed instance lands in
+        // `cachedEngines` — otherwise non-singleton engines (F5/System TTS)
+        // would be warmed and discarded, and the next `speakChunk` would
+        // build a cold instance anyway. `initialize()` is async + idempotent.
         Task { [weak self] in
             guard let self else { return }
-            guard let newEngine = resolveEngine(for: persona) else { return }
+            guard let newEngine = self.engine(for: persona) else { return }
             do {
                 try await newEngine.initialize()
                 nlLog("[TTSEngineSelector] Pre-warmed engine for '\(persona)' after invalidation", level: .info)

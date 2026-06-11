@@ -21,9 +21,11 @@
 //    stronger than) the previous HMAC-SHA256 sidecar approach.
 //
 //    Migration: existing plaintext `.kv` + `.kv.hmac` files written by prior
-//    builds are detected by attempting `AES.GCM.open`. On failure (plaintext
-//    is not a valid sealed box) the blob is purged and a cold prefill runs.
-//    The `.kv.hmac` sidecar is also swept on any purge path.
+//    builds are detected by a failed `AES.GCM.open`. If `verifyLegacyHMAC`
+//    still vouches for the blob it is salvaged and re-encrypted in place
+//    (see `tryRestoreKVCache`), preserving the warm start across the
+//    upgrade; otherwise the blob is purged and a cold prefill runs. The
+//    `.kv.hmac` sidecar is swept on either path.
 //
 //  Created by Dedicatus on 20/05/2026.
 //

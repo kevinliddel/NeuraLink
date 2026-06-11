@@ -24,9 +24,10 @@ extension LocalLLMManager {
     /// missing. Must run after `loadModel` and before any prefill/generate.
     ///
     /// Blobs written by the current build are AES-256-GCM sealed. Legacy
-    /// blobs (HMAC-only) are detected by a failed `decryptBlob` → purged →
-    /// cold prefill on this launch → next `persistKVCacheIfNeeded` call
-    /// writes a properly encrypted blob.
+    /// plaintext blobs (HMAC-only builds) are detected by a failed
+    /// `decryptBlob`; if their `.kv.hmac` sidecar still verifies they are
+    /// salvaged and re-encrypted in place (warm start preserved across the
+    /// upgrade), otherwise purged → cold prefill on this launch.
     func tryRestoreKVCache() async {
         guard llmEngine.isLoaded else { return }
         let mgr = LocalModelDownloadManager.shared
@@ -46,7 +47,19 @@ extension LocalLLMManager {
 
         // Attempt AES-GCM decryption. Returns nil on any failure (missing key,
         // tag mismatch, or legacy plaintext blob that isn't a valid sealed box).
-        guard let plaintext = LocalLLMKVCache.decryptBlob(at: path) else {
+        var decrypted = LocalLLMKVCache.decryptBlob(at: path)
+
+        // Migration: a blob written by a pre-encryption build is not a valid
+        // sealed box, but its legacy `.kv.hmac` sidecar can still vouch for
+        // its integrity. Salvage it — the plaintext read must happen BEFORE
+        // `encryptBlob` overwrites the file with the sealed box.
+        if decrypted == nil, LocalLLMKVCache.verifyLegacyHMAC(at: path) {
+            decrypted = try? Data(contentsOf: URL(fileURLWithPath: path))
+            LocalLLMKVCache.encryptBlob(at: path)
+            nlLog("[KVCache] Migrated legacy HMAC blob \(filename) to AES-GCM", level: .info)
+        }
+
+        guard let plaintext = decrypted else {
             nlLog(
                 "[KVCache] Decryption failed at \(filename); purging and falling back to cold prefill",
                 level: .warning)

@@ -35,12 +35,14 @@ struct LLMRuntimeProfile {
     var pldN: Int32
     var pldNDraft: Int32
 
-    /// Resolve the runtime profile for a model slot on the current device.
+    /// Per-model baseline parameters, exactly as locked in by the device
+    /// measurement sweep. `resolve(for:)` layers the device-dependent
+    /// adjustments (CPU fallback, thread cap, RAM-scaled n_ctx) on top.
     ///
     /// Base values below reproduce the pre-refactor hardcoded engine settings
     /// exactly. The device sweep (see docs / plan Phase 3) replaces the entries
     /// marked `UNVERIFIED` with measured winners.
-    static func resolve(
+    private static func baseProfile(
         for config: LocalModelDownloadManager.ModelConfiguration
     ) -> LLMRuntimeProfile {
         var profile: LLMRuntimeProfile
@@ -85,6 +87,19 @@ struct LLMRuntimeProfile {
                 pldN: 0, pldNDraft: 0)
         }
 
+        return profile
+    }
+
+    /// Resolve the runtime profile for a model slot on the current device.
+    ///
+    /// Starts from the sweep-tuned `baseProfile(for:)` and layers on the
+    /// device-dependent adjustments below (CPU-only fallback, thread cap,
+    /// RAM-scaled context window).
+    static func resolve(
+        for config: LocalModelDownloadManager.ModelConfiguration
+    ) -> LLMRuntimeProfile {
+        var profile = baseProfile(for: config)
+
         // Proactive CPU-only fallback (moved here from LlamaBridge so the tier
         // model owns it): the Simulator and < 5 GB devices (iPhone 11/12/13)
         // can't compile Metal shaders without risking jetsam, so force
@@ -103,42 +118,62 @@ struct LLMRuntimeProfile {
         }
         #endif
 
-        // Dynamic thread count: use physical performance-core count rather than
-        // a fixed magic number. `processorCount` returns logical threads on Apple
-        // silicon (P + E cores); dividing by 2 gives a conservative P-core
-        // estimate that avoids spilling decode work onto E-cores. Clamped to
-        // [2, 6] to match pre-sweep hand-tuned values on iPhone 11–16.
-        let physicalCores = ProcessInfo.processInfo.processorCount
-        let dynamicThreads = Int32(max(2, min(physicalCores / 2, 6)))
-        // Only override the per-model baseline if the detected count differs —
-        // logs clearly which source won so the sweep log stays readable.
-        if dynamicThreads != profile.threads {
+        // Dynamic thread cap: the per-tier thread counts in `baseProfile` are
+        // sweep-tuned (the larger tiers intentionally use E-cores), so they
+        // are respected as-is. Only intervene when a tier value exceeds what
+        // the silicon actually offers — per upstream llama.cpp guidance, more
+        // threads than physical cores always hurts throughput. Apple silicon
+        // has no SMT, so `processorCount` is the physical core count.
+        let cores = Int32(ProcessInfo.processInfo.processorCount)
+        if profile.threads > cores {
+            let capped = max(2, cores)
             nlLog(
-                "[LLMProfile] Dynamic thread count: \(profile.threads) → \(dynamicThreads) (cores=\(physicalCores))",
+                "[LLMProfile] Thread count capped: \(profile.threads) → \(capped) (cores=\(cores))",
                 level: .info)
-            profile.threads = dynamicThreads
+            profile.threads = capped
         }
 
-        // Dynamic n_ctx: scale context window by available RAM so multi-turn
-        // conversations stay in-context longer before LocalLLMFactExtractor
-        // compaction kicks in. Values are conservative to keep KV-cache RAM
-        // well within the device's jetsam budget alongside the model weights.
-        #if !targetEnvironment(simulator)
-        let dynamicCtx: Int32
-        switch gb {
-        case ..<5.0:  dynamicCtx = 512   // Llama-1B / Gemma-2B safe budget
-        case ..<7.0:  dynamicCtx = 2048  // Qwen-3B sweet spot
-        default:      dynamicCtx = 4096  // Qwen-7B / speculative path
-        }
+        // Dynamic n_ctx: scale the context window up on devices with RAM
+        // headroom so multi-turn conversations stay in-context longer before
+        // LocalLLMFactExtractor compaction kicks in. Never lowers the
+        // sweep-tuned baseline. `resolvedContextLength` is the single source
+        // of truth shared with `LocalLLMMemoryHierarchy.nCtx(for:)` — the
+        // budget compactor and the bridge must agree on KV capacity.
+        let dynamicCtx = resolvedContextLength(for: config)
         if dynamicCtx != profile.contextLength {
             nlLog(
-                "[LLMProfile] Dynamic n_ctx: \(profile.contextLength) → \(dynamicCtx) (RAM=\(String(format: "%.1f", gb)) GB)",
+                "[LLMProfile] Dynamic n_ctx: \(profile.contextLength) → \(dynamicCtx)",
                 level: .info)
             profile.contextLength = dynamicCtx
         }
-        #endif
 
         return applyDebugOverrides(profile)
+    }
+
+    /// Resolved `n_ctx` for `config` on this device — the sweep-tuned per-model
+    /// baseline, raised (never lowered) on RAM tiers with headroom for a larger
+    /// KV cache.
+    ///
+    /// `LocalLLMMemoryHierarchy.nCtx(for:)` delegates here so the prompt budget
+    /// compactor can never disagree with the `contextLength` the engines pass
+    /// to the bridge — a mismatch would over-evict (wasting the larger window)
+    /// or under-evict (overflowing prefill).
+    static func resolvedContextLength(
+        for config: LocalModelDownloadManager.ModelConfiguration
+    ) -> Int32 {
+        let baseline = baseProfile(for: config).contextLength
+        #if targetEnvironment(simulator)
+        return baseline
+        #else
+        let gb = Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824.0
+        let ramCtx: Int32
+        switch gb {
+        case ..<5.0:  ramCtx = 512    // 4 GB tier — baseline (1024) governs via max()
+        case ..<7.0:  ramCtx = 2_048  // 6 GB tier — Qwen-3B sweet spot
+        default:      ramCtx = 4_096  // 8 GB tier — Qwen-7B / speculative path
+        }
+        return max(baseline, ramCtx)
+        #endif
     }
 
     // MARK: - Debug sweep override
