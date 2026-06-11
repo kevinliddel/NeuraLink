@@ -246,6 +246,26 @@ void llama_bridge_spec_generate(
 /// token. Thread-safe.
 void llama_bridge_spec_cancel(LlamaBridgeSpecHandle* handle);
 
+/// Adjust the number of draft tokens per speculative round. Clamped to
+/// [1, 16]. The generate loop reads the value once at entry, so call this
+/// between generations (callers already serialise generate calls).
+void llama_bridge_spec_set_n_draft(
+    LlamaBridgeSpecHandle* handle,
+    int32_t                n_draft
+);
+
+/// Read the most recent speculative telemetry: `drafted` is the number of
+/// tokens the draft model proposed during the last generate call; `accepted`
+/// is how many of those the target verified. Their ratio (acceptance rate)
+/// drives `llama_bridge_spec_set_n_draft` auto-tuning — high acceptance
+/// means a longer draft window pays off, low acceptance means draft steps
+/// are being wasted. Pass NULL for any field you don't want.
+void llama_bridge_spec_get_stats(
+    LlamaBridgeSpecHandle* handle,
+    int32_t*               out_drafted,
+    int32_t*               out_accepted
+);
+
 #ifdef __cplusplus
 }
 #endif

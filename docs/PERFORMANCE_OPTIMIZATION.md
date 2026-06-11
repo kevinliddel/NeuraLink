@@ -123,7 +123,9 @@ The KV-cache blobs written to `Application Support/llm_kv/` are currently HMAC-s
 - [`LocalLLMKVCache.swift`](../NeuraLink/Data/DataSources/LocalLLM/LocalLLMKVCache.swift) — replace HMAC with AES-GCM
 - [`SecureStore.swift`](../NeuraLink/Core/Security/SecureStore.swift) — add `kvCacheEncryptionKey` case
 
-**Status:** ✅ **Implemented** — see commit history.
+**Status:** ✅ **Implemented** — see commit history. Legacy plaintext blobs whose
+`.kv.hmac` sidecar still verifies are salvaged and re-encrypted in place on first
+load (warm start preserved across the upgrade); unverifiable blobs are purged.
 
 ---
 
@@ -175,12 +177,19 @@ Currently absent. Acknowledged in the doc as protection against compromised root
 
 `LlamaBridge.init` hard-codes `threads: Int32 = 4`. The upstream llama.cpp docs show thread count is non-linear — too many threads hurt throughput. The correct value is the **physical** (not logical) core count.
 
-**Design:**
+**Design (as implemented):**
 ```swift
 // In LLMRuntimeProfile.resolve(for:)
-let physical = ProcessInfo.processInfo.processorCount / 2   // efficiency ÷ perf heuristic
-let threads  = max(2, min(physical, 6))                     // floor/ceiling guardrail
+// The per-tier table values (2 / 4 / 6) are sweep-tuned and respected as-is;
+// the dynamic check only CAPS them at the silicon's core count (no SMT on
+// Apple silicon → processorCount == physical cores).
+let cores = Int32(ProcessInfo.processInfo.processorCount)
+if profile.threads > cores { profile.threads = max(2, cores) }
 ```
+
+> **Note:** The original `processorCount / 2` heuristic was rejected during review —
+> it resolved to 3 on every 6-core iPhone, clobbering the sweep-tuned per-tier
+> values (2 for Llama-1B where E-core spill hurts, 6 for Qwen-7B where E-cores help).
 
 **Files to modify:**
 - `NeuraLink/Data/DataSources/LocalLLM/LLMRuntimeProfile.swift`
@@ -193,14 +202,22 @@ let threads  = max(2, min(physical, 6))                     // floor/ceiling gua
 
 The bridge hard-codes `contextLength: Int32 = 2048`. Larger context means fewer `LocalLLMFactExtractor` compaction cycles:
 
-| RAM tier | Recommended `n_ctx` |
+| RAM tier | RAM-scaled `n_ctx` |
 |---|---|
-| < 5 GB (Llama-1B) | 512 |
+| < 5 GB (Llama-1B) | baseline governs (1024) |
 | 5–7 GB (Qwen-3B) | 2048 |
 | ≥ 7 GB (Qwen-7B / Speculative) | 4096 |
 
+> **Note (review):** Implemented as `max(baseline, ramTier)` — the RAM tier only ever
+> *raises* the sweep-tuned per-model baseline, never lowers it (the originally proposed
+> 512 on the 4 GB tier would have shrunk KV below the memory-validated 1024).
+> `LocalLLMMemoryHierarchy.nCtx(for:)` now delegates to
+> `LLMRuntimeProfile.resolvedContextLength(for:)` so the prompt budget compactor and the
+> bridge can never disagree about KV capacity (a mismatch over-evicts or overflows prefill).
+
 **Files to modify:**
 - `NeuraLink/Data/DataSources/LocalLLM/LLMRuntimeProfile.swift`
+- `NeuraLink/Data/DataSources/LocalLLM/LocalLLMMemoryHierarchy.swift`
 
 ---
 
@@ -217,8 +234,16 @@ The speculative engine hard-codes `N = 4` draft tokens. The optimal N is accepta
 - After every 5 turns, recompute acceptance rate and adjust N via `llama_bridge_spec_set_n_draft(handle, newN)`.
 - Persist the tuned N in `UserDefaults` for the next session.
 
+> **Note (review):** `llama_bridge_spec_set_n_draft` did not exist in the C bridge —
+> the bridge needed new plumbing: per-generate `(drafted, accepted)` counters in
+> `LlamaBridgeSpecHandle`, plus `llama_bridge_spec_set_n_draft` /
+> `llama_bridge_spec_get_stats` (mirroring the existing `llama_bridge_get_pld_stats`
+> telemetry pattern).
+
 **Files to modify:**
-- `NeuraLink/Data/DataSources/GGUF/Speculative/GGUFSpeculativeEngine.swift`
+- `NeuraLink/Core/Bridge/llama_bridge.h` / `llama_bridge_spec.cpp` — counters + C API
+- `NeuraLink/Data/DataSources/GGUF/Speculative/LlamaSpeculativeBridge.swift` — Swift wrapper
+- `NeuraLink/Data/DataSources/GGUF/Speculative/GGUFSpeculativeEngine.swift` — tuning loop + persistence
 
 ---
 
@@ -233,6 +258,7 @@ The speculative engine hard-codes `N = 4` draft tokens. The optimal N is accepta
 
 **Fix:**
 - In `TTSEngineSelector.invalidateCache(for:)`: immediately kick off `initialize()` on the new engine in a background task so it's warm by the time the user speaks.
+- The pre-warm goes through `engine(for:)` so the warmed instance is **cached** — warming a bare `resolveEngine` instance would be discarded for non-singleton engines (F5-TTS / System TTS) and the first `speakChunk` would still start cold.
 
 **Files to modify:**
 - `NeuraLink/Data/DataSources/TTS/TTSEngineSelector.swift`
@@ -337,7 +363,7 @@ The rain intensity-to-MToon specular mapping must apply on the **Metal render th
 | H2 | Forced alignment local TTS lip-sync | 🟡 Medium | 🔴 UX | ⬜ Pending |
 | M1 | Dynamic thread count (llama.cpp) | 🟢 Low | 🟠 Perf | ✅ Done |
 | M2 | Dynamic `n_ctx` per memory tier | 🟢 Low | 🟠 Perf | ✅ Done |
-| M3 | Speculative N-token auto-tuning | 🟡 Medium | 🟠 Perf | ⬜ Pending |
+| M3 | Speculative N-token auto-tuning | 🟡 Medium | 🟠 Perf | ✅ Done |
 | M4 | TTS engine pre-warm on persona switch | 🟢 Low | 🟠 Latency | ✅ Done |
 | M5 | Fixed-rate TTS crossfade mixer | 🟡 Medium | 🟠 Audio | ⬜ Pending |
 | M6 | EmbeddingService actor concurrency | 🟢 Low | 🟠 Concurrency | ⬜ Pending |
