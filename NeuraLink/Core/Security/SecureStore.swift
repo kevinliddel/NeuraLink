@@ -42,20 +42,29 @@ enum SecureKey {
     /// to leave the device — a key rotation just invalidates all cached
     /// blobs (next launch falls back to cold prefill, no data loss).
     case kvCacheHMACKey
+    /// 32-byte CSPRNG key used for AES-256-GCM encryption of the llama.cpp
+    /// KV-cache blobs on disk. Provides confidentiality for the serialised
+    /// KV state even if iOS Data Protection is bypassed (e.g. class-key leak
+    /// on a compromised device). Distinct from `kvCacheHMACKey` so the two
+    /// roles can evolve independently (e.g. if we ever require biometric
+    /// unlock for the encryption key while the HMAC key stays always-on).
+    case kvCacheEncryptionKey
 
     fileprivate var service: String {
         switch self {
-        case .openAIAPIKey: return "com.neuralink.openai"
-        case .memoryDBPageKey: return "com.neuralink.memory"
-        case .kvCacheHMACKey: return "com.neuralink.localllm"
+        case .openAIAPIKey:         return "com.neuralink.openai"
+        case .memoryDBPageKey:      return "com.neuralink.memory"
+        case .kvCacheHMACKey:       return "com.neuralink.localllm"
+        case .kvCacheEncryptionKey: return "com.neuralink.localllm.enc"
         }
     }
 
     fileprivate var account: String {
         switch self {
-        case .openAIAPIKey: return "apiKey"
-        case .memoryDBPageKey: return "dbPageKey"
-        case .kvCacheHMACKey: return "kvCacheHMACKey"
+        case .openAIAPIKey:         return "apiKey"
+        case .memoryDBPageKey:      return "dbPageKey"
+        case .kvCacheHMACKey:       return "kvCacheHMACKey"
+        case .kvCacheEncryptionKey: return "kvCacheEncKey"
         }
     }
 }

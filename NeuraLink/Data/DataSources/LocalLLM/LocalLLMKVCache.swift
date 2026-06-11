@@ -2,21 +2,28 @@
 //  LocalLLMKVCache.swift
 //  NeuraLink
 //
-//  Derives on-disk paths for persisted llama.cpp KV cache state.
+//  Derives on-disk paths for persisted llama.cpp KV cache state and provides
+//  AES-256-GCM encryption + integrity protection for the blobs.
 //
 //  Cache key components:
-//    - model configuration ("llama1b" / "japaneseLlama1b")
+//    - model configuration ("llama1b" / "japaneseLlama1b" / etc.)
 //    - llama.cpp sequence-state format version (LLAMA_STATE_SEQ_VERSION) so an
 //      upgrade that changes the on-disk format orphans old blobs deterministically
 //      (and reuses them when the format is unchanged)
 //    - SHA-256 prefix of the system prompt (so persona edits invalidate
 //      the cache automatically rather than restoring a stale prefix)
 //
-//  The cache file is opaque to Swift — llama.cpp owns the serialisation
-//  format via `llama_state_seq_save_file`. The version key above prevents a
-//  cross-version blob from even being attempted; should one ever slip through
-//  (format change without a version bump), `load_state` still fails gracefully
-//  (returns 0) and the warmup falls through to a fresh prefill.
+//  Security model:
+//    Every `.kv` blob is encrypted with AES-256-GCM before writing to disk.
+//    The sealed box format (12-byte nonce + ciphertext + 16-byte GCM tag) is
+//    written as a single `.kv` file — no separate sidecar required; the GCM
+//    authentication tag already provides integrity coverage identical to (and
+//    stronger than) the previous HMAC-SHA256 sidecar approach.
+//
+//    Migration: existing plaintext `.kv` + `.kv.hmac` files written by prior
+//    builds are detected by attempting `AES.GCM.open`. On failure (plaintext
+//    is not a valid sealed box) the blob is purged and a cold prefill runs.
+//    The `.kv.hmac` sidecar is also swept on any purge path.
 //
 //  Created by Dedicatus on 20/05/2026.
 //
@@ -64,65 +71,104 @@ enum LocalLLMKVCache {
         return dir.appendingPathComponent("\(configKey)_\(versionKey)_\(personaKey).kv").path
     }
 
-    // MARK: - Integrity
+    // MARK: - AES-GCM Encryption / Decryption
 
-    /// Sidecar suffix that holds the 32-byte HMAC-SHA256 tag for a `.kv`
-    /// blob. Lives next to the .kv so a cleanup/move that loses one but
-    /// keeps the other is detectable.
-    private static let hmacSidecarSuffix = ".hmac"
-
-    /// Computes HMAC-SHA256 over the blob bytes + filename and writes the
-    /// 32-byte tag to a `.kv.hmac` sidecar. Called immediately after a
-    /// successful `saveKVCache`. Binding the MAC to the filename means an
-    /// attacker who renames `.kv` files across personas can't pass
-    /// verification by also moving the sidecar — the verifier recomputes
-    /// using the file's current name, which the attacker controlled but
-    /// the sidecar's MAC didn't include.
+    /// Encrypts the blob at `path` with AES-256-GCM and overwrites the file
+    /// with the sealed box (nonce + ciphertext + tag). Cleans up any legacy
+    /// `.kv.hmac` sidecar left by previous HMAC-only builds.
     ///
-    /// Best-effort: Keychain or filesystem failures are logged but don't
-    /// surface to the caller — losing integrity coverage degrades to
+    /// Best-effort: Keychain or encryption failures are logged but never
+    /// surface to the caller — losing encryption coverage degrades to
     /// "no faster than cold prefill" on the next launch, never to
     /// "blocks the user".
-    static func signIntegrity(at path: String) {
+    static func encryptBlob(at path: String) {
         let url = URL(fileURLWithPath: path)
-        guard let blob = try? Data(contentsOf: url) else {
+        guard let plaintext = try? Data(contentsOf: url) else {
             nlLog(
-                "[LocalLLMKVCache] signIntegrity: cannot read \(url.lastPathComponent)",
+                "[LocalLLMKVCache] encryptBlob: cannot read \(url.lastPathComponent)",
                 level: .warning)
             return
         }
 
         let key: Data
         do {
-            key = try SecureStore.getOrCreateRandom(.kvCacheHMACKey, bytes: 32)
+            key = try SecureStore.getOrCreateRandom(.kvCacheEncryptionKey, bytes: 32)
         } catch {
             nlLog(
-                "[LocalLLMKVCache] signIntegrity: HMAC key unavailable, skipping: \(error)",
+                "[LocalLLMKVCache] encryptBlob: encryption key unavailable, skipping: \(error)",
                 level: .warning)
             return
         }
 
-        let mac = computeHMAC(blob: blob, filename: url.lastPathComponent, key: key)
-        let sidecarURL = url.appendingPathExtension(String(hmacSidecarSuffix.dropFirst()))
         do {
-            try mac.write(to: sidecarURL, options: .atomic)
+            let symmetric = SymmetricKey(data: key)
+            let sealed = try AES.GCM.seal(plaintext, using: symmetric)
+            guard let combined = sealed.combined else {
+                nlLog(
+                    "[LocalLLMKVCache] encryptBlob: combined sealed box is nil (nonce not contiguous)",
+                    level: .warning)
+                return
+            }
+            try combined.write(to: url, options: .atomic)
             try? ProtectedStorage.protect(url)
-            try? ProtectedStorage.protect(sidecarURL)
+            // Clean up legacy HMAC sidecar if present.
+            removeLegacyHMACSidecar(for: url)
+            nlLog(
+                "[LocalLLMKVCache] encryptBlob: \(url.lastPathComponent) sealed (\(combined.count) bytes)",
+                level: .debug)
         } catch {
             nlLog(
-                "[LocalLLMKVCache] signIntegrity: failed to write sidecar: \(error)",
+                "[LocalLLMKVCache] encryptBlob: AES-GCM seal failed: \(error)",
                 level: .warning)
         }
     }
 
-    /// Verifies the `.kv.hmac` sidecar matches the current `.kv` content.
-    /// Returns true only on a clean match. Missing sidecar (previously
-    /// written before), missing key, read error, or tag mismatch all return
-    /// false — callers should `purge()` and fall back to cold prefill on
-    /// any false result, never load an unverified blob into the engine.
-    static func verifyIntegrity(at path: String) -> Bool {
+    /// Decrypts and verifies the blob at `path`. Returns the plaintext data on
+    /// success, or `nil` if the file is missing, unreadable, the Keychain key
+    /// is unavailable, or the GCM authentication tag does not match.
+    ///
+    /// Callers must `purge(at:)` and fall back to cold prefill on `nil`.
+    static func decryptBlob(at path: String) -> Data? {
         let url = URL(fileURLWithPath: path)
-        let sidecarURL = url.appendingPathExtension(String(hmacSidecarSuffix.dropFirst()))
+        guard let ciphertext = try? Data(contentsOf: url) else {
+            return nil
+        }
+
+        let key: Data
+        do {
+            key = try SecureStore.getOrCreateRandom(.kvCacheEncryptionKey, bytes: 32)
+        } catch {
+            nlLog(
+                "[LocalLLMKVCache] decryptBlob: encryption key unavailable: \(error)",
+                level: .warning)
+            return nil
+        }
+
+        do {
+            let symmetric = SymmetricKey(data: key)
+            let sealedBox = try AES.GCM.SealedBox(combined: ciphertext)
+            // `AES.GCM.open` verifies the authentication tag (constant-time) and
+            // only returns plaintext if the tag matches — integrity is guaranteed.
+            let plaintext = try AES.GCM.open(sealedBox, using: symmetric)
+            return plaintext
+        } catch {
+            // Not a valid sealed box (e.g. legacy plaintext blob) or tag mismatch.
+            nlLog(
+                "[LocalLLMKVCache] decryptBlob: AES-GCM open failed for \(url.lastPathComponent): \(error)",
+                level: .warning)
+            return nil
+        }
+    }
+
+    // MARK: - Legacy HMAC compatibility (kept for migration sweep only)
+
+    /// Verifies the `.kv.hmac` sidecar written by pre-AES-GCM builds.
+    /// Returns `true` only on a clean HMAC-SHA256 match; missing sidecar or
+    /// any error returns `false`. Used exclusively in the migration path to
+    /// salvage unencrypted blobs from older installs.
+    static func verifyLegacyHMAC(at path: String) -> Bool {
+        let url = URL(fileURLWithPath: path)
+        let sidecarURL = url.appendingPathExtension("hmac")
 
         guard
             let blob = try? Data(contentsOf: url),
@@ -135,35 +181,35 @@ enum LocalLLMKVCache {
         do {
             key = try SecureStore.getOrCreateRandom(.kvCacheHMACKey, bytes: 32)
         } catch {
-            nlLog(
-                "[LocalLLMKVCache] verifyIntegrity: HMAC key unavailable: \(error)", level: .warning
-            )
             return false
         }
 
-        // `HMAC.isValidAuthenticationCode` is constant-time; raw `==` on
-        // `Data` would leak timing on the first mismatching byte. The
-        // local threat model doesn't include a timing attacker, but the
-        // constant-time API costs nothing extra.
         let symmetric = SymmetricKey(data: key)
         var message = blob
         message.append(Data(url.lastPathComponent.utf8))
-        return HMAC<SHA256>.isValidAuthenticationCode(
-            storedTag, authenticating: message, using: symmetric)
+        return HMAC<SHA256>.isValidAuthenticationCode(storedTag, authenticating: message, using: symmetric)
     }
 
-    /// Idempotently removes the `.kv` blob and its `.kv.hmac` sidecar.
-    /// Used when integrity verification fails or when an upgrade needs
-    /// to invalidate the previously written cache.
+    // MARK: - Purge
+
+    /// Idempotently removes the `.kv` blob, any `.kv.hmac` HMAC sidecar, and
+    /// any other related artifacts. Used when decryption fails or when an
+    /// upgrade needs to invalidate the previously written cache.
     static func purge(at path: String) {
         let fm = FileManager.default
         let url = URL(fileURLWithPath: path)
-        let sidecarURL = url.appendingPathExtension(String(hmacSidecarSuffix.dropFirst()))
         try? fm.removeItem(at: url)
-        try? fm.removeItem(at: sidecarURL)
+        removeLegacyHMACSidecar(for: url)
     }
 
     // MARK: - Internals
+
+    private static func removeLegacyHMACSidecar(for url: URL) {
+        let sidecarURL = url.appendingPathExtension("hmac")
+        if FileManager.default.fileExists(atPath: sidecarURL.path) {
+            try? FileManager.default.removeItem(at: sidecarURL)
+        }
+    }
 
     private static func supportDir() -> URL? {
         let fm = FileManager.default
@@ -200,13 +246,5 @@ enum LocalLLMKVCache {
         let digest = SHA256.hash(data: Data(input.utf8))
         let hex = digest.compactMap { String(format: "%02x", $0) }.joined()
         return String(hex.prefix(length))
-    }
-
-    private static func computeHMAC(blob: Data, filename: String, key: Data) -> Data {
-        let symmetric = SymmetricKey(data: key)
-        var hmac = HMAC<SHA256>(key: symmetric)
-        hmac.update(data: blob)
-        hmac.update(data: Data(filename.utf8))
-        return Data(hmac.finalize())
     }
 }

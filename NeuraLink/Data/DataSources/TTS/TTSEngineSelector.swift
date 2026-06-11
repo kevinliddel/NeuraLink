@@ -66,6 +66,21 @@ final class TTSEngineSelector {
         // `queue.sync`. The cached entry being removed is the actual contract
         // of "invalidate"; the engine's lifecycle is independent.
         engine.stop()
+
+        // Pre-warm the replacement engine in the background so the first
+        // `speakChunk` after a persona switch doesn't pay ONNX/CoreML init
+        // latency (~500 ms–1 s on iPhone 11). `resolveEngine` builds the new
+        // instance; `initialize()` is async and idempotent.
+        Task { [weak self] in
+            guard let self else { return }
+            guard let newEngine = resolveEngine(for: persona) else { return }
+            do {
+                try await newEngine.initialize()
+                nlLog("[TTSEngineSelector] Pre-warmed engine for '\(persona)' after invalidation", level: .info)
+            } catch {
+                nlLog("[TTSEngineSelector] Pre-warm failed for '\(persona)': \(error)", level: .warning)
+            }
+        }
     }
 
     private func resolveEngine(for persona: PersonaIdentifier) -> (any TTSEngineProtocol)? {

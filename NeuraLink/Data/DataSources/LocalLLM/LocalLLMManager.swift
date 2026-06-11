@@ -315,81 +315,8 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         }
     }
 
-    /// Try to load a previously-persisted KV cache state. Idempotent and
-    /// safe to call multiple times — `loadKVCache` no-ops if the file is
-    /// missing. Must run after `loadModel` and before any prefill/generate.
-    ///
-    /// Refuses to load any blob whose HMAC-SHA256 sidecar is
-    /// missing, unreadable, or doesn't match. A failed verification
-    /// purges the .kv + .kv.hmac files so the next launch starts clean
-    /// — cold prefill costs ~17 s on iPhone 11 but is correct, vs. the
-    /// alternative of feeding a tampered blob into the engine.
-    private func tryRestoreKVCache() async {
-        guard llmEngine.isLoaded else { return }
-        let mgr = LocalModelDownloadManager.shared
-        guard mgr.isAvailable else { return }
-        let characterName = await MainActor.run { self.state.selectedCharacterName }
-        let basePrompt = localLLMSystemPrompt(for: characterName)
-        guard
-            let path = LocalLLMKVCache.path(
-                config: mgr.selectedConfig, systemPrompt: basePrompt)
-        else { return }
-
-        let filename = URL(fileURLWithPath: path).lastPathComponent
-
-        // No file at all = nothing to verify and nothing to purge —
-        // fresh install / first-ever launch with this persona hash
-        // (e.g. after a persona-prompt edit invalidated the prior cache).
-        guard FileManager.default.fileExists(atPath: path) else {
-            nlLog("[KVCache] No prior cache at \(filename) — cold prefill on first turn",
-                  level: .info)
-            return
-        }
-
-        guard LocalLLMKVCache.verifyIntegrity(at: path) else {
-            nlLog(
-                "[KVCache] Integrity check failed at \(filename); purging and falling back to cold prefill",
-                level: .warning)
-            LocalLLMKVCache.purge(at: path)
-            return
-        }
-
-        let restored = await llmEngine.loadKVCache(from: path)
-        if restored > 0 {
-            // If we restored from disk, treat the cache as already
-            // persisted — no need to rewrite the same bytes.
-            kvCachePersistedThisSession = true
-        } else {
-            nlLog("[KVCache] Load returned 0 tokens from \(filename); next save will overwrite",
-                  level: .warning)
-        }
-    }
-
-    /// Persist the current KV state to disk once per session. The cache
-    /// key includes a hash of the system prompt so persona edits invalidate
-    /// it automatically (new key → restore attempt misses → fresh prefill).
-    private func persistKVCacheIfNeeded(
-        config: LocalModelDownloadManager.ModelConfiguration,
-        systemPrompt: String
-    ) async {
-        if kvCachePersistedThisSession { return }
-        guard
-            let path = LocalLLMKVCache.path(
-                config: config, systemPrompt: systemPrompt)
-        else { return }
-        let filename = URL(fileURLWithPath: path).lastPathComponent
-        let saved = await llmEngine.saveKVCache(to: path)
-        if saved {
-            // Sign immediately after a successful save so the
-            // next launch's `tryRestoreKVCache` can verify the bytes
-            // weren't tampered with while the app was backgrounded.
-            LocalLLMKVCache.signIntegrity(at: path)
-            kvCachePersistedThisSession = true
-        } else {
-            nlLog("[KVCache] Save returned 0 bytes for \(filename) — bridge may be empty",
-                  level: .warning)
-        }
-    }
+    // KV-cache persistence methods live in LocalLLMManager+KVCache.swift
+    // (split for SwiftLint 495-line compliance).
 
     func stop() {
         sileroVAD.stop()

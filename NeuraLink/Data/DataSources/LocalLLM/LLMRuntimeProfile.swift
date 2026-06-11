@@ -103,6 +103,41 @@ struct LLMRuntimeProfile {
         }
         #endif
 
+        // Dynamic thread count: use physical performance-core count rather than
+        // a fixed magic number. `processorCount` returns logical threads on Apple
+        // silicon (P + E cores); dividing by 2 gives a conservative P-core
+        // estimate that avoids spilling decode work onto E-cores. Clamped to
+        // [2, 6] to match pre-sweep hand-tuned values on iPhone 11–16.
+        let physicalCores = ProcessInfo.processInfo.processorCount
+        let dynamicThreads = Int32(max(2, min(physicalCores / 2, 6)))
+        // Only override the per-model baseline if the detected count differs —
+        // logs clearly which source won so the sweep log stays readable.
+        if dynamicThreads != profile.threads {
+            nlLog(
+                "[LLMProfile] Dynamic thread count: \(profile.threads) → \(dynamicThreads) (cores=\(physicalCores))",
+                level: .info)
+            profile.threads = dynamicThreads
+        }
+
+        // Dynamic n_ctx: scale context window by available RAM so multi-turn
+        // conversations stay in-context longer before LocalLLMFactExtractor
+        // compaction kicks in. Values are conservative to keep KV-cache RAM
+        // well within the device's jetsam budget alongside the model weights.
+        #if !targetEnvironment(simulator)
+        let dynamicCtx: Int32
+        switch gb {
+        case ..<5.0:  dynamicCtx = 512   // Llama-1B / Gemma-2B safe budget
+        case ..<7.0:  dynamicCtx = 2048  // Qwen-3B sweet spot
+        default:      dynamicCtx = 4096  // Qwen-7B / speculative path
+        }
+        if dynamicCtx != profile.contextLength {
+            nlLog(
+                "[LLMProfile] Dynamic n_ctx: \(profile.contextLength) → \(dynamicCtx) (RAM=\(String(format: "%.1f", gb)) GB)",
+                level: .info)
+            profile.contextLength = dynamicCtx
+        }
+        #endif
+
         return applyDebugOverrides(profile)
     }
 
