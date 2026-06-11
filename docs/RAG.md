@@ -17,11 +17,17 @@ All four use the **same scoring formula**: cosine similarity × recency weight �
 
 ```
 score = cosineSimilarity(queryVec, memoryVec)
-        × (0.75 + 0.25 × exp(-ageDays / 14))   ← 14-day recency half-life
-        × (memory.pinned ? 1.15 : 1.0)          ← pinned memories get a small boost
+        × ((1 − w) + w × exp(-ageDays / halfLife))   ← exponential recency boost
+        × (memory.pinned ? 1.15 : 1.0)               ← pinned memories get a small boost
 
-candidates with sim ≤ 0.5 are dropped as irrelevant
+candidates with sim ≤ similarityFloor are dropped as irrelevant
 ```
+
+The floor, half-life, and recency weight `w` are user-tunable via
+[`MemorySettings`](../NeuraLink/Data/DataSources/Memory/MemorySettings.swift)
+(`similarityFloor` / `recencyHalfLifeDays` / `recencyWeight`, defaults 0.5 / 14 / 0.25 —
+the previously hard-coded values). The floor is surfaced in the UI as the
+**Memory Quality** slider in User Settings → Memory.
 
 ### Multi-language embeddings
 
@@ -101,7 +107,7 @@ The memory database can be transparently encrypted at the page level via SQLCiph
 | Embedding model | `NLEmbedding.sentenceEmbedding(for: language)` — language detected per text via `NLLanguageRecognizer`, English fallback |
 | Vector dimension | Depends on the per-language model (English sentence embedding is 512-dim; other languages may differ). Mismatched-dimension candidates are filtered out at retrieval time |
 | Similarity metric | Cosine similarity over `Double` vectors |
-| Ranking | `sim × (0.75 + 0.25 × exp(-ageDays/14)) × (pinned ? 1.15 : 1.0)`; candidates with `sim ≤ 0.5` dropped |
+| Ranking | `sim × ((1−w) + w × exp(-ageDays/halfLife)) × (pinned ? 1.15 : 1.0)`; candidates with `sim ≤ similarityFloor` dropped. Tunables in `MemorySettings` (defaults `w=0.25`, `halfLife=14`, `floor=0.5`) |
 | Database | SQLite via [`MemoryStore`](../NeuraLink/Data/DataSources/Memory/MemoryStore.swift); optional SQLCipher encryption |
 | Auto-forget | Memories and chat events older than `MemorySettings.autoForgetDays` are pruned on every store (0 disables) |
 | File-size compliance | Each file ≤500 lines per project rule; `MemoryStore` is split via `+SQLCipher.swift` and `+Queries.swift` extensions |

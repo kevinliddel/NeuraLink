@@ -76,6 +76,21 @@ struct UserSettingsView: View {
                             Text("14 days").tag(14)
                             Text("30 days").tag(30)
                         }
+                        .listRowSeparator(.hidden)
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text("Memory Quality")
+                                Spacer()
+                                Text(memorySettings.similarityFloor, format: .number.precision(.fractionLength(2)))
+                                    .foregroundStyle(.secondary)
+                                    .monospacedDigit()
+                            }
+                            Slider(value: Bindable(memorySettings).similarityFloor, in: 0.3...0.7, step: 0.05)
+                            Text("Higher values surface fewer, more relevant memories.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
 
                     NavigationLink {

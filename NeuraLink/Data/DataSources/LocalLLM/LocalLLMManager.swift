@@ -46,6 +46,13 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     // Audio Engine for TTS Lip-sync
     internal let audioEngine = AVAudioEngine()
     internal let playerNode = AVAudioPlayerNode()
+    /// Fixed-rate (48 kHz) mixer between `playerNode` and the main mixer.
+    /// TTS engines emit different sample rates (Kokoro/VoiceVox 24 kHz,
+    /// System TTS locale-dependent); pinning this edge means a format change
+    /// only rewires the local player → mixer connection instead of pausing
+    /// the whole engine (which also interrupted mic capture). Also the
+    /// attach point for a future second player for chunk crossfade.
+    internal let ttsMixerNode = AVAudioMixerNode()
 
     // State
     let state = RealtimeChatState.shared

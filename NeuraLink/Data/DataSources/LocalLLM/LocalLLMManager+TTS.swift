@@ -88,11 +88,11 @@ extension LocalLLMManager {
 
         let currentFormat = playerNode.outputFormat(forBus: 0)
         if currentFormat != pcmBuffer.format {
-            let wasRunning = audioEngine.isRunning
-            if wasRunning { audioEngine.pause() }
-            audioEngine.disconnectNodeInput(playerNode)
-            audioEngine.connect(playerNode, to: audioEngine.mainMixerNode, format: pcmBuffer.format)
-            if wasRunning { try? audioEngine.start() }
+            // Only the player → ttsMixer edge is rewired (`connect` implicitly
+            // breaks the prior connection); the fixed 48 kHz ttsMixer →
+            // mainMixer edge keeps the downstream graph stable, so no engine
+            // pause/restart — which used to interrupt mic capture — is needed.
+            audioEngine.connect(playerNode, to: ttsMixerNode, format: pcmBuffer.format)
         }
 
         if !audioEngine.isRunning { try? audioEngine.start() }

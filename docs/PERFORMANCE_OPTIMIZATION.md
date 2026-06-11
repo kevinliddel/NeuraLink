@@ -271,6 +271,11 @@ The speculative engine hard-codes `N = 4` draft tokens. The optimal N is accepta
 
 `scheduleBuffer` reconnects `AVAudioPlayerNode` on every sample-rate change (Kokoro 24 kHz vs System TTS locale-dependent). Inserting a fixed 48 kHz `AVAudioMixerNode` makes format changes invisible and enables overlap-crossfade between consecutive sentence chunks.
 
+> **Note (implementation):** graph is now `playerNode → ttsMixerNode (fixed 48 kHz out) → mainMixer`.
+> A sample-rate change rewires only the local player → mixer edge — the engine
+> pause/restart (which also interrupted mic capture) is gone. The mixer is the attach
+> point for a future second player node if actual overlap-crossfade is wanted.
+
 **Files to modify:**
 - `LocalLLMManager+TTS.swift`
 - `LocalLLMManager+Audio.swift` (audio graph setup)
@@ -282,6 +287,11 @@ The speculative engine hard-codes `N = 4` draft tokens. The optimal N is accepta
 **Source:** [RAG.md §Multi-language embeddings](./RAG.md)
 
 `EmbeddingService` serializes all embedding calls behind a single `NSLock`. Concurrent requests from multiple locales queue up. Convert to a Swift `actor` or a `DispatchQueue` with `.barrier` writes.
+
+> **Note (implementation):** went with the concurrent `DispatchQueue` + `.barrier` option
+> to keep the synchronous API (callers are sync). The slow `NLEmbedding.sentenceEmbedding`
+> model load also moved *outside* the critical section — it used to block every concurrent
+> cache hit behind a multi-hundred-ms load.
 
 **Files to modify:**
 - `NeuraLink/Data/DataSources/Memory/EmbeddingService.swift`
@@ -300,9 +310,15 @@ candidates with sim ≤ 0.5 are dropped
 
 Expose `similarityFloor`, `recencyHalfLifeDays`, and `recencyWeight` in `MemorySettings` with sensible defaults. Add a "Memory Quality" slider in the UI.
 
+> **Note (implementation):** defaults reproduce the previous hard-coded values
+> (0.5 / 14 days / 0.25). The "Memory Quality" slider (UserSettingsView → Memory)
+> drives `similarityFloor` over 0.3–0.7 in 0.05 steps; half-life and weight are
+> settings-only for now.
+
 **Files to modify:**
-- `NeuraLink/Domain/Entities/MemorySettings.swift`
+- `NeuraLink/Data/DataSources/Memory/MemorySettings.swift`
 - `NeuraLink/Data/DataSources/Memory/RAGManager.swift`
+- `NeuraLink/Presentation/Views/AI/UserSettingsView.swift`
 
 ---
 
@@ -365,9 +381,9 @@ The rain intensity-to-MToon specular mapping must apply on the **Metal render th
 | M2 | Dynamic `n_ctx` per memory tier | 🟢 Low | 🟠 Perf | ✅ Done |
 | M3 | Speculative N-token auto-tuning | 🟡 Medium | 🟠 Perf | ✅ Done |
 | M4 | TTS engine pre-warm on persona switch | 🟢 Low | 🟠 Latency | ✅ Done |
-| M5 | Fixed-rate TTS crossfade mixer | 🟡 Medium | 🟠 Audio | ⬜ Pending |
-| M6 | EmbeddingService actor concurrency | 🟢 Low | 🟠 Concurrency | ⬜ Pending |
-| M7 | RAG tunable score thresholds | 🟢 Low | 🟠 Quality | ⬜ Pending |
+| M5 | Fixed-rate TTS crossfade mixer | 🟡 Medium | 🟠 Audio | ✅ Done |
+| M6 | EmbeddingService actor concurrency | 🟢 Low | 🟠 Concurrency | ✅ Done |
+| M7 | RAG tunable score thresholds | 🟢 Low | 🟠 Quality | ✅ Done |
 | L1 | SkyTimeProvider throttled re-resolve | 🟢 Low | 🟡 CPU | ⬜ Pending |
 | L2 | MTLBuffer reuse for morph targets | 🟢 Low | 🟡 GPU | ⬜ Pending |
 | L3 | Parallel LocalLLMFactExtractor | 🟡 Medium | 🟡 Latency | ⬜ Pending |
