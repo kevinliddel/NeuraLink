@@ -335,10 +335,10 @@ The rain intensity-to-MToon specular mapping must apply on the **Metal render th
 | H5 | Certificate pinning on api.openai.com | 🟡 Medium | 🔴 Security | ⬜ Pending |
 | H1 | CoreML phoneme classifier (OpenAI lip-sync) | 🔴 High | 🔴 UX | ⬜ Pending |
 | H2 | Forced alignment local TTS lip-sync | 🟡 Medium | 🔴 UX | ⬜ Pending |
-| M1 | Dynamic thread count (llama.cpp) | 🟢 Low | 🟠 Perf | ⬜ Pending |
-| M2 | Dynamic `n_ctx` per memory tier | 🟢 Low | 🟠 Perf | ⬜ Pending |
+| M1 | Dynamic thread count (llama.cpp) | 🟢 Low | 🟠 Perf | ✅ Done |
+| M2 | Dynamic `n_ctx` per memory tier | 🟢 Low | 🟠 Perf | ✅ Done |
 | M3 | Speculative N-token auto-tuning | 🟡 Medium | 🟠 Perf | ⬜ Pending |
-| M4 | TTS engine pre-warm on persona switch | 🟢 Low | 🟠 Latency | ⬜ Pending |
+| M4 | TTS engine pre-warm on persona switch | 🟢 Low | 🟠 Latency | ✅ Done |
 | M5 | Fixed-rate TTS crossfade mixer | 🟡 Medium | 🟠 Audio | ⬜ Pending |
 | M6 | EmbeddingService actor concurrency | 🟢 Low | 🟠 Concurrency | ⬜ Pending |
 | M7 | RAG tunable score thresholds | 🟢 Low | 🟠 Quality | ⬜ Pending |
