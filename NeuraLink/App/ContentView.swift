@@ -83,6 +83,7 @@ struct ContentView: View {
             }
             .toolbar {
                 if !aiState.isUIHidden {
+                    chatHistoryToggleButton
                     menuToggleButton
                 }
             }
@@ -92,6 +93,42 @@ struct ContentView: View {
             }
             .sheet(isPresented: $aiState.showUserSettings) {
                 UserSettingsView()
+            }
+            .overlay {
+                if aiState.showChatSidebar {
+                    ChatHistorySidebar(
+                        aiState: aiState,
+                        onNewChat: { startNewChatSession() },
+                        onSelect: { convo in
+                            aiState.viewingConversationID = convo.id
+                            withAnimation(.spring(response: 0.38, dampingFraction: 0.72)) {
+                                aiState.showChatSidebar = false
+                            }
+                        },
+                        onOpenProfile: {
+                            withAnimation(.spring(response: 0.38, dampingFraction: 0.72)) {
+                                aiState.showChatSidebar = false
+                            }
+                            aiState.showUserSettings = true
+                        }
+                    )
+                    .zIndex(200)
+                }
+            }
+            .fullScreenCover(isPresented: Binding(
+                get: { aiState.viewingConversationID != nil },
+                set: { if !$0 { aiState.viewingConversationID = nil } }
+            )) {
+                if let cid = aiState.viewingConversationID {
+                    ConversationTranscriptView(
+                        conversationID: cid,
+                        onClose: { aiState.viewingConversationID = nil },
+                        onNewChat: {
+                            aiState.viewingConversationID = nil
+                            startNewChatSession()
+                        }
+                    )
+                }
             }
         }
     }
@@ -110,6 +147,43 @@ struct ContentView: View {
                     .contentTransition(.symbolEffect(.replace))
             }
             .accessibilityLabel("Menu")
+        }
+    }
+
+    /// Opens the ChatGPT-style chat-history sidebar.
+    @ToolbarContentBuilder
+    private var chatHistoryToggleButton: some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) {
+            Button {
+                withAnimation(.spring(response: 0.38, dampingFraction: 0.72)) {
+                    aiState.showChatSidebar = true
+                }
+            } label: {
+                Image(systemName: "sidebar.trailing")
+            }
+            .accessibilityLabel("Chat history")
+        }
+    }
+
+    // MARK: - Session
+
+    /// Starts a fresh chat session and returns to the live 3D avatar.
+    /// Local LLM context resets automatically (the new conversation has no
+    /// history); OpenAI's context is server-side, so we reconnect for a clean
+    /// session.
+    private func startNewChatSession() {
+        ConversationStore.shared.startNewChat()
+        aiState.clearTranscripts()
+
+        let openAI = OpenAISettings.shared
+        if openAI.isEnabled && openAI.hasValidKey {
+            OpenAIRealtimeManager.shared.disconnect()
+            OpenAIRealtimeManager.shared.connect()
+        }
+
+        withAnimation(.spring(response: 0.38, dampingFraction: 0.72)) {
+            aiState.showChatSidebar = false
+            aiState.viewingConversationID = nil
         }
     }
 

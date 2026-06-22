@@ -19,8 +19,12 @@ struct NeuraLinkApp: App {
     }
 
     private func autoConnectAI() {
+        // New session = new chat: every cold launch starts a fresh
+        // conversation (created lazily on the first turn).
+        ConversationStore.shared.startNewChat()
+
         let settings = OpenAISettings.shared
-        
+
         if settings.isEnabled && settings.hasValidKey {
             OpenAIRealtimeManager.shared.connect()
         } else if settings.isLocalLLMEnabled && LocalModelDownloadManager.shared.isAvailable {

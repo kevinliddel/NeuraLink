@@ -52,6 +52,10 @@ final class RealtimeChatState {
     var showUserSettings: Bool = false
     var showRelationshipBar: Bool = false
     var isUIHidden: Bool = false
+    /// Right-side chat-history sidebar (ChatGPT-style).
+    var showChatSidebar: Bool = false
+    /// When non-nil, the read-only transcript for this past conversation is shown.
+    var viewingConversationID: Int64? = nil
 
     func clearTranscripts() {
         userTranscript = ""

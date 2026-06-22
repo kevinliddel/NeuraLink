@@ -22,21 +22,17 @@ final class CompanionStateStore {
     }
 
     func refresh() {
-        let events = store.fetchChatEvents(limit: 500)
+        // Familiarity is cross-session: total user turns across all chats.
+        let userTurns = store.countMessages(role: "user", kind: "message")
         let facts = store.fetchAllFacts()
-
-        let userTurns = events.filter { $0.role == "user" && $0.kind == "message" }.count
-        let pinned = events.filter { $0.pinned }.count
 
         // Simple bounded model:
         // - userTurns increases familiarity quickly at first, then saturates
         // - facts add a small bonus
-        // - pinned events add a small bonus (user-curated importance)
         let turnsComponent = min(1.0, Double(userTurns) / 40.0)
         let factsComponent = min(1.0, Double(facts.count) / 25.0) * 0.25
-        let pinnedComponent = min(1.0, Double(pinned) / 10.0) * 0.15
 
-        let raw = turnsComponent * 0.6 + factsComponent + pinnedComponent
+        let raw = turnsComponent * 0.7 + factsComponent
         score = min(max(raw, 0.0), 1.0)
         label = Self.labelForScore(score, turns: userTurns)
     }

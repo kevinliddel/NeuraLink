@@ -39,7 +39,19 @@ final class UserSettings {
     var birthday: Date {
         didSet { UserDefaults.standard.set(birthday.timeIntervalSince1970, forKey: birthdayKey) }
     }
-    
+
+    /// JPEG bytes of the user's profile photo, or nil. Kept in-memory for
+    /// `@Observable` change tracking; mirrored to a file in Application
+    /// Support (too large for UserDefaults).
+    var profileImageData: Data? {
+        didSet { Self.persistProfileImage(profileImageData) }
+    }
+
+    /// Decoded profile image, if set. Sidebar/transcript header use this.
+    var profileImage: UIImage? {
+        profileImageData.flatMap(UIImage.init(data:))
+    }
+
     private init() {
         if UserDefaults.standard.object(forKey: showEnvironmentKey) == nil {
             self.showEnvironment = true
@@ -53,6 +65,33 @@ final class UserSettings {
         
         let interval = UserDefaults.standard.double(forKey: "com.neuralink.user.birthday")
         self.birthday = interval == 0 ? Date() : Date(timeIntervalSince1970: interval)
+
+        self.profileImageData = Self.loadProfileImage()
+    }
+
+    // MARK: - Profile image file storage
+
+    private static func profileImageURL() -> URL? {
+        guard let dir = FileManager.default.urls(
+            for: .applicationSupportDirectory, in: .userDomainMask).first
+        else { return nil }
+        return dir.appendingPathComponent("user_profile.jpg")
+    }
+
+    private static func loadProfileImage() -> Data? {
+        guard let url = profileImageURL(),
+              FileManager.default.fileExists(atPath: url.path)
+        else { return nil }
+        return try? Data(contentsOf: url)
+    }
+
+    private static func persistProfileImage(_ data: Data?) {
+        guard let url = profileImageURL() else { return }
+        if let data {
+            try? data.write(to: url, options: .atomic)
+        } else {
+            try? FileManager.default.removeItem(at: url)
+        }
     }
     
     /// Returns a formatted string to be injected into the AI's system prompt.

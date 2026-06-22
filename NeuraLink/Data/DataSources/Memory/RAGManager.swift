@@ -41,7 +41,7 @@ final class RAGManager {
             if days > 0 {
                 let cutoff = Date().addingTimeInterval(-Double(days) * 86_400.0)
                 self.store.pruneMemories(olderThan: cutoff)
-                self.store.pruneChatEvents(olderThan: cutoff)
+                self.store.pruneConversations(olderThan: cutoff)
             }
         }
     }

@@ -8,18 +8,35 @@
 //
 
 import SwiftUI
+import PhotosUI
 
 struct UserSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var settings = UserSettings.shared
     @State private var memorySettings = MemorySettings.shared
-    
+    @State private var photoItem: PhotosPickerItem?
+
     let genders = ["Male", "Female", "Prefer not to say"]
-    
+
     var body: some View {
         NavigationStack {
             Form {
                 Section(header: Text("Profile Information")) {
+                    HStack {
+                        Text("Photo")
+                        Spacer()
+                        PhotosPicker(selection: $photoItem, matching: .images, photoLibrary: .shared()) {
+                            profileAvatar
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    if settings.profileImageData != nil {
+                        Button("Remove Photo", role: .destructive) {
+                            settings.profileImageData = nil
+                            photoItem = nil
+                        }
+                    }
+
                     HStack {
                         Text("Name")
                         Spacer()
@@ -96,7 +113,7 @@ struct UserSettingsView: View {
                     NavigationLink {
                         MemoryTimelineView()
                     } label: {
-                        Label("Timeline & Facts", systemImage: "clock.arrow.circlepath")
+                        Label("Memory & Facts", systemImage: "brain")
                     }
                 }
                 
@@ -113,7 +130,43 @@ struct UserSettingsView: View {
                     }
                 }
             }
+            .onChange(of: photoItem) { _, newItem in
+                guard let newItem else { return }
+                Task {
+                    guard let data = try? await newItem.loadTransferable(type: Data.self) else { return }
+                    // Downscale so the stored profile photo stays small.
+                    settings.profileImageData = Self.downscaledJPEG(data, maxDimension: 512) ?? data
+                }
+            }
         }
+    }
+
+    @ViewBuilder private var profileAvatar: some View {
+        if let img = settings.profileImage {
+            Image(uiImage: img)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 52, height: 52)
+                .clipShape(Circle())
+        } else {
+            Image(systemName: "person.crop.circle.fill")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 52, height: 52)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    /// Re-encodes image data as a JPEG no larger than `maxDimension` on its
+    /// long edge. Returns nil if the data isn't a decodable image.
+    private static func downscaledJPEG(_ data: Data, maxDimension: CGFloat) -> Data? {
+        guard let image = UIImage(data: data) else { return nil }
+        let longEdge = max(image.size.width, image.size.height)
+        let scale = longEdge > maxDimension ? maxDimension / longEdge : 1
+        let target = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+        let renderer = UIGraphicsImageRenderer(size: target)
+        let resized = renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: target)) }
+        return resized.jpegData(compressionQuality: 0.8)
     }
 }
 

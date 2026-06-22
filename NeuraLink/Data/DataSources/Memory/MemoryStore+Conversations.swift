@@ -192,6 +192,28 @@ extension MemoryStore {
         return items
     }
 
+    /// Most recent `limit` messages across ALL conversations, newest first.
+    /// Used by compaction (fact extraction) and the relationship meter, which
+    /// are cross-session concerns.
+    func fetchRecentMessagesAcrossAll(limit: Int) -> [ConversationMessage] {
+        lock.lock()
+        defer { lock.unlock() }
+        let query = """
+        SELECT id, conversation_id, role, kind, content, timestamp
+        FROM messages ORDER BY id DESC LIMIT ?;
+        """
+        var statement: OpaquePointer?
+        var items: [ConversationMessage] = []
+        if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
+            sqlite3_bind_int(statement, 1, Int32(limit))
+            while sqlite3_step(statement) == SQLITE_ROW {
+                items.append(conversationMessageRow(from: statement))
+            }
+        }
+        sqlite3_finalize(statement)
+        return items
+    }
+
     func fetchLastMessage(conversationID: Int64) -> ConversationMessage? {
         lock.lock()
         defer { lock.unlock() }
