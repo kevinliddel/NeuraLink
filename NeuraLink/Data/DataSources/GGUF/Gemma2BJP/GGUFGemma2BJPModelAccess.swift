@@ -19,12 +19,11 @@ enum GGUFGemma2BJPModelAccess {
 
     // MARK: - Constants
 
+    // Google's JP-tuned Gemma 2 2B, Q4_K_M (~1.71 GB) — the JP product model,
+    // paired with VoiceVox TTS. `modelURL()` validates the persisted path
+    // against `filename`, so a quant change triggers a re-download.
+    // (Note grapevine's upstream filename uses a capital "2B".)
     static let repoID   = "grapevine-AI/gemma-2-2b-jpn-it-gguf"
-    // Previous JP model was "Llama-3.2-1B-Instruct-IQ4_XS.gguf" from
-    // grapevine-AI/Llama-3.2-1B-Instruct-GGUF. `modelURL()` validates the
-    // persisted path against `filename`, so this swap triggers a re-download
-    // for users who still have the old Llama file cached. Note the capital
-    // "B" in the upstream filename ("2B").
     static let filename = "gemma-2-2B-jpn-it-Q4_K_M.gguf"
 
     private static let pathKey = "LocalModel_GGUFGemma2BJPPath"

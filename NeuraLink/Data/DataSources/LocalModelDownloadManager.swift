@@ -78,8 +78,8 @@ final class LocalModelDownloadManager: @unchecked Sendable {
             case .qwen2b: return 1.1
             case .qwen3b: return 1.93
             case .qwen7b: return 4.68
-            // Q8_0 — see quantizationLabel.
-            case .llama1b: return 1.32
+            // Q4_K_M (~0.81 GB) — Q8_0 (1.32) was too big for 4 GB (jetsam).
+            case .llama1b: return 0.81
             // Gemma 2 2B Q4_K_M — see quantizationLabel.
             case .japaneseGemma2b: return 1.71
             }
@@ -90,9 +90,9 @@ final class LocalModelDownloadManager: @unchecked Sendable {
             case .qwen2b, .qwen3b, .qwen7b:
                 return "Q4_K_M"
             case .llama1b:
-                // Max-available quant: near-lossless quality at ~1.32 GB.
+                // Q4_K_M (~0.81 GB): fits resident on 4 GB (Q8_0 1.32 jetsam'd).
                 // See GGUFModelAccess.swift.
-                return "Q8_0"
+                return "Q4_K_M"
             case .japaneseGemma2b:
                 // Gemma 2 2B (JP), Q4_K_M (~1.71 GB). See
                 // GGUFGemma2BJPModelAccess.swift.
@@ -109,9 +109,9 @@ final class LocalModelDownloadManager: @unchecked Sendable {
             case .qwen7b:
                 return "Top quality. Recommended for iPhone 15 Pro Max, 16, 17 families (8 GB RAM)."
             case .llama1b:
-                return "Memory efficient. Recommended for iPhone 11, 12 or 13 families (4 GB+ RAM)."
+                return "Memory efficient. Recommended for iPhone 11, 12 or 13 families (4 GB RAM)."
             case .japaneseGemma2b:
-                return "Japanese-tuned Gemma 2 2B (Google). Best Japanese quality; ~1.7 GB. Runs on iPhone 11/12/13 (4 GB) but is tight — smoothest on 6 GB+ devices."
+                return "Japanese-tuned Gemma 2 2B (Google). Best Japanese quality; ~1.7 GB. Runs on iPhone 11/12/13 (4 GB) — smoothest on 6 GB+ devices."
             }
         }
     }

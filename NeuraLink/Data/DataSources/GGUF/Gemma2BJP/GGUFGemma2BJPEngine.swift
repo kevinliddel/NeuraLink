@@ -84,6 +84,14 @@ final class GGUFGemma2BJPEngine: NSObject, @unchecked Sendable, LLMEngineProtoco
                             kType: profile.kType,
                             vType: profile.vType,
                             flashAttn: profile.flashAttn,
+                            // PLD disabled: device `[Bench]` showed pld=0/8
+                            // (0% hits) on short JP replies — JP subword
+                            // n-grams rarely repeat, so every draft batch is
+                            // wasted decode work, which hurts most under
+                            // thermal throttling. Re-enable (promptLookup:true
+                            // + profile.pldN/NDraft) only if a measured hit
+                            // rate justifies it.
+                            promptLookup: false,
                             pldN: profile.pldN,
                             pldNDraft: profile.pldNDraft,
                             label: "Gemma-2B-JP"

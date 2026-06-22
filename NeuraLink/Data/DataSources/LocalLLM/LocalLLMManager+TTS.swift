@@ -85,6 +85,14 @@ extension LocalLLMManager {
     /// buffers through this single path.
     func scheduleBuffer(_ pcmBuffer: AVAudioPCMBuffer) {
         guard pcmBuffer.frameLength > 0 else { return }
+        // Guard the format before any connect/schedule — AVAudioEngine raises
+        // an uncatchable NSException (IsFormatSampleRateAndChannelCountValid)
+        // on a 0-rate / 0-channel format. Drop + log instead of crashing.
+        let bufFormat = pcmBuffer.format
+        guard bufFormat.sampleRate > 0, bufFormat.channelCount > 0 else {
+            nlLog("[TTS] Dropping buffer — invalid format sr=\(bufFormat.sampleRate) ch=\(bufFormat.channelCount)", level: .error)
+            return
+        }
 
         let currentFormat = playerNode.outputFormat(forBus: 0)
         if currentFormat != pcmBuffer.format {

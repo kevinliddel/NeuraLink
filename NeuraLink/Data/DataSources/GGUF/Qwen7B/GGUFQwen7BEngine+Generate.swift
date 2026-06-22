@@ -79,7 +79,10 @@ extension GGUFQwen7BEngine {
             messages: messages, addGenerationPrompt: false
         ) else { return }
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            DispatchQueue.global(qos: .utility).async { [weak self] in
+            // .userInitiated, not .utility: warm-up prefill is on the first-token
+            // critical path. bridgeLock.try() already yields to a real turn, so a
+            // low QoS only made warm-up lose the cold-start race (long TTFT).
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 guard let self else { continuation.resume(); return }
                 guard self.bridgeLock.try() else { continuation.resume(); return }
                 defer { self.bridgeLock.unlock() }

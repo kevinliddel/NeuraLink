@@ -105,6 +105,21 @@ final class VRMMetalState {
         renderer = VRMRenderer(device: device, config: config)
         mtkView.delegate = renderer
         mtkView.preferredFramesPerSecond = 60
+        #if DEBUG
+        // GPU-contention A/B (`-nl.debug.pauseAvatar YES`): freeze the avatar's
+        // 60fps Metal render loop so it stops competing with llama.cpp's
+        // per-token decode on the GPU. Pair with `-nl.debug.skipWhisper YES`
+        // (which auto-fires a canned turn). If the resulting [Bench] decode
+        // jumps far above the ~0.15 tok/s baseline, the avatar's continuous
+        // rendering was starving LLM decode — the real bottleneck.
+        if UserDefaults.standard.bool(forKey: "nl.debug.pauseAvatar") {
+            mtkView.isPaused = true
+            nlLog("[VRM] DEBUG nl.debug.pauseAvatar=YES — avatar render loop frozen (GPU A/B).", level: .info)
+            setupBackgroundObservers()
+            setupPoseObserver()
+            return
+        }
+        #endif
         startSkyTicker()
         setupBackgroundObservers()
         setupPoseObserver()

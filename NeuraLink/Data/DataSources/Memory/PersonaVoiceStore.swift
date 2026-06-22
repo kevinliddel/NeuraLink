@@ -24,13 +24,16 @@ final class PersonaVoiceStore {
 
     private(set) var voicevoxSpeakerIDs: [PersonaIdentifier: Int]
     private(set) var kokoroVoicePresets: [PersonaIdentifier: String]
+    private(set) var openVoiceVoicePresets: [PersonaIdentifier: String]
 
     nonisolated static let defaultsKey = "com.neuralink.tts.persona_voicevox_speaker_ids"
     nonisolated static let kokoroDefaultsKey = "com.neuralink.tts.persona_kokoro_voice_presets"
+    nonisolated static let openVoiceDefaultsKey = "com.neuralink.tts.persona_openvoice_voice_presets"
 
     private init() {
         voicevoxSpeakerIDs = PersonaVoiceStore.loadFromDefaults()
         kokoroVoicePresets = PersonaVoiceStore.loadKokoroFromDefaults()
+        openVoiceVoicePresets = PersonaVoiceStore.loadOpenVoiceFromDefaults()
     }
 
     // MARK: - VOICEVOX
@@ -82,6 +85,26 @@ final class PersonaVoiceStore {
         setKokoroVoiceID(nil, for: persona)
     }
 
+    // MARK: - OpenVoice
+
+    func openVoiceVoiceID(for persona: PersonaIdentifier) -> String? {
+        openVoiceVoicePresets[persona.lowercased()]
+    }
+
+    func setOpenVoiceVoiceID(_ id: String?, for persona: PersonaIdentifier) {
+        let key = persona.lowercased()
+        if let id {
+            openVoiceVoicePresets[key] = id
+        } else {
+            openVoiceVoicePresets.removeValue(forKey: key)
+        }
+        persistOpenVoice()
+    }
+
+    func clearOpenVoiceVoiceID(for persona: PersonaIdentifier) {
+        setOpenVoiceVoiceID(nil, for: persona)
+    }
+
     // MARK: - Nonisolated reads
 
     /// Thread-safe direct UserDefaults read for callers in nonisolated
@@ -131,6 +154,22 @@ final class PersonaVoiceStore {
         return decoded
     }
 
+    /// Thread-safe direct read for the OpenVoice engine (off-main). See
+    /// `kokoroVoiceIDFromDefaults` for the `String`-vs-`PersonaIdentifier`
+    /// rationale.
+    nonisolated static func openVoiceVoiceIDFromDefaults(for persona: String) -> String? {
+        loadOpenVoiceFromDefaults()[persona.lowercased()]
+    }
+
+    private nonisolated static func loadOpenVoiceFromDefaults() -> [String: String] {
+        guard let data = UserDefaults.standard.data(forKey: openVoiceDefaultsKey),
+            let decoded = try? JSONDecoder().decode(
+                [String: String].self, from: data
+            )
+        else { return [:] }
+        return decoded
+    }
+
     private func persist() {
         guard let data = try? JSONEncoder().encode(voicevoxSpeakerIDs) else { return }
         UserDefaults.standard.set(data, forKey: PersonaVoiceStore.defaultsKey)
@@ -139,5 +178,10 @@ final class PersonaVoiceStore {
     private func persistKokoro() {
         guard let data = try? JSONEncoder().encode(kokoroVoicePresets) else { return }
         UserDefaults.standard.set(data, forKey: PersonaVoiceStore.kokoroDefaultsKey)
+    }
+
+    private func persistOpenVoice() {
+        guard let data = try? JSONEncoder().encode(openVoiceVoicePresets) else { return }
+        UserDefaults.standard.set(data, forKey: PersonaVoiceStore.openVoiceDefaultsKey)
     }
 }

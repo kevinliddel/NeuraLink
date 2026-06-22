@@ -62,6 +62,14 @@ final class LocalTTSPreviewPlayer: @unchecked Sendable {
     private var pendingBuffers = 0
 
     func schedule(_ buffer: AVAudioPCMBuffer) {
+        guard buffer.format.sampleRate > 0, buffer.format.channelCount > 0 else {
+            nlLog("[Preview] Dropping buffer — invalid format sr=\(buffer.format.sampleRate) ch=\(buffer.format.channelCount)", level: .error)
+            return
+        }
+        // Activate the session first: connecting to mainMixerNode with an
+        // inactive session gives the engine output a 0-rate format and trips
+        // AVAudioEngine's IsFormatSampleRateAndChannelCountValid assertion.
+        try? AVAudioSession.sharedInstance().setActive(true)
         ensureAttached(format: buffer.format)
         if !audioEngine.isRunning {
             try? audioEngine.start()

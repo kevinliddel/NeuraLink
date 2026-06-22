@@ -58,6 +58,11 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     let state = RealtimeChatState.shared
     var llmEngine: any LLMEngineProtocol = LocalLLMManager.makeEngine()
 
+    /// Coalesces per-token transcript updates into a smooth ~33 fps reveal
+    /// (Fix 2 typewriter + Fix 3 coalesce). Fed by `didGenerateToken`; drains
+    /// onto `state.aiTranscript`.
+    let transcriptTypewriter = TranscriptTypewriter()
+
     let whisperManager = LocalWhisperManager.shared
     internal let sileroVAD = SileroVADProcessor()
 
@@ -118,6 +123,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
 
     override init() {
         super.init()
+        transcriptTypewriter.bind(state)
         llmEngine.delegate = self
         whisperManager.delegate = self
         sileroVAD.delegate = self
@@ -149,16 +155,23 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     func preload() {
         Task {
             try? await llmEngine.loadModel()
-            _ = await whisperManager.setup()
-            // KV-cache restore from disk: if a previous session persisted
-            // the prefilled persona/history prefix, load it back into the
-            // bridge so the very first warmup hits 100% prefix-reuse and
-            // cold-turn ttft drops from ~17 s to <1 s.
+            // Restore the persisted prefix and kick off warm-up BEFORE Whisper
+            // setup, not after — so Whisper init overlaps the warm-up instead of
+            // serializing in front of it (Whisper init used to delay the warm-up
+            // start by its whole duration). loadModel already compiled the Metal
+            // kernels, so the warm-up is just a short forward pass that reuses
+            // them — no new big allocation, safe to overlap Whisper's CoreML load.
+            //
+            // KV-cache restore: if a previous session persisted the prefilled
+            // persona prefix, loading it back means the first warm-up hits ~100%
+            // prefix-reuse and cold-turn ttft drops to <1 s. Must run after
+            // loadModel and before any prefill (it seeds the KV warm-up reuses).
             await tryRestoreKVCache()
-            // Cold-start warmup: prefill the persona/history prefix once
-            // the engine is up so the first user turn doesn't pay the full
-            // ~17 s ttft that an empty KV cache costs on iPhone 11.
+            // Cold-start warm-up: prefill the persona prefix so the first user
+            // turn doesn't pay the full empty-KV ttft on iPhone 11. Fire-and-
+            // forget, so the Whisper setup below is not blocked by it.
             warmupPrefill()
+            _ = await whisperManager.setup()
         }
         // Parallel TTS engine pre-warm: builds the bridge (ONNX session for
         // Kokoro, OpenJTalk + synthesizer for VoiceVox) ahead of the first
@@ -198,6 +211,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             if llmEngine.isLoaded {
                 await MainActor.run { state.status = .ready }
                 sileroVAD.start(externalSampleRate: hardwareInputFormat?.sampleRate)
+                prewarmTTS()
                 return
             }
 
@@ -222,9 +236,46 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             if success {
                 await MainActor.run { state.status = .ready }
                 sileroVAD.start(externalSampleRate: hardwareInputFormat?.sampleRate)
+                prewarmTTS()
+
+                #if DEBUG
+                // Memory A/B (`-nl.debug.skipWhisper YES`): `whisperManager.setup()`
+                // no-oped above, so WhisperKit's CoreML/ANE memory is freed. Fire
+                // one canned JP turn here — this is the *real* entry point (the
+                // avatar is on-screen and rendering, VoiceVox pre-warm state is
+                // identical to a normal turn), so the ONLY changed variable vs a
+                // normal run is WhisperKit's footprint. Read the resulting
+                // `[Bench]` decode=…tok/s: a big jump over the ~0.15 tok/s
+                // baseline proves memory pressure is the bottleneck. Run from a
+                // cold launch (the post-load path, not the fast path).
+                if UserDefaults.standard.bool(forKey: "nl.debug.skipWhisper") {
+                    try? await Task.sleep(nanoseconds: 4_000_000_000)
+                    await MainActor.run {
+                        self.handleUserInput("こんにちは、今日の調子はどう？", logToTimeline: false)
+                    }
+                }
+                #endif
             } else {
                 stateLock.withLock { isPreparingOrActive = false }
-                state.setError("Failed to initialize WhisperKit.")
+                state.setError("Failed to initialize speech recognition (whisper.cpp).")
+            }
+        }
+    }
+
+    /// Pre-warms the TTS engine for the current persona so its (potentially
+    /// slow) first-run init — OpenVoice's model download + ONNX session load,
+    /// VoiceVox's OpenJTalk load — overlaps listening + LLM generation instead
+    /// of blocking the first spoken chunk. Idempotent: once the engine is
+    /// ready, `initialize()` returns immediately. Fire-and-forget.
+    func prewarmTTS() {
+        Task { @MainActor in
+            let persona = state.selectedCharacterName
+            guard let engine = TTSEngineSelector.shared.engine(for: persona) else { return }
+            do {
+                try await engine.initialize()
+                nlLog("[LocalLLM] TTS pre-warmed for '\(persona)'", level: .info)
+            } catch {
+                nlLog("[LocalLLM] TTS pre-warm failed for '\(persona)': \(error)", level: .warning)
             }
         }
     }
@@ -242,7 +293,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
 
         Task { @MainActor in
             state.userTranscript = text
-            state.aiTranscript = ""
+            transcriptTypewriter.reset()   // clears the transcript + typewriter state
             state.status = .thinking
         }
 
@@ -302,7 +353,10 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     /// Returns immediately; the warmup runs on a utility-QoS queue.
     func warmupPrefill() {
         guard llmEngine.isLoaded else { return }
-        Task.detached(priority: .utility) { [weak self] in
+        // .userInitiated, not .utility: this warm-up is what stands between app
+        // launch (or VAD voice-start) and a fast first token. The engine's
+        // prefill uses bridgeLock.try() so it still yields to a real turn.
+        Task.detached(priority: .userInitiated) { [weak self] in
             guard let self else { return }
             let mgr = LocalModelDownloadManager.shared
             guard mgr.isAvailable else { return }

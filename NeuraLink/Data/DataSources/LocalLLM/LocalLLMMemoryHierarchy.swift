@@ -33,6 +33,14 @@ final class LocalLLMMemoryHierarchy {
     /// Top-K facts retrieved from `RAGManager.fetchFacts` for Tier 3.
     static let factsLimit = 3
 
+    /// Constant lead-in prepended to every JP user turn. It is the *shared,
+    /// turn-invariant* head of the user message, so the warm-up prefill
+    /// (`buildPrefillMessages`) can prefill `[system + this]` and the real
+    /// turn's prefix-reuse covers all of it — only the actual user words
+    /// re-prefill. Must be byte-identical in `buildMessages` and
+    /// `buildPrefillMessages` or KV prefix-reuse silently drops to zero.
+    static let jpAnswerLeadIn = "（日本語で回答）"
+
     /// Per-config context window. Delegates to
     /// `LLMRuntimeProfile.resolvedContextLength(for:)` — the same value the
     /// engines pass to `LlamaBridge.init` — so the budget compactor can never
@@ -99,7 +107,7 @@ final class LocalLLMMemoryHierarchy {
             excluding: userInput
         )
 
-        let userMessage = isJP ? "（日本語で回答）\(userInput)" : userInput
+        let userMessage = isJP ? "\(Self.jpAnswerLeadIn)\(userInput)" : userInput
 
         var messages: [LLMChatMessage] = [
             .init(role: "system", content: systemContent)
@@ -138,6 +146,16 @@ final class LocalLLMMemoryHierarchy {
             isJapaneseLlama: isJP,
             excluding: ""
         ))
+        // JP path has no history, so a system-only message list makes Gemma's
+        // chat template render nothing reusable (the warm-up no-ops and the
+        // first token re-prefills the whole prompt — observed as prefill=1+N
+        // in `[Bench]`). Append the turn-invariant user lead-in so the warm-up
+        // prefills `[system + lead-in]`; the real turn then reuses all of it
+        // and only re-prefills the user's actual words. English/Qwen tiers
+        // carry real history here, so they already form a valid prefix.
+        if isJP {
+            messages.append(.init(role: "user", content: Self.jpAnswerLeadIn))
+        }
         return messages
     }
 

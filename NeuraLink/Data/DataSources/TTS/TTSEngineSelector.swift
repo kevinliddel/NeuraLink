@@ -89,32 +89,21 @@ final class TTSEngineSelector {
     private func resolveEngine(for persona: PersonaIdentifier) -> (any TTSEngineProtocol)? {
         let config = LocalModelDownloadManager.shared.selectedConfig
 
-        if hasTrainedClone(for: persona), config == .qwen7b {
-            return makeF5TTSEngine(for: persona)
-        }
-
+        // Japanese model → VoiceVox (JP-specific speakers). Everything else →
+        // OpenVoice (MeloTTS + tone-color converter). OpenVoiceEngine.initialize()
+        // downloads its ONNX models on first use, so route to it unconditionally
+        // — gating on a cached check would never trigger the first download.
+        // System TTS is the last-resort fallback. (Kokoro routing removed; its
+        // files come out once OpenVoice is verified on device.)
         if config == .japaneseGemma2b {
             return makeVoiceVoxEngine(for: persona)
         }
 
-        if hasKokoroVoicesDownloaded() {
-            return makeKokoroEngine(for: persona)
-        }
-
-        return makeSystemTTSEngine(for: persona)
-    }
-
-    private func hasTrainedClone(for persona: PersonaIdentifier) -> Bool {
-        CloneSampleStore.shared.url(for: persona) != nil
+        return makeOpenVoiceEngine(for: persona) ?? makeSystemTTSEngine(for: persona)
     }
 
     private func hasKokoroVoicesDownloaded() -> Bool {
         KokoroModelAccess.isAvailable
-    }
-
-    private func makeF5TTSEngine(for persona: PersonaIdentifier) -> (any TTSEngineProtocol)? {
-        _ = persona
-        return F5TTSEngine()
     }
 
     private func makeVoiceVoxEngine(for persona: PersonaIdentifier) -> (any TTSEngineProtocol)? {
@@ -125,6 +114,14 @@ final class TTSEngineSelector {
         // AVSpeechSynthesizer to the selector).
         _ = persona
         return VoiceVoxEngine.shared
+    }
+
+    private func makeOpenVoiceEngine(for persona: PersonaIdentifier) -> (any TTSEngineProtocol)? {
+        // MeloTTS + tone-color converter. initialize() downloads the ONNX models
+        // from the shared dataset on first use; per-persona voices are a later
+        // refinement (voiceName(for:) currently defaults to one voice).
+        _ = persona
+        return OpenVoiceEngine.shared
     }
 
     private func makeKokoroEngine(for persona: PersonaIdentifier) -> (any TTSEngineProtocol)? {
