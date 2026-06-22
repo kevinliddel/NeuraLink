@@ -26,7 +26,7 @@ struct ChatHistorySidebar: View {
     private let panelWidth: CGFloat = 312
 
     var body: some View {
-        ZStack(alignment: .trailing) {
+        ZStack(alignment: .leading) {
             Color.black.opacity(0.5)
                 .ignoresSafeArea()
                 .onTapGesture { dismiss() }
@@ -35,7 +35,7 @@ struct ChatHistorySidebar: View {
                 .frame(width: panelWidth)
                 .frame(maxHeight: .infinity)
                 .background(Rectangle().fill(.ultraThinMaterial).ignoresSafeArea())
-                .transition(.move(edge: .trailing))
+                .transition(.move(edge: .leading))
         }
         .onAppear(perform: reload)
     }

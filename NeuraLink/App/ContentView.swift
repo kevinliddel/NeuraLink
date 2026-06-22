@@ -150,16 +150,17 @@ struct ContentView: View {
         }
     }
 
-    /// Opens the ChatGPT-style chat-history sidebar.
+    /// Opens the ChatGPT-style chat-history sidebar. Standalone button on the
+    /// LEFT, separate from the right-side menu/FAB.
     @ToolbarContentBuilder
     private var chatHistoryToggleButton: some ToolbarContent {
-        ToolbarItem(placement: .topBarTrailing) {
+        ToolbarItem(placement: .topBarLeading) {
             Button {
                 withAnimation(.spring(response: 0.38, dampingFraction: 0.72)) {
                     aiState.showChatSidebar = true
                 }
             } label: {
-                Image(systemName: "sidebar.trailing")
+                Image(systemName: "clock.arrow.trianglehead.counterclockwise.rotate.90")
             }
             .accessibilityLabel("Chat history")
         }
