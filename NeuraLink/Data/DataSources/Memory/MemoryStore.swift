@@ -213,7 +213,28 @@ final class MemoryStore {
             pinned INTEGER DEFAULT 0,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         );
+        CREATE TABLE IF NOT EXISTS conversations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            auto_titled INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+            role TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            content TEXT NOT NULL,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, id);
         """
+
+        // Enforce ON DELETE CASCADE for messages when a conversation is
+        // deleted. Off by default per-connection in SQLite; deleteConversation
+        // also deletes explicitly, so this is belt-and-suspenders.
+        _ = sqlite3_exec(db, "PRAGMA foreign_keys = ON;", nil, nil, nil)
 
         if sqlite3_exec(db, createTableQuery, nil, nil, nil) != SQLITE_OK {
             let errmsg = String(cString: sqlite3_errmsg(db)!)
@@ -236,6 +257,11 @@ final class MemoryStore {
                 nil, nil, nil
             )
         }
+        // One-shot: fold the legacy flat `chat_events` log into a single
+        // conversation so upgrading users keep their history under the new
+        // session model. Idempotent (UserDefaults-guarded). See
+        // MemoryStore+Conversations.swift.
+        migrateLegacyChatEventsIfNeeded()
     }
 
     private func columnExists(table: String, column: String) -> Bool {
