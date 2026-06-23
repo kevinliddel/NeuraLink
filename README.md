@@ -15,7 +15,7 @@
   <img src="https://custom-icon-badges.demolab.com/badge/WebRTC-gray?style=flat&logo=webrtc" alt="WebRTC" />
   <img src="https://custom-icon-badges.demolab.com/badge/WhisperKit-gray?logo=swift" alt="WhisperKit" />
   <img src="https://img.shields.io/badge/VoiceVOX-brightgreen?style=flat&logo=v&logoColor=fff" alt="Voice VOX" />
-  <img src="https://custom-icon-badges.demolab.com/badge/KokoroTTS-gray?style=flat&logo=p&logoColor=orange" alt="Kokoro TTS" />
+  <img src="https://custom-icon-badges.demolab.com/badge/OpenVoice-gray?style=flat&logo=p&logoColor=blue" alt="Open Voice" />
   <img src="https://custom-icon-badges.demolab.com/badge/Silero-VAD-red?style=flat&logo=silero" alt="Silero VAD" />
   <a href="https://deepwiki.com/kevinliddel/NeuraLink"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki" /></a>
 </p>

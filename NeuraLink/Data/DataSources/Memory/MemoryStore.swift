@@ -229,6 +229,14 @@ final class MemoryStore {
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, id);
+        CREATE TABLE IF NOT EXISTS character_ai (
+            character TEXT NOT NULL,
+            engine    TEXT NOT NULL,
+            prompt    TEXT,
+            voice     TEXT,
+            name      TEXT,
+            PRIMARY KEY (character, engine)
+        );
         """
 
         // Enforce ON DELETE CASCADE for messages when a conversation is
@@ -262,6 +270,11 @@ final class MemoryStore {
         // session model. Idempotent (UserDefaults-guarded). See
         // MemoryStore+Conversations.swift.
         migrateLegacyChatEventsIfNeeded()
+
+        // One-shot: import per-character prompts/voices from the legacy
+        // PersonaStore / LocalLLMPromptStore / PersonaVoiceStore (JSON +
+        // UserDefaults) into the `character_ai` table. See MemoryStore+Personas.swift.
+        migratePersonaStoresIfNeeded()
     }
 
     private func columnExists(table: String, column: String) -> Bool {
