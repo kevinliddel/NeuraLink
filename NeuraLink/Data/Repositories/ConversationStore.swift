@@ -89,7 +89,9 @@ final class ConversationStore: @unchecked Sendable {
     }
 
     func renameConversation(id: Int64, title: String) {
-        MemoryStore.shared.renameConversation(id: id, title: title)
+        // A manual rename finalizes the title — mark it auto-titled so the
+        // background titler won't overwrite the user's choice.
+        MemoryStore.shared.renameConversation(id: id, title: title, autoTitled: true)
     }
 
     // MARK: - Title

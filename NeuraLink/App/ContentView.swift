@@ -53,7 +53,6 @@ struct ContentView: View {
                     ExpandableFABMenu(
                         isExpanded: $isMenuExpanded,
                         onSettings: { aiState.showSettings = true },
-                        onUserSettings: { aiState.showUserSettings = true },
                         onRelationship: {
                             withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
                                 aiState.showRelationshipBar = true

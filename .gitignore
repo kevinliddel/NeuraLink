@@ -44,7 +44,11 @@ ggml-*.bin
 
 # Debug symbols inside prebuilt xcframeworks (e.g. whisper.xcframework ships
 # ~66 MB of dSYMs) — only used for crash symbolication, not for building or
-# linking. The framework binaries themselves remain tracked.
+# linking. The framework binaries themselves remain tracked. 
+# NOTE: 
+# whisper's xcframework Info.plist had its `DebugSymbolsPath` keys removed 
+# So the build doesn't require these ignored dSYMs (matches VOICEVOX). 
+# If you re-vendor whisper.xcframework, strip DebugSymbolsPath again or commit its dSYMs.
 *.dSYM/
 
 # AI Agent files

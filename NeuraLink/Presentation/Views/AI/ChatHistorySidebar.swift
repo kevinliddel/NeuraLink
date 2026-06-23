@@ -2,10 +2,12 @@
 //  ChatHistorySidebar.swift
 //  NeuraLink
 //
-//  ChatGPT-style right slide-in panel: the user's profile on top, the chat
-//  history list below. Read-only browse view — tapping a conversation opens
-//  its transcript; "New Chat" returns to the live 3D avatar with a fresh
-//  session. Mirrors the overlay/animation idiom used by ModelSelectionOverlay.
+//  ChatGPT-style left slide-in sidebar: a full-height drawer (flush to the
+//  left edge, top-right + bottom-right corners rounded) with the user's
+//  profile on top and the chat history below. Each conversation is a distinct
+//  inset rounded card (narrower than the drawer). Read-only browse view —
+//  tapping a conversation opens its transcript; "New Chat" returns to the live
+//  3D avatar. Conversations can be renamed in place.
 //
 
 import SwiftUI
@@ -21,9 +23,10 @@ struct ChatHistorySidebar: View {
 
     @State private var settings = UserSettings.shared
     @State private var conversations: [Conversation] = []
-    @State private var searchText = ""
+    @State private var renaming: Conversation?
+    @State private var renameText: String = ""
 
-    private let panelWidth: CGFloat = 312
+    private let panelWidth: CGFloat = 300
 
     var body: some View {
         ZStack(alignment: .leading) {
@@ -31,13 +34,33 @@ struct ChatHistorySidebar: View {
                 .ignoresSafeArea()
                 .onTapGesture { dismiss() }
 
+            // Full-height drawer flush to the left edge; only the trailing
+            // (right) corners are rounded.
             panel
                 .frame(width: panelWidth)
                 .frame(maxHeight: .infinity)
-                .background(Rectangle().fill(.ultraThinMaterial).ignoresSafeArea())
+                .background(
+                    UnevenRoundedRectangle(
+                        topLeadingRadius: 0,
+                        bottomLeadingRadius: 0,
+                        bottomTrailingRadius: 22,
+                        topTrailingRadius: 22,
+                        style: .continuous
+                    )
+                    .fill(.ultraThinMaterial)
+                    .ignoresSafeArea()
+                )
                 .transition(.move(edge: .leading))
         }
         .onAppear(perform: reload)
+        .alert("Rename Chat", isPresented: Binding(
+            get: { renaming != nil },
+            set: { if !$0 { renaming = nil } }
+        )) {
+            TextField("Title", text: $renameText)
+            Button("Save") { commitRename() }
+            Button("Cancel", role: .cancel) { renaming = nil }
+        }
     }
 
     // MARK: - Panel
@@ -47,7 +70,6 @@ struct ChatHistorySidebar: View {
             profileHeader
             Divider()
             newChatButton
-            searchField
             Divider()
             listContent
         }
@@ -104,27 +126,13 @@ struct ChatHistorySidebar: View {
         .buttonStyle(.plain)
     }
 
-    private var searchField: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-            TextField("Search chats", text: $searchText)
-                .textFieldStyle(.plain)
-                .autocorrectionDisabled()
-                .onChange(of: searchText) { _, _ in reload() }
-        }
-        .padding(8)
-        .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-        .padding(.horizontal)
-        .padding(.bottom, 8)
-    }
-
     @ViewBuilder private var listContent: some View {
         if conversations.isEmpty {
             VStack(spacing: 8) {
                 Image(systemName: "bubble.left.and.bubble.right")
                     .font(.largeTitle)
                     .foregroundStyle(.secondary)
-                Text(searchText.isEmpty ? "No chats yet" : "No matches")
+                Text("No chats yet")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -135,8 +143,22 @@ struct ChatHistorySidebar: View {
                     Section(section.title) {
                         ForEach(section.items) { convo in
                             row(convo)
-                                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                                .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
                                 .swipeActions(edge: .trailing) {
+                                    Button(role: .destructive) { delete(convo) } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
+                                    Button { startRename(convo) } label: {
+                                        Label("Rename", systemImage: "pencil")
+                                    }
+                                    .tint(.blue)
+                                }
+                                .contextMenu {
+                                    Button { startRename(convo) } label: {
+                                        Label("Rename", systemImage: "pencil")
+                                    }
                                     Button(role: .destructive) { delete(convo) } label: {
                                         Label("Delete", systemImage: "trash")
                                     }
@@ -154,16 +176,22 @@ struct ChatHistorySidebar: View {
         Button { onSelect(convo) } label: {
             VStack(alignment: .leading, spacing: 3) {
                 Text(convo.title)
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.primary)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
                     .lineLimit(1)
                 Text(preview(convo))
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.white.opacity(0.65))
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(
+                Color.black.opacity(0.3),
+                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .buttonStyle(.plain)
     }
@@ -171,12 +199,27 @@ struct ChatHistorySidebar: View {
     // MARK: - Data
 
     private func reload() {
-        conversations = ConversationStore.shared.conversations(matching: searchText)
+        conversations = ConversationStore.shared.conversations()
     }
 
     private func delete(_ convo: Conversation) {
         ConversationStore.shared.deleteConversation(id: convo.id)
         reload()
+    }
+
+    private func startRename(_ convo: Conversation) {
+        renameText = convo.title
+        renaming = convo
+    }
+
+    private func commitRename() {
+        guard let convo = renaming else { return }
+        let trimmed = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            ConversationStore.shared.renameConversation(id: convo.id, title: trimmed)
+            reload()
+        }
+        renaming = nil
     }
 
     private func preview(_ convo: Conversation) -> String {

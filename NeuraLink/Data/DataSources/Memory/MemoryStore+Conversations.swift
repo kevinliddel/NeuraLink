@@ -113,6 +113,57 @@ extension MemoryStore {
         return items
     }
 
+    /// Number of messages in a conversation. Used by auto-titling.
+    func messageCount(conversationID: Int64) -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        var statement: OpaquePointer?
+        var count = 0
+        if sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM messages WHERE conversation_id = ?;", -1, &statement, nil) == SQLITE_OK {
+            sqlite3_bind_int64(statement, 1, conversationID)
+            if sqlite3_step(statement) == SQLITE_ROW {
+                count = Int(sqlite3_column_int(statement, 0))
+            }
+        }
+        sqlite3_finalize(statement)
+        return count
+    }
+
+    /// Whether the conversation's title was already AI-generated.
+    func conversationAutoTitled(id: Int64) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        var statement: OpaquePointer?
+        var titled = false
+        if sqlite3_prepare_v2(db, "SELECT auto_titled FROM conversations WHERE id = ?;", -1, &statement, nil) == SQLITE_OK {
+            sqlite3_bind_int64(statement, 1, id)
+            if sqlite3_step(statement) == SQLITE_ROW {
+                titled = sqlite3_column_int(statement, 0) != 0
+            }
+        }
+        sqlite3_finalize(statement)
+        return titled
+    }
+
+    /// Deletes conversations (and their messages) touched at/after `since`.
+    /// Used by the "Forget last N minutes" / "Clear all" memory controls.
+    func deleteConversations(since: Date) {
+        lock.lock()
+        defer { lock.unlock() }
+        let ts = Self.sqliteFormatter.string(from: since)
+        for sql in [
+            "DELETE FROM messages WHERE conversation_id IN (SELECT id FROM conversations WHERE updated_at >= ?);",
+            "DELETE FROM conversations WHERE updated_at >= ?;"
+        ] {
+            var statement: OpaquePointer?
+            if sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK {
+                sqlite3_bind_text(statement, 1, (ts as NSString).utf8String, -1, nil)
+                _ = sqlite3_step(statement)
+            }
+            sqlite3_finalize(statement)
+        }
+    }
+
     /// Drops conversations (and their messages) untouched since `cutoff`.
     func pruneConversations(olderThan cutoff: Date) {
         lock.lock()

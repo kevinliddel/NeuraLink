@@ -27,6 +27,10 @@ enum ChatTimelineStore {
     static func logAIMessage(_ text: String) {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         ConversationStore.shared.appendMessage(role: "assistant", kind: "message", content: text)
+        // After a completed turn, let the active AI name the chat (≥5 messages).
+        if let id = ConversationStore.shared.activeConversationID {
+            ConversationTitler.shared.maybeAutoTitle(conversationID: id)
+        }
         pruneIfNeeded()
         CompanionStateStore.shared.refresh()
     }
