@@ -22,7 +22,6 @@ final class RAGManager {
     /// Records a new interaction in the long-term memory.
     func store(text: String, source: String) {
         guard settings.isEnabled else { return }
-        if source == "ai", settings.storeAIResponses == false { return }
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         
         // We run this in a background task to avoid blocking the main/audio threads
@@ -41,7 +40,7 @@ final class RAGManager {
             if days > 0 {
                 let cutoff = Date().addingTimeInterval(-Double(days) * 86_400.0)
                 self.store.pruneMemories(olderThan: cutoff)
-                self.store.pruneChatEvents(olderThan: cutoff)
+                self.store.pruneConversations(olderThan: cutoff)
             }
         }
     }
@@ -86,10 +85,14 @@ final class RAGManager {
     // MARK: - Shared ranking helper
 
     /// Scores every stored memory against `query` by cosine similarity,
-    /// weighted by a 14-day recency half-life and a 1.15× boost for pinned
+    /// weighted by an exponential recency boost and a 1.15× boost for pinned
     /// entries. Filters out vectors with the wrong dimensionality and
-    /// similarity scores below 0.5 (irrelevant garbage). Optionally
-    /// restricts the candidate pool to a single `source` tag.
+    /// similarity scores at or below the floor (irrelevant garbage).
+    /// Optionally restricts the candidate pool to a single `source` tag.
+    ///
+    /// The floor, half-life, and recency weight are user-tunable via
+    /// `MemorySettings` (defaults reproduce the previously hard-coded
+    /// 0.5 / 14 days / 0.25).
     private func rankedMemories(
         for query: String,
         limit: Int,
@@ -102,13 +105,16 @@ final class RAGManager {
             return true
         }
         let now = Date()
+        let floor = settings.similarityFloor
+        let halfLife = max(0.1, settings.recencyHalfLifeDays)
+        let recencyWeight = min(max(settings.recencyWeight, 0.0), 1.0)
         let scored: [(MemoryItem, Double)] = candidates.compactMap { memory in
             let sim = EmbeddingService.cosineSimilarity(queryVector, memory.vector)
-            guard sim > 0.5 else { return nil }
+            guard sim > floor else { return nil }
             let ageDays = max(0, now.timeIntervalSince(memory.timestamp) / 86_400.0)
-            let recency = exp(-ageDays / 14.0)
+            let recency = exp(-ageDays / halfLife)
             let pinBoost = memory.pinned ? 1.15 : 1.0
-            return (memory, sim * (0.75 + 0.25 * recency) * pinBoost)
+            return (memory, sim * ((1.0 - recencyWeight) + recencyWeight * recency) * pinBoost)
         }
         return scored
             .sorted { $0.1 > $1.1 }

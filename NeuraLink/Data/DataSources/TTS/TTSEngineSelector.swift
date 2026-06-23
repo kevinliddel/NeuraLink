@@ -66,37 +66,44 @@ final class TTSEngineSelector {
         // `queue.sync`. The cached entry being removed is the actual contract
         // of "invalidate"; the engine's lifecycle is independent.
         engine.stop()
+
+        // Pre-warm the replacement engine in the background so the first
+        // `speakChunk` after a persona switch doesn't pay ONNX/CoreML init
+        // latency (~500 ms–1 s on iPhone 11). Goes through `engine(for:)`
+        // (not bare `resolveEngine`) so the warmed instance lands in
+        // `cachedEngines` — otherwise non-singleton engines (F5/System TTS)
+        // would be warmed and discarded, and the next `speakChunk` would
+        // build a cold instance anyway. `initialize()` is async + idempotent.
+        Task { [weak self] in
+            guard let self else { return }
+            guard let newEngine = self.engine(for: persona) else { return }
+            do {
+                try await newEngine.initialize()
+                nlLog("[TTSEngineSelector] Pre-warmed engine for '\(persona)' after invalidation", level: .info)
+            } catch {
+                nlLog("[TTSEngineSelector] Pre-warm failed for '\(persona)': \(error)", level: .warning)
+            }
+        }
     }
 
     private func resolveEngine(for persona: PersonaIdentifier) -> (any TTSEngineProtocol)? {
         let config = LocalModelDownloadManager.shared.selectedConfig
 
-        if hasTrainedClone(for: persona), config == .qwen7b {
-            return makeF5TTSEngine(for: persona)
-        }
-
+        // Japanese model → VoiceVox (JP-specific speakers). Everything else →
+        // OpenVoice (MeloTTS + tone-color converter). OpenVoiceEngine.initialize()
+        // downloads its ONNX models on first use, so route to it unconditionally
+        // — gating on a cached check would never trigger the first download.
+        // System TTS is the last-resort fallback. (Kokoro routing removed; its
+        // files come out once OpenVoice is verified on device.)
         if config == .japaneseGemma2b {
             return makeVoiceVoxEngine(for: persona)
         }
 
-        if hasKokoroVoicesDownloaded() {
-            return makeKokoroEngine(for: persona)
-        }
-
-        return makeSystemTTSEngine(for: persona)
-    }
-
-    private func hasTrainedClone(for persona: PersonaIdentifier) -> Bool {
-        CloneSampleStore.shared.url(for: persona) != nil
+        return makeOpenVoiceEngine(for: persona) ?? makeSystemTTSEngine(for: persona)
     }
 
     private func hasKokoroVoicesDownloaded() -> Bool {
         KokoroModelAccess.isAvailable
-    }
-
-    private func makeF5TTSEngine(for persona: PersonaIdentifier) -> (any TTSEngineProtocol)? {
-        _ = persona
-        return F5TTSEngine()
     }
 
     private func makeVoiceVoxEngine(for persona: PersonaIdentifier) -> (any TTSEngineProtocol)? {
@@ -107,6 +114,14 @@ final class TTSEngineSelector {
         // AVSpeechSynthesizer to the selector).
         _ = persona
         return VoiceVoxEngine.shared
+    }
+
+    private func makeOpenVoiceEngine(for persona: PersonaIdentifier) -> (any TTSEngineProtocol)? {
+        // MeloTTS + tone-color converter. initialize() downloads the ONNX models
+        // from the shared dataset on first use; per-persona voices are a later
+        // refinement (voiceName(for:) currently defaults to one voice).
+        _ = persona
+        return OpenVoiceEngine.shared
     }
 
     private func makeKokoroEngine(for persona: PersonaIdentifier) -> (any TTSEngineProtocol)? {

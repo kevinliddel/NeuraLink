@@ -27,6 +27,7 @@ extension LocalLLMManager {
         }
 
         audioEngine.attach(playerNode)
+        audioEngine.attach(ttsMixerNode)
         playerNode.volume = 2.5
 
         // Hardware acoustic echo cancellation + noise suppression + AGC,
@@ -44,8 +45,14 @@ extension LocalLLMManager {
             nlLog("[LocalAI]: setVoiceProcessingEnabled failed (\(error)) — falling back to mic-gate cool-down only.", level: .error)
         }
 
+        // player → ttsMixer carries whatever the active TTS engine emits
+        // (re-wired by `scheduleBuffer` when the engine/sample-rate changes);
+        // ttsMixer → mainMixer is pinned at 48 kHz so those changes never
+        // propagate into the downstream graph (M5 — the mixer does the SRC).
         let format = AVAudioFormat(standardFormatWithSampleRate: 24000, channels: 1)!
-        audioEngine.connect(playerNode, to: audioEngine.mainMixerNode, format: format)
+        audioEngine.connect(playerNode, to: ttsMixerNode, format: format)
+        let ttsMixerFormat = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2)!
+        audioEngine.connect(ttsMixerNode, to: audioEngine.mainMixerNode, format: ttsMixerFormat)
 
         let mixFmt = audioEngine.mainMixerNode.outputFormat(forBus: 0)
         audioEngine.mainMixerNode.installTap(onBus: 0, bufferSize: 1024, format: mixFmt) {

@@ -27,17 +27,12 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
                 level: .info)
         }
 
-        Task { @MainActor in
-            if state.status == .thinking { state.status = .speaking }
-            // Emotion tags are intercepted before reaching the transcript — trigger directly
-            // so they never appear in the UI or reach TTS, matching the OpenAI set_emotion() path.
-            for (emotion, duration) in emotions {
-                state.triggerEmotion(emotion, duration: duration)
-            }
-            if !cleanText.isEmpty {
-                state.aiTranscript += cleanText
-            }
-        }
+        // Coalesce into the typewriter rather than a per-token Task{@MainActor}:
+        // the status flip, emotion triggers, and the smooth transcript reveal
+        // all happen on its single ~33 fps tick (Fix 2 typewriter + Fix 3
+        // coalesce). Emotion tags are intercepted here so they never appear in
+        // the UI or reach TTS, matching the OpenAI set_emotion() path.
+        transcriptTypewriter.enqueue(text: cleanText, emotions: emotions)
 
         guard !cleanText.isEmpty else { return }
 
@@ -190,7 +185,7 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
                 let result = await AppFunctionExecutor.shared.execute(
                     name: tool.name, arguments: tool.arguments)
                 ChatTimelineStore.logToolCall(name: tool.name, result: result)
-                self.state.aiTranscript = result
+                self.transcriptTypewriter.setImmediate(result)
                 self.speakChunk(result)
                 if AppFunctionExecutor.shared.pendingUIAction != nil {
                     self.schedulePendingUIActionAfterSpeech()
@@ -221,16 +216,13 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
             tagBuffer = ""
             if !remaining.isEmpty {
                 ttsBuffer += remaining
-                Task { @MainActor in
-                    state.aiTranscript += remaining
-                }
             }
-            Task { @MainActor in
-                for (emotion, duration) in emotions {
-                    state.triggerEmotion(emotion, duration: duration)
-                }
-            }
+            transcriptTypewriter.enqueue(text: remaining, emotions: emotions)
         }
+
+        // No more tokens — let the typewriter reveal the remaining backlog and
+        // then stop its tick.
+        transcriptTypewriter.endGeneration()
 
         if !ttsBuffer.trimmingCharacters(in: .whitespaces).isEmpty {
             speakChunk(ttsBuffer)

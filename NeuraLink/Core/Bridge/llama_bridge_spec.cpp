@@ -50,6 +50,14 @@ struct LlamaBridgeSpecHandle {
     int32_t                  n_draft         = 4;
     std::atomic<bool>        cancel_flag     { false };
 
+    /// Per-call speculative telemetry (same pattern as the standard bridge's
+    /// `last_pld_*` fields). `last_drafted` counts every token the draft
+    /// model proposed in the most recent generate call; `last_accepted`
+    /// counts how many of those the target verified. Their ratio is the
+    /// acceptance rate that drives `llama_bridge_spec_set_n_draft` tuning.
+    int32_t                  last_drafted    = 0;
+    int32_t                  last_accepted   = 0;
+
     /// Tokens currently materialised in both models' KV caches for seq 0.
     /// Both models advance in lockstep so they share this view.
     std::vector<llama_token> kv_tokens;
@@ -226,6 +234,8 @@ void llama_bridge_spec_generate(
         return;
     }
     h->cancel_flag.store(false);
+    h->last_drafted  = 0;
+    h->last_accepted = 0;
 
     const auto* tvocab = llama_model_get_vocab(h->target_model);
     const int   n_vocab = static_cast<int>(llama_vocab_n_tokens(tvocab));
@@ -342,6 +352,8 @@ void llama_bridge_spec_generate(
         if (target_d0 != drafts[0]) {
             // Mismatch on draft[0]. Decode target's choice into both
             // models so they stay in lockstep, emit, restart round.
+            // Every proposed draft was wasted: drafted += n, accepted += 0.
+            h->last_drafted += static_cast<int32_t>(drafts.size());
             llama_sampler_accept(h->target_sampler, target_d0);
             llama_batch tb0 = llama_batch_get_one(&target_d0, 1);
             if (llama_decode(h->target_ctx, tb0) != 0) { goto end_generate; }
@@ -434,6 +446,9 @@ void llama_bridge_spec_generate(
             }
         }
 
+        h->last_drafted  += static_cast<int32_t>(drafts.size());
+        h->last_accepted += accepted;
+
         llama_batch_free(tbatch);
         if (stop_round) { break; }
         if (draft_hit_eog) { break; }
@@ -442,4 +457,21 @@ void llama_bridge_spec_generate(
 end_generate:
     flush_remaining();
     if (on_finish) { on_finish(user_ctx); }
+}
+
+// MARK: - Draft window tuning
+
+void llama_bridge_spec_set_n_draft(LlamaBridgeSpecHandle* h, int32_t n_draft) {
+    if (!h) { return; }
+    // The generate loop reads `n_draft` once at entry, so callers adjust it
+    // between turns (the engine serialises generate calls already).
+    h->n_draft = std::min(16, std::max(1, n_draft));
+}
+
+void llama_bridge_spec_get_stats(LlamaBridgeSpecHandle* h,
+                                 int32_t* out_drafted,
+                                 int32_t* out_accepted) {
+    if (!h) { return; }
+    if (out_drafted)  { *out_drafted  = h->last_drafted; }
+    if (out_accepted) { *out_accepted = h->last_accepted; }
 }

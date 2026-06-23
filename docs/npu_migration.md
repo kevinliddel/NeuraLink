@@ -525,7 +525,7 @@ The original migration shipped two tiers (`.llama1b`, `.qwen2b`). Two new tiers 
 | Tier | Model | File (Q4_K_M) | Default device class |
 |---|---|---|---|
 | `.llama1b` | `bartowski/Llama-3.2-1B-Instruct-GGUF` | ~0.8 GB | < 5 GB (iPhone 11 / 12 / 13) |
-| `.japaneseLlama1b` | `grapevine-AI/Llama-3.2-1B-Instruct-GGUF` | ~0.8 GB | User-selectable JP override |
+| `.japaneseGemma2b` | `grapevine-AI/gemma-2-2b-jpn-it-gguf` | ~1.71 GB | User-selectable JP override |
 | `.qwen2b` | `Qwen/Qwen2.5-1.5B-Instruct-GGUF` | ~1.1 GB | Legacy; also acts as draft model for `.qwen7b` |
 | `.qwen3b` *(new)* | `bartowski/Qwen2.5-3B-Instruct-GGUF` | ~1.9 GB | 5–7 GB (iPhone 14 / 15 base / Plus) |
 | `.qwen7b` *(new)* | `bartowski/Qwen2.5-7B-Instruct-GGUF` | ~4.7 GB | ≥ 7 GB (iPhone 15 Pro+ / 16 family) |
@@ -570,4 +570,4 @@ Expected: 2–3× decode throughput on iPhone 15 Pro+ / 16 family. Output qualit
 | iPhone 14 / 15-base / Plus (6 GB) | `.qwen3b` | `GGUFQwen3BEngine` |
 | iPhone 15 Pro+ / 16 / 17 (8 GB), 7B downloaded only | `.qwen7b` | `GGUFQwen7BEngine` |
 | iPhone 15 Pro+ / 16 / 17 (8 GB), 7B **+** 1.5B downloaded | `.qwen7b` | **`GGUFSpeculativeEngine`** (2–3× decode tok/s) |
-| Any tier, user-selected JP override | `.japaneseLlama1b` | `GGUFJapaneseLlamaEngine` |
+| Any tier, user-selected JP override | `.japaneseGemma2b` | `GGUFGemma2BJPEngine` |

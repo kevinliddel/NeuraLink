@@ -72,11 +72,13 @@
 			attributesByRelativePath = {
 				Dependencies/VOICEVOX/voicevox_core.xcframework = (CodeSignOnCopy, RemoveHeadersOnCopy, );
 				Dependencies/VOICEVOX/voicevox_onnxruntime.xcframework = (CodeSignOnCopy, RemoveHeadersOnCopy, );
+				Dependencies/Whisper/whisper.xcframework = (CodeSignOnCopy, RemoveHeadersOnCopy, );
 			};
 			buildPhase = 315A748A75D9DD5A81ED86AE /* Embed Frameworks */;
 			membershipExceptions = (
 				Dependencies/VOICEVOX/voicevox_core.xcframework,
 				Dependencies/VOICEVOX/voicevox_onnxruntime.xcframework,
+				Dependencies/Whisper/whisper.xcframework,
 			);
 		};
 /* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */

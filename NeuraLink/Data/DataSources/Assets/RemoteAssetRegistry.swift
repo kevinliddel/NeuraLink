@@ -35,6 +35,18 @@ enum RemoteAssetRegistry: Hashable, Sendable {
     case voicevoxSpeaker(Int)
     case jtalkDictFile(String)
 
+    // OpenVoice TTS data — MeloTTS + tone-color converter (+ optional prosody
+    // BERT). The local TTS for every non-Japanese voice. Hosted under
+    // `tts/open_voice/` in the shared dataset.
+    case openVoiceMelo
+    case openVoiceConverter
+    case openVoiceBert
+
+    // Whisper STT data — multilingual ggml-base model (~141 MB). On-demand
+    // because it exceeds GitHub's 100 MB file limit, so it can't be committed;
+    // hosted under `stt/whisper/` in the shared dataset.
+    case whisperModel
+
     /// On-disk filename — the basename only. Used for `Bundle.main`
     /// lookup and as the local cache filename. Folder prefix comes
     /// from `pathInRepo`.
@@ -47,6 +59,10 @@ enum RemoteAssetRegistry: Hashable, Sendable {
         case .kokoroCMU:               return "cmu.txt"
         case .voicevoxSpeaker(let id): return "\(id).vvm"
         case .jtalkDictFile(let name): return name
+        case .openVoiceMelo:           return "melo_en.onnx"
+        case .openVoiceConverter:      return "voice_conversion.onnx"
+        case .openVoiceBert:           return "bert_en.onnx"
+        case .whisperModel:            return "ggml-base.bin"
         }
     }
 
@@ -64,6 +80,10 @@ enum RemoteAssetRegistry: Hashable, Sendable {
             return "tts/voicevox/\(filename)"
         case .jtalkDictFile:
             return "tts/voicevox/open_jtalk_dic/\(filename)"
+        case .openVoiceMelo, .openVoiceConverter, .openVoiceBert:
+            return "tts/open_voice/\(filename)"
+        case .whisperModel:
+            return "stt/whisper/\(filename)"
         }
     }
 
@@ -77,7 +97,9 @@ enum RemoteAssetRegistry: Hashable, Sendable {
             return "Models/Environments"
         case .jtalkDictFile:
             return "open_jtalk_dic_utf_8-1.11"
-        case .kokoroModel, .kokoroVoices, .kokoroCMU, .voicevoxSpeaker:
+        case .kokoroModel, .kokoroVoices, .kokoroCMU, .voicevoxSpeaker,
+             .openVoiceMelo, .openVoiceConverter, .openVoiceBert,
+             .whisperModel:
             return nil
         }
     }

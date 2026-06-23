@@ -13,8 +13,14 @@ import NaturalLanguage
 
 final class EmbeddingService {
     static let shared = EmbeddingService()
-    
-    private let lock = NSLock()
+
+    /// Concurrent queue guarding `embeddingCache`: reads run concurrently
+    /// (multiple locales can embed in parallel), writes go through `.barrier`.
+    /// Replaces the NSLock that also wrapped the slow
+    /// `NLEmbedding.sentenceEmbedding(for:)` model load — a JP model load
+    /// used to block every concurrent EN cache hit behind it.
+    private let cacheQueue = DispatchQueue(
+        label: "com.neuralink.embedding.cache", attributes: .concurrent)
     private var embeddingCache: [NLLanguage: NLEmbedding] = [:]
     private let fallbackLanguage: NLLanguage = .english
     
@@ -48,11 +54,15 @@ final class EmbeddingService {
     }
 
     private func embeddingForLanguage(_ language: NLLanguage) -> NLEmbedding? {
-        lock.lock()
-        defer { lock.unlock() }
-        if let cached = embeddingCache[language] { return cached }
+        if let cached = cacheQueue.sync(execute: { embeddingCache[language] }) {
+            return cached
+        }
+        // The model load happens OUTSIDE the queue so it never blocks other
+        // readers. Two threads racing the same language both load; the
+        // barrier write means last-one-wins — benign, both instances are
+        // valid and the loser is simply released.
         guard let embedding = NLEmbedding.sentenceEmbedding(for: language) else { return nil }
-        embeddingCache[language] = embedding
+        cacheQueue.async(flags: .barrier) { self.embeddingCache[language] = embedding }
         return embedding
     }
     

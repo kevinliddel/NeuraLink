@@ -107,6 +107,25 @@ final class LlamaSpeculativeBridge {
         llama_bridge_spec_cancel(handle)
     }
 
+    // MARK: - Draft window tuning
+
+    /// Adjusts the number of draft tokens per speculative round (clamped to
+    /// [1, 16] by the bridge). Takes effect on the next `generate` call —
+    /// call between generations only.
+    func setNDraft(_ n: Int32) {
+        llama_bridge_spec_set_n_draft(handle, n)
+    }
+
+    /// Telemetry from the most recent `generate` call: how many tokens the
+    /// draft model proposed and how many the target verified. The ratio is
+    /// the acceptance rate that drives `GGUFSpeculativeEngine`'s N tuning.
+    var draftStats: (drafted: Int32, accepted: Int32) {
+        var drafted: Int32 = 0
+        var accepted: Int32 = 0
+        llama_bridge_spec_get_stats(handle, &drafted, &accepted)
+        return (drafted, accepted)
+    }
+
     // MARK: - Chat template
 
     /// Formats `messages` into a single prompt string using the target

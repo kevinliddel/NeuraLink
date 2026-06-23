@@ -15,16 +15,15 @@ enum GGUFModelAccess {
     // MARK: - Constants
 
     static let repoID   = "bartowski/Llama-3.2-1B-Instruct-GGUF"
-    // Switched from IQ4_XS to Q8_0 in 2026-06: max-available quant at
-    // ~1.32 GB, "extremely high quality" per the repo card — trades a
-    // larger footprint for near-lossless output vs the F16 weights
-    // (2.48 GB), which the repo notes are generally unneeded. The
-    // previous IQ4_XS filename was
-    //   "Llama-3.2-1B-Instruct-IQ4_XS.gguf"
-    // — kept here as a comment because `modelURL()` validates the
-    // persisted UserDefaults path against `filename` and will trigger a
-    // re-download if a user still has the old file cached.
-    static let filename = "Llama-3.2-1B-Instruct-Q8_0.gguf"
+    // PERF (2026-06-19): Q8_0 (~1.32 GB) was TOO BIG for the 4 GB iPhone 11 —
+    // device log showed peak memory 2.02 GB → jetsam kill, and the weights
+    // still streamed from flash (Disk ~387 MB/s). The LLM runs CPU-only on
+    // <5 GB devices (LLMRuntimeProfile forces gpuLayers=0), so a smaller model
+    // both fits resident (no streaming) AND does less CPU compute. Dropped to
+    // Q4_K_M (~0.81 GB). `modelURL()` validates the persisted path against
+    // `filename`, so this triggers a re-download. (Q8_0 file name was
+    // "Llama-3.2-1B-Instruct-Q8_0.gguf" if reverting.)
+    static let filename = "Llama-3.2-1B-Instruct-Q4_K_M.gguf"
 
     private static let pathKey  = "LocalModel_GGUFPath"
     private static let hubSlug  = "models--bartowski--Llama-3.2-1B-Instruct-GGUF"

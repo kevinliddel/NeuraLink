@@ -8,16 +8,12 @@
 import Foundation
 import Observation
 
-/// Manages persistent storage of character personas.
+/// Manages persistent storage of OpenAI character personas.
 ///
-/// **Persistence layers (belt-and-suspenders):**
-/// 1. **In-memory cache** — authoritative source of truth for reads. Updated
-///    synchronously on every save so a fresh `PersonaSettingsView` instance
-///    immediately sees the user's edits.
-/// 2. **JSON file** in `Application Support/private/` — durable backup with
-///    Data Protection applied. Survives app restarts.
-/// 3. **UserDefaults JSON blob** — secondary durable backup. Restored from
-///    only if the file is missing/unreadable on a fresh process.
+/// Backed by the `character_ai` SQL table (MemoryStore+Personas.swift), engine
+/// "openai" — the row's `name`/`prompt`/`voice` columns hold the persona's
+/// display name, instructions, and OpenAI TTS voice. `lastUpdated` is bumped on
+/// every save/reset so observing views (AISettings) re-render.
 @Observable
 @MainActor
 final class PersonaStore {
@@ -26,46 +22,34 @@ final class PersonaStore {
     /// Bumped on every save/reset. Views observing this property re-render.
     var lastUpdated = Date()
 
-    @ObservationIgnored private var cachedPersonas: [String: CharacterPersona] = [:]
-    @ObservationIgnored private let userDefaults = UserDefaults.standard
-    @ObservationIgnored private let legacyCacheKey = "com.neuralink.personas.v1"
-    @ObservationIgnored private let backupCacheKey = "com.neuralink.personas.v2.backup"
+    private static let engine = MemoryStore.PersonaEngine.openai
 
-    private var fileURL: URL? {
-        do {
-            let dir = try ProtectedStorage.privateApplicationSupportURL()
-            return dir.appendingPathComponent("personas.json")
-        } catch {
-            nlLog("[PersonaStore] Failed to resolve secure private storage directory: \(error)", level: .error)
-            return nil
-        }
-    }
-
-    private init() {
-        cachedPersonas = loadInitialPersonas()
-        nlLog("[PersonaStore] Initialized with \(cachedPersonas.count) saved persona(s).", level: .info)
-    }
+    private init() {}
 
     // MARK: - Public API
 
     /// Saves a persona for a given model ID (usually the filename).
     func savePersona(_ persona: CharacterPersona, for modelID: String) {
         let key = modelID.lowercased()
-        cachedPersonas[key] = persona
+        MemoryStore.shared.setPersonaName(character: key, engine: Self.engine, name: persona.name)
+        MemoryStore.shared.setPersonaPrompt(character: key, engine: Self.engine, prompt: persona.instructions)
+        MemoryStore.shared.setPersonaVoice(character: key, engine: Self.engine, voice: persona.voice)
         nlLog("[PersonaStore] Saving persona for '\(key)' (voice=\(persona.voice), instructions length=\(persona.instructions.count))", level: .info)
-        flushToBothLayers()
         lastUpdated = Date()
     }
 
-    /// Retrieves a cached persona for a given model ID.
-    /// Always injects the latest emotion instructions to override any stale cached data.
+    /// Retrieves the stored persona for a model ID, or nil when none is saved
+    /// (so `CharacterPersona.forCharacter` falls back to the built-in default).
+    /// Always injects the latest emotion instructions to override any stale data.
     func getPersona(for modelID: String) -> CharacterPersona? {
         let key = modelID.lowercased()
-        guard var persona = cachedPersonas[key] else {
-            nlLog("[PersonaStore] getPersona('\(key)') → NIL (cache keys: \(Array(cachedPersonas.keys).sorted()))", level: .info)
+        guard let prompt = MemoryStore.shared.personaPrompt(character: key, engine: Self.engine) else {
             return nil
         }
-        nlLog("[PersonaStore] getPersona('\(key)') → SAVED (voice=\(persona.voice))", level: .info)
+        let name = MemoryStore.shared.personaName(character: key, engine: Self.engine) ?? modelID.capitalized
+        let voice = MemoryStore.shared.personaVoice(character: key, engine: Self.engine) ?? "alloy"
+        var persona = CharacterPersona(name: name, instructions: prompt, voice: voice)
+
         let marker = "\n\n    IMPORTANT: You MUST express"
         if let range = persona.instructions.range(of: marker) {
             persona.instructions = String(persona.instructions[..<range.lowerBound])
@@ -77,61 +61,10 @@ final class PersonaStore {
     /// Removes any custom persona for a given model ID, reverting to defaults.
     func resetPersona(for modelID: String) {
         let key = modelID.lowercased()
-        cachedPersonas.removeValue(forKey: key)
+        MemoryStore.shared.setPersonaName(character: key, engine: Self.engine, name: nil)
+        MemoryStore.shared.setPersonaPrompt(character: key, engine: Self.engine, prompt: nil)
+        MemoryStore.shared.setPersonaVoice(character: key, engine: Self.engine, voice: nil)
         nlLog("[PersonaStore] Reset persona for '\(key)'", level: .info)
-        flushToBothLayers()
         lastUpdated = Date()
-    }
-
-    // MARK: - Disk I/O
-
-    private func loadInitialPersonas() -> [String: CharacterPersona] {
-        if let url = fileURL,
-           FileManager.default.fileExists(atPath: url.path),
-           let data = try? Data(contentsOf: url),
-           let decoded = try? JSONDecoder().decode([String: CharacterPersona].self, from: data) {
-            nlLog("[PersonaStore] Loaded \(decoded.count) persona(s) from \(url.path)", level: .info)
-            return decoded
-        }
-
-        if let backupData = userDefaults.data(forKey: backupCacheKey),
-           let decoded = try? JSONDecoder().decode([String: CharacterPersona].self, from: backupData) {
-            nlLog("[PersonaStore] Loaded \(decoded.count) persona(s) from UserDefaults backup.", level: .info)
-            return decoded
-        }
-
-        if let legacyData = userDefaults.data(forKey: legacyCacheKey),
-           let decoded = try? JSONDecoder().decode([String: CharacterPersona].self, from: legacyData) {
-            nlLog("[PersonaStore] Loaded \(decoded.count) persona(s) from legacy UserDefaults key.", level: .info)
-            userDefaults.set(legacyData, forKey: backupCacheKey)
-            if let url = fileURL {
-                _ = try? legacyData.write(to: url, options: .atomic)
-                try? ProtectedStorage.protect(url)
-            }
-            userDefaults.removeObject(forKey: legacyCacheKey)
-            return decoded
-        }
-
-        nlLog("[PersonaStore] No saved personas found — starting fresh.", level: .info)
-        return [:]
-    }
-
-    private func flushToBothLayers() {
-        guard let encoded = try? JSONEncoder().encode(cachedPersonas) else {
-            nlLog("[PersonaStore] flushToBothLayers: failed to encode \(cachedPersonas.count) persona(s).", level: .error)
-            return
-        }
-        if let url = fileURL {
-            do {
-                try encoded.write(to: url, options: .atomic)
-                try? ProtectedStorage.protect(url)
-                nlLog("[PersonaStore] flushToBothLayers: wrote \(encoded.count) bytes to \(url.lastPathComponent) (cache size: \(cachedPersonas.count))", level: .info)
-            } catch {
-                nlLog("[PersonaStore] flushToBothLayers: file write failed: \(error)", level: .error)
-            }
-        } else {
-            nlLog("[PersonaStore] flushToBothLayers: no fileURL — file layer skipped.", level: .error)
-        }
-        userDefaults.set(encoded, forKey: backupCacheKey)
     }
 }

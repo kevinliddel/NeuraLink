@@ -12,7 +12,6 @@ struct ExpandableFABMenu: View {
     @State private var isSecondaryExpanded = false
 
     let onSettings: () -> Void
-    let onUserSettings: () -> Void
     let onRelationship: () -> Void
     let onModelSelection: () -> Void
     let onCameraToggle: () -> Void
@@ -30,18 +29,11 @@ struct ExpandableFABMenu: View {
                 .transition(childTransition(delay: 0.00))
 
                 FABButton(
-                    icon: Image(systemName: "person.crop.circle"),
-                    label: "User Settings",
-                    showLabel: isSecondaryExpanded
-                ) { collapse(); onUserSettings() }
-                .transition(childTransition(delay: 0.04))
-
-                FABButton(
                     icon: Image(systemName: "suit.heart.fill"),
                     label: "Acquaintances",
                     showLabel: isSecondaryExpanded
                 ) { collapse(); onRelationship() }
-                .transition(childTransition(delay: 0.08))
+                .transition(childTransition(delay: 0.04))
 
                 // Secondary 3 — appear above chevron with same animation; text always visible
                 if isSecondaryExpanded {

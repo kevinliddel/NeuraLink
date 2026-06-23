@@ -21,7 +21,7 @@ struct PersonaSettingsView: View {
     // Default-internal so PersonaSettingsView+VoiceVoxDownload can read
     // the currently-selected speaker when scheduling the .vvm download.
     @State var voicevoxSpeakerID: Int
-    @State private var kokoroVoiceID: String
+    @State private var openVoiceVoiceID: String
     @Environment(\.dismiss) private var dismiss
 
     @State private var previewText: String = ""
@@ -59,8 +59,8 @@ struct PersonaSettingsView: View {
         _localPrompt = State(initialValue: prompt)
         let initialSpeaker = VoiceVoxSpeaker.speakerID(for: modelID)
         _voicevoxSpeakerID = State(initialValue: initialSpeaker)
-        let initialKokoro = KokoroVoicePreset.preset(for: modelID).rawValue
-        _kokoroVoiceID = State(initialValue: initialKokoro)
+        let initialOpenVoice = OpenVoiceVoicePreset.preset(for: modelID).rawValue
+        _openVoiceVoiceID = State(initialValue: initialOpenVoice)
 
         // Diagnostic: this fires on every NavigationLink push of the persona
         // sheet. If the printed values don't match what you just saved, the
@@ -69,7 +69,7 @@ struct PersonaSettingsView: View {
         nlLog(
             "[PersonaSettings.init] modelID='\(modelID)' config=\(config) "
             + "→ persona.voice=\(current.voice), instructions.len=\(current.instructions.count); "
-            + "localPrompt.len=\(prompt.count); voicevoxSpeaker=\(initialSpeaker); kokoro=\(initialKokoro)",
+            + "localPrompt.len=\(prompt.count); voicevoxSpeaker=\(initialSpeaker); openVoice=\(initialOpenVoice)",
             level: .info
         )
     }
@@ -100,7 +100,7 @@ struct PersonaSettingsView: View {
                 if isJapaneseModel {
                     voicevoxVoiceSection
                 } else {
-                    kokoroVoiceSection
+                    openVoiceVoiceSection
                 }
 
                 voicePreviewSection
@@ -162,6 +162,7 @@ struct PersonaSettingsView: View {
                 .listRowInsets(EdgeInsets(top: 10, leading: 0, bottom: 10, trailing: 0))
             }
         }
+        .scrollIndicators(.hidden)
         .navigationTitle(isLocalLLMMode ? "\(persona.name) — \(isJapaneseModel ? "JP Prompt" : "Local Prompt")" : "\(persona.name) Persona")
         .navigationBarTitleDisplayMode(.inline)
         .onDisappear {
@@ -177,14 +178,14 @@ struct PersonaSettingsView: View {
             nlLog(
                 "[PersonaSettings.save] LOCAL mode — modelID='\(modelID)' "
                 + "localPrompt.len=\(localPrompt.count) "
-                + (isJapaneseModel ? "voicevox=\(voicevoxSpeakerID)" : "kokoro=\(kokoroVoiceID)"),
+                + (isJapaneseModel ? "voicevox=\(voicevoxSpeakerID)" : "openVoice=\(openVoiceVoiceID)"),
                 level: .info
             )
             LocalLLMPromptStore.shared.savePrompt(localPrompt, for: modelID, config: selectedConfig)
             if isJapaneseModel {
                 PersonaVoiceStore.shared.setVoicevoxSpeakerID(voicevoxSpeakerID, for: modelID)
             } else {
-                PersonaVoiceStore.shared.setKokoroVoiceID(kokoroVoiceID, for: modelID)
+                PersonaVoiceStore.shared.setOpenVoiceVoiceID(openVoiceVoiceID, for: modelID)
             }
             TTSEngineSelector.shared.invalidateCache(for: modelID)
         } else {
@@ -205,8 +206,8 @@ struct PersonaSettingsView: View {
                 PersonaVoiceStore.shared.clearVoicevoxSpeakerID(for: modelID)
                 voicevoxSpeakerID = VoiceVoxSpeaker.speakerID(for: modelID)
             } else {
-                PersonaVoiceStore.shared.clearKokoroVoiceID(for: modelID)
-                kokoroVoiceID = KokoroVoicePreset.builtInDefault(for: modelID).rawValue
+                PersonaVoiceStore.shared.clearOpenVoiceVoiceID(for: modelID)
+                openVoiceVoiceID = OpenVoiceVoicePreset.builtInDefault(for: modelID).rawValue
             }
             TTSEngineSelector.shared.invalidateCache(for: modelID)
         } else {
@@ -235,21 +236,18 @@ struct PersonaSettingsView: View {
         }
     }
 
-    private var kokoroVoiceSection: some View {
+    private var openVoiceVoiceSection: some View {
         Section {
-            Picker("Voice", selection: $kokoroVoiceID) {
-                ForEach(KokoroVoicePreset.allCases) { preset in
+            Picker("Voice", selection: $openVoiceVoiceID) {
+                ForEach(OpenVoiceVoicePreset.allCases) { preset in
                     Text(preset.displayName).tag(preset.rawValue)
                 }
             }
             .pickerStyle(.menu)
-            if !kokoroAvailable {
-                kokoroDownloadButton
-            }
         } header: {
-            Text("Voice (Kokoro)")
+            Text("Voice (OpenVoice)")
         } footer: {
-            kokoroFooter
+            Text("Cloned voice via OpenVoice. Models (~285 MB) download on first use. The voices listed are placeholders until NeuraLink persona voices are added.")
         }
     }
 
@@ -430,11 +428,11 @@ struct PersonaSettingsView: View {
 
         // Temporarily apply the picker selection so the engine sees it.
         let previousVoicevox = PersonaVoiceStore.shared.voicevoxSpeakerID(for: modelID)
-        let previousKokoro = PersonaVoiceStore.shared.kokoroVoiceID(for: modelID)
+        let previousOpenVoice = PersonaVoiceStore.shared.openVoiceVoiceID(for: modelID)
         if isJapaneseModel {
             PersonaVoiceStore.shared.setVoicevoxSpeakerID(voicevoxSpeakerID, for: modelID)
         } else {
-            PersonaVoiceStore.shared.setKokoroVoiceID(kokoroVoiceID, for: modelID)
+            PersonaVoiceStore.shared.setOpenVoiceVoiceID(openVoiceVoiceID, for: modelID)
         }
         TTSEngineSelector.shared.invalidateCache(for: modelID)
 
@@ -444,7 +442,7 @@ struct PersonaSettingsView: View {
             if isJapaneseModel {
                 PersonaVoiceStore.shared.setVoicevoxSpeakerID(previousVoicevox, for: modelID)
             } else {
-                PersonaVoiceStore.shared.setKokoroVoiceID(previousKokoro, for: modelID)
+                PersonaVoiceStore.shared.setOpenVoiceVoiceID(previousOpenVoice, for: modelID)
             }
             TTSEngineSelector.shared.invalidateCache(for: modelID)
             return
@@ -471,7 +469,7 @@ struct PersonaSettingsView: View {
         if isJapaneseModel {
             PersonaVoiceStore.shared.setVoicevoxSpeakerID(previousVoicevox, for: modelID)
         } else {
-            PersonaVoiceStore.shared.setKokoroVoiceID(previousKokoro, for: modelID)
+            PersonaVoiceStore.shared.setOpenVoiceVoiceID(previousOpenVoice, for: modelID)
         }
         TTSEngineSelector.shared.invalidateCache(for: modelID)
     }

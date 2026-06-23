@@ -38,6 +38,34 @@ final class GGUFSpeculativeEngine: NSObject, @unchecked Sendable, LLMEngineProto
     internal let generationLock = NSLock()
     internal var _isGenerating = false
 
+    // MARK: - Draft-window auto-tuning (M3)
+
+    /// UserDefaults key persisting the tuned speculative draft window so the
+    /// next session starts from the converged value instead of re-learning.
+    static let nDraftDefaultsKey = "nl.spec.nDraft"
+
+    /// Bounds for the tuned window: below 2 speculative decoding stops paying
+    /// for itself; above 8 the batch-verify cost eats the free-token gains.
+    static let nDraftRange: ClosedRange<Int32> = 2...8
+
+    /// Recompute the acceptance rate after this many generation turns.
+    static let tuneInterval = 5
+
+    /// Mutated only from `generate`/`tuneDraftWindow`, which the
+    /// `_isGenerating` flag already serialises.
+    internal var currentNDraft: Int32 = 4
+    internal var tuneTurns = 0
+    internal var tuneDrafted: Int32 = 0
+    internal var tuneAccepted: Int32 = 0
+
+    /// The draft window persisted by a previous session's tuning, clamped to
+    /// `nDraftRange`, or the default 4 when never tuned.
+    static func persistedNDraft() -> Int32 {
+        let stored = UserDefaults.standard.integer(forKey: nDraftDefaultsKey)
+        guard stored != 0 else { return 4 }
+        return min(max(Int32(stored), nDraftRange.lowerBound), nDraftRange.upperBound)
+    }
+
     // MARK: - Availability gate
 
     /// True when both the 7B target and the 1.5B draft are on disk, the
@@ -64,6 +92,10 @@ final class GGUFSpeculativeEngine: NSObject, @unchecked Sendable, LLMEngineProto
                 }
                 nlLog("[GGUFSpec] Loading target=\(targetURL.lastPathComponent), draft=\(draftURL.lastPathComponent)…", level: .info)
 
+                // Start from the draft window tuned in a previous session
+                // (acceptance-rate auto-tuning, see tuneDraftWindow()).
+                let nDraft = Self.persistedNDraft()
+
                 let loaded: LlamaSpeculativeBridge = try await withCheckedThrowingContinuation { cont in
                     DispatchQueue.global(qos: .userInitiated).async {
                         // Target tier params (KV / flash-attn / threads / ctx)
@@ -78,7 +110,7 @@ final class GGUFSpeculativeEngine: NSObject, @unchecked Sendable, LLMEngineProto
                             contextLength: profile.contextLength,
                             threads: profile.threads,
                             gpuLayers: profile.gpuLayers,
-                            nDraft: 4,
+                            nDraft: nDraft,
                             kType: profile.kType,
                             vType: profile.vType,
                             flashAttn: profile.flashAttn
@@ -90,8 +122,9 @@ final class GGUFSpeculativeEngine: NSObject, @unchecked Sendable, LLMEngineProto
                     }
                 }
 
-                self.bridge   = loaded
-                self.isLoaded = true
+                self.bridge        = loaded
+                self.currentNDraft = nDraft
+                self.isLoaded      = true
                 nlLog("[GGUFSpec] Ready (1.5B draft + 7B target).", level: .info)
             }
             self.loadTask = t

@@ -17,9 +17,9 @@ final class CompanionStateManager {
     private init() {}
 
     func promptContext(characterName: String) -> String {
-        // Facts can exist even if memory is disabled; timeline-derived familiarity needs memory.
+        // Facts can exist even if memory is disabled; dialogue-derived familiarity needs memory.
         let facts = store.fetchAllFacts()
-        let events = memorySettings.isEnabled ? store.fetchChatEvents(limit: 120) : []
+        let events = memorySettings.isEnabled ? store.fetchRecentMessagesAcrossAll(limit: 120) : []
 
         let preferenceLines = Self.preferenceSummary(from: facts)
         let familiarity = Self.familiarityLabel(from: events)
@@ -65,7 +65,7 @@ final class CompanionStateManager {
         return lines.filter { seen.insert($0.lowercased()).inserted }
     }
 
-    private static func familiarityLabel(from events: [ChatEventItem]) -> String? {
+    private static func familiarityLabel(from events: [ConversationMessage]) -> String? {
         let userTurns = events.filter { $0.role == "user" && $0.kind == "message" }.count
         guard userTurns > 0 else { return nil }
 
@@ -75,7 +75,7 @@ final class CompanionStateManager {
         return "Close (≈\(userTurns) turns)"
     }
 
-    private static func recentTone(from events: [ChatEventItem]) -> String? {
+    private static func recentTone(from events: [ConversationMessage]) -> String? {
         let recentUser = events
             .filter { $0.role == "user" && $0.kind == "message" }
             .prefix(6)
@@ -87,7 +87,7 @@ final class CompanionStateManager {
 
         var score = 0
         for e in recentUser {
-            let t = e.detail.lowercased()
+            let t = e.content.lowercased()
             if positive.contains(where: { t.contains($0) }) { score += 1 }
             if negative.contains(where: { t.contains($0) }) { score -= 1 }
         }

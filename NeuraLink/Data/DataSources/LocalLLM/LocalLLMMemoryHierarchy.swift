@@ -6,7 +6,7 @@
 //  docs/local_llm_memory_plan.md §3.2:
 //    - Tier 1: system + persona + user context + companion
 //    - Tier 3: relevant atomic facts (RAGManager.fetchFacts, English only)
-//    - Tier 2: verbatim recent dialogue turns (MemoryStore.fetchChatEvents)
+//    - Tier 2: verbatim recent dialogue turns (current conversation only)
 //    - User turn
 //
 //  Also identifies which aged-out chat events are candidates for fact
@@ -33,21 +33,20 @@ final class LocalLLMMemoryHierarchy {
     /// Top-K facts retrieved from `RAGManager.fetchFacts` for Tier 3.
     static let factsLimit = 3
 
-    /// Context window used by the budget check for Qwen-family engines.
-    /// The Llama-1B paths run at half this (1024) on iPhone 11/12/13 — see
-    /// `nCtx(for:)` below.
-    static let nCtxDefault = 2_048
+    /// Constant lead-in prepended to every JP user turn. It is the *shared,
+    /// turn-invariant* head of the user message, so the warm-up prefill
+    /// (`buildPrefillMessages`) can prefill `[system + this]` and the real
+    /// turn's prefix-reuse covers all of it — only the actual user words
+    /// re-prefill. Must be byte-identical in `buildMessages` and
+    /// `buildPrefillMessages` or KV prefix-reuse silently drops to zero.
+    static let jpAnswerLeadIn = "（日本語で回答）"
 
-    /// Per-config context window. Must match the `contextLength` passed to
-    /// `LlamaBridge.init` in the corresponding engine, otherwise the budget
-    /// compactor will over- or under-evict relative to actual KV capacity.
+    /// Per-config context window. Delegates to
+    /// `LLMRuntimeProfile.resolvedContextLength(for:)` — the same value the
+    /// engines pass to `LlamaBridge.init` — so the budget compactor can never
+    /// over- or under-evict relative to actual KV capacity.
     static func nCtx(for config: LocalModelDownloadManager.ModelConfiguration) -> Int {
-        switch config {
-        case .llama1b, .japaneseGemma2b:
-            return 1_024
-        default:
-            return nCtxDefault
-        }
+        Int(LLMRuntimeProfile.resolvedContextLength(for: config))
     }
 
     private static let lastCompactedKey = "LocalLLM_LastCompactedTurnID"
@@ -108,7 +107,7 @@ final class LocalLLMMemoryHierarchy {
             excluding: userInput
         )
 
-        let userMessage = isJP ? "（日本語で回答）\(userInput)" : userInput
+        let userMessage = isJP ? "\(Self.jpAnswerLeadIn)\(userInput)" : userInput
 
         var messages: [LLMChatMessage] = [
             .init(role: "system", content: systemContent)
@@ -147,6 +146,16 @@ final class LocalLLMMemoryHierarchy {
             isJapaneseLlama: isJP,
             excluding: ""
         ))
+        // JP path has no history, so a system-only message list makes Gemma's
+        // chat template render nothing reusable (the warm-up no-ops and the
+        // first token re-prefills the whole prompt — observed as prefill=1+N
+        // in `[Bench]`). Append the turn-invariant user lead-in so the warm-up
+        // prefills `[system + lead-in]`; the real turn then reuses all of it
+        // and only re-prefills the user's actual words. English/Qwen tiers
+        // carry real history here, so they already form a valid prefix.
+        if isJP {
+            messages.append(.init(role: "user", content: Self.jpAnswerLeadIn))
+        }
         return messages
     }
 
@@ -158,7 +167,12 @@ final class LocalLLMMemoryHierarchy {
     func compactionCandidates() -> [ChatEventItem] {
         let lastID = UserDefaults.standard.object(
             forKey: Self.lastCompactedKey) as? Int64 ?? 0
-        let recent = MemoryStore.shared.fetchChatEvents(limit: 50)
+        // Cross-session: fact extraction draws from recent turns across all
+        // conversations (message ids are globally monotonic, so the
+        // last-compacted watermark stays valid). Adapt to ChatEventItem so
+        // the extractor/window logic below is unchanged.
+        let recent = MemoryStore.shared.fetchRecentMessagesAcrossAll(limit: 50)
+            .map(Self.asChatEvent)
         return Self.candidatesBeyondWindow(
             allRecent: recent,
             windowMessages: Self.verbatimWindowMessages,
@@ -166,9 +180,24 @@ final class LocalLLMMemoryHierarchy {
         )
     }
 
+    /// Adapts a `ConversationMessage` to the legacy `ChatEventItem` shape the
+    /// fact extractor consumes. Maps role "assistant" → "ai" (what
+    /// `LocalLLMFactExtractor.buildPrompt` expects).
+    private static func asChatEvent(_ m: ConversationMessage) -> ChatEventItem {
+        ChatEventItem(
+            id: m.id,
+            role: m.role == "assistant" ? "ai" : m.role,
+            kind: m.kind,
+            title: "",
+            detail: m.content,
+            pinned: false,
+            timestamp: m.timestamp
+        )
+    }
+
     /// Pure-logic split of `compactionCandidates` for testability.
     /// `allRecent` is expected newest-first (matches
-    /// `MemoryStore.fetchChatEvents(limit:)` which orders by timestamp DESC).
+    /// `MemoryStore.fetchRecentMessagesAcrossAll(limit:)` which orders by id DESC).
     static func candidatesBeyondWindow(
         allRecent: [ChatEventItem],
         windowMessages: Int,
@@ -312,22 +341,26 @@ final class LocalLLMMemoryHierarchy {
         // original handleUserInput about orphaned AI responses and the
         // 1B model's poor multi-turn coherence.
         let limit = isJapaneseLlama ? 0 : Self.verbatimWindowMessages
-        guard limit > 0 else { return [] }
+        guard limit > 0,
+              let convID = ConversationStore.shared.activeConversationID
+        else { return [] }
 
-        let raw = MemoryStore.shared.fetchChatEvents(limit: limit)
-        // fetchChatEvents is newest-first; the prompt wants chronological.
-        var events = Array(raw.reversed())
-        // If the just-logged user message is already in the timeline
+        // Verbatim window = the CURRENT conversation only (new chat = fresh
+        // context). fetchRecentMessages returns chronological (oldest first).
+        var msgs = MemoryStore.shared.fetchRecentMessages(
+            conversationID: convID, limit: limit)
+        // If the just-logged user message is already persisted
         // (`ChatTimelineStore.logUserMessage` ran before us) drop it so
         // we don't duplicate it as both history and current turn.
-        if let last = events.last, last.role == "user", last.detail == currentInput {
-            events.removeLast()
+        if let last = msgs.last, last.role == "user", last.content == currentInput {
+            msgs.removeLast()
         }
-        return events.map {
-            LLMChatMessage(
-                role: $0.role == "ai" ? "assistant" : "user",
-                content: $0.detail
-            )
+        // Only verbatim user/assistant turns belong in the prompt — tool_call
+        // rows are excluded.
+        return msgs.compactMap { m in
+            guard m.kind == "message", m.role == "user" || m.role == "assistant"
+            else { return nil }
+            return LLMChatMessage(role: m.role, content: m.content)
         }
     }
 

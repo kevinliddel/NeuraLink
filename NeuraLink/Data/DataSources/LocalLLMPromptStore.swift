@@ -3,19 +3,11 @@
 //  NeuraLink
 //
 //  Persists user-edited system prompts for local LLM characters.
-//  Separate from PersonaStore which holds OpenAI persona instructions and voice names.
+//  Separate from PersonaStore which holds the OpenAI persona instructions/voice.
 //
-//  Belt-and-suspenders persistence: protected JSON file + UserDefaults backup.
-//  See PersonaStore.swift for the rationale.
-//
-//  Notes on the class shape: this is a plain `final class`, *not* `@Observable`.
-//  An earlier revision used `@Observable` + `@ObservationIgnored private var saved`,
-//  which under Xcode 26 / Swift 6.2 / `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`
-//  produced a reproducible bug where mutating `saved` triggered a second `[:]`
-//  flush moments after a successful save — wiping the file on disk. Removing the
-//  macro entirely makes the property a normal stored ivar with no synthesized
-//  accessors, and persistence becomes deterministic. No view in the app observes
-//  this store's properties, so dropping `@Observable` has no UI side-effect.
+//  Storage is the `character_ai` SQL table (MemoryStore+Personas.swift), keyed
+//  by (character, engine) where engine is "gemma_jp" for the Japanese tier and
+//  "local" for every other local model. Thin facade — no in-memory cache.
 //
 //  Created by Dedicatus on 30/04/2026.
 //
@@ -26,60 +18,16 @@ import Foundation
 final class LocalLLMPromptStore {
     static let shared = LocalLLMPromptStore()
 
-    private let legacyKey = "com.neuralink.local-llm-prompts.v1"
-    private let backupKey = "com.neuralink.local-llm-prompts.v2.backup"
+    private init() {}
 
-    /// Authoritative in-memory cache. Disk + UserDefaults backup are the
-    /// durable layers. Plain stored property — no observation macro.
-    private var saved: [String: String] = [:]
-
-    private var fileURL: URL? {
-        do {
-            let dir = try ProtectedStorage.privateApplicationSupportURL()
-            return dir.appendingPathComponent("local_llm_prompts.json")
-        } catch {
-            nlLog("[LocalLLMPromptStore] Failed to resolve secure private storage directory: \(error)", level: .error)
-            return nil
-        }
-    }
-
-    private init() {
-        saved = loadInitialFromDisk()
-        nlLog("[LocalLLMPromptStore] Initialized with \(saved.count) saved prompt(s).", level: .info)
-    }
-
-    private func loadInitialFromDisk() -> [String: String] {
-        // Layer 1 — protected file.
-        if let url = fileURL,
-           FileManager.default.fileExists(atPath: url.path),
-           let data = try? Data(contentsOf: url),
-           let decoded = try? JSONDecoder().decode([String: String].self, from: data) {
-            nlLog("[LocalLLMPromptStore] Loaded \(decoded.count) prompt(s) from \(url.path)", level: .info)
-            return decoded
-        }
-
-        // Layer 2 — UserDefaults backup.
-        if let backupData = UserDefaults.standard.data(forKey: backupKey),
-           let decoded = try? JSONDecoder().decode([String: String].self, from: backupData) {
-            nlLog("[LocalLLMPromptStore] Loaded \(decoded.count) prompt(s) from UserDefaults backup.", level: .info)
-            return decoded
-        }
-
-        // Layer 3 — legacy migration.
-        if let legacyData = UserDefaults.standard.data(forKey: legacyKey),
-           let decoded = try? JSONDecoder().decode([String: String].self, from: legacyData) {
-            nlLog("[LocalLLMPromptStore] Loaded \(decoded.count) prompt(s) from legacy UserDefaults key.", level: .info)
-            UserDefaults.standard.set(legacyData, forKey: backupKey)
-            if let url = fileURL {
-                _ = try? legacyData.write(to: url, options: .atomic)
-                try? ProtectedStorage.protect(url)
-            }
-            UserDefaults.standard.removeObject(forKey: legacyKey)
-            return decoded
-        }
-
-        nlLog("[LocalLLMPromptStore] No saved prompts found — starting fresh.", level: .info)
-        return [:]
+    /// Maps the model config to the `character_ai` engine key: the Japanese
+    /// Gemma tier is its own slot; every other local model shares "local".
+    private func engineKey(
+        for config: LocalModelDownloadManager.ModelConfiguration?
+    ) -> String {
+        config == .japaneseGemma2b
+            ? MemoryStore.PersonaEngine.gemmaJP
+            : MemoryStore.PersonaEngine.local
     }
 
     // MARK: - Public API
@@ -89,12 +37,10 @@ final class LocalLLMPromptStore {
         for characterName: String,
         config: LocalModelDownloadManager.ModelConfiguration? = nil
     ) -> String {
-        let k = storeKey(for: characterName, config: config)
-        if let stored = saved[k] {
-            nlLog("[LocalLLMPromptStore] effectivePrompt('\(k)') → SAVED (\(stored.count) chars)", level: .info)
+        if let stored = MemoryStore.shared.personaPrompt(
+            character: characterName, engine: engineKey(for: config)) {
             return stored
         }
-        nlLog("[LocalLLMPromptStore] effectivePrompt('\(k)') → DEFAULT (no saved entry; cache has keys: \(Array(saved.keys).sorted()))", level: .info)
         return Self.defaultPrompt(for: characterName, config: config)
     }
 
@@ -103,49 +49,17 @@ final class LocalLLMPromptStore {
         for characterName: String,
         config: LocalModelDownloadManager.ModelConfiguration? = nil
     ) {
-        let key = storeKey(for: characterName, config: config)
-        saved[key] = prompt
-        nlLog("[LocalLLMPromptStore] Saving prompt for '\(key)' (length=\(prompt.count), cache now has \(saved.count) entry/ies)", level: .info)
-        flushToBothLayers()
+        MemoryStore.shared.setPersonaPrompt(
+            character: characterName, engine: engineKey(for: config), prompt: prompt)
     }
 
+    /// Clears the override so `effectivePrompt` reverts to the built-in default.
     func resetPrompt(
         for characterName: String,
         config: LocalModelDownloadManager.ModelConfiguration? = nil
     ) {
-        let key = storeKey(for: characterName, config: config)
-        saved.removeValue(forKey: key)
-        nlLog("[LocalLLMPromptStore] Reset prompt for '\(key)'", level: .info)
-        flushToBothLayers()
-    }
-
-    // MARK: - Internals
-
-    private func storeKey(
-        for characterName: String,
-        config: LocalModelDownloadManager.ModelConfiguration?
-    ) -> String {
-        let base = characterName.lowercased()
-        return config == .japaneseGemma2b ? "\(base)_jp" : base
-    }
-
-    private func flushToBothLayers() {
-        guard let encoded = try? JSONEncoder().encode(saved) else {
-            nlLog("[LocalLLMPromptStore] flushToBothLayers: failed to encode \(saved.count) prompt(s).", level: .error)
-            return
-        }
-        if let url = fileURL {
-            do {
-                try encoded.write(to: url, options: .atomic)
-                try? ProtectedStorage.protect(url)
-                nlLog("[LocalLLMPromptStore] flushToBothLayers: wrote \(encoded.count) bytes to \(url.lastPathComponent) (cache size: \(saved.count))", level: .info)
-            } catch {
-                nlLog("[LocalLLMPromptStore] flushToBothLayers: file write failed: \(error)", level: .error)
-            }
-        } else {
-            nlLog("[LocalLLMPromptStore] flushToBothLayers: no fileURL — file layer skipped.", level: .error)
-        }
-        UserDefaults.standard.set(encoded, forKey: backupKey)
+        MemoryStore.shared.setPersonaPrompt(
+            character: characterName, engine: engineKey(for: config), prompt: nil)
     }
 
     // MARK: - Built-in defaults

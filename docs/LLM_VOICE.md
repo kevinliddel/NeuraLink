@@ -26,7 +26,7 @@ flowchart TD
     Start["Persona + ModelConfig"] --> Q1{"Has F5-TTS clone?\nAND tier == qwen7b?"}
 
     Q1 --> D1["yes"] --> F5["F5TTSEngine\nMLX-Swift voice clone"]
-    Q1 --> D2["no"] --> Q2{"ModelConfig ==\njapaneseLlama1b?"}
+    Q1 --> D2["no"] --> Q2{"ModelConfig ==\njapaneseGemma2b?"}
 
     Q2 --> D3["yes"] --> VV["VoiceVoxEngine\nONNX Runtime + OpenJTalk"]
     Q2 --> D4["no"] --> Q3{"Kokoro pack\ninstalled on disk?"}

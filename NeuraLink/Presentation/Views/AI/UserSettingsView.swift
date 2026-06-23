@@ -8,17 +8,23 @@
 //
 
 import SwiftUI
+import PhotosUI
 
 struct UserSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var settings = UserSettings.shared
-    @State private var memorySettings = MemorySettings.shared
-    
+    @State private var photoItem: PhotosPickerItem?
+
     let genders = ["Male", "Female", "Prefer not to say"]
-    
+
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    profilePhoto
+                        .listRowBackground(Color.clear)
+                }
+
                 Section(header: Text("Profile Information")) {
                     HStack {
                         Text("Name")
@@ -63,32 +69,18 @@ struct UserSettingsView: View {
                 }
 
                 Section(header: Text("Memory")) {
-                    Toggle("Memory Enabled", isOn: Bindable(memorySettings).isEnabled)
-                        .listRowSeparator(memorySettings.isEnabled ? .hidden : .automatic)
-
-                    if memorySettings.isEnabled {
-                        Toggle("Store AI Responses", isOn: Bindable(memorySettings).storeAIResponses)
-                            .listRowSeparator(.hidden)
-
-                        Picker("Auto-forget", selection: Bindable(memorySettings).autoForgetDays) {
-                            Text("Never").tag(0)
-                            Text("7 days").tag(7)
-                            Text("14 days").tag(14)
-                            Text("30 days").tag(30)
-                        }
-                    }
-
                     NavigationLink {
                         MemoryTimelineView()
                     } label: {
-                        Label("Timeline & Facts", systemImage: "clock.arrow.circlepath")
+                        Label("Memory & Facts", systemImage: "brain")
                     }
                 }
                 
                 Section(footer: Text("This information is shared with the AI to personalize your experience. It is stored locally on your device.")) {
-                    EmptyView()
+                    EmptyView() // anchors the footer text
                 }
             }
+            .scrollIndicators(.hidden)
             .navigationTitle("User Profile")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -98,7 +90,83 @@ struct UserSettingsView: View {
                     }
                 }
             }
+            .onChange(of: photoItem) { _, newItem in
+                guard let newItem else { return }
+                Task {
+                    guard let data = try? await newItem.loadTransferable(type: Data.self) else { return }
+                    // Downscale so the stored profile photo stays small.
+                    settings.profileImageData = Self.downscaledJPEG(data, maxDimension: 512) ?? data
+                }
+            }
         }
+    }
+
+    /// Centered, tappable profile photo. The whole circle (incl. the camera
+    /// badge) opens the picker to add/change; a small "x" badge on the image
+    /// removes it.
+    private var profilePhoto: some View {
+        ZStack(alignment: .topTrailing) {
+            PhotosPicker(selection: $photoItem, matching: .images, photoLibrary: .shared()) {
+                ZStack(alignment: .bottomTrailing) {
+                    Group {
+                        if let img = settings.profileImage {
+                            Image(uiImage: img)
+                                .resizable()
+                                .scaledToFill()
+                        } else {
+                            Circle()
+                                .fill(Color.secondary.opacity(0.15))
+                                .overlay(
+                                    Image(systemName: "person.fill")
+                                        .font(.system(size: 42))
+                                        .foregroundStyle(.secondary)
+                                )
+                        }
+                    }
+                    .frame(width: 104, height: 104)
+                    .clipShape(Circle())
+
+                    // Add / change affordance.
+                    Image(systemName: "camera.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 32, height: 32)
+                        .background(Color.accentColor, in: Circle())
+                        .overlay(Circle().stroke(Color(.systemGroupedBackground), lineWidth: 3))
+                }
+            }
+            .buttonStyle(.plain)
+
+            // Remove badge — sits on the image, only when a photo is set.
+            if settings.profileImageData != nil {
+                Button {
+                    settings.profileImageData = nil
+                    photoItem = nil
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 26))
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(.white, .red)
+                }
+                .buttonStyle(.plain)
+                .offset(x: 4, y: -4)
+                .accessibilityLabel("Remove photo")
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.vertical, 8)
+    }
+
+    /// Re-encodes image data as a JPEG no larger than `maxDimension` on its
+    /// long edge. Returns nil if the data isn't a decodable image.
+    private static func downscaledJPEG(_ data: Data, maxDimension: CGFloat) -> Data? {
+        guard let image = UIImage(data: data) else { return nil }
+        let longEdge = max(image.size.width, image.size.height)
+        let scale = longEdge > maxDimension ? maxDimension / longEdge : 1
+        let target = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+        let renderer = UIGraphicsImageRenderer(size: target)
+        let resized = renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: target)) }
+        return resized.jpegData(compressionQuality: 0.8)
     }
 }
 

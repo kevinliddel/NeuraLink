@@ -29,7 +29,7 @@ graph TD
         Spec -.-> Fallback["fallback if draft missing"] -.-> Qwen7B["GGUFQwen7BEngine\nQwen-2.5-7B (GGUF)"]
         Selector --> T6["5–7 GB RAM"] --> Qwen3B["GGUFQwen3BEngine\nQwen-2.5-3B (GGUF)"]
         Selector --> T4["< 5 GB RAM"] --> Llama["GGUFLlamaEngine\nLlama-3.2-1B (GGUF)"]
-        Selector --> TJP["JP override"] --> JLlama["GGUFJapaneseLlamaEngine\nLlama-3.2-1B JP"]
+        Selector --> TJP["JP override"] --> JGemma["GGUFGemma2BJPEngine\nGemma 2 2B JP"]
 
         %% State loop
         Manager --> D10["State & Prompt"] --> UI["RealtimeChatState"]
@@ -86,7 +86,7 @@ graph TD
    - **`GGUFSpeculativeEngine`** (≥ 7 GB): Qwen-2.5-7B target accelerated by Qwen-2.5-1.5B draft. Yields 2–3× decode throughput; falls back to `GGUFQwen7BEngine` if the draft model is not on disk.
    - **`GGUFQwen3BEngine`** (5–7 GB): Stronger reasoning than 1B-class models, fits the iPhone 14 / 15-base memory budget.
    - **`GGUFLlamaEngine`** (< 5 GB): Memory-optimized Llama-3.2-1B for iPhone 11 / 12 / 13.
-   - **`GGUFJapaneseLlamaEngine`**: User-selectable JP-oriented Llama-3.2-1B for Japanese conversation.
+   - **`GGUFGemma2BJPEngine`**: User-selectable Google Gemma 2 2B (Japanese-tuned) for Japanese conversation.
 4. **Local LLM Inference**: All engines share the same `llama_bridge` C++ layer, which provides:
    - **KV-cache prefix reuse** across turns — system prompt + persona are not re-prefilled every message, cutting first-token latency on multi-turn conversations.
    - **A tuned sampler chain** (top-k=40, top-p=0.9, temp=0.7, repetition penalty=1.1/64) replacing greedy argmax — eliminates the loop/repetition pathologies common with small models.
@@ -104,13 +104,13 @@ graph TD
 | Model | Parameters | Format | File size (Q4_K_M) | Min. iOS | Min. RAM | Notes |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Llama-3.2-1B** | 1.2B | GGUF | ~0.8 GB | iOS 17.0 | 4 GB | Memory-efficient baseline for iPhone 11 / 12 / 13. |
-| **Llama-3.2-1B (JP)** | 1.2B | GGUF | ~0.8 GB | iOS 17.0 | 4 GB | Japanese-oriented build (`grapevine-AI` upload). |
+| **Gemma 2 2B (JP)** | 2.6B | GGUF | ~1.71 GB | iOS 17.0 | 4 GB | Google's Japanese-tuned Gemma 2 (`grapevine-AI/gemma-2-2b-jpn-it-gguf`). |
 | **Qwen-2.5-1.5B** | 1.5B | GGUF | ~1.1 GB | iOS 17.0 | 6 GB | Legacy small Qwen. Also acts as the **draft model** for speculative 7B. |
 | **Qwen-2.5-3B** | 3B | GGUF | ~1.9 GB | iOS 17.0 | 6 GB | Sweet spot for iPhone 14 / 15 base / Plus. |
 | **Qwen-2.5-7B** | 7B | GGUF | ~4.7 GB | iOS 17.0 | 8 GB | Top quality for iPhone 15 Pro / 16 family. Auto-uses speculative decoding when the 1.5B draft is also downloaded. |
 
 ### Model Downloader Architecture
-To ensure a small initial binary size, models are downloaded on-demand from Hugging Face via the `LocalModelDownloadManager`. Each model has a dedicated downloader type (`GGUFLlamaDownloader`, `GGUFQwenDownloader`, `GGUFQwen3BDownloader`, `GGUFQwen7BDownloader`, `GGUFJapaneseLlamaDownloader`) that handles:
+To ensure a small initial binary size, models are downloaded on-demand from Hugging Face via the `LocalModelDownloadManager`. Each model has a dedicated downloader type (`GGUFLlamaDownloader`, `GGUFQwenDownloader`, `GGUFQwen3BDownloader`, `GGUFQwen7BDownloader`, `GGUFGemma2BJPDownloader`) that handles:
 - Snapshot acquisition via `HubApi`.
 - Single-file verification and layout normalization.
 - Path resolution via model-specific `GGUF...ModelAccess` helpers.
@@ -151,7 +151,7 @@ The user can manually override the default via `ModelLibraryView` — the warnin
 | iPhone 14 / 15-base / Plus (6 GB) | `.qwen3b` | `GGUFQwen3BEngine` |
 | iPhone 15 Pro+ / 16 / 17 (8 GB), 7B downloaded only | `.qwen7b` | `GGUFQwen7BEngine` |
 | iPhone 15 Pro+ / 16 / 17 (8 GB), 7B **+** 1.5B downloaded | `.qwen7b` | **`GGUFSpeculativeEngine`** (2–3× decode tok/s) |
-| Any tier, user-selected JP override | `.japaneseLlama1b` | `GGUFJapaneseLlamaEngine` |
+| Any tier, user-selected JP override | `.japaneseGemma2b` | `GGUFGemma2BJPEngine` |
 
 By moving these workloads to the NPU and Metal GPU, NeuraLink achieves its goal of being a high-performance, private, and deeply native iOS application.
 

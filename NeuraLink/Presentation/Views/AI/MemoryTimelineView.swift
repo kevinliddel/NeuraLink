@@ -12,14 +12,11 @@ struct MemoryTimelineView: View {
     @State private var memorySettings = MemorySettings.shared
 
     @State private var editFact: FactItem?
-    @State private var showTimelineInfo = false
     @State private var showFactsInfo = false
 
-    @State private var eventsPage: Int = 0
     @State private var factsPage: Int = 0
     private let pageSize = 5
 
-    @State private var totalEvents: Int = 0
     @State private var totalFacts: Int = 0
 
     var body: some View {
@@ -30,14 +27,26 @@ struct MemoryTimelineView: View {
                         .listRowSeparator(memorySettings.isEnabled ? .hidden : .automatic)
 
                     if memorySettings.isEnabled {
-                        Toggle("Store AI Responses", isOn: Bindable(memorySettings).storeAIResponses)
-                            .listRowSeparator(.hidden)
-
                         Picker("Auto-forget", selection: Bindable(memorySettings).autoForgetDays) {
                             Text("Never").tag(0)
                             Text("7 days").tag(7)
                             Text("14 days").tag(14)
                             Text("30 days").tag(30)
+                        }
+                        .listRowSeparator(.hidden)
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text("Memory Quality")
+                                Spacer()
+                                Text(memorySettings.similarityFloor, format: .number.precision(.fractionLength(2)))
+                                    .foregroundStyle(.secondary)
+                                    .monospacedDigit()
+                            }
+                            Slider(value: Bindable(memorySettings).similarityFloor, in: 0.3...0.7, step: 0.05)
+                            Text("Higher values surface fewer, more relevant memories.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
                     }
                 } header: {
@@ -63,18 +72,6 @@ struct MemoryTimelineView: View {
                 }
 
                 Section {
-                    timelinePager
-                } header: {
-                    sectionHeader(
-                        countLabel: timelineCountLabel,
-                        title: "Timeline",
-                        showInfo: $showTimelineInfo,
-                        infoText: "Your recent messages, AI replies, and tool calls.",
-                        onDeleteAll: deleteAllTimeline
-                    )
-                }
-
-                Section {
                     factsPager
                 } header: {
                     sectionHeader(
@@ -86,6 +83,7 @@ struct MemoryTimelineView: View {
                     )
                 }
             }
+            .scrollIndicators(.hidden)
             .navigationTitle("Memory")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -95,7 +93,6 @@ struct MemoryTimelineView: View {
             }
             .onAppear { refreshCountsAndClampPages() }
             .onChange(of: memorySettings.autoForgetDays) { applyAutoForgetNow() }
-            .onChange(of: eventsPage) { refreshCountsAndClampPages() }
             .onChange(of: factsPage) { refreshCountsAndClampPages() }
             .sheet(item: $editFact) { fact in
                 FactEditSheet(fact: fact) { updated in
@@ -113,39 +110,7 @@ struct MemoryTimelineView: View {
 
     // MARK: - Pagers
 
-    private let timelineRowHeight: CGFloat = 62
     private let factsRowHeight: CGFloat = 52
-
-    private var timelinePager: some View {
-        Group {
-            if totalEvents == 0 {
-                Text("No events yet.")
-                    .foregroundStyle(.secondary)
-            } else {
-                let itemCount = min(totalEvents, pageSize)
-                TabView(selection: $eventsPage) {
-                    ForEach(0..<timelineTotalPages, id: \.self) { page in
-                        VStack(spacing: 0) {
-                            let items = MemoryStore.shared.fetchChatEvents(
-                                limit: pageSize,
-                                offset: page * pageSize
-                            )
-                            ForEach(items) { e in
-                                timelineRow(e)
-                                    .padding(.vertical, 8)
-                                Divider()
-                            }
-                            Spacer(minLength: 0)
-                        }
-                        .tag(page)
-                        .padding(.horizontal, 4)
-                    }
-                }
-                .tabViewStyle(.page(indexDisplayMode: timelineTotalPages > 1 ? .automatic : .never))
-                .frame(height: timelineRowHeight * CGFloat(itemCount) + (timelineTotalPages > 1 ? 50 : 0))
-            }
-        }
-    }
 
     private var factsPager: some View {
         Group {
@@ -179,50 +144,6 @@ struct MemoryTimelineView: View {
     }
 
     // MARK: - Rows
-
-    private func timelineRow(_ e: ChatEventItem) -> some View {
-        HStack(alignment: .center, spacing: 10) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(e.title)
-                        .font(.headline)
-                    Spacer()
-                    Text(Self.timeFormatter.string(from: e.timestamp))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                ScrollView(.horizontal, showsIndicators: false) {
-                    Text(e.detail)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            Button {
-                MemoryStore.shared.deleteChatEvent(id: e.id)
-                refreshCountsAndClampPages()
-            } label: {
-                Image(systemName: "trash")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.red.opacity(0.75))
-            }
-            .buttonStyle(.borderless)
-        }
-        .contentShape(Rectangle())
-        .contextMenu {
-            Button {
-                MemoryStore.shared.setChatEventPinned(id: e.id, pinned: !e.pinned)
-                refreshCountsAndClampPages()
-            } label: {
-                Label(e.pinned ? "Unpin" : "Pin", systemImage: e.pinned ? "pin.slash" : "pin")
-            }
-            Button(role: .destructive) {
-                MemoryStore.shared.deleteChatEvent(id: e.id)
-                refreshCountsAndClampPages()
-            } label: {
-                Label("Delete", systemImage: "trash")
-            }
-        }
-    }
 
     private func factsRow(_ f: FactItem) -> some View {
         HStack(alignment: .center, spacing: 10) {
@@ -315,25 +236,12 @@ struct MemoryTimelineView: View {
     // MARK: - Counts / paging
 
     private func refreshCountsAndClampPages() {
-        totalEvents = MemoryStore.shared.countChatEvents()
         totalFacts = MemoryStore.shared.countFacts()
-
-        eventsPage = min(max(eventsPage, 0), max(timelineTotalPages - 1, 0))
         factsPage = min(max(factsPage, 0), max(factsTotalPages - 1, 0))
-    }
-
-    private var timelineTotalPages: Int {
-        max(1, Int(ceil(Double(totalEvents) / Double(pageSize))))
     }
 
     private var factsTotalPages: Int {
         max(1, Int(ceil(Double(totalFacts) / Double(pageSize))))
-    }
-
-    private var timelineCountLabel: String {
-        if totalEvents == 0 { return "0" }
-        let shown = min((eventsPage + 1) * pageSize, totalEvents)
-        return "\(shown)/\(totalEvents)"
     }
 
     private var factsCountLabel: String {
@@ -348,33 +256,24 @@ struct MemoryTimelineView: View {
         let days = memorySettings.autoForgetDays
         guard days > 0 else { return }
         let cutoff = Date().addingTimeInterval(-Double(days) * 86_400.0)
-        MemoryStore.shared.pruneChatEvents(olderThan: cutoff)
+        MemoryStore.shared.pruneConversations(olderThan: cutoff)
         MemoryStore.shared.pruneMemories(olderThan: cutoff)
         refreshCountsAndClampPages()
     }
 
     private func forgetLast(minutes: Int) {
         let cutoff = Date().addingTimeInterval(-Double(minutes) * 60.0)
-        MemoryStore.shared.deleteChatEvents(since: cutoff, includePinned: false)
+        MemoryStore.shared.deleteConversations(since: cutoff)
         MemoryStore.shared.deleteMemories(since: cutoff, includePinned: false)
-        eventsPage = 0
         factsPage = 0
         refreshCountsAndClampPages()
     }
 
     private func forgetAllUnpinned() {
         let veryOld = Date(timeIntervalSince1970: 0)
-        MemoryStore.shared.deleteChatEvents(since: veryOld, includePinned: false)
+        MemoryStore.shared.deleteConversations(since: veryOld)
         MemoryStore.shared.deleteMemories(since: veryOld, includePinned: false)
-        eventsPage = 0
         factsPage = 0
-        refreshCountsAndClampPages()
-    }
-
-    private func deleteAllTimeline() {
-        let veryOld = Date(timeIntervalSince1970: 0)
-        MemoryStore.shared.deleteChatEvents(since: veryOld, includePinned: true)
-        eventsPage = 0
         refreshCountsAndClampPages()
     }
 

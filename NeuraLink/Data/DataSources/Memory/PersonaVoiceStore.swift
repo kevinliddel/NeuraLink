@@ -3,12 +3,14 @@
 //  NeuraLink
 //
 //  Per-persona voice preference. Engine selection itself is automatic
-//  (§3.1) — the user only picks WHICH voice (VOICEVOX speaker or Kokoro
-//  preset) to use for the persona. Other engines (System, F5-TTS) infer
-//  their voice from the persona name + device locale and don't need
-//  overrides.
+//  (§3.1) — the user only picks WHICH voice (VOICEVOX speaker or OpenVoice
+//  preset) to use for the persona.
 //
-//  Persists each map in UserDefaults as a JSON-encoded dictionary.
+//  VOICEVOX + OpenVoice voices are persisted in the `character_ai` SQL table
+//  (MemoryStore+Personas.swift) alongside that engine's prompt — VOICEVOX
+//  under engine "gemma_jp", OpenVoice under "local". The SQL `voice` column is
+//  a string (the VOICEVOX speaker id is stored as text). Kokoro is being
+//  retired and keeps its UserDefaults map untouched.
 //
 //  Created by Dedicatus on 26/05/2026.
 //
@@ -22,44 +24,37 @@ final class PersonaVoiceStore {
 
     static let shared = PersonaVoiceStore()
 
-    private(set) var voicevoxSpeakerIDs: [PersonaIdentifier: Int]
+    /// Kokoro is the only remaining UserDefaults-backed map (slated for removal).
     private(set) var kokoroVoicePresets: [PersonaIdentifier: String]
 
-    nonisolated static let defaultsKey = "com.neuralink.tts.persona_voicevox_speaker_ids"
     nonisolated static let kokoroDefaultsKey = "com.neuralink.tts.persona_kokoro_voice_presets"
 
     private init() {
-        voicevoxSpeakerIDs = PersonaVoiceStore.loadFromDefaults()
         kokoroVoicePresets = PersonaVoiceStore.loadKokoroFromDefaults()
     }
 
-    // MARK: - VOICEVOX
+    // MARK: - VOICEVOX (engine "gemma_jp")
 
-    /// Returns the user-chosen VOICEVOX speaker filename ID for `persona`,
-    /// or nil if the persona is using its built-in default
-    /// (resolved by `VoiceVoxSpeaker.speakerID(for:)`).
+    /// Returns the user-chosen VOICEVOX speaker id for `persona`, or nil if the
+    /// persona is using its built-in default (resolved by `VoiceVoxSpeaker.speakerID(for:)`).
     func voicevoxSpeakerID(for persona: PersonaIdentifier) -> Int? {
-        voicevoxSpeakerIDs[persona.lowercased()]
+        MemoryStore.shared.personaVoice(
+            character: persona, engine: MemoryStore.PersonaEngine.gemmaJP
+        ).flatMap(Int.init)
     }
 
-    /// Sets the VOICEVOX speaker for `persona`. Pass `nil` to clear the
-    /// override and revert to the built-in default.
+    /// Sets the VOICEVOX speaker for `persona`. Pass `nil` to clear the override.
     func setVoicevoxSpeakerID(_ id: Int?, for persona: PersonaIdentifier) {
-        let key = persona.lowercased()
-        if let id {
-            voicevoxSpeakerIDs[key] = id
-        } else {
-            voicevoxSpeakerIDs.removeValue(forKey: key)
-        }
-        persist()
+        MemoryStore.shared.setPersonaVoice(
+            character: persona, engine: MemoryStore.PersonaEngine.gemmaJP,
+            voice: id.map(String.init))
     }
 
-    /// Clears the override for `persona`.
     func clearVoicevoxSpeakerID(for persona: PersonaIdentifier) {
         setVoicevoxSpeakerID(nil, for: persona)
     }
 
-    // MARK: - Kokoro
+    // MARK: - Kokoro (legacy, UserDefaults)
 
     func kokoroVoiceID(for persona: PersonaIdentifier) -> String? {
         kokoroVoicePresets[persona.lowercased()]
@@ -72,9 +67,6 @@ final class PersonaVoiceStore {
         } else {
             kokoroVoicePresets.removeValue(forKey: key)
         }
-        nlLog(
-            "[PersonaVoiceStore] setKokoroVoiceID('\(key)') = \(id ?? "<nil>") (cache now: \(kokoroVoicePresets))",
-            level: .info)
         persistKokoro()
     }
 
@@ -82,58 +74,49 @@ final class PersonaVoiceStore {
         setKokoroVoiceID(nil, for: persona)
     }
 
-    // MARK: - Nonisolated reads
+    // MARK: - OpenVoice (engine "local")
 
-    /// Thread-safe direct UserDefaults read for callers in nonisolated
-    /// contexts (engines on background queues). Returns the current
-    /// override or nil. Bypasses the @Observable in-memory cache by design.
-    ///
-    /// `String` rather than `PersonaIdentifier` here because the typealias
-    /// is MainActor-isolated by the project's default-isolation setting
-    /// and isn't visible from `nonisolated` scopes.
-    nonisolated static func voicevoxSpeakerIDFromDefaults(
-        for persona: String
-    ) -> Int? {
-        loadFromDefaults()[persona.lowercased()]
+    func openVoiceVoiceID(for persona: PersonaIdentifier) -> String? {
+        MemoryStore.shared.personaVoice(
+            character: persona, engine: MemoryStore.PersonaEngine.local)
     }
 
-    nonisolated static func kokoroVoiceIDFromDefaults(
-        for persona: String
-    ) -> String? {
-        let dict = loadKokoroFromDefaults()
-        let value = dict[persona.lowercased()]
-        // `nlLog` is MainActor-isolated under the project's default isolation;
-        // this function is `nonisolated` (engines may call it off-main).
-        // Plain `print` avoids the actor hop while still surfacing the
-        // round-trip in the Xcode console for the persistence diagnosis.
-        nlLog(
-            "[PersonaVoiceStore] kokoroVoiceIDFromDefaults('\(persona.lowercased())') = \(value ?? "<nil>") (UD has: \(dict))",
-            level: .info
-        )
-        return value
+    func setOpenVoiceVoiceID(_ id: String?, for persona: PersonaIdentifier) {
+        MemoryStore.shared.setPersonaVoice(
+            character: persona, engine: MemoryStore.PersonaEngine.local, voice: id)
     }
 
-    private nonisolated static func loadFromDefaults() -> [String: Int] {
-        guard let data = UserDefaults.standard.data(forKey: defaultsKey),
-            let decoded = try? JSONDecoder().decode(
-                [String: Int].self, from: data
-            )
-        else { return [:] }
-        return decoded
+    func clearOpenVoiceVoiceID(for persona: PersonaIdentifier) {
+        setOpenVoiceVoiceID(nil, for: persona)
     }
+
+    // MARK: - Nonisolated reads (engines on background queues)
+
+    /// Thread-safe read for callers in nonisolated contexts. SQL access is
+    /// guarded by MemoryStore's NSLock. `String` rather than `PersonaIdentifier`
+    /// because the typealias is MainActor-isolated and not visible here.
+    nonisolated static func voicevoxSpeakerIDFromDefaults(for persona: String) -> Int? {
+        MemoryStore.shared.personaVoice(
+            character: persona, engine: MemoryStore.PersonaEngine.gemmaJP
+        ).flatMap(Int.init)
+    }
+
+    nonisolated static func openVoiceVoiceIDFromDefaults(for persona: String) -> String? {
+        MemoryStore.shared.personaVoice(
+            character: persona, engine: MemoryStore.PersonaEngine.local)
+    }
+
+    nonisolated static func kokoroVoiceIDFromDefaults(for persona: String) -> String? {
+        loadKokoroFromDefaults()[persona.lowercased()]
+    }
+
+    // MARK: - Kokoro persistence
 
     private nonisolated static func loadKokoroFromDefaults() -> [String: String] {
         guard let data = UserDefaults.standard.data(forKey: kokoroDefaultsKey),
-            let decoded = try? JSONDecoder().decode(
-                [String: String].self, from: data
-            )
+            let decoded = try? JSONDecoder().decode([String: String].self, from: data)
         else { return [:] }
         return decoded
-    }
-
-    private func persist() {
-        guard let data = try? JSONEncoder().encode(voicevoxSpeakerIDs) else { return }
-        UserDefaults.standard.set(data, forKey: PersonaVoiceStore.defaultsKey)
     }
 
     private func persistKokoro() {
