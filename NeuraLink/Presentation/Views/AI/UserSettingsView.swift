@@ -21,22 +21,12 @@ struct UserSettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section(header: Text("Profile Information")) {
-                    HStack {
-                        Text("Photo")
-                        Spacer()
-                        PhotosPicker(selection: $photoItem, matching: .images, photoLibrary: .shared()) {
-                            profileAvatar
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    if settings.profileImageData != nil {
-                        Button("Remove Photo", role: .destructive) {
-                            settings.profileImageData = nil
-                            photoItem = nil
-                        }
-                    }
+                Section {
+                    profilePhoto
+                        .listRowBackground(Color.clear)
+                }
 
+                Section(header: Text("Profile Information")) {
                     HStack {
                         Text("Name")
                         Spacer()
@@ -141,20 +131,60 @@ struct UserSettingsView: View {
         }
     }
 
-    @ViewBuilder private var profileAvatar: some View {
-        if let img = settings.profileImage {
-            Image(uiImage: img)
-                .resizable()
-                .scaledToFill()
-                .frame(width: 52, height: 52)
-                .clipShape(Circle())
-        } else {
-            Image(systemName: "person.crop.circle.fill")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 52, height: 52)
-                .foregroundStyle(.secondary)
+    /// Centered, tappable profile photo. The whole circle (incl. the camera
+    /// badge) opens the picker to add/change; a small "x" badge on the image
+    /// removes it.
+    private var profilePhoto: some View {
+        ZStack(alignment: .topTrailing) {
+            PhotosPicker(selection: $photoItem, matching: .images, photoLibrary: .shared()) {
+                ZStack(alignment: .bottomTrailing) {
+                    Group {
+                        if let img = settings.profileImage {
+                            Image(uiImage: img)
+                                .resizable()
+                                .scaledToFill()
+                        } else {
+                            Circle()
+                                .fill(Color.secondary.opacity(0.15))
+                                .overlay(
+                                    Image(systemName: "person.fill")
+                                        .font(.system(size: 42))
+                                        .foregroundStyle(.secondary)
+                                )
+                        }
+                    }
+                    .frame(width: 104, height: 104)
+                    .clipShape(Circle())
+
+                    // Add / change affordance.
+                    Image(systemName: "camera.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 32, height: 32)
+                        .background(Color.accentColor, in: Circle())
+                        .overlay(Circle().stroke(Color(.systemGroupedBackground), lineWidth: 3))
+                }
+            }
+            .buttonStyle(.plain)
+
+            // Remove badge — sits on the image, only when a photo is set.
+            if settings.profileImageData != nil {
+                Button {
+                    settings.profileImageData = nil
+                    photoItem = nil
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 26))
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(.white, .red)
+                }
+                .buttonStyle(.plain)
+                .offset(x: 4, y: -4)
+                .accessibilityLabel("Remove photo")
+            }
         }
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.vertical, 8)
     }
 
     /// Re-encodes image data as a JPEG no larger than `maxDimension` on its
