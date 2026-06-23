@@ -22,7 +22,6 @@ final class RAGManager {
     /// Records a new interaction in the long-term memory.
     func store(text: String, source: String) {
         guard settings.isEnabled else { return }
-        if source == "ai", settings.storeAIResponses == false { return }
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         
         // We run this in a background task to avoid blocking the main/audio threads

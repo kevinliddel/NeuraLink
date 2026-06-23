@@ -30,6 +30,7 @@ struct ConversationTranscriptView: View {
                 }
                 .padding()
             }
+            .scrollIndicators(.hidden)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

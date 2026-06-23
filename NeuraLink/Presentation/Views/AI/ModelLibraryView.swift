@@ -75,6 +75,7 @@ struct ModelLibraryView: View {
             .padding(20)
             .padding(.bottom, 40)
         }
+        .scrollIndicators(.hidden)
     }
     
     private func card(for config: LocalModelDownloadManager.ModelConfiguration) -> some View {

@@ -24,6 +24,7 @@ struct AISettingsView: View {
                 personaSection
                 localSLMSection
             }
+            .scrollIndicators(.hidden)
             .navigationTitle("AI Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

@@ -13,7 +13,6 @@ import PhotosUI
 struct UserSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var settings = UserSettings.shared
-    @State private var memorySettings = MemorySettings.shared
     @State private var photoItem: PhotosPickerItem?
 
     let genders = ["Male", "Female", "Prefer not to say"]
@@ -70,36 +69,6 @@ struct UserSettingsView: View {
                 }
 
                 Section(header: Text("Memory")) {
-                    Toggle("Memory Enabled", isOn: Bindable(memorySettings).isEnabled)
-                        .listRowSeparator(memorySettings.isEnabled ? .hidden : .automatic)
-
-                    if memorySettings.isEnabled {
-                        Toggle("Store AI Responses", isOn: Bindable(memorySettings).storeAIResponses)
-                            .listRowSeparator(.hidden)
-
-                        Picker("Auto-forget", selection: Bindable(memorySettings).autoForgetDays) {
-                            Text("Never").tag(0)
-                            Text("7 days").tag(7)
-                            Text("14 days").tag(14)
-                            Text("30 days").tag(30)
-                        }
-                        .listRowSeparator(.hidden)
-
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Text("Memory Quality")
-                                Spacer()
-                                Text(memorySettings.similarityFloor, format: .number.precision(.fractionLength(2)))
-                                    .foregroundStyle(.secondary)
-                                    .monospacedDigit()
-                            }
-                            Slider(value: Bindable(memorySettings).similarityFloor, in: 0.3...0.7, step: 0.05)
-                            Text("Higher values surface fewer, more relevant memories.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
                     NavigationLink {
                         MemoryTimelineView()
                     } label: {
@@ -108,9 +77,10 @@ struct UserSettingsView: View {
                 }
                 
                 Section(footer: Text("This information is shared with the AI to personalize your experience. It is stored locally on your device.")) {
-                    EmptyView()
+                    EmptyView() // anchors the footer text
                 }
             }
+            .scrollIndicators(.hidden)
             .navigationTitle("User Profile")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

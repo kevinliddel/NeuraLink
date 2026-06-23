@@ -26,7 +26,7 @@ struct ChatHistorySidebar: View {
     @State private var renaming: Conversation?
     @State private var renameText: String = ""
 
-    private let panelWidth: CGFloat = 400
+    private let panelWidth: CGFloat = 325
 
     var body: some View {
         ZStack(alignment: .leading) {
@@ -169,6 +169,7 @@ struct ChatHistorySidebar: View {
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
+            .scrollIndicators(.hidden)
         }
     }
 

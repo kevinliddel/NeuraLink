@@ -162,6 +162,7 @@ struct PersonaSettingsView: View {
                 .listRowInsets(EdgeInsets(top: 10, leading: 0, bottom: 10, trailing: 0))
             }
         }
+        .scrollIndicators(.hidden)
         .navigationTitle(isLocalLLMMode ? "\(persona.name) — \(isJapaneseModel ? "JP Prompt" : "Local Prompt")" : "\(persona.name) Persona")
         .navigationBarTitleDisplayMode(.inline)
         .onDisappear {
