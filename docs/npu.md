@@ -19,7 +19,7 @@ graph TD
     subgraph Local Edge Pipeline
         direction TB
 
-        VAD --> D2["Voice End / WAV"] --> Whisper["LocalWhisperManager\nWhisperKit: base.en"]
+        VAD --> D2["Voice End / WAV"] --> Whisper["LocalWhisperManager\nwhisper.cpp: ggml-base (CPU)"]
         Whisper --> D3["Transcribed Text"] --> Manager["LocalLLMManager\nOrchestrator"]
 
         %% Model Selection (RAM-bucketed defaults)
@@ -52,10 +52,11 @@ graph TD
         Lib --> Llama
 
         %% TTS
-        Manager --> D6["Chunked Sentences"] --> TTS["LocalLLMManager+TTS\nAVSpeechSynthesizer"]
-        TTS -.-> QTier{"Voice Quality"}
-        QTier -.-> Q1["Compact (q=1)"]
-        QTier -.-> Q2["Enhanced (q=2)"]
+        Manager --> D6["Chunked Sentences"] --> TTS["LocalLLMManager+TTS\nEngine Selector"]
+        TTS -.-> QTier{"TTS Engine"}
+        QTier -.-> Q1["VoiceVox (JP Gemma)"]
+        QTier -.-> Q2["OpenVoice (default)"]
+        QTier -.-> Q3["System TTS (fallback)"]
     end
 
     %% Output
@@ -81,7 +82,7 @@ graph TD
 
 ### How the Local Pipeline Works
 1. **Voice Detection**: The `SileroVADProcessor` listens to the microphone. When speech ends, it packages the audio into a WAV buffer.
-2. **Speech-to-Text**: The WAV buffer is passed to `LocalWhisperManager`, which uses **WhisperKit** to run transcription directly on the NPU, returning text almost instantly.
+2. **Speech-to-Text**: The WAV buffer is passed to `LocalWhisperManager`, which uses **whisper.cpp** (via the `whisper.xcframework` + a C `whisper_bridge`) to run the multilingual `ggml-base` model. Transcription runs **on the CPU** (`use_gpu=false`) — A13 Metal whisper is broken, and keeping STT off the GPU avoids contention with the VRM avatar and llama.cpp. The `ggml-base` model is fetched from a Hugging Face dataset on first launch.
 3. **Engine Orchestration**: The `LocalLLMManager` selects the inference engine based on `ProcessInfo.physicalMemory` buckets:
    - **`GGUFSpeculativeEngine`** (≥ 7 GB): Qwen-2.5-7B target accelerated by Qwen-2.5-1.5B draft. Yields 2–3× decode throughput; falls back to `GGUFQwen7BEngine` if the draft model is not on disk.
    - **`GGUFQwen3BEngine`** (5–7 GB): Stronger reasoning than 1B-class models, fits the iPhone 14 / 15-base memory budget.
@@ -91,7 +92,7 @@ graph TD
    - **KV-cache prefix reuse** across turns — system prompt + persona are not re-prefilled every message, cutting first-token latency on multi-turn conversations.
    - **A tuned sampler chain** (top-k=40, top-p=0.9, temp=0.7, repetition penalty=1.1/64) replacing greedy argmax — eliminates the loop/repetition pathologies common with small models.
    - **`llama_chat_apply_template`** — prompts are formatted using the template baked into each model's GGUF metadata, so we never drift from the format the model was trained on. Manager passes role/content pairs; the C bridge applies the right template per model.
-5. **Text-to-Speech & Lip-Sync**: As tokens stream out, `LocalLLMManager` (via its [TTS extension](../NeuraLink/AI/LocalLLMManager+TTS.swift)) chunks them into sentences. It uses `AVSpeechSynthesizer` to select the best available local voice. By default, iOS compact voices (`q=1`) are used, but the system is optimized for **Enhanced/Premium** voices (`q=2`) which can be downloaded in iOS Accessibility settings. The generated audio buffers are routed through `AVAudioEngine` to extract amplitude curves for real-time VRM lip-sync.
+5. **Text-to-Speech & Lip-Sync**: As tokens stream out, `LocalLLMManager` (via its [TTS extension](../NeuraLink/AI/LocalLLMManager+TTS.swift)) chunks them into sentences. The engine selector routes by model: the Japanese Gemma model uses **VoiceVox**, while everything else uses the on-device **OpenVoice** engine (MeloTTS + tone-color converter, ONNX), with **System TTS** (`AVSpeechSynthesizer`) as a last-resort fallback. The generated audio buffers are routed through `AVAudioEngine` to extract amplitude curves for real-time VRM lip-sync.
 
 > [⚠️NOTE]
 >

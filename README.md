@@ -13,7 +13,7 @@
   <img src="https://img.shields.io/badge/LLaMa.cpp-gray?logo=c%2B%2B&logoColor=orange" alt="Llama C++" />
   <img src="https://custom-icon-badges.demolab.com/badge/Qwen-605CEC?logo=qwen&logoColor=fff" alt="Qwen" />
   <img src="https://custom-icon-badges.demolab.com/badge/WebRTC-gray?style=flat&logo=webrtc" alt="WebRTC" />
-  <img src="https://custom-icon-badges.demolab.com/badge/WhisperKit-gray?logo=swift" alt="WhisperKit" />
+  <img src="https://custom-icon-badges.demolab.com/badge/whisper.cpp-gray?logo=cplusplus&logoColor=orange" alt="whisper.cpp" />
   <img src="https://img.shields.io/badge/VoiceVOX-brightgreen?style=flat&logo=v&logoColor=fff" alt="Voice VOX" />
   <img src="https://custom-icon-badges.demolab.com/badge/OpenVoice-gray?style=flat&logo=p&logoColor=blue" alt="Open Voice" />
   <img src="https://custom-icon-badges.demolab.com/badge/Silero-VAD-red?style=flat&logo=silero" alt="Silero VAD" />
@@ -53,7 +53,7 @@ A high-performance, native iOS VRM character viewer and AI companion built from 
   </tr>
   <tr>
     <td><strong>Per-Character Personas</strong><br/>Each character carries her own system prompt and voice model, hot-swapped on model selection.</td>
-    <td><strong>Offline AI &amp; NPU</strong><br/>Fully local pipeline with Whisper (STT) and Llama/Qwen (LLM) accelerated by the Apple Neural Engine. See <a href="./docs/npu.md">NPU Documentation</a></td>
+    <td><strong>Offline AI &amp; NPU</strong><br/>Fully local pipeline with whisper.cpp (STT) on CPU and Llama/Qwen (LLM) accelerated by the Apple Neural Engine. See <a href="./docs/npu.md">NPU Documentation</a></td>
   </tr>
 </table>
 
@@ -272,7 +272,7 @@ ruby purge_spm.rb
 ## ֎ Offline AI & NPU
 NeuraLink features a high-performance local AI pipeline that runs entirely on your device using the **Apple Neural Engine**.
 
-- **WhisperKit**: Multi-lingual speech-to-text.
+- **whisper.cpp**: Multi-lingual speech-to-text via `whisper.xcframework` running the `ggml-base` model on CPU.
 - **llama.cpp**: Metal-accelerated inference for Llama-3.2 and Qwen-2.5.
 - **Single-file GGUF**: Memory-efficient model distribution.
 
@@ -284,7 +284,7 @@ For detailed technical specs and migration history, refer to:
 
 ## ֎ Offline AI Voices
 
-When running in **Offline Mode** (Local LLM), the system selects a TTS engine per persona and device tier — Kokoro for English personas, VOICEVOX for the Japanese model, F5-TTS for cloned voices on the qwen-7b tier, and Apple's **AVSpeechSynthesizer** as the universal fallback.
+When running in **Offline Mode** (Local LLM), the system selects a TTS engine per persona — **VOICEVOX** for the Japanese Gemma model, **OpenVoice** (MeloTTS + tone-color converter, ONNX, 22.05 kHz) for every other persona, and Apple's **AVSpeechSynthesizer** as the last-resort fallback.
 
 ### 🗣️ Local SLMs voice
 The selector logic, per-persona voice picker, and end-to-end audio pipelines (LLM → text chunks → engine → PCM buffers → AVAudioPlayerNode) are documented separately:
@@ -292,7 +292,7 @@ The selector logic, per-persona voice picker, and end-to-end audio pipelines (LL
 - [LLM_VOICE](./docs/LLM_VOICE.md) — full architecture with mermaid diagrams comparing the local-LLM TTS path against the OpenAI Realtime audio path.
 
 #### Improving the AVSpeechSynthesizer fallback
-When the system falls through to the iOS speech synthesizer (no Kokoro pack, no VOICEVOX model, no cloned voice), iOS uses compact voices (`q=1`) which can sound robotic. To improve fidelity:
+When the system falls through to the iOS speech synthesizer (no VOICEVOX model, no OpenVoice assets), iOS uses compact voices (`q=1`) which can sound robotic. To improve fidelity:
 
 1.  Open **Settings** on your iPhone.
 2.  Navigate to **Accessibility** → **Read & Speak** → **Voices**.
@@ -301,7 +301,7 @@ When the system falls through to the iOS speech synthesizer (no Kokoro pack, no 
 5.  Once downloaded, the system will automatically jump from `q=1` to `q=2`, providing a dramatically more lifelike experience.
 
 ### 🛠️ Implementation Details
-- [TTSEngineSelector.swift](./NeuraLink/Data/DataSources/TTS/TTSEngineSelector.swift) — engine resolution per persona + model tier.
+- [TTSEngineSelector.swift](./NeuraLink/Data/DataSources/TTS/TTSEngineSelector.swift) — engine resolution per persona + model (Japanese Gemma → VOICEVOX, else OpenVoice, System TTS fallback).
 - [LocalLLMManager+TTS.swift](./NeuraLink/Data/DataSources/LocalLLM/LocalLLMManager+TTS.swift) — chunked synthesis pipeline that pumps engine PCM buffers into the playback graph.
 
 ---
@@ -317,7 +317,7 @@ NeuraLink is designed for the realistic threat model of a **lost, stolen, or fil
 | **SQLCipher (opt-in)** | Per-message page-level crypto on the conversation DB | AES-CBC + HMAC pages keyed from a 32-byte Keychain secret. Off by default; flag-gated as the foundation for a future passphrase mode. |
 | **HMAC integrity** | Persistent KV cache blobs | HMAC-SHA256 over `(blob ‖ filename)` with a 32-byte Keychain key. A tampered blob fails verification and falls back to a cold prefill. |
 | **Sensitive logging** | Chat transcripts, persona prompts, RAG memory bodies | `nlLogSensitive` marks payloads as `.private` so they're redacted in observer-readable Console.app captures (TestFlight testers, MDM log capture). Release builds compile out all `nlLog` calls entirely. |
-| **Transient files** | Whisper audio segments | Written to `tmp/whisper_<UUID>.wav` and deleted after one transcribe call. |
+| **Transient files** | None for STT | whisper.cpp consumes in-memory 16 kHz float samples directly — no audio is written to disk (any legacy `whisper_<UUID>.wav` files are swept on upgrade). |
 
 **Explicitly out of scope** (closing these would require a different threat model): runtime debugger on a jailbroken device, server-side compromise at OpenAI, screen-recording leaks, side-channel attacks on the Apple Neural Engine.
 

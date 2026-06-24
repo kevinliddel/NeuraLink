@@ -48,7 +48,7 @@ flowchart TB
     %% Layer 2
     subgraph ProtectedStorage["Layer 2 — Files (Data Protection + no backup)"]
         direction TB
-        F1["personas.json\nlocal_llm_prompts.json"]
+        F1["personas.json\nlocal_llm_prompts.json\n(dormant legacy backup)"]
         F2["neuralink_memory.sqlite\n(+wal / shm / journal)"]
         F3["llm_kv/*.kv + *.hmac"]
     end
@@ -159,12 +159,14 @@ Every piece of on-disk state, where it lives, how it's protected, who reads it.
 |---|---|---|---|---|---|
 | OpenAI API key | Keychain | `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` | n/a (Keychain native) | No | [OpenAISettings.swift](../NeuraLink/Data/DataSources/OpenAI/OpenAISettings.swift) |
 | Conversation DB | `Application Support/private/neuralink_memory.sqlite` | `.completeUntilFirstUserAuthentication` | Optional SQLCipher (off by default) | **No** (excluded) | [MemoryStore.swift](../NeuraLink/Data/DataSources/Memory/MemoryStore.swift) |
-| Personas | `Application Support/private/personas.json` | `.completeUntilFirstUserAuthentication` | n/a | **No** (excluded) | [PersonaStore.swift](../NeuraLink/Data/Repositories/PersonaStore.swift) |
-| Local LLM prompts | `Application Support/private/local_llm_prompts.json` | `.completeUntilFirstUserAuthentication` | n/a | **No** (excluded) | [LocalLLMPromptStore.swift](../NeuraLink/Data/DataSources/LocalLLMPromptStore.swift) |
+| Persona / local-LLM prompts + voices | `Application Support/private/neuralink_memory.sqlite` → `character_ai` table | `.completeUntilFirstUserAuthentication` | Optional SQLCipher (off by default) | **No** (excluded) | [PersonaStore.swift](../NeuraLink/Data/Repositories/PersonaStore.swift), [LocalLLMPromptStore.swift](../NeuraLink/Data/DataSources/LocalLLMPromptStore.swift), [PersonaVoiceStore.swift](../NeuraLink/Data/DataSources/Memory/PersonaVoiceStore.swift) |
+| Legacy persona / prompt JSON (dormant backup) | `Application Support/private/personas.json`, `…/local_llm_prompts.json` | `.completeUntilFirstUserAuthentication` | n/a | **No** (excluded) | left in place after migration; no longer read |
 | KV cache + HMAC sidecar | `Application Support/llm_kv/<config>_<persona>.kv{,.hmac}` | `.completeUntilFirstUserAuthentication` | HMAC-SHA256 integrity (32-byte Keychain key) | Yes (no isExcludedFromBackup) | [LocalLLMKVCache.swift](../NeuraLink/Data/DataSources/LocalLLM/LocalLLMKVCache.swift) |
 | Whisper transcription input | `tmpDirectory/whisper_<UUID>.wav` | `.completeUntilFirstUserAuthentication` | n/a (deleted after one transcribe call) | **No** (tmp is auto-excluded) | [LocalWhisperManager.swift](../NeuraLink/Data/DataSources/LocalWhisperManager.swift) |
 
 **On `kvCacheHMACKey`:** the KV cache lives at `Application Support/llm_kv/` rather than `Application Support/private/` so that legacy data from pre-Phase-5 installs doesn't need a relocation migration (KV blobs are regenerable; a failed integrity check just triggers cold prefill on the next launch). The protection class is still applied to the directory.
+
+**On persona prompts/voices:** per-character AI prompts and voices (VoiceVox + OpenVoice prefs) now live in the encrypted conversation DB (the `character_ai (character, engine, prompt, voice, name)` table, engines `openai`/`gemma_jp`/`local`) instead of plaintext JSON + `UserDefaults`. `PersonaStore` and `LocalLLMPromptStore` are now thin facades over that table; `PersonaVoiceStore` is SQL-backed for VoiceVox/OpenVoice prefs (only the being-retired Kokoro voice map still uses `UserDefaults`). This means these prompts/voices inherit the DB's Data Protection class **and** the optional SQLCipher page encryption — strictly stronger at rest than the previous plaintext JSON-in-protected-dir + `UserDefaults` backup. A one-shot migration imports the legacy data on first launch; the old JSON files are left in place as a dormant backup and are no longer read.
 
 ---
 
@@ -193,6 +195,7 @@ We use one-shot `UserDefaults` flags for one-time upgrade tasks. Each flag is se
 | `com.neuralink.migration.dbRelocate.v1` | 2a | Atomic move of `Documents/neuralink_memory.sqlite` (+ siblings) → `Application Support/private/` with rollback on partial failure |
 | `com.neuralink.security.sqlcipherActive.v1` | 2b | Realised state of the SQLCipher conversion. Distinct from the user-intent flag below |
 | `com.neuralink.migration.whisperDocsCleanup.v1` | 4 | Sweep legacy `Documents/whisper_*.wav` files left by pre-Phase-4 builds |
+| `com.neuralink.migration.personaStoresToSQL.v1` | — | Import legacy persona/local-LLM prompts (JSON + `UserDefaults` backups) and VoiceVox/OpenVoice voice prefs into the encrypted DB's `character_ai` table; legacy JSON files are left in place as a dormant backup |
 
 There are also two **user-intent feature flags**, separate from migration flags:
 
@@ -356,9 +359,10 @@ Other things deferred to future work:
 | [NeuraLink/Data/DataSources/Memory/MemoryStore+SQLCipher.swift](../NeuraLink/Data/DataSources/Memory/MemoryStore+SQLCipher.swift) | SQLCipher feature flag + keying + conversion |
 | [NeuraLink/Data/DataSources/Memory/MemoryStore+Queries.swift](../NeuraLink/Data/DataSources/Memory/MemoryStore+Queries.swift) | `import SQLCipher` |
 | [NeuraLink/Data/DataSources/Memory/RAGManager.swift](../NeuraLink/Data/DataSources/Memory/RAGManager.swift) | Split metadata/content logging |
-| [NeuraLink/Data/Repositories/PersonaStore.swift](../NeuraLink/Data/Repositories/PersonaStore.swift) | Personas → protected JSON |
-| [NeuraLink/Data/DataSources/LocalLLMPromptStore.swift](../NeuraLink/Data/DataSources/LocalLLMPromptStore.swift) | Local LLM prompts → protected JSON |
-| [NeuraLink/Data/DataSources/LocalWhisperManager.swift](../NeuraLink/Data/DataSources/LocalWhisperManager.swift) | `tmpDirectory` + defer-delete + legacy sweep + private logs |
+| [NeuraLink/Data/Repositories/PersonaStore.swift](../NeuraLink/Data/Repositories/PersonaStore.swift) | Personas → facade over encrypted DB (`character_ai`) |
+| [NeuraLink/Data/DataSources/LocalLLMPromptStore.swift](../NeuraLink/Data/DataSources/LocalLLMPromptStore.swift) | Local LLM prompts → encrypted DB (`character_ai`) |
+| [NeuraLink/Data/DataSources/Memory/PersonaVoiceStore.swift](../NeuraLink/Data/DataSources/Memory/PersonaVoiceStore.swift) | VoiceVox/OpenVoice prefs → encrypted DB (`character_ai`); legacy Kokoro map still `UserDefaults` |
+| [NeuraLink/Data/DataSources/LocalWhisperManager.swift](../NeuraLink/Data/DataSources/LocalWhisperManager.swift) | whisper.cpp feeds in-memory float samples (no temp WAV); legacy `whisper_*.wav` sweep + private logs |
 | [NeuraLink/Data/DataSources/LocalLLM/LocalLLMKVCache.swift](../NeuraLink/Data/DataSources/LocalLLM/LocalLLMKVCache.swift) | KV cache path + HMAC sign/verify/purge |
 | [NeuraLink/Data/DataSources/LocalLLM/LocalLLMManager.swift](../NeuraLink/Data/DataSources/LocalLLM/LocalLLMManager.swift) | KV cache load/save with integrity check |
 | [NeuraLink/Data/DataSources/OpenAI/OpenAISettings.swift](../NeuraLink/Data/DataSources/OpenAI/OpenAISettings.swift) | API key → Keychain + one-shot migration |

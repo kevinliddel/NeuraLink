@@ -6,9 +6,6 @@
 //  `Application Support/private/` directory and the API for applying a
 //  protection class to files inside it.
 //
-//  Phase 2 of the security audit remediation plan. See
-//  `docs/security_audit_plan.md` §3.2 (Path A — Data Protection).
-//
 //  Design notes:
 //    - Stateless namespace `enum`, same pattern as `SecureStore`.
 //    - Protection class is `.completeUntilFirstUserAuthentication`:

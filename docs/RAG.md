@@ -8,7 +8,7 @@ The NeuraLink RAG (Retrieval-Augmented Generation) system gives the AI a persist
 
 | Method | Purpose | Caller |
 |---|---|---|
-| `store(text:source:)` | Append an interaction to long-term memory. Generates a vector embedding and persists `{text, vector, source, timestamp}` in SQLite. Honours user settings (`isEnabled`, `storeAIResponses`, `autoForgetDays`). | `OpenAIRealtimeManager+Handlers` after every user transcript and AI response; `LocalLLMManager+Engine` for the local path |
+| `store(text:source:)` | Append an interaction to long-term memory. Generates a vector embedding and persists `{text, vector, source, timestamp}` in SQLite. Honours user settings (`isEnabled`, `autoForgetDays`). Both user transcripts and AI responses are always stored when memory is enabled. | `OpenAIRealtimeManager+Handlers` after every user transcript and AI response; `LocalLLMManager+Engine` for the local path |
 | `fetchContext(for:limit:)` | Returns the top-K *general* memories most relevant to a query, formatted as a `[Long-term Memory Context]` block ready to inject into a system prompt. | OpenAI session init (`sendInitialSessionUpdate`) for grounding |
 | `storeFact(_:)` | Persists an atomic, user-stated fact tagged with `source: "fact"`. Same table, distinct tag — facts are retrieved separately from general dialogue chunks. | `LocalLLMFactExtractor.extractAndStore(...)` during background compaction; also any tool that wants to durably remember something (`remember_fact` tool ultimately calls into KnowledgeGraphManager — see Knowledge Graph section) |
 | `fetchFacts(relevantTo:limit:)` | Returns top-K facts most relevant to a query, filtered to `source = "fact"` only. Used to repopulate Tier 3 of the local LLM prompt on each turn. | `LocalLLMMemoryHierarchy.buildMessages` |
@@ -109,7 +109,7 @@ The memory database can be transparently encrypted at the page level via SQLCiph
 | Similarity metric | Cosine similarity over `Double` vectors |
 | Ranking | `sim × ((1−w) + w × exp(-ageDays/halfLife)) × (pinned ? 1.15 : 1.0)`; candidates with `sim ≤ similarityFloor` dropped. Tunables in `MemorySettings` (defaults `w=0.25`, `halfLife=14`, `floor=0.5`) |
 | Database | SQLite via [`MemoryStore`](../NeuraLink/Data/DataSources/Memory/MemoryStore.swift); optional SQLCipher encryption |
-| Auto-forget | Memories and chat events older than `MemorySettings.autoForgetDays` are pruned on every store (0 disables) |
+| Auto-forget | Memories and chat messages older than `MemorySettings.autoForgetDays` are pruned on every store (0 disables) |
 | File-size compliance | Each file ≤500 lines per project rule; `MemoryStore` is split via `+SQLCipher.swift` and `+Queries.swift` extensions |
 
 ## Cross-references

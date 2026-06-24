@@ -12,7 +12,7 @@ This doc explains how each pipeline turns a model's output into spoken audio, an
 | **What runs in the cloud** | nothing | LLM inference, audio synthesis, transcription |
 | **Audio transport** | direct CPU → `AVAudioPCMBuffer` → `AVAudioPlayerNode` | WebRTC RTP audio track → `RTCAudioTrack` |
 | **Tool calls** | regex-parsed `<tool>` blocks in the LLM's text output | structured `function_call` events on the WebRTC data channel |
-| **Persona voice** | per-persona override in `PersonaVoiceStore` (VOICEVOX speaker, Kokoro preset) or `KokoroVoicePreset.builtInDefault` | one of OpenAI's named voices (alloy / shimmer / marin / etc.) set at session-mint time |
+| **Persona voice** | per-persona override in `PersonaVoiceStore` (VOICEVOX speaker or OpenVoice preset), persisted in the `character_ai` SQL table; else the engine's built-in default | one of OpenAI's named voices (alloy / shimmer / marin / etc.) set at session-mint time |
 | **Latency profile** | bounded by on-device synthesis (~100–500 ms for first chunk) | bounded by network RTT (~150–400 ms) |
 
 ## Local SLM path
@@ -23,33 +23,28 @@ When `OpenAISettings.isLocalLLMEnabled = true`, the LLM runs on-device via [`Loc
 
 ```mermaid
 flowchart TD
-    Start["Persona + ModelConfig"] --> Q1{"Has F5-TTS clone?\nAND tier == qwen7b?"}
-
-    Q1 --> D1["yes"] --> F5["F5TTSEngine\nMLX-Swift voice clone"]
-    Q1 --> D2["no"] --> Q2{"ModelConfig ==\njapaneseGemma2b?"}
+    Start["Persona + ModelConfig"] --> Q2{"ModelConfig ==\njapaneseGemma2b?"}
 
     Q2 --> D3["yes"] --> VV["VoiceVoxEngine\nONNX Runtime + OpenJTalk"]
-    Q2 --> D4["no"] --> Q3{"Kokoro pack\ninstalled on disk?"}
+    Q2 --> D4["no"] --> OV["OpenVoiceEngine\nMeloTTS + tone-color converter (ONNX)"]
 
-    Q3 --> D5["yes"] --> KK["KokoroEngine\nONNX kokoro-82M"]
-    Q3 --> D6["no"] --> SYS["SystemTTSEngine\nAVSpeechSynthesizer fallback"]
+    OV -.->|"init / model download fails"| SYS["SystemTTSEngine\nAVSpeechSynthesizer fallback"]
 
-    F5 --> D7["Audio Buffer"] --> Done["onBufferReady → AVAudioPCMBuffer"]
-    VV --> D7
-    KK --> D7
+    VV --> D7["Audio Buffer"] --> Done["onBufferReady → AVAudioPCMBuffer"]
+    OV --> D7
     SYS --> D7
 
     %% Engine styles
     classDef engine fill:#0f172a,stroke:#7c3aed,color:#a78bfa
-    class F5,VV,KK,SYS engine
+    class VV,OV,SYS engine
 
     %% Decision nodes
     classDef decision fill:#1e293b,stroke:#94a3b8,color:#e2e8f0
-    class Q1,Q2,Q3 decision
+    class Q2 decision
 
     %% Data / flow nodes (consistent with your other diagrams)
     classDef data fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
-    class D1,D2,D3,D4,D5,D6,D7 data
+    class D3,D4,D7 data
 ```
 
 Each engine conforms to [`TTSEngineProtocol`](../NeuraLink/Domain/Interfaces/TTSEngineProtocol.swift), which is a push-streaming contract: the engine calls back into `onBufferReady` with each PCM buffer as it's synthesised, so the iPhone can start playing before the full sentence has finished synthesising. That callback is what keeps first-audio latency low even when the LLM is producing text faster than the TTS can synthesise it.
@@ -64,7 +59,7 @@ sequenceDiagram
     participant LLM as GGUFLlama/QwenEngine
     participant Parser as LocalToolCallParser
     participant Sel as TTSEngineSelector
-    participant Eng as TTSEngine<br/>(Kokoro / VOICEVOX / F5 / System)
+    participant Eng as TTSEngine<br/>(VOICEVOX / OpenVoice / System)
     participant Pump as LocalLLMManager+TTS<br/>(speakChunk)
     participant Player as AVAudioPlayerNode
 
@@ -91,8 +86,8 @@ Notes on the flow:
 
 - **Chunking**: `LocalLLMManager+Engine.swift` accumulates tokens into sentence chunks. A chunk is flushed to `speakChunk` (in [`LocalLLMManager+TTS.swift`](../NeuraLink/Data/DataSources/LocalLLM/LocalLLMManager+TTS.swift)) on punctuation boundaries (`.`, `!`, `?`, `。`) or after `n_predict` tokens.
 - **Tool stripping**: Before the chunk reaches TTS, [`LocalToolCallParser.strippedText`](../NeuraLink/Data/DataSources/LocalToolCallParser.swift) removes any `<tool name="…">{…}</tool>` block so the model's tool-call syntax never gets spoken aloud. If a tool block is present, `AppFunctionExecutor.execute` runs in parallel and the spoken response is the tool's result.
-- **Persona voice resolution**: Each engine consults [`PersonaVoiceStore`](../NeuraLink/Data/DataSources/Memory/PersonaVoiceStore.swift) at synthesis time, so changing the picker in `PersonaSettingsView` and saving immediately changes the voice for the next chunk without requiring an app restart.
-- **Buffer scheduling**: All four engines emit `AVAudioPCMBuffer`s in their native sample rates (Kokoro & F5-TTS at 24 kHz, VOICEVOX at 24 kHz, System at iOS-locale-dependent). [`scheduleBuffer`](../NeuraLink/Data/DataSources/LocalLLM/LocalLLMManager+TTS.swift) re-connects the player node with the right format on the fly when consecutive chunks have differing rates.
+- **Persona voice resolution**: Each engine consults [`PersonaVoiceStore`](../NeuraLink/Data/DataSources/Memory/PersonaVoiceStore.swift) at synthesis time — now a thin facade over the `character_ai` SQL table (each engine's voice lives alongside that engine's prompt) — so changing the picker in `PersonaSettingsView` and saving immediately changes the voice for the next chunk without requiring an app restart.
+- **Buffer scheduling**: Each engine emits `AVAudioPCMBuffer`s in its native sample rate (OpenVoice at 22.05 kHz, VOICEVOX at 24 kHz, System at iOS-locale-dependent). [`scheduleBuffer`](../NeuraLink/Data/DataSources/LocalLLM/LocalLLMManager+TTS.swift) re-connects the player node with the right format on the fly when consecutive chunks have differing rates.
 
 ### Voice cache & invalidation
 
@@ -100,7 +95,7 @@ Notes on the flow:
 
 1. The user saves a new voice in `PersonaSettingsView` (so the next synthesis sees the updated `PersonaVoiceStore` entry).
 2. The user clears the override via Reset.
-3. The user switches the active LLM model (the F5-TTS qwen-7b path is no longer available if you downgrade to qwen-3b, etc.).
+3. The user switches the active LLM model (e.g. moving to/from the Japanese Gemma tier flips the engine, VOICEVOX ↔ OpenVoice).
 
 ## OpenAI Realtime path
 
@@ -176,7 +171,7 @@ A few load-bearing details:
 Both pipelines feed into the same downstream subsystems:
 
 - **`AppFunctionExecutor`** — single registry of `Skill` implementations. Whether a tool call arrives as `<tool name="…">{json}</tool>` from a local LLM or as a `function_call` event from OpenAI, dispatch goes through the same code path.
-- **`ChatTimelineStore`** — every user message, AI reply, and tool call is persisted into the SQLite `chat_events` table, visible in the **Memory** sheet under "Timeline".
+- **`ChatTimelineStore` → `ConversationStore`** — every user message, AI reply, and tool call is appended to the **active conversation** (the SQLite `conversations` + `messages` session tables), browsable in the chat-history **sidebar** and openable as a read-only transcript. (This replaced the old flat `chat_events` table + "Memory → Timeline" list.)
 - **`KnowledgeGraphManager`** + **`RAGManager`** — structured facts (`remember_fact` tool) and unstructured memory chunks both end up in the SQLite store and are surfaced to the next session's prompt.
 
 ## Logging
@@ -196,7 +191,8 @@ For the local LLM path the equivalent log starts at `֎ [FunctionCall] LocalLLM 
 
 ## Implementation pointers
 
-- **Local TTS engines**: [`TTSEngineProtocol.swift`](../NeuraLink/Domain/Interfaces/TTSEngineProtocol.swift), [`KokoroEngine.swift`](../NeuraLink/Data/DataSources/TTS/Kokoro/KokoroEngine.swift), [`VoiceVoxEngine.swift`](../NeuraLink/Data/DataSources/TTS/VoiceVoxEngine.swift), [`F5TTSEngine.swift`](../NeuraLink/Data/DataSources/TTS/F5TTSEngine.swift), [`SystemTTSEngine.swift`](../NeuraLink/Data/DataSources/TTS/SystemTTSEngine.swift).
+- **Local STT**: [`LocalWhisperManager.swift`](../NeuraLink/Data/DataSources/LocalWhisperManager.swift) — whisper.cpp (`ggml-base`, multilingual, CPU), one-shot at voice-end.
+- **Local TTS engines**: [`TTSEngineProtocol.swift`](../NeuraLink/Domain/Interfaces/TTSEngineProtocol.swift), [`VoiceVoxEngine.swift`](../NeuraLink/Data/DataSources/TTS/VoiceVoxEngine.swift), [`OpenVoiceEngine.swift`](../NeuraLink/Data/DataSources/TTS/OpenVoice/OpenVoiceEngine.swift), [`SystemTTSEngine.swift`](../NeuraLink/Data/DataSources/TTS/SystemTTSEngine.swift).
 - **Engine selection & caching**: [`TTSEngineSelector.swift`](../NeuraLink/Data/DataSources/TTS/TTSEngineSelector.swift).
 - **Voice picker + preview**: [`PersonaSettingsView.swift`](../NeuraLink/Presentation/Views/AI/PersonaSettingsView.swift).
 - **OpenAI handshake**: [`OpenAIRealtimeManager.swift`](../NeuraLink/Data/DataSources/OpenAI/OpenAIRealtimeManager.swift) (mint + SDP exchange), [`OpenAIRealtimeManager+Handlers.swift`](../NeuraLink/Data/DataSources/OpenAI/OpenAIRealtimeManager+Handlers.swift) (`sendInitialSessionUpdate`, data-channel event dispatch).

@@ -82,16 +82,16 @@ PCM16 frame → CoreML mel-spectrogram model → 15-viseme weights (full phoneme
 
 **Source:** [LipSync.md §2.2](./LipSync.md)
 
-The local TTS path (Kokoro / VOICEVOX / F5-TTS) generates a complete PCM audio buffer before playback begins. This means **word timestamps are available** for phoneme-level forced alignment — far more accurate than energy analysis.
+The local TTS path (VOICEVOX / OpenVoice) generates a complete PCM audio buffer before playback begins. This means **word timestamps are available** for phoneme-level forced alignment — far more accurate than energy analysis.
 
 **Target pipeline:**
 ```
-TTS PCM buffer → WhisperKit forced-aligner → (timestamp, visemeID, weight) schedule
+TTS PCM buffer → whisper.cpp forced-aligner → (timestamp, visemeID, weight) schedule
                                             → CADisplayLink ticker → VRMExpressionManager
 ```
 
 **Implementation steps:**
-1. After each `TTSEngine.speak()` completes, pass the returned `AVAudioPCMBuffer` to `LocalWhisperManager`'s forced-align endpoint (already a dependency via `WhisperKit`).
+1. After each `TTSEngine.speak()` completes, pass the returned `AVAudioPCMBuffer` to `LocalWhisperManager`'s forced-align endpoint (already a dependency via the `whisper.cpp` bridge).
 2. Map aligned phoneme intervals to viseme IDs using the `LipSync.md §1.3` table.
 3. Build a `[(time: Double, visemeID: String, weight: Float)]` schedule.
 4. Use a `CADisplayLink` (or `AVAudioPlayerNode` notification + `hostTime`) to advance through the schedule in sync with playback.
@@ -258,7 +258,7 @@ The speculative engine hard-codes `N = 4` draft tokens. The optimal N is accepta
 
 **Fix:**
 - In `TTSEngineSelector.invalidateCache(for:)`: immediately kick off `initialize()` on the new engine in a background task so it's warm by the time the user speaks.
-- The pre-warm goes through `engine(for:)` so the warmed instance is **cached** — warming a bare `resolveEngine` instance would be discarded for non-singleton engines (F5-TTS / System TTS) and the first `speakChunk` would still start cold.
+- The pre-warm goes through `engine(for:)` so the warmed instance is **cached** — warming a bare `resolveEngine` instance would be discarded for non-singleton engines (OpenVoice / System TTS) and the first `speakChunk` would still start cold.
 
 **Files to modify:**
 - `NeuraLink/Data/DataSources/TTS/TTSEngineSelector.swift`
@@ -269,7 +269,7 @@ The speculative engine hard-codes `N = 4` draft tokens. The optimal N is accepta
 
 **Source:** [LLM_VOICE.md §Buffer scheduling](./LLM_VOICE.md)
 
-`scheduleBuffer` reconnects `AVAudioPlayerNode` on every sample-rate change (Kokoro 24 kHz vs System TTS locale-dependent). Inserting a fixed 48 kHz `AVAudioMixerNode` makes format changes invisible and enables overlap-crossfade between consecutive sentence chunks.
+`scheduleBuffer` reconnects `AVAudioPlayerNode` on every sample-rate change (OpenVoice vs VoiceVox vs System TTS locale-dependent). Inserting a fixed 48 kHz `AVAudioMixerNode` makes format changes invisible and enables overlap-crossfade between consecutive sentence chunks.
 
 > **Note (implementation):** graph is now `playerNode → ttsMixerNode (fixed 48 kHz out) → mainMixer`.
 > A sample-rate change rewires only the local player → mixer edge — the engine

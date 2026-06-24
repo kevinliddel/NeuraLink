@@ -147,7 +147,7 @@ We do not receive phoneme timestamps from OpenAI — so we drive lip-sync from *
 
 ---
 
-### 2.2 Local LLM TTS (MLX-Swift / F5-TTS)
+### 2.2 Local LLM TTS (OpenVoice / VOICEVOX)
 
 Local TTS generates a full audio buffer before playback.  
 This gives us **word timestamps** that can be aligned to phonemes.
@@ -155,7 +155,7 @@ This gives us **word timestamps** that can be aligned to phonemes.
 **Pipeline:**
 
 1. **Generate** — TTS produces PCM audio + optional word/phoneme alignment.
-2. **Forced alignment** (optional) — `WhisperKit` or `Piper` forced-aligner maps words → phonemes → timestamps.
+2. **Forced alignment** (optional) — `whisper.cpp` or `Piper` forced-aligner maps words → phonemes → timestamps.
 3. **Viseme schedule** — Build a timeline of `(timestamp, visemeID, weight)` events.
 4. **Playback** — `AVAudioPlayer` plays audio; a `DisplayLink` timer advances the viseme schedule in sync.
 5. **Apply** — Same `VRMExpressionManager` path as OpenAI.
@@ -169,7 +169,7 @@ flowchart TD
     %% Sources
     subgraph Sources
         OAI["OpenAI Realtime API\n(WebRTC PCM16 stream)"]
-        TTS["Local LLM TTS\n(F5-TTS / MLX-Swift)"]
+        TTS["Local LLM TTS\n(OpenVoice / VOICEVOX)"]
     end
 
     %% Audio Analysis
@@ -177,7 +177,7 @@ flowchart TD
         RMS["RMS Energy\nper 10 ms frame"]
         BPF["Band-pass Filter\n300–3400 Hz"]
         PHO["Phoneme Classifier\n(optional CoreML)"]
-        ALN["Forced Aligner\n(WhisperKit)"]
+        ALN["Forced Aligner\n(whisper.cpp)"]
     end
 
     %% Viseme Mapping
