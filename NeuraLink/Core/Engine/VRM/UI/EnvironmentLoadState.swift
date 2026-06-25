@@ -24,9 +24,10 @@ final class EnvironmentLoadState {
     /// The selected environment's 3D mesh finished loading (success or failure).
     private(set) var environmentMeshReady = false
 
-    /// Latest loader/texture log line, shown on the loading screen for a
-    /// game-console feel. Nil until the first loader log (and in Release, where
-    /// the DEBUG-only logger never fires — `statusText` is the fallback).
+    /// Latest loader/texture log line (tag stripped), shown on the loading
+    /// screen for a game-console feel. Nil until the first loader log (and in
+    /// Release, where the DEBUG-only logger never fires — the screen shows a
+    /// neutral "Loading…" in that case).
     private(set) var currentLogLine: String?
 
     private init() {
@@ -52,10 +53,18 @@ final class EnvironmentLoadState {
             || body.contains("[CampusRenderer]")
     }
 
-    /// Records the latest loader line (ignored once the scene is ready).
+    /// Records the latest loader line (ignored once the scene is ready). The
+    /// "[Tag] " prefix is stripped so only the message body is shown.
     func report(_ line: String) {
         guard !isReady else { return }
-        currentLogLine = line
+        currentLogLine = Self.stripTag(line)
+    }
+
+    /// Drops a leading "[Tag] " (e.g. "[TextureLoader] Drawing image to
+    /// context…" → "Drawing image to context…").
+    private static func stripTag(_ body: String) -> String {
+        guard let range = body.range(of: "] ") else { return body }
+        return String(body[range.upperBound...])
     }
 
     /// Everything needed before revealing the live 3D scene. When the user has
@@ -63,15 +72,6 @@ final class EnvironmentLoadState {
     var isReady: Bool {
         guard baseSceneReady else { return false }
         return UserSettings.shared.showEnvironment ? environmentMeshReady : true
-    }
-
-    /// What's currently loading — surfaced on the loading screen, game-style.
-    var statusText: String {
-        if !baseSceneReady { return "Loading avatar…" }
-        if UserSettings.shared.showEnvironment && !environmentMeshReady {
-            return "Loading environment…"
-        }
-        return "Entering world…"
     }
 
     func markBaseSceneReady() { baseSceneReady = true }

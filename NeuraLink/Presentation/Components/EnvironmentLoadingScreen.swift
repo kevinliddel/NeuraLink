@@ -43,9 +43,9 @@ struct EnvironmentLoadingScreen: View {
             ProgressView()
                 .controlSize(.small)
                 .tint(.white)
-            // Live loader/texture log line (game-console feel); falls back to
-            // the phase text before any loader log / in Release builds.
-            Text(envLoad.currentLogLine ?? envLoad.statusText)
+            // Live loader/texture log line (game-console feel), tag stripped;
+            // a neutral "Loading…" before the first log / in Release builds.
+            Text(envLoad.currentLogLine ?? "Loading…")
                 .font(.callout.weight(.semibold))
                 .foregroundStyle(.white)
                 .lineLimit(1)
