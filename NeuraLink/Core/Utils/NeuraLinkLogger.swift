@@ -194,6 +194,14 @@ private func emitSensitive(
 
 // MARK: - Public API
 
+/// Optional tap on the (DEBUG-only) `nlLog` stream. The launch loading screen
+/// installs a sink to surface live loader/texture log lines as status text.
+/// Invoked with the raw message body + level on whatever thread logged. No-op
+/// in Release, where `nlLog` itself compiles out.
+enum NLLogTap {
+    nonisolated(unsafe) static var sink: ((String, NLLogLevel) -> Void)?
+}
+
 @inline(__always)
 func nlLog(
     _ message: @autoclosure () -> String,
@@ -211,6 +219,7 @@ func nlLog(
         emit(body, level: level, logger: logger, function: fn, line: line)
         PersistentLogSink.write(
             level: level, body: body, category: cat, function: fn, line: line)
+        NLLogTap.sink?(body, level)
     #else
         _ = message
         _ = level

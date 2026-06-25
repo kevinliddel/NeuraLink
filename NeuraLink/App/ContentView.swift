@@ -15,6 +15,7 @@ struct ContentView: View {
     private var camera = CameraManager.shared
     @State private var showModelSelection = false
     @State private var isMenuExpanded = false
+    @State private var envLoad = EnvironmentLoadState.shared
 
     var body: some View {
         NavigationStack {
@@ -81,7 +82,7 @@ struct ContentView: View {
                 }
             }
             .toolbar {
-                if !aiState.isUIHidden {
+                if !aiState.isUIHidden && envLoad.isReady {
                     chatHistoryToggleButton
                     menuToggleButton
                 }
@@ -128,6 +129,22 @@ struct ContentView: View {
                         }
                     )
                 }
+            }
+            // Game-engine-style launch loading screen: held until the base
+            // scene + the selected 3D environment mesh are ready (the
+            // environment downloads on first launch), then fades out.
+            .overlay {
+                if !envLoad.isReady {
+                    EnvironmentLoadingScreen()
+                        .transition(.mist)
+                        .zIndex(999)
+                }
+            }
+            .animation(.easeInOut(duration: 0.8), value: envLoad.isReady)
+            .task {
+                // Failsafe: never let the loading screen hang on a stalled download.
+                try? await Task.sleep(nanoseconds: 30_000_000_000)
+                if !envLoad.isReady { EnvironmentLoadState.shared.forceReady() }
             }
         }
     }

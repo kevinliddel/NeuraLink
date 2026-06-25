@@ -229,6 +229,9 @@ final class VRMMetalState {
         loadAnimationSequence(for: model)
         isModelLoaded = true
         isEnvironmentReady = true
+        // Base scene (avatar + sky + ground) is up. The launch loading screen
+        // also waits for the selected environment mesh — see EnvironmentLoadState.
+        EnvironmentLoadState.shared.markBaseSceneReady()
     }
 
     // MARK: - Tickers
