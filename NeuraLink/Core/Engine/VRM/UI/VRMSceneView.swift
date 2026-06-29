@@ -146,7 +146,12 @@ public struct VRMSceneView: View {
         }
         guard let state else { return }
 
-        guard state.isMetalAvailable, let url = modelURL else { return }
+        guard state.isMetalAvailable, let url = modelURL else {
+            // Nothing to render (preview / no Metal / no model) — don't hold the
+            // launch loading screen on a scene that will never appear.
+            EnvironmentLoadState.shared.forceReady()
+            return
+        }
         state.clear()
 
         let characterName = url.deletingPathExtension().lastPathComponent
@@ -162,6 +167,7 @@ public struct VRMSceneView: View {
             state.display(model)
         } catch {
             state.errorMessage = error.localizedDescription
+            EnvironmentLoadState.shared.forceReady()
         }
 
         // On the first load (app launch) never auto-connect — the user must

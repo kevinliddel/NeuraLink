@@ -27,6 +27,9 @@ extension VRMRenderer {
             } catch {
                 nlLog("[CampusRenderer] campus.glb resolve/load failed: \(error)")
             }
+            // Release the launch loading screen once the selected environment's
+            // mesh is in (or its load failed — never hang the reveal).
+            await EnvironmentLoadState.shared.environmentDidLoad("campus")
         }
     }
 
