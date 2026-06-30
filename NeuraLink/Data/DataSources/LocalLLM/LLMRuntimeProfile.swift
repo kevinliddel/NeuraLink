@@ -66,12 +66,6 @@ struct LLMRuntimeProfile {
                 contextLength: 1024, threads: 2, gpuLayers: 999,
                 kType: .q4_0, vType: .q4_0, flashAttn: .enabled,
                 pldN: 2, pldNDraft: 3)
-        case .qwen2b:
-            // 6 GB tier.
-            profile = LLMRuntimeProfile(
-                contextLength: 2048, threads: 4, gpuLayers: 999,
-                kType: .q4_0, vType: .q4_0, flashAttn: .enabled,
-                pldN: 0, pldNDraft: 0)
         }
 
         return profile

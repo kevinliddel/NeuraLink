@@ -101,16 +101,11 @@ struct AISettingsView: View {
         }
     }
 
-    /// Returns a warning string when the selected tier exceeds the device's
-    /// safe RAM headroom, or nil otherwise.
+    /// Returns a warning when the selected model exceeds the device's safe RAM
+    /// headroom. Both shipped local models (Llama-1B, LLM-jp-3) are sized for the
+    /// 4 GB tier, so there's nothing to warn about today.
     private func ramWarning(for config: LocalModelDownloadManager.ModelConfiguration) -> String? {
-        let gb = Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824.0
-        switch config {
-        case .qwen2b where gb < 5.0:
-            return "This device (\(Int(gb)) GB RAM) is under the 6 GB requirement for Qwen 2B. The 1B model is recommended to prevent crashes."
-        default:
-            return nil
-        }
+        nil
     }
 
     private var personaSection: some View {

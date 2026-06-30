@@ -53,7 +53,6 @@ enum LocalLLMKVCache {
         // vocab/dims would corrupt or fail the state-seq load. Orphaned old
         // blobs are harmless (cleaned by the version-token sweep / cache purge).
         case .llmJp3: configKey = "llmjp3_18b"
-        case .qwen2b: configKey = "qwen2b"
         }
         let personaKey = sha256Prefix(systemPrompt, length: 16)
         let versionKey = "v\(LlamaBridge.stateSeqVersion)"

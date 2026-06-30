@@ -49,7 +49,6 @@ final class LocalModelDownloadManager: @unchecked Sendable {
     }
 
     enum ModelConfiguration: String, CaseIterable, Identifiable {
-        case qwen2b = "Qwen3-VL 2B"
         case llama1b = "Llama-3.2 1B"
         // The JP slot's model has evolved (Llama-3.2-1B → Gemma 2 2B →
         // LLM-jp-3 1.8B); the case is `.llmJp3` for the current model. Changing
@@ -63,7 +62,6 @@ final class LocalModelDownloadManager: @unchecked Sendable {
 
         var repoID: String {
             switch self {
-            case .qwen2b: return GGUFQwenModelAccess.repoID
             case .llama1b: return GGUFModelAccess.repoID
             case .llmJp3: return GGUFLLMjp3ModelAccess.repoID
             }
@@ -71,7 +69,6 @@ final class LocalModelDownloadManager: @unchecked Sendable {
 
         var estimatedSizeGB: Double {
             switch self {
-            case .qwen2b: return 1.1
             // Q4_K_M (~0.81 GB) — Q8_0 (1.32) was too big for 4 GB (jetsam).
             case .llama1b: return 0.81
             // LLM-jp-3 1.8B instruct, Q3_K_M — see quantizationLabel.
@@ -81,8 +78,6 @@ final class LocalModelDownloadManager: @unchecked Sendable {
 
         var quantizationLabel: String {
             switch self {
-            case .qwen2b:
-                return "Q4_K_M"
             case .llama1b:
                 // Q4_K_M (~0.81 GB): fits resident on 4 GB (Q8_0 1.32 jetsam'd).
                 // See GGUFModelAccess.swift.
@@ -98,14 +93,10 @@ final class LocalModelDownloadManager: @unchecked Sendable {
 
         var description: String {
             switch self {
-            case .qwen2b:
-                return
-                    "High performance, stateful. Recommended for iPhone 13 Pro Max, 14, 15 families (6 GB RAM)."
             case .llama1b:
-                return "Memory efficient. Recommended for iPhone 11, 12 or 13 families (4 GB RAM)."
+                return "Fast and highly memory-efficient, optimized for everyday use."
             case .llmJp3:
-                return
-                    "Japanese-native LLM — sized to run fully in memory on iPhone 11, 12 or 13 families (4 GB RAM)."
+                return "Japanese-native LLM, tuned for fast and memory-efficient performance."
             }
         }
     }
@@ -217,7 +208,6 @@ final class LocalModelDownloadManager: @unchecked Sendable {
             LocalLLMManager.shared.unload()
         }
         switch config {
-        case .qwen2b: GGUFQwenModelAccess.clearCache()
         case .llama1b: GGUFModelAccess.clearCache()
         case .llmJp3: GGUFLLMjp3ModelAccess.clearCache()
         }
@@ -243,7 +233,6 @@ final class LocalModelDownloadManager: @unchecked Sendable {
     func diskUsageBytes(for config: ModelConfiguration) -> Int64 {
         let url: URL?
         switch config {
-        case .qwen2b: url = GGUFQwenModelAccess.modelURL()
         case .llama1b: url = GGUFModelAccess.modelURL()
         case .llmJp3: url = GGUFLLMjp3ModelAccess.modelURL()
         }
@@ -276,7 +265,6 @@ final class LocalModelDownloadManager: @unchecked Sendable {
 
     private func isDownloaded(_ config: ModelConfiguration) -> Bool {
         switch config {
-        case .qwen2b: return GGUFQwenModelAccess.isDownloaded
         case .llama1b: return GGUFModelAccess.isDownloaded
         case .llmJp3: return GGUFLLMjp3ModelAccess.isDownloaded
         }
@@ -295,15 +283,6 @@ final class LocalModelDownloadManager: @unchecked Sendable {
             await MainActor.run { state = .downloading(progress: 0.0) }
 
             switch config {
-            case .qwen2b:
-                try await GGUFQwenDownloader.download(api: api) { [weak self] progress in
-                    Task { @MainActor [weak self] in
-                        guard case .downloading = self?.state else { return }
-                        // Model fills 0–80% of the bar; the bundled voice model
-                        // (downloadVoiceAssets) fills the 80–100% tail.
-                        self?.state = .downloading(progress: progress * 0.8)
-                    }
-                }
             case .llama1b:
                 try await GGUFLlamaDownloader.download(api: api) { [weak self] progress in
                     Task { @MainActor [weak self] in
@@ -381,7 +360,7 @@ final class LocalModelDownloadManager: @unchecked Sendable {
                 // through the same cache on first use.
                 let speaker = VoiceVoxSpeaker.map(VoiceVoxSpeaker.defaultSpeakerID).filenameID
                 _ = try await RemoteAssetCache.shared.url(for: .voicevoxSpeaker(speaker))
-            case .qwen2b, .llama1b:
+            case .llama1b:
                 await setVoiceProgress(0.85)
                 _ = try await OpenVoiceModelAccess.meloModel()
                 await setVoiceProgress(0.92)

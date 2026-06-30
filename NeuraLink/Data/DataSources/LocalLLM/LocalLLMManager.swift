@@ -13,8 +13,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     static let shared = LocalLLMManager()
 
     // Routes to the engine matching the user's explicit model selection.
-    // Qwen (stateful, KV-cache) requires iOS 18+; falls back to Llama on iOS 17.
-    // Llama is always available as the memory-safe fallback for 4 GB devices.
+    // Llama-1B (English) is the memory-safe default; LLM-jp-3 is the JP slot.
     private static func makeEngine() -> any LLMEngineProtocol {
         let manager = LocalModelDownloadManager.shared
         guard manager.isAvailable else {
@@ -23,8 +22,6 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         }
 
         switch manager.selectedConfig {
-        case .qwen2b:
-            return GGUFQwenEngine.shared as any LLMEngineProtocol
         case .llama1b:
             return GGUFLlamaEngine.shared
         case .llmJp3:
@@ -318,8 +315,6 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
 
         Task {
             let mgr = LocalModelDownloadManager.shared
-            let useQwen = mgr.isAvailable && mgr.selectedConfig == .qwen2b
-            let isLLMjp = mgr.selectedConfig == .llmJp3
 
             // Build the 3-tier prompt via LocalLLMMemoryHierarchy:
             //   Tier 1: system + persona + (English-only: user context + companion)
@@ -334,24 +329,19 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
                 baseSystemPrompt: basePrompt
             )
 
-            // Engine formats via the model's own GGUF chat template; falls
-            // back to a hand-rolled template only if the model has none. The JP
-            // slot (LLM-jp-3 1.8B) and the other shipped models all embed their
-            // own GGUF template, so the hand-rolled fallback (Qwen/ChatML or
-            // Llama-3) is a safety net only.
+            // Engine formats via the model's own GGUF chat template; falls back
+            // to a hand-rolled Llama-3 template only if the model has none. The
+            // JP slot (LLM-jp-3) embeds its own GGUF template, so the fallback is
+            // a safety net for the Llama-1B path only.
             let prompt =
                 llmEngine.applyChatTemplate(messages: messages)
-                ?? fallbackChatPrompt(messages: messages, useQwen: useQwen)
+                ?? fallbackChatPrompt(messages: messages)
 
-            // Token caps tuned to local TTS speech rate, not raw quality:
-            //   - Llama-1B on iPhone 11 decodes at ~4 tok/s. 60 tokens =
-            //     ~15 s of speech, the realistic upper bound for a single
-            //     spoken reply before the user disengages. The system
-            //     prompt asks for 1–2 sentences anyway; cap matches intent.
-            //   - JP path stays at 60 (no change — already tight).
-            //   - Qwen tiers keep a longer budget since they're on devices
-            //     where decode tok/s isn't the constraint.
-            let maxTokens: Int = useQwen ? 160 : (isLLMjp ? 60 : 60)
+            // Token cap tuned to local TTS speech rate, not raw quality: on
+            // iPhone 11, 60 tokens ≈ 15 s of speech — the realistic upper bound
+            // for a single spoken reply. The system prompt asks for 1–2
+            // sentences anyway. Applies to both Llama-1B and the JP path.
+            let maxTokens = 60
 
             await llmEngine.generate(prompt: prompt, maxTokens: maxTokens)
         }

@@ -14,24 +14,11 @@ import Foundation
 extension LocalLLMManager {
 
     /// Hand-rolled chat template used when the model's GGUF has no embedded
-    /// template (rare, but possible with community quants). Covers the two
-    /// prompt families our local models fall back to: Qwen/ChatML
-    /// (`<|im_start|>`) and Llama-3 (`<|start_header_id|>`). The JP slot
-    /// (LLM-jp-3) and every other shipped model carry their own GGUF chat
-    /// template, so this is only a safety net. BOS is added by the tokenizer,
-    /// so no family includes it literally here.
-    func fallbackChatPrompt(
-        messages: [LLMChatMessage],
-        useQwen: Bool
-    ) -> String {
-        if useQwen {
-            var s = ""
-            for m in messages {
-                s += "<|im_start|>\(m.role)\n\(m.content)<|im_end|>\n"
-            }
-            s += "<|im_start|>assistant\n"
-            return s
-        }
+    /// template (rare, but possible with community quants). Emits Llama-3
+    /// (`<|start_header_id|>`) formatting — the only family that falls through
+    /// here now (the Llama-1B path; the JP slot's LLM-jp-3 carries its own GGUF
+    /// template). BOS is added by the tokenizer, so it isn't included here.
+    func fallbackChatPrompt(messages: [LLMChatMessage]) -> String {
         var s = ""
         for m in messages {
             s += "<|start_header_id|>\(m.role)<|end_header_id|>\n\n\(m.content)<|eot_id|>"
