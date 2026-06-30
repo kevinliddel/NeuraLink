@@ -22,7 +22,7 @@ extension LocalLLMManager {
     /// compaction. No-ops when:
     ///   - the active engine isn't loaded,
     ///   - the active model is `.llama1b` (too small to summarise reliably —
-    ///     mostly hallucinates) or `.japaneseGemma2b` (the JP tier doesn't
+    ///     mostly hallucinates) or `.llmJp3` (the JP tier doesn't
     ///     inject Tier 3 facts into prompts anyway, so the output would be
     ///     pure waste),
     ///   - there are no new candidates beyond the verbatim window, or
@@ -30,7 +30,7 @@ extension LocalLLMManager {
     func maybeRunCompaction() {
         guard llmEngine.isLoaded else { return }
         let config = LocalModelDownloadManager.shared.selectedConfig
-        if config == .llama1b || config == .japaneseGemma2b { return }
+        if config == .llama1b || config == .llmJp3 { return }
 
         let hierarchy = LocalLLMMemoryHierarchy.shared
         let candidates = hierarchy.compactionCandidates()

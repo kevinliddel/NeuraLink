@@ -24,7 +24,11 @@ extension MemoryStore {
     /// Engine keys for the `character_ai` table.
     enum PersonaEngine {
         static let openai = "openai"
-        static let gemmaJP = "gemma_jp"
+        /// JP-slot key. The stored value stays "gemma_jp" (the slot's former
+        /// model) on purpose — it's a persisted DB key, so changing it would
+        /// orphan users' existing JP persona prompts/voices. Only the Swift
+        /// identifier was renamed to match the current model (LLM-jp-3).
+        static let llmJp3 = "gemma_jp"
         static let local = "local"
     }
 
@@ -128,7 +132,7 @@ extension MemoryStore {
         if let prompts = Self.loadLegacyLocalPrompts() {
             for (key, prompt) in prompts {
                 if key.hasSuffix("_jp") {
-                    setPersonaPrompt(character: String(key.dropLast(3)), engine: PersonaEngine.gemmaJP, prompt: prompt)
+                    setPersonaPrompt(character: String(key.dropLast(3)), engine: PersonaEngine.llmJp3, prompt: prompt)
                 } else {
                     setPersonaPrompt(character: key, engine: PersonaEngine.local, prompt: prompt)
                 }
@@ -139,7 +143,7 @@ extension MemoryStore {
         // 3. Voices (VoiceVox → gemma_jp, OpenVoice → local).
         if let voicevox = Self.loadLegacyDict(Int.self, key: "com.neuralink.tts.persona_voicevox_speaker_ids") {
             for (character, id) in voicevox {
-                setPersonaVoice(character: character, engine: PersonaEngine.gemmaJP, voice: String(id))
+                setPersonaVoice(character: character, engine: PersonaEngine.llmJp3, voice: String(id))
                 imported += 1
             }
         }

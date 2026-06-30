@@ -73,7 +73,7 @@ struct EnvironmentLoadingScreen: View {
         for ext in ["png", "jpg", "jpeg"] {
             let candidates = [
                 Bundle.main.path(forResource: name, ofType: ext, inDirectory: "Environments"),
-                Bundle.main.path(forResource: name, ofType: ext),
+                Bundle.main.path(forResource: name, ofType: ext)
             ]
             for case let path? in candidates {
                 if let image = UIImage(contentsOfFile: path) { return image }

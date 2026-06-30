@@ -39,14 +39,14 @@ final class PersonaVoiceStore {
     /// persona is using its built-in default (resolved by `VoiceVoxSpeaker.speakerID(for:)`).
     func voicevoxSpeakerID(for persona: PersonaIdentifier) -> Int? {
         MemoryStore.shared.personaVoice(
-            character: persona, engine: MemoryStore.PersonaEngine.gemmaJP
+            character: persona, engine: MemoryStore.PersonaEngine.llmJp3
         ).flatMap(Int.init)
     }
 
     /// Sets the VOICEVOX speaker for `persona`. Pass `nil` to clear the override.
     func setVoicevoxSpeakerID(_ id: Int?, for persona: PersonaIdentifier) {
         MemoryStore.shared.setPersonaVoice(
-            character: persona, engine: MemoryStore.PersonaEngine.gemmaJP,
+            character: persona, engine: MemoryStore.PersonaEngine.llmJp3,
             voice: id.map(String.init))
     }
 
@@ -97,7 +97,7 @@ final class PersonaVoiceStore {
     /// because the typealias is MainActor-isolated and not visible here.
     nonisolated static func voicevoxSpeakerIDFromDefaults(for persona: String) -> Int? {
         MemoryStore.shared.personaVoice(
-            character: persona, engine: MemoryStore.PersonaEngine.gemmaJP
+            character: persona, engine: MemoryStore.PersonaEngine.llmJp3
         ).flatMap(Int.init)
     }
 

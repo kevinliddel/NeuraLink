@@ -1,8 +1,8 @@
 //
-//  GGUFGemma2BJPEngine+Generate.swift
+//  GGUFLLMjp3Engine+Generate.swift
 //  NeuraLink
 //
-//  Token generation loop for GGUFGemma2BJPEngine.
+//  Token generation loop for GGUFLLMjp3Engine.
 //  Identical flow to GGUFLlamaEngine+Generate — blocking C call dispatched
 //  to a GCD thread so the Swift cooperative pool stays free.
 //
@@ -11,7 +11,7 @@
 
 import Foundation
 
-extension GGUFGemma2BJPEngine {
+extension GGUFLLMjp3Engine {
 
     // MARK: - LLMEngineProtocol — generate
 
@@ -27,7 +27,7 @@ extension GGUFGemma2BJPEngine {
         generationLock.unlock()
 
         guard !alreadyRunning else {
-            nlLog("[GGUFGemma2BJP] Dropped generate — already in progress", level: .info)
+            nlLog("[GGUFLLMjp3] Dropped generate — already in progress", level: .info)
             Task { @MainActor [weak self] in
                 self?.delegate?.localLLM(didFinishGeneration: "")
             }

@@ -82,12 +82,12 @@ final class LocalLLMMemoryHierarchy {
         characterName: String,
         baseSystemPrompt: String
     ) async -> [LLMChatMessage] {
-        let isJP = (config == .japaneseGemma2b)
+        let isJP = (config == .llmJp3)
 
         let systemContent = buildSystemContent(
             base: baseSystemPrompt,
             characterName: characterName,
-            isJapaneseLlama: isJP
+            isLLMjp: isJP
         )
 
         // Tier 3 (facts) is appended AFTER history as its own system
@@ -103,7 +103,7 @@ final class LocalLLMMemoryHierarchy {
             : buildFactsBlock(relevantTo: userInput)
 
         let history = buildHistory(
-            isJapaneseLlama: isJP,
+            isLLMjp: isJP,
             excluding: userInput
         )
 
@@ -133,20 +133,20 @@ final class LocalLLMMemoryHierarchy {
         characterName: String,
         baseSystemPrompt: String
     ) async -> [LLMChatMessage] {
-        let isJP = (config == .japaneseGemma2b)
+        let isJP = (config == .llmJp3)
         let systemContent = buildSystemContent(
             base: baseSystemPrompt,
             characterName: characterName,
-            isJapaneseLlama: isJP
+            isLLMjp: isJP
         )
         var messages: [LLMChatMessage] = [
             .init(role: "system", content: systemContent)
         ]
         messages.append(contentsOf: buildHistory(
-            isJapaneseLlama: isJP,
+            isLLMjp: isJP,
             excluding: ""
         ))
-        // JP path has no history, so a system-only message list makes Gemma's
+        // JP path has no history, so a system-only message list makes the model's
         // chat template render nothing reusable (the warm-up no-ops and the
         // first token re-prefills the whole prompt — observed as prefill=1+N
         // in `[Bench]`). Append the turn-invariant user lead-in so the warm-up
@@ -235,9 +235,9 @@ final class LocalLLMMemoryHierarchy {
     private func buildSystemContent(
         base: String,
         characterName: String,
-        isJapaneseLlama: Bool
+        isLLMjp: Bool
     ) -> String {
-        if isJapaneseLlama {
+        if isLLMjp {
             // 1B model attends most to the first ~30 tokens. Order: (1)
             // language directive — strongest signal, (2) one-line user
             // context if the user has set their name, (3) role clarification
@@ -334,13 +334,13 @@ final class LocalLLMMemoryHierarchy {
     }
 
     private func buildHistory(
-        isJapaneseLlama: Bool,
+        isLLMjp: Bool,
         excluding currentInput: String
     ) -> [LLMChatMessage] {
         // No history for the Japanese 1B model — see comment in the
         // original handleUserInput about orphaned AI responses and the
         // 1B model's poor multi-turn coherence.
-        let limit = isJapaneseLlama ? 0 : Self.verbatimWindowMessages
+        let limit = isLLMjp ? 0 : Self.verbatimWindowMessages
         guard limit > 0,
               let convID = ConversationStore.shared.activeConversationID
         else { return [] }

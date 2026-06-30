@@ -230,7 +230,7 @@ final class LocalWhisperManager: NSObject, @unchecked Sendable {
     /// `en` otherwise. Explicit beats auto-detect on short utterances.
     @MainActor
     private static func currentLanguage() -> String {
-        LocalModelDownloadManager.shared.selectedConfig == .japaneseGemma2b ? "ja" : "en"
+        LocalModelDownloadManager.shared.selectedConfig == .llmJp3 ? "ja" : "en"
     }
 
     // MARK: - Legacy cleanup

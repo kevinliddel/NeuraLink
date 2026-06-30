@@ -1,5 +1,5 @@
 //
-//  GGUFGemma2BJPModelAccess.swift
+//  GGUFLLMjp3ModelAccess.swift
 //  NeuraLink
 //
 //  Resolves the on-disk path of the Japanese local model GGUF file.
@@ -11,7 +11,7 @@
 //  ~0.15 tok/s). At ~0.96 GB this 1.8B fits resident (no-mmap) → fast decode,
 //  and its JP-native tokenizer emits fewer tokens per Japanese reply. Slot
 //  history: grapevine Llama-3.2-1B → Google Gemma 2 2B (streamed on 4 GB) →
-//  llm-jp-3 1.8B. The model enum case is still named `.japaneseGemma2b` (a
+//  llm-jp-3 1.8B. The model enum case is still named `.llmJp3` (a
 //  rename would churn many files) — it's just the JP-slot identifier now. The
 //  KV-cache configKey is bumped on this swap so stale gemma/llama blobs are
 //  never restored into the new model (see LocalLLMKVCache).
@@ -21,7 +21,7 @@
 
 import Foundation
 
-enum GGUFGemma2BJPModelAccess {
+enum GGUFLLMjp3ModelAccess {
 
     // MARK: - Constants
 
@@ -40,7 +40,7 @@ enum GGUFGemma2BJPModelAccess {
     static let repoID   = "mmnga/llm-jp-3-1.8b-instruct3-gguf"
     static let filename = "llm-jp-3-1.8b-instruct3-Q3_K_M.gguf"
 
-    private static let pathKey = "LocalModel_GGUFGemma2BJPPath"
+    private static let pathKey = "LocalModel_GGUFLLMjp3Path"
     private static let hubSlug = "models--mmnga--llm-jp-3-1.8b-instruct3-gguf"
 
     // MARK: - URL resolution

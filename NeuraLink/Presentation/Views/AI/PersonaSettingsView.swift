@@ -42,7 +42,7 @@ struct PersonaSettingsView: View {
     ]
 
     private var isLocalLLMMode: Bool { OpenAISettings.shared.isLocalLLMEnabled }
-    private var isJapaneseModel: Bool { selectedConfig == .japaneseGemma2b }
+    private var isJapaneseModel: Bool { selectedConfig == .llmJp3 }
 
     /// Whichever player the active mode uses. Centralises the isSpeaking flag.
     private var activeIsSpeaking: Bool {
