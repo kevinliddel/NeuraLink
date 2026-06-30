@@ -295,13 +295,13 @@ struct PersonaSettingsView: View {
                 Text("Tap the mic to hear your text spoken in the selected VOICEVOX voice.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            } else if KokoroModelAccess.isAvailable {
-                Text("Tap the mic to hear your text spoken in the selected Kokoro voice.")
+            } else if OpenVoiceModelAccess.isAvailable {
+                Text("Tap the mic to hear your text spoken in the selected OpenVoice voice.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
                 Label(
-                    "Kokoro voice pack not installed — install it to enable previews.",
+                    "OpenVoice pack not installed yet — it downloads automatically with the model.",
                     systemImage: "info.circle"
                 )
                 .font(.caption)
@@ -361,11 +361,12 @@ struct PersonaSettingsView: View {
 
     /// Whether the current mode has the resources needed to render a preview.
     /// OpenAI: enabled + valid key. Japanese: VoiceVox engine builds unconditionally
-    /// (dictionary is bundled). Other local: Kokoro pack present.
+    /// (dictionary is bundled). Other local: OpenVoice pack present (it ships with
+    /// the model download — see LocalModelDownloadManager.downloadVoiceAssets).
     private var previewIsAvailable: Bool {
         if isLocalLLMMode {
             if isJapaneseModel { return true }
-            return KokoroModelAccess.isAvailable
+            return OpenVoiceModelAccess.isAvailable
         }
         let settings = OpenAISettings.shared
         return settings.isEnabled && settings.hasValidKey
