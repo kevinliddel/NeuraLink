@@ -23,7 +23,7 @@ When `OpenAISettings.isLocalLLMEnabled = true`, the LLM runs on-device via [`Loc
 
 ```mermaid
 flowchart TD
-    Start["Persona + ModelConfig"] --> Q2{"ModelConfig ==\njapaneseGemma2b?"}
+    Start["Persona + ModelConfig"] --> Q2{"ModelConfig ==\nllmJp3?"}
 
     Q2 --> D3["yes"] --> VV["VoiceVoxEngine\nONNX Runtime + OpenJTalk"]
     Q2 --> D4["no"] --> OV["OpenVoiceEngine\nMeloTTS + tone-color converter (ONNX)"]
@@ -56,7 +56,7 @@ sequenceDiagram
     autonumber
     participant Mic as Microphone<br/>(SileroVAD)
     participant Whisper as LocalWhisperManager
-    participant LLM as GGUFLlama/QwenEngine
+    participant LLM as GGUFLlama/LLMjp3Engine
     participant Parser as LocalToolCallParser
     participant Sel as TTSEngineSelector
     participant Eng as TTSEngine<br/>(VOICEVOX / OpenVoice / System)
@@ -95,7 +95,7 @@ Notes on the flow:
 
 1. The user saves a new voice in `PersonaSettingsView` (so the next synthesis sees the updated `PersonaVoiceStore` entry).
 2. The user clears the override via Reset.
-3. The user switches the active LLM model (e.g. moving to/from the Japanese Gemma tier flips the engine, VOICEVOX ↔ OpenVoice).
+3. The user switches the active LLM model (e.g. moving to/from the Japanese LLM-jp-3 model flips the engine, VOICEVOX ↔ OpenVoice).
 
 ## OpenAI Realtime path
 

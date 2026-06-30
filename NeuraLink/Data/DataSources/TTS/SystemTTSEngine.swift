@@ -3,8 +3,8 @@
 //  NeuraLink
 //
 //  AVSpeechSynthesizer wrapper — the always-available fallback that the
-//  selector returns when no downloaded model is usable, or that other
-//  engines (F5TTSEngine) delegate to when they can't service a request.
+//  selector returns when no downloaded model is usable (e.g. the OpenVoice
+//  assets haven't been fetched yet).
 //  Lifted from feat/voice-cloning at Phase 2a and adapted to the unified
 //  TTSEngineProtocol (push-streaming via onBufferReady, persona-keyed).
 //

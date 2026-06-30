@@ -1,7 +1,8 @@
 # NeuraLink
 
 <p align="center">
-    <img src="./docs/Models/Ekaterina.PNG" alt="NeuraLink Model" width="400" />
+    <img src="./docs/Models/Ekaterina.PNG" alt="NeuraLink Model" width="300" style="margin:6px;" />
+    <img src="./docs/Models/Sonya.png" alt="NeuraLink Model" width="300" style="margin:6px;" />
 </p>
 
 <p align="center">
@@ -11,7 +12,6 @@
   <img src="https://custom-icon-badges.demolab.com/badge/ChatGPT-74aa9c?logo=openai&logoColor=white" alt="OpenAI" />
   <img src="https://img.shields.io/badge/Hugging%20Face-FFD21E?logo=huggingface&logoColor=fff" alt="Hugging Face" />
   <img src="https://img.shields.io/badge/LLaMa.cpp-gray?logo=c%2B%2B&logoColor=orange" alt="Llama C++" />
-  <img src="https://custom-icon-badges.demolab.com/badge/Qwen-605CEC?logo=qwen&logoColor=fff" alt="Qwen" />
   <img src="https://custom-icon-badges.demolab.com/badge/WebRTC-gray?style=flat&logo=webrtc" alt="WebRTC" />
   <img src="https://custom-icon-badges.demolab.com/badge/whisper.cpp-gray?logo=cplusplus&logoColor=orange" alt="whisper.cpp" />
   <img src="https://img.shields.io/badge/VoiceVOX-brightgreen?style=flat&logo=v&logoColor=fff" alt="Voice VOX" />
@@ -53,7 +53,7 @@ A high-performance, native iOS VRM character viewer and AI companion built from 
   </tr>
   <tr>
     <td><strong>Per-Character Personas</strong><br/>Each character carries her own system prompt and voice model, hot-swapped on model selection.</td>
-    <td><strong>Offline AI &amp; NPU</strong><br/>Fully local pipeline with whisper.cpp (STT) on CPU and Llama/Qwen (LLM) accelerated by the Apple Neural Engine. See <a href="./docs/npu.md">NPU Documentation</a></td>
+    <td><strong>Fully Offline AI</strong><br/>On-device pipeline: whisper.cpp (STT) on CPU and Llama-3.2 / LLM-jp-3 (LLM) via llama.cpp on the Metal GPU or CPU. See <a href="./docs/Local_SLM_Model.md">On-Device LLM docs</a></td>
   </tr>
 </table>
 
@@ -65,10 +65,10 @@ A high-performance, native iOS VRM character viewer and AI companion built from 
 NeuraLink renders a fully procedural, physically-inspired sky backdrop that **automatically mirrors the user's local time of day** — from the cool darkness of midnight to the warm golden glow of an afternoon sun.
 
 <p align="center">
-  <img src="./docs/Environments/sunrise.jpeg" alt="Sunrise" width="180" style="margin:4px;" />
-  <img src="./docs/Environments/afternoon-sun.jpeg" alt="Afternoon sun" width="180" style="margin:4px;" />
-  <img src="./docs/Environments/sunset.jpeg" alt="Sunset" width="180" style="margin:4px;" />
-  <img src="./docs/Environments/night.jpeg" alt="Night" width="180" style="margin:4px;" />
+  <img src="./docs/Environments/sunrise.png" alt="Sunrise" width="180" style="margin:4px;" />
+  <img src="./docs/Environments/afternoon-sun.png" alt="Afternoon sun" width="180" style="margin:4px;" />
+  <img src="./docs/Environments/sunset.png" alt="Sunset" width="180" style="margin:4px;" />
+  <img src="./docs/Environments/night.png" alt="Night" width="180" style="margin:4px;" />
 </p>
 
 Key highlights:
@@ -269,22 +269,21 @@ ruby purge_spm.rb
 [Proof-of-Concept](https://github.com/user-attachments/assets/2dc35314-fa8e-4b78-8507-b88d96d8c420)
 
 
-## ֎ Offline AI & NPU
-NeuraLink features a high-performance local AI pipeline that runs entirely on your device using the **Apple Neural Engine**.
+## ֎ Offline AI
+NeuraLink features a high-performance local AI pipeline that runs **entirely on your device** via llama.cpp — on the Metal GPU (6 GB+ devices) or the CPU (4 GB tier). No cloud, no Apple Neural Engine.
 
-- **whisper.cpp**: Multi-lingual speech-to-text via `whisper.xcframework` running the `ggml-base` model on CPU.
-- **llama.cpp**: Metal-accelerated inference for Llama-3.2 and Qwen-2.5.
-- **Single-file GGUF**: Memory-efficient model distribution.
+- **whisper.cpp**: Multi-lingual speech-to-text via `whisper.xcframework` running the `ggml-base` model on the CPU.
+- **llama.cpp**: Metal/CPU inference for Llama-3.2-1B (English) and LLM-jp-3 1.8B (Japanese), shipped as single-file GGUF.
+- **Memory-resident by design**: models are quantized to fit in RAM on 4 GB devices, so weights aren't streamed from flash.
 
-For detailed technical specs and migration history, refer to:
-- [NPU Integration Guide](./docs/npu.md)
-- [NPU Migration Log](./docs/npu_migration.md)
+For the full architecture — engine selection, the shared C++ bridge, memory residency, and cold-start latency — see:
+- [On-Device LLM Architecture](./docs/Local_SLM_Model.md)
 
 ---
 
 ## ֎ Offline AI Voices
 
-When running in **Offline Mode** (Local LLM), the system selects a TTS engine per persona — **VOICEVOX** for the Japanese Gemma model, **OpenVoice** (MeloTTS + tone-color converter, ONNX, 22.05 kHz) for every other persona, and Apple's **AVSpeechSynthesizer** as the last-resort fallback.
+When running in **Offline Mode** (Local LLM), the system selects a TTS engine per persona — **VOICEVOX** for the Japanese model (LLM-jp-3), **OpenVoice** (MeloTTS + tone-color converter, ONNX, 22.05 kHz) for every other persona, and Apple's **AVSpeechSynthesizer** as the last-resort fallback.
 
 ### 🗣️ Local SLMs voice
 The selector logic, per-persona voice picker, and end-to-end audio pipelines (LLM → text chunks → engine → PCM buffers → AVAudioPlayerNode) are documented separately:
@@ -301,7 +300,7 @@ When the system falls through to the iOS speech synthesizer (no VOICEVOX model, 
 5.  Once downloaded, the system will automatically jump from `q=1` to `q=2`, providing a dramatically more lifelike experience.
 
 ### 🛠️ Implementation Details
-- [TTSEngineSelector.swift](./NeuraLink/Data/DataSources/TTS/TTSEngineSelector.swift) — engine resolution per persona + model (Japanese Gemma → VOICEVOX, else OpenVoice, System TTS fallback).
+- [TTSEngineSelector.swift](./NeuraLink/Data/DataSources/TTS/TTSEngineSelector.swift) — engine resolution per persona + model (Japanese / LLM-jp-3 → VOICEVOX, else OpenVoice, System TTS fallback).
 - [LocalLLMManager+TTS.swift](./NeuraLink/Data/DataSources/LocalLLM/LocalLLMManager+TTS.swift) — chunked synthesis pipeline that pumps engine PCM buffers into the playback graph.
 
 ---
