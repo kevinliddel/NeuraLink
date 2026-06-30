@@ -67,7 +67,7 @@ extension VoiceVoxSpeaker {
     }
 }
 
-// MARK: - Persona -> speaker map (added at Phase 1a, plan §5)
+// MARK: - Persona -> speaker map
 
 extension VoiceVoxSpeaker {
 

@@ -56,7 +56,7 @@ final class MemoryStore {
         let path = Self.resolveDBPath()
         self.dbPath = path
 
-        // Phase 2b (opt-in): if the user has flipped on SQLCipher and we
+        // Opt-in: if the user has flipped on SQLCipher and we
         // haven't converted the on-disk DB yet, perform the one-shot
         // plaintext-to-encrypted conversion now. See
         // `MemoryStore+SQLCipher.swift` for the conversion logic and the
@@ -181,7 +181,7 @@ final class MemoryStore {
         // the library refuses to key a connection that has already
         // touched the file. When `isSQLCipherActive` is false (default),
         // this branch is skipped and the DB is plaintext-on-disk (still
-        // protected at the filesystem layer by Phase 2a).
+        // protected at the filesystem layer by iOS Data Protection).
         if Self.isSQLCipherActive {
             guard Self.keyDatabase(db) else {
                 sqlite3_close(db)

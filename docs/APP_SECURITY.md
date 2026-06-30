@@ -42,7 +42,7 @@ flowchart TB
         direction TB
         K1["openAIAPIKey\nOpenAI sk-…"]
         K2["memoryDBPageKey\n32-byte SQLCipher key"]
-        K3["kvCacheHMACKey\n32-byte HMAC-SHA256"]
+        K3["kvCacheEncryptionKey\n32-byte AES-256-GCM"]
     end
 
     %% Layer 2
@@ -50,7 +50,7 @@ flowchart TB
         direction TB
         F1["personas.json\nlocal_llm_prompts.json\n(dormant legacy backup)"]
         F2["neuralink_memory.sqlite\n(+wal / shm / journal)"]
-        F3["llm_kv/*.kv + *.hmac"]
+        F3["llm_kv/*.kv (AES-GCM)"]
     end
 
     %% Layer 3
@@ -82,7 +82,7 @@ flowchart TB
     K2 --> D2["sqlite3_key"] --> SQLCipher
     SQLCipher --> D3["Encrypted Pages"] --> F2
 
-    K3 --> D4["HMAC (blob + filename)"] --> F3
+    K3 --> D4["AES-256-GCM sealed box"] --> F3
 
     %% Styles
     classDef secure fill:#1f5a3a,stroke:#69db7c,color:#ffffff
@@ -161,12 +161,12 @@ Every piece of on-disk state, where it lives, how it's protected, who reads it.
 | Conversation DB | `Application Support/private/neuralink_memory.sqlite` | `.completeUntilFirstUserAuthentication` | Optional SQLCipher (off by default) | **No** (excluded) | [MemoryStore.swift](../NeuraLink/Data/DataSources/Memory/MemoryStore.swift) |
 | Persona / local-LLM prompts + voices | `Application Support/private/neuralink_memory.sqlite` → `character_ai` table | `.completeUntilFirstUserAuthentication` | Optional SQLCipher (off by default) | **No** (excluded) | [PersonaStore.swift](../NeuraLink/Data/Repositories/PersonaStore.swift), [LocalLLMPromptStore.swift](../NeuraLink/Data/DataSources/LocalLLMPromptStore.swift), [PersonaVoiceStore.swift](../NeuraLink/Data/DataSources/Memory/PersonaVoiceStore.swift) |
 | Legacy persona / prompt JSON (dormant backup) | `Application Support/private/personas.json`, `…/local_llm_prompts.json` | `.completeUntilFirstUserAuthentication` | n/a | **No** (excluded) | left in place after migration; no longer read |
-| KV cache + HMAC sidecar | `Application Support/llm_kv/<config>_<persona>.kv{,.hmac}` | `.completeUntilFirstUserAuthentication` | HMAC-SHA256 integrity (32-byte Keychain key) | Yes (no isExcludedFromBackup) | [LocalLLMKVCache.swift](../NeuraLink/Data/DataSources/LocalLLM/LocalLLMKVCache.swift) |
+| KV cache | `Application Support/llm_kv/<config>_<persona>.kv` | `.completeUntilFirstUserAuthentication` | AES-256-GCM encryption (32-byte Keychain key); GCM tag also provides integrity | Yes (no isExcludedFromBackup) | [LocalLLMKVCache.swift](../NeuraLink/Data/DataSources/LocalLLM/LocalLLMKVCache.swift) |
 | Whisper transcription input | `tmpDirectory/whisper_<UUID>.wav` | `.completeUntilFirstUserAuthentication` | n/a (deleted after one transcribe call) | **No** (tmp is auto-excluded) | [LocalWhisperManager.swift](../NeuraLink/Data/DataSources/LocalWhisperManager.swift) |
 
-**On `kvCacheHMACKey`:** the KV cache lives at `Application Support/llm_kv/` rather than `Application Support/private/` so that legacy data from pre-Phase-5 installs doesn't need a relocation migration (KV blobs are regenerable; a failed integrity check just triggers cold prefill on the next launch). The protection class is still applied to the directory.
+**On the KV cache location:** it lives at `Application Support/llm_kv/` rather than `Application Support/private/` so legacy blobs from older installs don't need a relocation migration (KV blobs are regenerable; a failed decrypt just triggers a cold prefill on the next launch). The Data Protection class is still applied to the directory.
 
-**On persona prompts/voices:** per-character AI prompts and voices (VoiceVox + OpenVoice prefs) now live in the encrypted conversation DB (the `character_ai (character, engine, prompt, voice, name)` table, engines `openai`/`gemma_jp`/`local`) instead of plaintext JSON + `UserDefaults`. `PersonaStore` and `LocalLLMPromptStore` are now thin facades over that table; `PersonaVoiceStore` is SQL-backed for VoiceVox/OpenVoice prefs (only the being-retired Kokoro voice map still uses `UserDefaults`). This means these prompts/voices inherit the DB's Data Protection class **and** the optional SQLCipher page encryption — strictly stronger at rest than the previous plaintext JSON-in-protected-dir + `UserDefaults` backup. A one-shot migration imports the legacy data on first launch; the old JSON files are left in place as a dormant backup and are no longer read.
+**On persona prompts/voices:** per-character AI prompts and voices (VoiceVox + OpenVoice prefs) now live in the encrypted conversation DB (the `character_ai (character, engine, prompt, voice, name)` table, engines `openai`/`gemma_jp`/`local`) instead of plaintext JSON + `UserDefaults`. `PersonaStore` and `LocalLLMPromptStore` are now thin facades over that table; `PersonaVoiceStore` is SQL-backed for VoiceVox/OpenVoice prefs. This means these prompts/voices inherit the DB's Data Protection class **and** the optional SQLCipher page encryption — strictly stronger at rest than the previous plaintext JSON-in-protected-dir + `UserDefaults` backup. A one-shot migration imports the legacy data on first launch; the old JSON files are left in place as a dormant backup and are no longer read.
 
 ---
 
@@ -176,12 +176,13 @@ Every piece of on-disk state, where it lives, how it's protected, who reads it.
 |---|---|---|---|---|---|
 | `.openAIAPIKey` | `com.neuralink.openai` | `apiKey` | variable (user-supplied `sk-…`) | User pastes in Settings | `OpenAISettings.apiKey`, `OpenAIRealtimeManager`, `VisionAnalyzer`, `PersonaSettingsView` |
 | `.memoryDBPageKey` | `com.neuralink.memory` | `dbPageKey` | 32 (CSPRNG) | First SQLCipher conversion or first encrypted-DB open | `MemoryStore+SQLCipher.keyDatabase`, `MemoryStore+SQLCipher.convertPlaintextToSQLCipher` |
-| `.kvCacheHMACKey` | `com.neuralink.localllm` | `kvCacheHMACKey` | 32 (CSPRNG) | First `signIntegrity` call after Phase 5 install | `LocalLLMKVCache.signIntegrity`, `LocalLLMKVCache.verifyIntegrity` |
+| `.kvCacheEncryptionKey` | `com.neuralink.localllm.enc` | `kvCacheEncKey` | 32 (CSPRNG) | First `encryptBlob` call | `LocalLLMKVCache.encryptBlob`, `LocalLLMKVCache.decryptBlob` |
+| `.kvCacheHMACKey` (legacy) | `com.neuralink.localllm` | `kvCacheHMACKey` | 32 (CSPRNG) | pre-encryption installs only | `LocalLLMKVCache.verifyLegacyHMAC` — one-time migration of old plaintext blobs |
 
 Two design decisions worth knowing:
 
 - **Distinct `service` per consumer** so future per-attribute access policies can evolve independently (e.g. if we ever want `memoryDBPageKey` to require biometric unlock, we don't have to migrate `openAIAPIKey`).
-- **`…ThisDeviceOnly`** ensures a new phone doesn't inherit secrets via iCloud Keychain. The user re-enters the API key on new device by design; SQLCipher and HMAC keys are regenerated and the dependent data is rebuilt from scratch (chat DB stays encrypted-but-unreadable until cleared; KV cache cold-prefills on next launch).
+- **`…ThisDeviceOnly`** ensures a new phone doesn't inherit secrets via iCloud Keychain. The user re-enters the API key on new device by design; the SQLCipher and KV-cache keys are regenerated and the dependent data is rebuilt from scratch (chat DB stays encrypted-but-unreadable until cleared; KV cache cold-prefills on next launch).
 
 ---
 
@@ -233,29 +234,25 @@ The two-flag state machine (`sqlcipherEnabled` = intent, `sqlcipherActive.v1` = 
 
 ---
 
-## 8. KV cache integrity
+## 8. KV cache integrity & encryption
 
-**File:** [MemoryStore+SQLCipher.swift](../NeuraLink/Data/DataSources/Memory/MemoryStore+SQLCipher.swift) is for the DB. The KV cache lives in [LocalLLMKVCache.swift](../NeuraLink/Data/DataSources/LocalLLM/LocalLLMKVCache.swift).
+**File:** the KV cache lives in [LocalLLMKVCache.swift](../NeuraLink/Data/DataSources/LocalLLM/LocalLLMKVCache.swift) (the DB's page crypto is [MemoryStore+SQLCipher.swift](../NeuraLink/Data/DataSources/Memory/MemoryStore+SQLCipher.swift)).
 
-Every `.kv` blob saved to `Application Support/llm_kv/` gets a sibling `.kv.hmac` sidecar containing:
+Every `.kv` blob saved to `Application Support/llm_kv/` is **encrypted with AES-256-GCM** before it touches disk — a single self-contained file, no sidecar:
 
 ```
-HMAC-SHA256(K, blob_bytes || filename_bytes)
+sealed box = 12-byte nonce ‖ ciphertext ‖ 16-byte GCM tag
 ```
 
-where `K` is `SecureStore.getOrCreateRandom(.kvCacheHMACKey, bytes: 32)`. Including the filename binds the MAC to the file's identity so an attacker can't swap blobs across personas / model configurations (e.g. drop a `qwen7b_*.kv` into a `llama1b_*.kv` slot).
+where the key is `SecureStore.getOrCreateRandom(.kvCacheEncryptionKey, bytes: 32)`. The GCM authentication tag provides integrity coverage equivalent to (and stronger than) the previous HMAC-SHA256 sidecar: a tampered or truncated blob fails `AES.GCM.open` and is discarded, so an attacker can't substitute a blob across personas / model configs.
 
 **Load path** ([LocalLLMManager.tryRestoreKVCache](../NeuraLink/Data/DataSources/LocalLLM/LocalLLMManager.swift)):
 
-1. If no `.kv` exists → nothing to verify, nothing to purge (fresh install).
-2. Call `LocalLLMKVCache.verifyIntegrity(at:)`. This:
-   - Reads the blob and sidecar
-   - Fetches `K` from the Keychain
-   - Recomputes the HMAC and compares using `HMAC.isValidAuthenticationCode` (constant-time)
-3. On `true` → `llmEngine.loadKVCache(from:)` runs as usual; warmup is fast.
-4. On `false` (mismatch, missing sidecar, missing key, read error) → `LocalLLMKVCache.purge(at:)` removes both files; warmup falls through to a cold prefill (~17 s on iPhone 11, but correct).
+1. If no `.kv` exists → nothing to load (fresh install).
+2. `LocalLLMKVCache.decryptBlob(at:)` opens the sealed box with the Keychain key. On success → `llmEngine.loadKVCache(from:)` runs and warmup is fast.
+3. On failure (tampered, wrong/missing key, read error) → `LocalLLMKVCache.purge(at:)` removes the file; warmup falls through to a cold prefill (correct, just slower).
 
-**Pre-Phase-5 upgrade case:** existing users have `.kv` files with no sidecar. First launch after upgrade fails verification → purge → one cold prefill → re-save with HMAC. After that, every save is signed.
+**Legacy migration:** blobs from pre-encryption builds are plaintext `.kv` with a `.kv.hmac` sidecar. `decryptBlob` fails on them; if `verifyLegacyHMAC` still vouches for the blob (HMAC-SHA256 over `blob ‖ filename`, key `.kvCacheHMACKey`) it is salvaged and **re-encrypted in place**, preserving the warm start across the upgrade — otherwise it's purged. The `.kv.hmac` sidecar is swept on either path; `.kvCacheHMACKey` is retained solely for this one-time migration.
 
 ---
 

@@ -1,7 +1,7 @@
 # NeuraLink
 
 <p align="center">
-    <img src="./docs/Models/Ekaterina.PNG" alt="NeuraLink Model" width="300" style="margin:6px;" />
+    <img src="./docs/Models/Ekaterina.png" alt="NeuraLink Model" width="300" style="margin:6px;" />
     <img src="./docs/Models/Sonya.png" alt="NeuraLink Model" width="300" style="margin:6px;" />
 </p>
 
@@ -311,16 +311,16 @@ NeuraLink is designed for the realistic threat model of a **lost, stolen, or fil
 
 | Layer | What it protects | How |
 |---|---|---|
-| **Keychain (Secure Enclave-derived)** | OpenAI API key, SQLCipher page key, KV-cache HMAC key | `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` — unreadable from a cold-boot extraction. Never iCloud-synced, never restored to a different device. |
+| **Keychain (Secure Enclave-derived)** | OpenAI API key, SQLCipher page key, KV-cache encryption key | `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` — unreadable from a cold-boot extraction. Never iCloud-synced, never restored to a different device. |
 | **iOS Data Protection** | Conversation DB, personas, local-LLM prompts, transient audio | `.completeUntilFirstUserAuthentication` on `Application Support/private/` — unreadable until the user unlocks the device once after boot. |
 | **SQLCipher (opt-in)** | Per-message page-level crypto on the conversation DB | AES-CBC + HMAC pages keyed from a 32-byte Keychain secret. Off by default; flag-gated as the foundation for a future passphrase mode. |
-| **HMAC integrity** | Persistent KV cache blobs | HMAC-SHA256 over `(blob ‖ filename)` with a 32-byte Keychain key. A tampered blob fails verification and falls back to a cold prefill. |
+| **KV-cache encryption** | Persistent KV cache blobs | AES-256-GCM sealed box (12-byte nonce + ciphertext + 16-byte tag), keyed from a 32-byte Keychain secret; the GCM tag also provides integrity. An undecryptable/tampered blob falls back to a cold prefill. (Legacy HMAC-signed plaintext blobs are migrated to AES-GCM on first load.) |
 | **Sensitive logging** | Chat transcripts, persona prompts, RAG memory bodies | `nlLogSensitive` marks payloads as `.private` so they're redacted in observer-readable Console.app captures (TestFlight testers, MDM log capture). Release builds compile out all `nlLog` calls entirely. |
 | **Transient files** | None for STT | whisper.cpp consumes in-memory 16 kHz float samples directly — no audio is written to disk (any legacy `whisper_<UUID>.wav` files are swept on upgrade). |
 
 **Explicitly out of scope** (closing these would require a different threat model): runtime debugger on a jailbroken device, server-side compromise at OpenAI, screen-recording leaks, side-channel attacks on the Apple Neural Engine.
 
-**[Full security architecture](./docs/APP_SECURITY.md)** — covers the storage inventory, Keychain layout, HMAC binding rationale, and the full threat model.
+**[Full security architecture](./docs/APP_SECURITY.md)** — covers the storage inventory, Keychain layout, KV-cache encryption rationale, and the full threat model.
 
 ---
 

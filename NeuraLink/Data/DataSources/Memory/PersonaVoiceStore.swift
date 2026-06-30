@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  Per-persona voice preference. Engine selection itself is automatic
-//  (§3.1) — the user only picks WHICH voice (VOICEVOX speaker or OpenVoice
+//  the user only picks WHICH voice (VOICEVOX speaker or OpenVoice
 //  preset) to use for the persona.
 //
 //  VOICEVOX + OpenVoice voices are persisted in the `character_ai` SQL table

@@ -256,7 +256,7 @@ extension VRMRenderer {
             // LIGHTING FIX: Zero out emissive to prevent washout
             mtoonUniforms.emissiveFactor = SIMD3<Float>(0, 0, 0)
 
-            // PHASE 4 FIX: Force face materials to render with full brightness
+            // Force face materials to render with full brightness
             if isFaceMaterial {
                 // Force white baseColorFactor for face materials to show texture at full brightness
                 mtoonUniforms.baseColorFactor = SIMD4<Float>(1.0, 1.0, 1.0, 1.0)

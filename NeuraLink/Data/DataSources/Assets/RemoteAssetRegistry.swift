@@ -2,8 +2,7 @@
 // RemoteAssetRegistry.swift
 // NeuraLink
 //
-// Catalogues every remote on-demand asset covered by §4.2 (scenes) and
-// §4.5 (TTS data) of docs/app_size_reduction_plan.md. Each case carries
+// Catalogues every remote on-demand asset (scenes + TTS data). Each case carries
 // the in-repo path of the shared `Dedicatus/NeuraLink` HuggingFace
 // dataset so `RemoteAssetCache` can fetch directly over HTTPS.
 //
@@ -22,11 +21,11 @@
 import Foundation
 
 enum RemoteAssetRegistry: Hashable, Sendable {
-    // Scenes (§4.2)
+    // Scenes
     case city
     case campus
 
-    // VOICEVOX TTS data (§4.5) — per-speaker .vvm + Open JTalk dict files.
+    // VOICEVOX TTS data — per-speaker .vvm + Open JTalk dict files.
     case voicevoxSpeaker(Int)
     case jtalkDictFile(String)
 

@@ -2,11 +2,11 @@
 //  SystemTTSEngine.swift
 //  NeuraLink
 //
-//  AVSpeechSynthesizer wrapper — the always-available fallback that the
-//  selector returns when no downloaded model is usable (e.g. the OpenVoice
-//  assets haven't been fetched yet).
-//  Lifted from feat/voice-cloning at Phase 2a and adapted to the unified
-//  TTSEngineProtocol (push-streaming via onBufferReady, persona-keyed).
+//  AVSpeechSynthesizer wrapper — the last-resort TTS fallback. TTSEngineSelector
+//  wires it in as the `?? makeSystemTTSEngine` tail of `resolveEngine`, used only
+//  if the model-specific engine (VOICEVOX / OpenVoice) can't be constructed.
+//  Conforms to the unified TTSEngineProtocol (push-streaming via onBufferReady,
+//  persona-keyed).
 //
 //  Created by Dedicatus on 29/04/2026.
 //

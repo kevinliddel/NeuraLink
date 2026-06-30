@@ -103,9 +103,7 @@ final class TTSEngineSelector {
     private func makeVoiceVoxEngine(for persona: PersonaIdentifier) -> (any TTSEngineProtocol)? {
         // Returns the shared engine in its current state. The caller is
         // responsible for awaiting `initialize()` before the first `speak`
-        // call — engine.speak() throws .notInitialized otherwise. Wiring
-        // happens in Phase 5 (`LocalLLMManager+TTS` swap from
-        // AVSpeechSynthesizer to the selector).
+        // call — engine.speak() throws .notInitialized otherwise.
         _ = persona
         return VoiceVoxEngine.shared
     }

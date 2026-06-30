@@ -4,7 +4,6 @@
 //
 //  Manages availability and lifecycle of VOICEVOX voice models, plus
 //  dictionary verification and UI status reporting.
-//  Lifted from feat/voice-vox at Phase 1a.
 //
 //  Created by Dedicatus on 29/04/2026.
 //
@@ -43,9 +42,9 @@ final class VoiceVoxModelManager {
         isDictionaryAvailable && VoiceVoxModelAccess.isSpeakerAvailable(speakerID: id)
     }
 
-    /// Placeholder for the actual `.vvm` download flow. Real download wiring
-    /// lands in Phase 5 alongside the `TTSAsset` extension to
-    /// `LocalModelDownloadManager` (plan §5).
+    /// Placeholder for a direct `.vvm` download flow. (Speaker `.vvm` files are
+    /// currently fetched on demand via `RemoteAssetCache` / the bundled voice
+    /// download in `LocalModelDownloadManager`.)
     func downloadModel(forSpeakerID id: Int) async throws {
         nlLog("[VoiceVox] Stub download for speaker \(id)…", level: .info)
         try await Task.sleep(for: .seconds(2))
