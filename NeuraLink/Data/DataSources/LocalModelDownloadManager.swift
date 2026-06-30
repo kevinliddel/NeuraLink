@@ -50,12 +50,6 @@ final class LocalModelDownloadManager: @unchecked Sendable {
 
     enum ModelConfiguration: String, CaseIterable, Identifiable {
         case llama1b = "Llama-3.2 1B"
-        // The JP slot's model has evolved (Llama-3.2-1B → Gemma 2 2B →
-        // LLM-jp-3 1.8B); the case is `.llmJp3` for the current model. Changing
-        // this rawValue resets a user's persisted JP selection to the device
-        // default — acceptable, mirrors the re-download on a model-file change.
-        // (KV-cache blobs are namespaced by configKey in LocalLLMKVCache, which
-        // is bumped on model swaps so a stale blob is never restored.)
         case llmJp3 = "LLM-jp 3 (1.8B)"
 
         var id: String { rawValue }
