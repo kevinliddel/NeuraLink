@@ -63,11 +63,11 @@ final class GGUFLLMjp3Engine: NSObject, @unchecked Sendable, LLMEngineProtocol {
                         // 4 GB devices (iPhone 11/12/13): see GGUFLlamaEngine
                         // for the threads=2 and n_ctx=1024 rationale. NOTE:
                         // the JP slot now hosts LLM-jp-3 1.8B at Q3_K_M
-                        // (~0.96 GB), loaded non-mmap so it stays resident (the
-                        // gemma 2B streamed from flash on this tier). The
-                        // conservative 1024-ctx / 2-thread profile is kept to
-                        // hold the footprint down; non-mmap means peak RSS = the
-                        // full model size, so jetsam headroom is tight here.
+                        // (~0.96 GB). At that size the mmap'd weights fit and
+                        // stay resident (≈4 tok/s) — mmap is kept; the no-mmap
+                        // force-resident attempt jetsam-crashed and was reverted
+                        // (see llama_bridge.cpp). The conservative 1024-ctx /
+                        // 2-thread profile is kept to hold the footprint down.
                         // PLD tuned for Japanese: n=2, nDraft=3. The default
                         // n=3, nDraft=5 was calibrated on English where
                         // 3-token n-grams repeat constantly ("I think the",

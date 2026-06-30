@@ -6,10 +6,10 @@
 //  persona on the current device. Mirrors the role that
 //  LocalLLMManager.makeEngine() plays for LLM engines.
 //
-//  Selection rules per docs/local_llm_tts_plan.md §3.1:
+//  Selection rules (see resolveEngine(for:)):
 //    1. .llmJp3 active                                    -> VoiceVoxEngine
-//    2. Kokoro voices downloaded                          -> KokoroEngine (deferred, returns nil)
-//    3. Else                                              -> SystemTTSEngine
+//    2. Else (English personas)                           -> OpenVoiceEngine
+//    3. OpenVoice unavailable                             -> SystemTTSEngine (fallback)
 //
 //  Engine selection is automatic — the user-facing voice picker in
 //  PersonaSettingsView only chooses WHICH VOICEVOX speaker the persona

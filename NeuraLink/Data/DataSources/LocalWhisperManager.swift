@@ -112,6 +112,12 @@ final class LocalWhisperManager: NSObject, @unchecked Sendable {
                             cont.resume(returning: false)
                             return
                         }
+                        // Free any handle left by a racing setup()/shutdown()
+                        // before overwriting it. All handle mutations run on this
+                        // serial queue, so freeing the prior context here can't
+                        // leak it (the free/reload-during-decode path can briefly
+                        // overlap a fresh setup).
+                        if let old = self.handle { whisper_bridge_free(old) }
                         self.handle = h
                         self.isReady = true
                         nlLog(

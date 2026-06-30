@@ -85,10 +85,24 @@ enum GGUFLLMjp3ModelAccess {
         else { return nil }
 
         for snap in entries.sorted(by: { $0.path > $1.path }) {
-            let candidate = snap.appendingPathComponent(filename)
-            if FileManager.default.fileExists(atPath: candidate.path) {
-                setModelPath(candidate)
-                return candidate
+            // Direct: snapshots/<hash>/<filename>
+            let direct = snap.appendingPathComponent(filename)
+            if FileManager.default.fileExists(atPath: direct.path) {
+                setModelPath(direct)
+                return direct
+            }
+            // Nested: snapshots/<hash>/<child>/<filename> — mirror
+            // GGUFLLMjp3Downloader.verifyAndSave so an already-downloaded file
+            // isn't missed (forcing a needless re-download) after a persisted-
+            // path reset.
+            let children = (try? FileManager.default.contentsOfDirectory(
+                at: snap, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
+            for child in children {
+                let candidate = child.appendingPathComponent(filename)
+                if FileManager.default.fileExists(atPath: candidate.path) {
+                    setModelPath(candidate)
+                    return candidate
+                }
             }
         }
         return nil

@@ -157,7 +157,11 @@ struct ContentView: View {
                 // so it cannot preempt a real (even slow) first-install
                 // download. (Was 30 s, which fired mid-download and revealed an
                 // empty scene on first launch.)
-                try? await Task.sleep(nanoseconds: 600_000_000_000)  // 10 min
+                do {
+                    try await Task.sleep(nanoseconds: 600_000_000_000)  // 10 min
+                } catch {
+                    return  // `.task` cancelled (view gone) — don't force-reveal.
+                }
                 if !envLoad.isReady {
                     nlLog(
                         "[EnvironmentLoadState] Reveal backstop fired after 600s without a ready signal — forcing reveal.",

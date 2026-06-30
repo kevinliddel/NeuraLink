@@ -329,6 +329,13 @@ final class LocalModelDownloadManager: @unchecked Sendable {
             // Bundle the matching voice model so the user never has to fetch it
             // separately in Persona settings. Best-effort — see the method doc.
             await downloadVoiceAssets(for: config)
+            // downloadVoiceAssets swallows its errors as best-effort, so an
+            // in-tail cancel/pause wouldn't surface as a throw — honour it here
+            // rather than overriding the user's action by publishing `.ready`.
+            guard !Task.isCancelled else {
+                endBackgroundTask()
+                return
+            }
 
             await MainActor.run { state = .downloading(progress: 1.0) }
             try? await Task.sleep(nanoseconds: 500_000_000)

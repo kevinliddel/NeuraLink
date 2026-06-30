@@ -213,7 +213,12 @@ final class VRMMetalState {
 
     private func armRenderRateObservation() {
         withObservationTracking {
+            // Track every input applyRenderRateForAIStatus() reads, so a
+            // local↔cloud provider toggle re-evaluates the rate even when the
+            // AI status hasn't changed.
             _ = aiState.status
+            _ = OpenAISettings.shared.isLocalLLMEnabled
+            _ = OpenAISettings.shared.isEnabled
         } onChange: { [weak self] in
             // Fires in the property's `willSet`; defer so the read below sees
             // the new value, then re-arm for the next transition.
