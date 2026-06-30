@@ -62,11 +62,12 @@ final class GGUFGemma2BJPEngine: NSObject, @unchecked Sendable, LLMEngineProtoco
                     DispatchQueue.global(qos: .userInitiated).async {
                         // 4 GB devices (iPhone 11/12/13): see GGUFLlamaEngine
                         // for the threads=2 and n_ctx=1024 rationale. NOTE:
-                        // Gemma 2 2B at Q4_K_M is ~1.71 GB — ~2.3× the old
-                        // Llama-1B JP file. The conservative 1024-ctx / 2-thread
-                        // profile is deliberately kept to hold the memory
-                        // footprint down on 4 GB devices; OOM/jetsam risk here
-                        // is higher than for the 1B model it replaced.
+                        // the JP slot now hosts LLM-jp-3 1.8B at Q3_K_M
+                        // (~0.96 GB), loaded non-mmap so it stays resident (the
+                        // gemma 2B streamed from flash on this tier). The
+                        // conservative 1024-ctx / 2-thread profile is kept to
+                        // hold the footprint down; non-mmap means peak RSS = the
+                        // full model size, so jetsam headroom is tight here.
                         // PLD tuned for Japanese: n=2, nDraft=3. The default
                         // n=3, nDraft=5 was calibrated on English where
                         // 3-token n-grams repeat constantly ("I think the",
@@ -94,7 +95,7 @@ final class GGUFGemma2BJPEngine: NSObject, @unchecked Sendable, LLMEngineProtoco
                             promptLookup: false,
                             pldN: profile.pldN,
                             pldNDraft: profile.pldNDraft,
-                            label: "Gemma-2B-JP"
+                            label: "LLM-jp-3-1.8B"
                         ) {
                             cont.resume(returning: b)
                         } else {

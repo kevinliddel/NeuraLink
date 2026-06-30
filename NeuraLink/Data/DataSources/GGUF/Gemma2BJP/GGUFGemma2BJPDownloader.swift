@@ -3,8 +3,8 @@
 //  NeuraLink
 //
 //  Downloads the Japanese local model GGUF file from HuggingFace.
-//  Model: grapevine-AI/gemma-2-2b-jpn-it-gguf
-//  File:  gemma-2-2B-jpn-it-Q4_K_M.gguf (~1.71 GB) — see GGUFGemma2BJPModelAccess
+//  Model: mmnga/llm-jp-3-1.8b-instruct3-gguf
+//  File:  llm-jp-3-1.8b-instruct3-Q3_K_M.gguf (~0.96 GB) — see GGUFGemma2BJPModelAccess
 //
 //  Created by Dedicatus on 06/05/2026.
 //

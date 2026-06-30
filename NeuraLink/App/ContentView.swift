@@ -142,9 +142,28 @@ struct ContentView: View {
             }
             .animation(.easeInOut(duration: 0.8), value: envLoad.isReady)
             .task {
-                // Failsafe: never let the loading screen hang on a stalled download.
-                try? await Task.sleep(nanoseconds: 30_000_000_000)
-                if !envLoad.isReady { EnvironmentLoadState.shared.forceReady() }
+                // The reveal is normally driven by `environmentDidLoad` — fired
+                // when the selected environment's mesh finishes downloading +
+                // loading, on success OR failure — plus the `forceReady()` calls
+                // on the no-model / no-Metal / load-error paths. On first
+                // install the env GLB downloads from HF and can take well over
+                // 30 s; URLSession's own request timeout already turns a stalled
+                // download into an error (→ environmentDidLoad → reveal) within
+                // ~60 s, so a healthy download must NEVER be cut off here — that
+                // is the whole point of the loading screen.
+                //
+                // This is only a last-resort guard against a logic hang where
+                // neither signal ever fires. The interval is deliberately long
+                // so it cannot preempt a real (even slow) first-install
+                // download. (Was 30 s, which fired mid-download and revealed an
+                // empty scene on first launch.)
+                try? await Task.sleep(nanoseconds: 600_000_000_000)  // 10 min
+                if !envLoad.isReady {
+                    nlLog(
+                        "[EnvironmentLoadState] Reveal backstop fired after 600s without a ready signal — forcing reveal.",
+                        level: .warning)
+                    EnvironmentLoadState.shared.forceReady()
+                }
             }
         }
     }

@@ -62,6 +62,16 @@ LlamaBridgeHandle* llama_bridge_create(
     llama_model_params mp = llama_model_default_params();
     mp.n_gpu_layers       = static_cast<int32_t>(n_gpu_layers);
 
+    // NOTE: `use_mmap = false` on the CPU tier (to keep weights resident and
+    // stop iOS evicting mmap'd pages → flash re-streaming) was tried and
+    // reverted twice — it jetsam-crashes on the 3.8 GB iPhone 11. Non-mmap
+    // makes peak RSS = the full model size with no eviction valve, and even the
+    // ~0.96 GB LLM-jp-3 1.8B Q3_K_M can't stay resident once the avatar, the
+    // launch-loaded 3D environment (city.glb) AND VoiceVox are also in RAM
+    // (model "Ready" prints, then jetsam). So mmap is kept: the model streams
+    // (slower, ~0.3 tok/s) but the app is STABLE. To make residency viable here
+    // we must first free enough RAM elsewhere (e.g. load only the SELECTED
+    // environment, not both) so the model + non-mmap fits under ~2.1 GB.
     llama_model* model = llama_model_load_from_file(model_path, mp);
     if (!model) { llama_backend_free(); return nullptr; }
 

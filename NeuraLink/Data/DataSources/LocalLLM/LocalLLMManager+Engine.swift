@@ -224,6 +224,12 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
         // then stop its tick.
         transcriptTypewriter.endGeneration()
 
+        // Decode is done, so the LLM-residency pressure is over: reload Whisper
+        // (freed at generation start on the 4 GB tier) so STT is warm before
+        // the user can speak again (VAD only listens once status == .ready).
+        // No-op when it was never freed — `setup()` returns immediately.
+        Task { _ = await whisperManager.setup() }
+
         if !ttsBuffer.trimmingCharacters(in: .whitespaces).isEmpty {
             speakChunk(ttsBuffer)
             ttsBuffer = ""

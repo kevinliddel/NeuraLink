@@ -80,8 +80,8 @@ final class LocalModelDownloadManager: @unchecked Sendable {
             case .qwen7b: return 4.68
             // Q4_K_M (~0.81 GB) — Q8_0 (1.32) was too big for 4 GB (jetsam).
             case .llama1b: return 0.81
-            // Gemma 2 2B Q4_K_M — see quantizationLabel.
-            case .japaneseGemma2b: return 1.71
+            // LLM-jp-3 1.8B instruct, Q3_K_M — see quantizationLabel.
+            case .japaneseGemma2b: return 0.96
             }
         }
 
@@ -94,9 +94,11 @@ final class LocalModelDownloadManager: @unchecked Sendable {
                 // See GGUFModelAccess.swift.
                 return "Q4_K_M"
             case .japaneseGemma2b:
-                // Gemma 2 2B (JP), Q4_K_M (~1.71 GB). See
+                // LLM-jp-3 1.8B instruct, Q3_K_M (~0.96 GB): sized to stay
+                // resident on the 4 GB tier (loaded non-mmap; gemma 2B streamed
+                // from flash and even its 1.30 GB IQ3_M crashed). See
                 // GGUFGemma2BJPModelAccess.swift.
-                return "Q4_K_M"
+                return "Q3_K_M"
             }
         }
 
@@ -111,7 +113,7 @@ final class LocalModelDownloadManager: @unchecked Sendable {
             case .llama1b:
                 return "Memory efficient. Recommended for iPhone 11, 12 or 13 families (4 GB RAM)."
             case .japaneseGemma2b:
-                return "Japanese-tuned Gemma 2 2B (Google). Best Japanese quality; ~1.7 GB. Runs on iPhone 11/12/13 (4 GB) — smoothest on 6 GB+ devices."
+                return "Japanese-native LLM-jp-3 1.8B (instruct), Q3_K_M ~0.96 GB — sized to run fully in memory on iPhone 11/12/13 (4 GB) for fast responses; smoothest on 6 GB+ devices."
             }
         }
     }

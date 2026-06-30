@@ -297,6 +297,16 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             state.status = .thinking
         }
 
+        // 4 GB tier: free Whisper's resident model (~150 MB) for the decode
+        // window so the LLM's mmap'd weights stay resident instead of streaming
+        // from flash. STT for this turn is already done (we have `text`), and
+        // VAD won't start a new listen until status returns to `.ready` — so
+        // Whisper is reloaded in `didFinishGeneration`, well before the next
+        // utterance. No-op on 6 GB+, where the model fits without this.
+        if Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824.0 < 5.0 {
+            whisperManager.shutdown()
+        }
+
         ProactiveVisionManager.shared.notifyUserSpoke()
         // `logUserMessage` already drops empty/whitespace turns; the flag
         // additionally excludes physical-interaction actions.
@@ -326,12 +336,15 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             )
 
             // Engine formats via the model's own GGUF chat template; falls
-            // back to a hand-rolled template if the model has none. The JP
-            // slot now hosts Gemma 2 2B, which needs Gemma formatting in the
-            // fallback (its `<start_of_turn>` tokens differ from Llama-3).
+            // back to a hand-rolled template only if the model has none. The JP
+            // slot now hosts LLM-jp-3 1.8B, whose mmnga GGUF embeds its own
+            // (LLM-jp-specific) template — so the GGUF path is authoritative and
+            // the hand-rolled fallback (gemma/qwen/llama-3) is unreachable for
+            // it. `isGemma: false` so the unreachable fallback can't inject
+            // gemma's `<start_of_turn>` tokens into this Llama-arch model.
             let prompt =
                 llmEngine.applyChatTemplate(messages: messages)
-                ?? fallbackChatPrompt(messages: messages, useQwen: useQwen, isGemma: isJapaneseLlama)
+                ?? fallbackChatPrompt(messages: messages, useQwen: useQwen, isGemma: false)
 
             // Token caps tuned to local TTS speech rate, not raw quality:
             //   - Llama-1B on iPhone 11 decodes at ~4 tok/s. 60 tokens =

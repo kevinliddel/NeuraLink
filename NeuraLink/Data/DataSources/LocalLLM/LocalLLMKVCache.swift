@@ -50,9 +50,12 @@ enum LocalLLMKVCache {
         let configKey: String
         switch config {
         case .llama1b: configKey = "llama1b"
-        // Key string kept as the pre-rename "japaneseLlama1b" (the case is now
-        // `.japaneseGemma2b`) so the model swap doesn't orphan cache blobs.
-        case .japaneseGemma2b: configKey = "japaneseLlama1b"
+        // The JP slot's model has changed (Llama-1B → Gemma 2 2B → LLM-jp-3
+        // 1.8B). The configKey is bumped to "llmjp3_18b" so a KV blob written
+        // by a previous model is never restored into this one — different
+        // vocab/dims would corrupt or fail the state-seq load. Orphaned old
+        // blobs are harmless (cleaned by the version-token sweep / cache purge).
+        case .japaneseGemma2b: configKey = "llmjp3_18b"
         case .qwen2b: configKey = "qwen2b"
         case .qwen3b: configKey = "qwen3b"
         case .qwen7b: configKey = "qwen7b"
