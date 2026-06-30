@@ -44,22 +44,27 @@ This document describes everything you need to know to get your changes merged c
 |------|-----------------|---------|
 | Xcode | 16.0 | Build, sign, deploy |
 | Swift | 6.0 | Language version |
-| SwiftLint | 0.57+ | Style enforcement |
+| SwiftLint | 0.57+ | Swift style enforcement |
+| clang-format | 18+ | C/C++ bridge style enforcement |
+| cppcheck | 2.0+ | C/C++ static analysis (optional) |
 | iOS Simulator / Device | iOS 17.0+ | Run target |
 
-### Install SwiftLint
+### Install linters
 
 ```bash
-brew install swiftlint
+brew install swiftlint clang-format cppcheck
 ```
 
 After every coding session, run:
 
 ```bash
-swiftlint lint --strict
+swiftlint lint --strict     # Swift
+scripts/lint-cpp.sh         # C/C++ bridge code (clang-format + cppcheck)
 ```
 
-Fix **all** reported violations before opening a Pull Request. The CI pipeline enforces `--strict` mode and will block merging if any lint error or warning is present.
+`scripts/lint-cpp.sh` only covers our first-party bridge code in `NeuraLink/Core/Bridge/` — the upstream `llama.cpp/` tree and `NeuraLink/Dependencies/` are never formatted or linted.
+
+Fix **all** reported violations before opening a Pull Request. The CI pipeline enforces both checks and will block merging if any lint error or warning is present.
 
 ---
 
@@ -84,7 +89,7 @@ The project follows **Clean Architecture** principles. **Do not** mix concerns a
 
 ## Coding Standards
 
-These rules are **mandatory** and enforced by both SwiftLint and code review:
+These rules are **mandatory** and enforced by SwiftLint (Swift), clang-format (C/C++ bridge code), and code review:
 
 ### File Size
 - **Maximum 500 lines per file.** If a file grows beyond this limit, split it following clean-architecture principles before submitting your PR.
@@ -161,6 +166,7 @@ refactor(vrm): split VRMLoader into parser and builder modules
 
 2. Ensure all of the following pass locally:
    - `swiftlint lint --strict` — zero warnings, zero errors.
+   - `scripts/lint-cpp.sh` — clean clang-format + cppcheck (only if you touched C/C++ bridge code).
    - The Xcode build succeeds on the simulator (`Cmd+B`).
    - All unit tests pass (`Cmd+U`).
 
