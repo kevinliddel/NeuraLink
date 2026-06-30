@@ -1,10 +1,10 @@
 //
-//  GGUFGemma2BJPDownloader.swift
+//  GGUFLLMjp3Downloader.swift
 //  NeuraLink
 //
 //  Downloads the Japanese local model GGUF file from HuggingFace.
-//  Model: grapevine-AI/gemma-2-2b-jpn-it-gguf
-//  File:  gemma-2-2B-jpn-it-Q4_K_M.gguf (~1.71 GB) — see GGUFGemma2BJPModelAccess
+//  Model: mmnga/llm-jp-3-1.8b-instruct3-gguf
+//  File:  llm-jp-3-1.8b-instruct3-Q3_K_M.gguf (~0.96 GB) — see GGUFLLMjp3ModelAccess
 //
 //  Created by Dedicatus on 06/05/2026.
 //
@@ -12,7 +12,7 @@
 import Foundation
 import Hub
 
-enum GGUFGemma2BJPDownloader {
+enum GGUFLLMjp3Downloader {
 
     // MARK: - Error
 
@@ -30,11 +30,11 @@ enum GGUFGemma2BJPDownloader {
         api: HubApi,
         progressHandler: @escaping (Double) -> Void
     ) async throws {
-        let repo = Hub.Repo(id: GGUFGemma2BJPModelAccess.repoID)
+        let repo = Hub.Repo(id: GGUFLLMjp3ModelAccess.repoID)
         // Fetch only the one quant we use — see GGUFLlamaDownloader for the
         // full rationale (multi-quant repos balloon to 4–8 GB without this).
         let snapshotDir = try await api.snapshot(
-            from: repo, matching: [GGUFGemma2BJPModelAccess.filename]
+            from: repo, matching: [GGUFLLMjp3ModelAccess.filename]
         ) { progress in
             progressHandler(progress.fractionCompleted * 0.95)
         }
@@ -44,9 +44,9 @@ enum GGUFGemma2BJPDownloader {
     // MARK: - Private
 
     private static func verifyAndSave(snapshotDir: URL) throws {
-        let direct = snapshotDir.appendingPathComponent(GGUFGemma2BJPModelAccess.filename)
+        let direct = snapshotDir.appendingPathComponent(GGUFLLMjp3ModelAccess.filename)
         if FileManager.default.fileExists(atPath: direct.path) {
-            GGUFGemma2BJPModelAccess.setModelPath(direct)
+            GGUFLLMjp3ModelAccess.setModelPath(direct)
             return
         }
 
@@ -54,9 +54,9 @@ enum GGUFGemma2BJPDownloader {
             at: snapshotDir, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
 
         for entry in entries {
-            let candidate = entry.appendingPathComponent(GGUFGemma2BJPModelAccess.filename)
+            let candidate = entry.appendingPathComponent(GGUFLLMjp3ModelAccess.filename)
             if FileManager.default.fileExists(atPath: candidate.path) {
-                GGUFGemma2BJPModelAccess.setModelPath(candidate)
+                GGUFLLMjp3ModelAccess.setModelPath(candidate)
                 return
             }
         }

@@ -36,11 +36,8 @@ import Foundation
 enum LocalLLMKVCache {
 
     /// Returns the on-disk path for the given config + system prompt, or
-    /// nil if the directory could not be created. All `LlamaBridge`-backed
-    /// engines (Llama-1B, Llama-1B-JP, Qwen-2B/3B/7B) participate. The
-    /// Speculative engine uses a separate `LlamaBridgeSpec` context with no
-    /// equivalent `_state_seq_*` plumbing yet — falls through to no-op via
-    /// the protocol default in `LLMEngineProtocol`.
+    /// nil if the directory could not be created. All shipped local engines
+    /// (Llama-1B, LLM-jp-3, Qwen-2B) are `LlamaBridge`-backed and participate.
     static func path(
         config: LocalModelDownloadManager.ModelConfiguration,
         systemPrompt: String
@@ -50,12 +47,13 @@ enum LocalLLMKVCache {
         let configKey: String
         switch config {
         case .llama1b: configKey = "llama1b"
-        // Key string kept as the pre-rename "japaneseLlama1b" (the case is now
-        // `.japaneseGemma2b`) so the model swap doesn't orphan cache blobs.
-        case .japaneseGemma2b: configKey = "japaneseLlama1b"
+        // The JP slot's model has changed (Llama-1B → Gemma 2 2B → LLM-jp-3
+        // 1.8B). The configKey is bumped to "llmjp3_18b" so a KV blob written
+        // by a previous model is never restored into this one — different
+        // vocab/dims would corrupt or fail the state-seq load. Orphaned old
+        // blobs are harmless (cleaned by the version-token sweep / cache purge).
+        case .llmJp3: configKey = "llmjp3_18b"
         case .qwen2b: configKey = "qwen2b"
-        case .qwen3b: configKey = "qwen3b"
-        case .qwen7b: configKey = "qwen7b"
         }
         let personaKey = sha256Prefix(systemPrompt, length: 16)
         let versionKey = "v\(LlamaBridge.stateSeqVersion)"

@@ -1,26 +1,26 @@
 //
-//  GGUFGemma2BJPEngine.swift
+//  GGUFLLMjp3Engine.swift
 //  NeuraLink
 //
 //  LLMEngineProtocol implementation for the Japanese local model
-//  (grapevine-AI/gemma-2-2b-jpn-it-gguf — Google's Gemma 2 2B, JP-tuned).
-//  Uses the same llama.cpp bridge and Metal GPU path as GGUFLlamaEngine —
-//  only the model file differs. The Gemma chat template is read from the
+//  (mmnga/llm-jp-3-1.8b-instruct3-gguf — the LLM-jp project's JP-native 1.8B).
+//  Uses the same llama.cpp bridge and CPU/Metal path as GGUFLlamaEngine —
+//  only the model file differs. The model's chat template is read from the
 //  GGUF metadata by LlamaBridge.applyChatTemplate, so no prompt-format
-//  changes are needed despite the architecture switch.
+//  changes are needed despite the model switch.
 //
-//  See GGUFGemma2BJPEngine+Generate.swift for the token generation loop.
+//  See GGUFLLMjp3Engine+Generate.swift for the token generation loop.
 //
 //  Created by Dedicatus on 06/05/2026.
 //
 
 import Foundation
 
-final class GGUFGemma2BJPEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
+final class GGUFLLMjp3Engine: NSObject, @unchecked Sendable, LLMEngineProtocol {
 
     // MARK: - Singleton
 
-    static let shared = GGUFGemma2BJPEngine()
+    static let shared = GGUFLLMjp3Engine()
 
     // MARK: - Protocol properties
 
@@ -53,20 +53,21 @@ final class GGUFGemma2BJPEngine: NSObject, @unchecked Sendable, LLMEngineProtoco
         let task: Task<Void, Error> = loadLock.withLock {
             if let existing = loadTask { return existing }
             let t = Task<Void, Error> {
-                guard let url = GGUFGemma2BJPModelAccess.modelURL() else {
+                guard let url = GGUFLLMjp3ModelAccess.modelURL() else {
                     throw LLMError.modelNotFound
                 }
-                nlLog("[GGUFGemma2BJP] Loading \(url.lastPathComponent)…", level: .info)
+                nlLog("[GGUFLLMjp3] Loading \(url.lastPathComponent)…", level: .info)
 
                 let loaded: LlamaBridge = try await withCheckedThrowingContinuation { cont in
                     DispatchQueue.global(qos: .userInitiated).async {
                         // 4 GB devices (iPhone 11/12/13): see GGUFLlamaEngine
                         // for the threads=2 and n_ctx=1024 rationale. NOTE:
-                        // Gemma 2 2B at Q4_K_M is ~1.71 GB — ~2.3× the old
-                        // Llama-1B JP file. The conservative 1024-ctx / 2-thread
-                        // profile is deliberately kept to hold the memory
-                        // footprint down on 4 GB devices; OOM/jetsam risk here
-                        // is higher than for the 1B model it replaced.
+                        // the JP slot now hosts LLM-jp-3 1.8B at Q3_K_M
+                        // (~0.96 GB). At that size the mmap'd weights fit and
+                        // stay resident (≈4 tok/s) — mmap is kept; the no-mmap
+                        // force-resident attempt jetsam-crashed and was reverted
+                        // (see llama_bridge.cpp). The conservative 1024-ctx /
+                        // 2-thread profile is kept to hold the footprint down.
                         // PLD tuned for Japanese: n=2, nDraft=3. The default
                         // n=3, nDraft=5 was calibrated on English where
                         // 3-token n-grams repeat constantly ("I think the",
@@ -75,7 +76,7 @@ final class GGUFGemma2BJPEngine: NSObject, @unchecked Sendable, LLMEngineProtoco
                         // default wastes batch-decode cycles on misses.
                         // The `pld=hits/rounds(%)` field in `[Bench]`
                         // confirms whether this pays off.
-                        let profile = LLMRuntimeProfile.resolve(for: .japaneseGemma2b)
+                        let profile = LLMRuntimeProfile.resolve(for: .llmJp3)
                         if let b = LlamaBridge(
                             modelPath: url.path,
                             contextLength: profile.contextLength,
@@ -94,7 +95,7 @@ final class GGUFGemma2BJPEngine: NSObject, @unchecked Sendable, LLMEngineProtoco
                             promptLookup: false,
                             pldN: profile.pldN,
                             pldNDraft: profile.pldNDraft,
-                            label: "Gemma-2B-JP"
+                            label: "LLM-jp-3-1.8B"
                         ) {
                             cont.resume(returning: b)
                         } else {
@@ -105,7 +106,7 @@ final class GGUFGemma2BJPEngine: NSObject, @unchecked Sendable, LLMEngineProtoco
 
                 self.bridge   = loaded
                 self.isLoaded = true
-                nlLog("[GGUFGemma2BJP] Ready. llama.cpp \(loaded.version)", level: .info)
+                nlLog("[GGUFLLMjp3] Ready. llama.cpp \(loaded.version)", level: .info)
             }
             self.loadTask = t
             return t
@@ -123,7 +124,7 @@ final class GGUFGemma2BJPEngine: NSObject, @unchecked Sendable, LLMEngineProtoco
         bridge   = nil
         isLoaded = false
         loadLock.withLock { loadTask = nil }
-        nlLog("[GGUFGemma2BJP] Unloaded.", level: .info)
+        nlLog("[GGUFLLMjp3] Unloaded.", level: .info)
     }
 
     func stop() {

@@ -8,6 +8,8 @@
 //  EnvironmentLoadState), then dissolves away with a misty fade to reveal the
 //  live scene. A small bottom-left indicator highlights what's loading.
 //
+//  Created by Dedicatus on 26/05/2026.
+//
 
 import SwiftUI
 

@@ -366,6 +366,35 @@ The rain intensity-to-MToon specular mapping must apply on the **Metal render th
 
 `SQLCipherTests` and `LocalLLMKVCacheTests` are **skipped on CI** due to missing `keychain-access-groups` entitlement. Add it to `NeuraLinkTests.entitlements` and remove the `.disabled(if:)` guard.
 
+### L6 — Adaptive Avatar Render-Rate During LLM Decode ✅
+
+**Source:** Investigation 2026-06-30 ("reduce 3D GPU cost, hand the headroom to the local LLM").
+
+The avatar's `MTKView` self-paces at a fixed **60 fps** ([VRMMetalState.swift:107](../NeuraLink/Core/Engine/VRM/UI/VRMMetalState.swift#L107)),
+even while the local LLM is mid-turn and the avatar is just idle-"thinking". That one
+property gates the **entire** per-frame GPU + unified-memory-bandwidth cost (skinning,
+morph + 5-pass spring-bone compute, both shadow maps, main + outline + rain).
+
+**Key tier reality (verified):** `LLMRuntimeProfile.resolve` forces `gpuLayers = 0` on
+**< 5 GB** devices ([LLMRuntimeProfile.swift:110-119](../NeuraLink/Data/DataSources/LocalLLM/LLMRuntimeProfile.swift#L110)),
+so on the 4 GB iPhone-11 baseline the LLM is **CPU-only** — it never contends with the
+avatar for GPU *compute*, only for **memory bandwidth + power/thermal**. On 6 GB+ tiers
+the LLM is fully on Metal, so the dip also frees genuine GPU time.
+
+**Implemented:** `VRMMetalState` observes `aiState.status` (`withObservationTracking`,
+re-arming) and drops `preferredFramesPerSecond` 60 → **30 only while the *local* LLM is
+decoding** (`.thinking`/`.speaking`; gated to the local path so the OpenAI cloud path keeps
+60 fps lip-sync). Fully reversible, zero baseline quality change (60 fps when idle).
+
+**Validate:** compare `[Bench] decode=…tok/s` before/after on a real device; the existing
+`-nl.debug.pauseAvatar YES -nl.debug.skipWhisper YES` A/B isolates the avatar's effect.
+On 4 GB the dominant bottleneck remains **model residency** (mmap weight-streaming) — a
+memory lever — so expect a modest decode gain there and a larger one on 6 GB+.
+
+**Rejected after inspection:** `springBoneQuality` is dead code (never read; hardcoded
+`VRMConstants.Physics`), and the wide env shadow map is already 1024 (only the tight
+character map is 2048, not safely shrinkable).
+
 ---
 
 ## 📋 Summary Table
@@ -389,6 +418,7 @@ The rain intensity-to-MToon specular mapping must apply on the **Metal render th
 | L3 | Parallel LocalLLMFactExtractor | 🟡 Medium | 🟡 Latency | ⬜ Pending |
 | L4 | Rain-MToon wet-material frame sync | 🟢 Low | 🟡 Visual | ⬜ Pending |
 | L5 | Keychain entitlement for CI tests | 🟢 Low | 🟡 DX | ⬜ Pending |
+| L6 | Adaptive avatar render-rate during LLM decode | 🟢 Low | 🟠 Perf | ✅ Done |
 
 > **Legend:** 🟢 Low effort ≈ < 1 day · 🟡 Medium ≈ 1–2 days · 🔴 High ≈ 3+ days
 

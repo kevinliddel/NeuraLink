@@ -2,12 +2,9 @@
 //  TTSEngineProtocol.swift
 //  NeuraLink
 //
-//  Unified post-merge contract for local TTS engines.
+//  Unified contract for local TTS engines.
 //
-//  Resolves the protocol conflict between feat/voice-cloning's TTSProtocol
-//  (push-streaming via onBufferReady callback) and feat/voice-vox's
-//  TTSEngineProtocol (pull via synthesize -> Data). The push model wins —
-//  it matches LocalLLMManager+TTS's existing sentence-chunked playback path
+//  The push model matches LocalLLMManager+TTS's existing sentence-chunked playback path
 //  and keeps first-audio latency low. A one-shot Data form is provided as a
 //  default-implemented extension for callers that want bytes.
 //

@@ -123,6 +123,7 @@ final class VRMMetalState {
         startSkyTicker()
         setupBackgroundObservers()
         setupPoseObserver()
+        startRenderRateObservation()
     }
 
     private func setupBackgroundObservers() {
@@ -133,6 +134,9 @@ final class VRMMetalState {
         NotificationCenter.default.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { [weak self] _ in
             self?.isAppInBackground = false
             self?.updateTickersForCurrentState()
+            // Re-apply the decode-aware render rate: the status may have changed
+            // while backgrounded (where `applyRenderRateForAIStatus` no-ops).
+            self?.applyRenderRateForAIStatus()
         }
         
         // Observe PiP state changes using Combine
@@ -183,6 +187,61 @@ final class VRMMetalState {
         renderer?.updateRain(deltaTime: dt)
         renderer?.applySkyLighting()
         renderer?.updateTerrain(deltaTime: dt)
+    }
+
+    // MARK: - Adaptive render rate (frees resources for on-device LLM decode)
+
+    /// Avatar draw rate while the on-device LLM is actively decoding a turn.
+    /// On the 4 GB tier the local LLM runs CPU-only (`LLMRuntimeProfile` forces
+    /// `gpuLayers = 0` < 5 GB) and is memory-bandwidth-bound, so it never
+    /// competes with the avatar for *GPU compute* — but it does compete for
+    /// unified-memory bandwidth and the SoC power/thermal budget. Halving the
+    /// avatar's draw rate (which gates the whole per-frame cost: skinning,
+    /// morph + spring-bone compute, both shadow passes, main + outline) during
+    /// the decode window frees those shared resources for decode. On 6 GB+
+    /// tiers the LLM *is* on Metal, so the same dip also frees GPU time.
+    private static let decodeRenderFPS = 30
+    private static let idleRenderFPS = 60
+
+    /// Register a self-re-arming observation of `aiState.status` so the render
+    /// rate tracks the AI lifecycle. `@Observable` fires the change handler once
+    /// per mutation, hence the re-arm.
+    private func startRenderRateObservation() {
+        applyRenderRateForAIStatus()
+        armRenderRateObservation()
+    }
+
+    private func armRenderRateObservation() {
+        withObservationTracking {
+            // Track every input applyRenderRateForAIStatus() reads, so a
+            // local↔cloud provider toggle re-evaluates the rate even when the
+            // AI status hasn't changed.
+            _ = aiState.status
+            _ = OpenAISettings.shared.isLocalLLMEnabled
+            _ = OpenAISettings.shared.isEnabled
+        } onChange: { [weak self] in
+            // Fires in the property's `willSet`; defer so the read below sees
+            // the new value, then re-arm for the next transition.
+            Task { @MainActor in
+                guard let self else { return }
+                self.applyRenderRateForAIStatus()
+                self.armRenderRateObservation()
+            }
+        }
+    }
+
+    /// Drops to `decodeRenderFPS` only while the *local* LLM is decoding
+    /// (`.thinking`/`.speaking`). The OpenAI cloud path has no on-device decode
+    /// to accelerate, so it keeps 60 fps lip-sync. No-op while backgrounded —
+    /// the PiP ticker owns the rate there.
+    private func applyRenderRateForAIStatus() {
+        guard !isAppInBackground else { return }
+        let localDecode = OpenAISettings.shared.isLocalLLMEnabled && !OpenAISettings.shared.isEnabled
+        let decoding = aiState.status == .thinking || aiState.status == .speaking
+        let target = (localDecode && decoding) ? Self.decodeRenderFPS : Self.idleRenderFPS
+        if mtkView.preferredFramesPerSecond != target {
+            mtkView.preferredFramesPerSecond = target
+        }
     }
 
     func clear() {

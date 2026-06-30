@@ -49,69 +49,63 @@ final class LocalModelDownloadManager: @unchecked Sendable {
     }
 
     enum ModelConfiguration: String, CaseIterable, Identifiable {
-        case qwen7b = "Qwen2.5 7B"
-        case qwen3b = "Qwen2.5 3B"
         case qwen2b = "Qwen3-VL 2B"
         case llama1b = "Llama-3.2 1B"
-        // Renamed from `japaneseLlama1b` when the JP slot moved to Gemma 2 2B.
-        // The persisted KV-cache key string in LocalLLMKVCache deliberately
-        // stays "japaneseLlama1b" to avoid orphaning existing cache blobs.
-        // Changing this rawValue resets a user's persisted JP selection to the
-        // device default — acceptable, mirrors the re-download on a model-file
-        // change.
-        case japaneseGemma2b = "Gemma 2 2B (JP)"
+        // The JP slot's model has evolved (Llama-3.2-1B → Gemma 2 2B →
+        // LLM-jp-3 1.8B); the case is `.llmJp3` for the current model. Changing
+        // this rawValue resets a user's persisted JP selection to the device
+        // default — acceptable, mirrors the re-download on a model-file change.
+        // (KV-cache blobs are namespaced by configKey in LocalLLMKVCache, which
+        // is bumped on model swaps so a stale blob is never restored.)
+        case llmJp3 = "LLM-jp 3 (1.8B)"
 
         var id: String { rawValue }
 
         var repoID: String {
             switch self {
             case .qwen2b: return GGUFQwenModelAccess.repoID
-            case .qwen3b: return GGUFQwen3BModelAccess.repoID
-            case .qwen7b: return GGUFQwen7BModelAccess.repoID
             case .llama1b: return GGUFModelAccess.repoID
-            case .japaneseGemma2b: return GGUFGemma2BJPModelAccess.repoID
+            case .llmJp3: return GGUFLLMjp3ModelAccess.repoID
             }
         }
 
         var estimatedSizeGB: Double {
             switch self {
             case .qwen2b: return 1.1
-            case .qwen3b: return 1.93
-            case .qwen7b: return 4.68
             // Q4_K_M (~0.81 GB) — Q8_0 (1.32) was too big for 4 GB (jetsam).
             case .llama1b: return 0.81
-            // Gemma 2 2B Q4_K_M — see quantizationLabel.
-            case .japaneseGemma2b: return 1.71
+            // LLM-jp-3 1.8B instruct, Q3_K_M — see quantizationLabel.
+            case .llmJp3: return 0.96
             }
         }
 
         var quantizationLabel: String {
             switch self {
-            case .qwen2b, .qwen3b, .qwen7b:
+            case .qwen2b:
                 return "Q4_K_M"
             case .llama1b:
                 // Q4_K_M (~0.81 GB): fits resident on 4 GB (Q8_0 1.32 jetsam'd).
                 // See GGUFModelAccess.swift.
                 return "Q4_K_M"
-            case .japaneseGemma2b:
-                // Gemma 2 2B (JP), Q4_K_M (~1.71 GB). See
-                // GGUFGemma2BJPModelAccess.swift.
-                return "Q4_K_M"
+            case .llmJp3:
+                // LLM-jp-3 1.8B instruct, Q3_K_M (~0.96 GB): sized to stay
+                // resident on the 4 GB tier (loaded non-mmap; gemma 2B streamed
+                // from flash and even its 1.30 GB IQ3_M crashed). See
+                // GGUFLLMjp3ModelAccess.swift.
+                return "Q3_K_M"
             }
         }
 
         var description: String {
             switch self {
             case .qwen2b:
-                return "High performance, stateful. Recommended for iPhone 13 Pro Max, 14, 15 families (6 GB RAM)."
-            case .qwen3b:
-                return "Strong reasoning. Recommended for iPhone 14, 15, 16 families (6 GB+ RAM)."
-            case .qwen7b:
-                return "Top quality. Recommended for iPhone 15 Pro Max, 16, 17 families (8 GB RAM)."
+                return
+                    "High performance, stateful. Recommended for iPhone 13 Pro Max, 14, 15 families (6 GB RAM)."
             case .llama1b:
                 return "Memory efficient. Recommended for iPhone 11, 12 or 13 families (4 GB RAM)."
-            case .japaneseGemma2b:
-                return "Japanese-tuned Gemma 2 2B (Google). Best Japanese quality; ~1.7 GB. Runs on iPhone 11/12/13 (4 GB) — smoothest on 6 GB+ devices."
+            case .llmJp3:
+                return
+                    "Japanese-native LLM — sized to run fully in memory on iPhone 11, 12 or 13 families (4 GB RAM)."
             }
         }
     }
@@ -121,16 +115,14 @@ final class LocalModelDownloadManager: @unchecked Sendable {
     private static let configKey = "LocalModelSelectedConfig"
 
     private(set) var state: DownloadState = .notDownloaded
-    private(set) var selectedConfig: ModelConfiguration = LocalModelDownloadManager.defaultConfigForCurrentDevice()
+    private(set) var selectedConfig: ModelConfiguration =
+        LocalModelDownloadManager.defaultConfigForCurrentDevice()
 
-    /// Buckets `physicalMemory` into the best default tier for the device.
-    /// iPhone 11/12/13 = 4 GB → llama1b. iPhone 14/15 base = 6 GB → qwen3b.
-    /// iPhone 15 Pro+ / 16 family = 8 GB → qwen7b.
+    /// Default model on first launch. All devices default to the memory-safe
+    /// Llama-3.2 1B; Qwen 2B and the Japanese model (LLM-jp-3) are opt-in via
+    /// Settings. (Qwen 3B / 7B were removed.)
     static func defaultConfigForCurrentDevice() -> ModelConfiguration {
-        let gb = Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824.0
-        if gb >= 7.0 { return .qwen7b }
-        if gb >= 5.0 { return .qwen3b }
-        return .llama1b
+        .llama1b
     }
 
     private var activeTask: Task<Void, Never>?
@@ -226,10 +218,8 @@ final class LocalModelDownloadManager: @unchecked Sendable {
         }
         switch config {
         case .qwen2b: GGUFQwenModelAccess.clearCache()
-        case .qwen3b: GGUFQwen3BModelAccess.clearCache()
-        case .qwen7b: GGUFQwen7BModelAccess.clearCache()
         case .llama1b: GGUFModelAccess.clearCache()
-        case .japaneseGemma2b: GGUFGemma2BJPModelAccess.clearCache()
+        case .llmJp3: GGUFLLMjp3ModelAccess.clearCache()
         }
         if isSelected {
             state = .notDownloaded
@@ -254,12 +244,10 @@ final class LocalModelDownloadManager: @unchecked Sendable {
         let url: URL?
         switch config {
         case .qwen2b: url = GGUFQwenModelAccess.modelURL()
-        case .qwen3b: url = GGUFQwen3BModelAccess.modelURL()
-        case .qwen7b: url = GGUFQwen7BModelAccess.modelURL()
         case .llama1b: url = GGUFModelAccess.modelURL()
-        case .japaneseGemma2b: url = GGUFGemma2BJPModelAccess.modelURL()
+        case .llmJp3: url = GGUFLLMjp3ModelAccess.modelURL()
         }
-        
+
         guard let fileURL = url else { return 0 }
         let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path)
         return attrs?[.size] as? Int64 ?? 0
@@ -289,10 +277,8 @@ final class LocalModelDownloadManager: @unchecked Sendable {
     private func isDownloaded(_ config: ModelConfiguration) -> Bool {
         switch config {
         case .qwen2b: return GGUFQwenModelAccess.isDownloaded
-        case .qwen3b: return GGUFQwen3BModelAccess.isDownloaded
-        case .qwen7b: return GGUFQwen7BModelAccess.isDownloaded
         case .llama1b: return GGUFModelAccess.isDownloaded
-        case .japaneseGemma2b: return GGUFGemma2BJPModelAccess.isDownloaded
+        case .llmJp3: return GGUFLLMjp3ModelAccess.isDownloaded
         }
     }
 
@@ -313,40 +299,44 @@ final class LocalModelDownloadManager: @unchecked Sendable {
                 try await GGUFQwenDownloader.download(api: api) { [weak self] progress in
                     Task { @MainActor [weak self] in
                         guard case .downloading = self?.state else { return }
-                        self?.state = .downloading(progress: progress)
-                    }
-                }
-            case .qwen3b:
-                try await GGUFQwen3BDownloader.download(api: api) { [weak self] progress in
-                    Task { @MainActor [weak self] in
-                        guard case .downloading = self?.state else { return }
-                        self?.state = .downloading(progress: progress)
-                    }
-                }
-            case .qwen7b:
-                try await GGUFQwen7BDownloader.download(api: api) { [weak self] progress in
-                    Task { @MainActor [weak self] in
-                        guard case .downloading = self?.state else { return }
-                        self?.state = .downloading(progress: progress)
+                        // Model fills 0–80% of the bar; the bundled voice model
+                        // (downloadVoiceAssets) fills the 80–100% tail.
+                        self?.state = .downloading(progress: progress * 0.8)
                     }
                 }
             case .llama1b:
                 try await GGUFLlamaDownloader.download(api: api) { [weak self] progress in
                     Task { @MainActor [weak self] in
                         guard case .downloading = self?.state else { return }
-                        self?.state = .downloading(progress: progress)
+                        // Model fills 0–80% of the bar; the bundled voice model
+                        // (downloadVoiceAssets) fills the 80–100% tail.
+                        self?.state = .downloading(progress: progress * 0.8)
                     }
                 }
-            case .japaneseGemma2b:
-                try await GGUFGemma2BJPDownloader.download(api: api) { [weak self] progress in
+            case .llmJp3:
+                try await GGUFLLMjp3Downloader.download(api: api) { [weak self] progress in
                     Task { @MainActor [weak self] in
                         guard case .downloading = self?.state else { return }
-                        self?.state = .downloading(progress: progress)
+                        // Model fills 0–80% of the bar; the bundled voice model
+                        // (downloadVoiceAssets) fills the 80–100% tail.
+                        self?.state = .downloading(progress: progress * 0.8)
                     }
                 }
             }
 
             guard !Task.isCancelled else { return }
+
+            // Bundle the matching voice model so the user never has to fetch it
+            // separately in Persona settings. Best-effort — see the method doc.
+            await downloadVoiceAssets(for: config)
+            // downloadVoiceAssets swallows its errors as best-effort, so an
+            // in-tail cancel/pause wouldn't surface as a throw — honour it here
+            // rather than overriding the user's action by publishing `.ready`.
+            guard !Task.isCancelled else {
+                endBackgroundTask()
+                return
+            }
+
             await MainActor.run { state = .downloading(progress: 1.0) }
             try? await Task.sleep(nanoseconds: 500_000_000)
             await MainActor.run { state = .ready }
@@ -362,6 +352,57 @@ final class LocalModelDownloadManager: @unchecked Sendable {
             nlLog("[ModelDownload] Failed: \(error)", level: .error)
             await MainActor.run { state = .failed(error.localizedDescription) }
             endBackgroundTask()
+        }
+    }
+
+    /// Best-effort download of the voice-model assets paired with `config`, so
+    /// the user never has to fetch them separately in Persona settings:
+    /// VoiceVox (Open JTalk dict + default speaker pack) for the JP model, and
+    /// OpenVoice (MeloTTS + tone-color converter, optional prosody BERT) for
+    /// the English models. A failure here does NOT fail the model download —
+    /// the LLM is already on disk and TTS falls back to the iOS system voice.
+    /// `RemoteAssetCache` is idempotent, so already-cached assets are skipped.
+    private func downloadVoiceAssets(for config: ModelConfiguration) async {
+        do {
+            switch config {
+            case .llmJp3:
+                await setVoiceProgress(0.85)
+                // Open JTalk dictionary: many small files — fan out in parallel.
+                try await withThrowingTaskGroup(of: Void.self) { group in
+                    for name in RemoteAssetRegistry.jtalkDictFilenames {
+                        group.addTask {
+                            _ = try await RemoteAssetCache.shared.url(for: .jtalkDictFile(name))
+                        }
+                    }
+                    try await group.waitForAll()
+                }
+                await setVoiceProgress(0.95)
+                // Default speaker pack; other personas' speakers lazy-download
+                // through the same cache on first use.
+                let speaker = VoiceVoxSpeaker.map(VoiceVoxSpeaker.defaultSpeakerID).filenameID
+                _ = try await RemoteAssetCache.shared.url(for: .voicevoxSpeaker(speaker))
+            case .qwen2b, .llama1b:
+                await setVoiceProgress(0.85)
+                _ = try await OpenVoiceModelAccess.meloModel()
+                await setVoiceProgress(0.92)
+                _ = try await OpenVoiceModelAccess.converterModel()
+                await setVoiceProgress(0.97)
+                _ = await OpenVoiceModelAccess.bertModel()  // optional; nil on failure
+            }
+            nlLog("[ModelDownload] Voice assets ready for \(config.rawValue)", level: .info)
+        } catch {
+            nlLog(
+                "[ModelDownload] Voice assets failed for \(config.rawValue) (best-effort): \(error)",
+                level: .warning)
+        }
+    }
+
+    /// Updates the download bar within the voice-bundle tail. No-op if the
+    /// download was cancelled or already finished.
+    private func setVoiceProgress(_ progress: Double) async {
+        await MainActor.run {
+            guard case .downloading = self.state else { return }
+            self.state = .downloading(progress: progress)
         }
     }
 

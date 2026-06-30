@@ -197,13 +197,13 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
         // queries mixed with Japanese AI responses produce low-quality embeddings that
         // degrade future RAG retrieval across all models sharing the same memory store.
         let userText = state.userTranscript
-        let isJapaneseLlama = LocalModelDownloadManager.shared.selectedConfig == .japaneseGemma2b
-        if !isJapaneseLlama {
+        let isLLMjp = LocalModelDownloadManager.shared.selectedConfig == .llmJp3
+        if !isLLMjp {
             RAGManager.shared.store(text: userText, source: "user")
         }
         let stripped = LocalToolCallParser.strippedText(fullText)
         if !stripped.isEmpty {
-            if !isJapaneseLlama {
+            if !isLLMjp {
                 RAGManager.shared.store(text: stripped, source: "ai")
             }
             ChatTimelineStore.logAIMessage(stripped)
@@ -223,6 +223,12 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
         // No more tokens — let the typewriter reveal the remaining backlog and
         // then stop its tick.
         transcriptTypewriter.endGeneration()
+
+        // Decode is done, so the LLM-residency pressure is over: reload Whisper
+        // (freed at generation start on the 4 GB tier) so STT is warm before
+        // the user can speak again (VAD only listens once status == .ready).
+        // No-op when it was never freed — `setup()` returns immediately.
+        Task { _ = await whisperManager.setup() }
 
         if !ttsBuffer.trimmingCharacters(in: .whitespaces).isEmpty {
             speakChunk(ttsBuffer)

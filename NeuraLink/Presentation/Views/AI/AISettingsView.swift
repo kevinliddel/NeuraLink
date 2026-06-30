@@ -106,10 +106,6 @@ struct AISettingsView: View {
     private func ramWarning(for config: LocalModelDownloadManager.ModelConfiguration) -> String? {
         let gb = Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824.0
         switch config {
-        case .qwen7b where gb < 7.0:
-            return "This device (\(Int(gb)) GB RAM) is under the 8 GB recommendation for Qwen 7B. Pick a smaller model to prevent crashes."
-        case .qwen3b where gb < 5.0:
-            return "This device (\(Int(gb)) GB RAM) is under the 6 GB recommendation for Qwen 3B. Pick a smaller model to prevent crashes."
         case .qwen2b where gb < 5.0:
             return "This device (\(Int(gb)) GB RAM) is under the 6 GB requirement for Qwen 2B. The 1B model is recommended to prevent crashes."
         default:

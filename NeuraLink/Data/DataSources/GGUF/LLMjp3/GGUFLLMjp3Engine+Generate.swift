@@ -1,15 +1,19 @@
 //
-//  GGUFQwen7BEngine+Generate.swift
+//  GGUFLLMjp3Engine+Generate.swift
 //  NeuraLink
 //
-//  Token generation loop for GGUFQwen7BEngine.
+//  Token generation loop for GGUFLLMjp3Engine.
+//  Identical flow to GGUFLlamaEngine+Generate — blocking C call dispatched
+//  to a GCD thread so the Swift cooperative pool stays free.
 //
-//  Created by Dedicatus on 18/05/2026.
+//  Created by Dedicatus on 06/05/2026.
 //
 
 import Foundation
 
-extension GGUFQwen7BEngine {
+extension GGUFLLMjp3Engine {
+
+    // MARK: - LLMEngineProtocol — generate
 
     func generate(prompt: String, maxTokens: Int) async {
         guard isLoaded, let bridge else {
@@ -23,7 +27,7 @@ extension GGUFQwen7BEngine {
         generationLock.unlock()
 
         guard !alreadyRunning else {
-            nlLog("[GGUFQwen7B] Dropped generate — already in progress", level: .info)
+            nlLog("[GGUFLLMjp3] Dropped generate — already in progress", level: .info)
             Task { @MainActor [weak self] in
                 self?.delegate?.localLLM(didFinishGeneration: "")
             }
@@ -78,13 +82,20 @@ extension GGUFQwen7BEngine {
         guard let prompt = bridge.applyChatTemplate(
             messages: messages, addGenerationPrompt: false
         ) else { return }
+
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             // .userInitiated, not .utility: warm-up prefill is on the first-token
             // critical path. bridgeLock.try() already yields to a real turn, so a
             // low QoS only made warm-up lose the cold-start race (long TTFT).
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-                guard let self else { continuation.resume(); return }
-                guard self.bridgeLock.try() else { continuation.resume(); return }
+                guard let self else {
+                    continuation.resume()
+                    return
+                }
+                guard self.bridgeLock.try() else {
+                    continuation.resume()
+                    return
+                }
                 defer { self.bridgeLock.unlock() }
                 bridge.prefill(prompt: prompt)
                 continuation.resume()

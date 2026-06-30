@@ -25,21 +25,10 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         switch manager.selectedConfig {
         case .qwen2b:
             return GGUFQwenEngine.shared as any LLMEngineProtocol
-        case .qwen3b:
-            return GGUFQwen3BEngine.shared as any LLMEngineProtocol
-        case .qwen7b:
-            // Speculative decoding (1.5B draft + 7B target) auto-activates
-            // when the 1.5B Qwen is also on disk — typically 2–3× decode
-            // throughput at identical output quality. Falls back to the
-            // plain 7B engine when the draft model isn't available.
-            if GGUFSpeculativeEngine.canActivate {
-                return GGUFSpeculativeEngine.shared as any LLMEngineProtocol
-            }
-            return GGUFQwen7BEngine.shared as any LLMEngineProtocol
         case .llama1b:
             return GGUFLlamaEngine.shared
-        case .japaneseGemma2b:
-            return GGUFGemma2BJPEngine.shared
+        case .llmJp3:
+            return GGUFLLMjp3Engine.shared
         }
     }
 
@@ -231,6 +220,19 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
                 return
             }
 
+            // Cold first-token fix: restore the persisted persona-prefix KV and
+            // warm it up right after load, BEFORE Whisper setup so Whisper's
+            // load overlaps the warm-up (a short forward pass reusing the
+            // just-compiled kernels — no big new allocation). At launch this
+            // runs long before the user's first utterance, so that turn reuses
+            // the warm prefix and only prefills the short user-turn delta
+            // (cold ttft ~5 s → <1 s). The VAD-voice-start `warmupPrefill()`
+            // alone raced the utterance and usually lost; `preload()` had this
+            // sequence but is never called — `startListening()` is the real
+            // launch entry, so the warm-up has to live here.
+            await tryRestoreKVCache()
+            warmupPrefill()
+
             let success = await whisperManager.setup()
 
             if success {
@@ -297,6 +299,16 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             state.status = .thinking
         }
 
+        // 4 GB tier: free Whisper's resident model (~150 MB) for the decode
+        // window so the LLM's mmap'd weights stay resident instead of streaming
+        // from flash. STT for this turn is already done (we have `text`), and
+        // VAD won't start a new listen until status returns to `.ready` — so
+        // Whisper is reloaded in `didFinishGeneration`, well before the next
+        // utterance. No-op on 6 GB+, where the model fits without this.
+        if Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824.0 < 5.0 {
+            whisperManager.shutdown()
+        }
+
         ProactiveVisionManager.shared.notifyUserSpoke()
         // `logUserMessage` already drops empty/whitespace turns; the flag
         // additionally excludes physical-interaction actions.
@@ -306,11 +318,8 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
 
         Task {
             let mgr = LocalModelDownloadManager.shared
-            let isQwenFamily: Set<LocalModelDownloadManager.ModelConfiguration> = [
-                .qwen2b, .qwen3b, .qwen7b
-            ]
-            let useQwen = mgr.isAvailable && isQwenFamily.contains(mgr.selectedConfig)
-            let isJapaneseLlama = mgr.selectedConfig == .japaneseGemma2b
+            let useQwen = mgr.isAvailable && mgr.selectedConfig == .qwen2b
+            let isLLMjp = mgr.selectedConfig == .llmJp3
 
             // Build the 3-tier prompt via LocalLLMMemoryHierarchy:
             //   Tier 1: system + persona + (English-only: user context + companion)
@@ -326,12 +335,13 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             )
 
             // Engine formats via the model's own GGUF chat template; falls
-            // back to a hand-rolled template if the model has none. The JP
-            // slot now hosts Gemma 2 2B, which needs Gemma formatting in the
-            // fallback (its `<start_of_turn>` tokens differ from Llama-3).
+            // back to a hand-rolled template only if the model has none. The JP
+            // slot (LLM-jp-3 1.8B) and the other shipped models all embed their
+            // own GGUF template, so the hand-rolled fallback (Qwen/ChatML or
+            // Llama-3) is a safety net only.
             let prompt =
                 llmEngine.applyChatTemplate(messages: messages)
-                ?? fallbackChatPrompt(messages: messages, useQwen: useQwen, isGemma: isJapaneseLlama)
+                ?? fallbackChatPrompt(messages: messages, useQwen: useQwen)
 
             // Token caps tuned to local TTS speech rate, not raw quality:
             //   - Llama-1B on iPhone 11 decodes at ~4 tok/s. 60 tokens =
@@ -341,7 +351,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             //   - JP path stays at 60 (no change — already tight).
             //   - Qwen tiers keep a longer budget since they're on devices
             //     where decode tok/s isn't the constraint.
-            let maxTokens: Int = useQwen ? 160 : (isJapaneseLlama ? 60 : 60)
+            let maxTokens: Int = useQwen ? 160 : (isLLMjp ? 60 : 60)
 
             await llmEngine.generate(prompt: prompt, maxTokens: maxTokens)
         }

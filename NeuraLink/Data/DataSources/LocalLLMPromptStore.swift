@@ -21,12 +21,12 @@ final class LocalLLMPromptStore {
     private init() {}
 
     /// Maps the model config to the `character_ai` engine key: the Japanese
-    /// Gemma tier is its own slot; every other local model shares "local".
+    /// (LLM-jp) tier is its own slot; every other local model shares "local".
     private func engineKey(
         for config: LocalModelDownloadManager.ModelConfiguration?
     ) -> String {
-        config == .japaneseGemma2b
-            ? MemoryStore.PersonaEngine.gemmaJP
+        config == .llmJp3
+            ? MemoryStore.PersonaEngine.llmJp3
             : MemoryStore.PersonaEngine.local
     }
 
@@ -68,7 +68,7 @@ final class LocalLLMPromptStore {
         for characterName: String,
         config: LocalModelDownloadManager.ModelConfiguration? = nil
     ) -> String {
-        if config == .japaneseGemma2b {
+        if config == .llmJp3 {
             return defaultJapanesePrompt(for: characterName)
         }
         return defaultEnglishPrompt(for: characterName, config: config)
@@ -78,10 +78,12 @@ final class LocalLLMPromptStore {
         for characterName: String,
         config: LocalModelDownloadManager.ModelConfiguration?
     ) -> String {
-        let emotionTag = "Use [emotion:seconds] tags (e.g. [happy:2], [sad:1]) in your reply. Never say the emotion name aloud.\n"
+        let emotionTag =
+            "Use [emotion:seconds] tags (e.g. [happy:2], [sad:1]) in your reply. Never say the emotion name aloud.\n"
 
         if config == .llama1b {
-            let tool = "To save a user fact output only: <tool name=\"\(AppFunctionTool.rememberFact)\">{\"subject\":\"User\",\"predicate\":\"likes\",\"object\":\"X\"}</tool>\n"
+            let tool =
+                "To save a user fact output only: <tool name=\"\(AppFunctionTool.rememberFact)\">{\"subject\":\"User\",\"predicate\":\"likes\",\"object\":\"X\"}</tool>\n"
             switch characterName.lowercased() {
             case "ekaterina":
                 return emotionTag + tool
@@ -95,39 +97,35 @@ final class LocalLLMPromptStore {
             }
         }
 
-        let toolInstruction = """
-        To save a fact about the user, output ONLY: \
-        <tool name="\(AppFunctionTool.rememberFact)">{"subject":"User","predicate":"likes","object":"Sushi"}</tool> \
-        No other text with the tool call.
-        """
         switch characterName.lowercased() {
         case "ekaterina":
             return emotionTag + """
-            You are Ekaterina, a warm big-sister type. Reply in 1–2 natural spoken sentences. \
-            Be gentle, caring, and conversational. No asterisk actions, no narration, no parentheses.
-            """ + "\n" + toolInstruction
+                You are Ekaterina, a warm big-sister type. Reply in 1–2 natural spoken sentences. \
+                Be gentle, caring, and conversational. No asterisk actions, no narration, no parentheses.
+                """ + "\n"
         case "sonya":
             return emotionTag + """
-            You are Sonya, a blunt tsundere. Reply in 1–2 sentences. Be dismissive but secretly kind. \
-            Occasionally say Stupid. No asterisk actions, no narration, no parentheses.
-            """ + "\n" + toolInstruction
+                You are Sonya, a blunt tsundere. Reply in 1–2 sentences. Be dismissive but secretly kind. \
+                Occasionally say Stupid. No asterisk actions, no narration, no parentheses.
+                """ + "\n"
         default:
-            return emotionTag + "Reply in one short spoken sentence. Be natural and conversational.\n" + toolInstruction
+            return emotionTag
+                + "Reply in one short spoken sentence. Be natural and conversational.\n"
         }
     }
 
     private static func defaultJapanesePrompt(for characterName: String) -> String {
         let emotionTag = "感情タグ[感情:秒数]（例:[happy:2],[sad:1]）を返答に自然に含めること。感情名は声に出さないこと。\n"
-        let tool = "ユーザーの情報を保存する時のみ出力: <tool name=\"\(AppFunctionTool.rememberFact)\">{\"subject\":\"User\",\"predicate\":\"likes\",\"object\":\"X\"}</tool>\n"
         switch characterName.lowercased() {
         case "ekaterina":
-            return emotionTag + tool
+            return emotionTag
                 + "私はエカテリーナ、温かく優しいお姉さん。日本語で1〜2文で話す。"
         case "sonya":
-            return emotionTag + tool
+            return emotionTag
                 + "私はソーニャ、ツンデレ。日本語で1〜2文で話す。たまに「バカ」と言う。"
         default:
-            return emotionTag + tool + "日本語で1文で話す。"
+            return emotionTag
+                + "日本語で1文で話す。"
         }
     }
 }

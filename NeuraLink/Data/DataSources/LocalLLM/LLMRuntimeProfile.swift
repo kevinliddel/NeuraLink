@@ -57,8 +57,8 @@ struct LLMRuntimeProfile {
                 contextLength: 1024, threads: 2, gpuLayers: 999,
                 kType: .q4_0, vType: .q4_0, flashAttn: .enabled,
                 pldN: 0, pldNDraft: 0)
-        case .japaneseGemma2b:
-            // 4 GB tier, Gemma 2 2B Q4_K_M (~1.71 GB). Same conservative
+        case .llmJp3:
+            // 4 GB tier, LLM-jp-3 1.8B Q3_K_M (~0.96 GB). Same conservative
             // 1024-ctx / 2-thread footprint as llama1b. PLD tuned for
             // Japanese (n=2, nDraft=3): JP subword 3-grams repeat less than
             // English, so the default window wastes batch-decode cycles.
@@ -70,19 +70,6 @@ struct LLMRuntimeProfile {
             // 6 GB tier.
             profile = LLMRuntimeProfile(
                 contextLength: 2048, threads: 4, gpuLayers: 999,
-                kType: .q4_0, vType: .q4_0, flashAttn: .enabled,
-                pldN: 0, pldNDraft: 0)
-        case .qwen3b:
-            // 6 GB tier.
-            profile = LLMRuntimeProfile(
-                contextLength: 2048, threads: 4, gpuLayers: 999,
-                kType: .q4_0, vType: .q4_0, flashAttn: .enabled,
-                pldN: 0, pldNDraft: 0)
-        case .qwen7b:
-            // 8 GB tier (also the speculative target). KV settings apply to
-            // both the target and draft contexts via the speculative bridge.
-            profile = LLMRuntimeProfile(
-                contextLength: 2048, threads: 6, gpuLayers: 999,
                 kType: .q4_0, vType: .q4_0, flashAttn: .enabled,
                 pldN: 0, pldNDraft: 0)
         }

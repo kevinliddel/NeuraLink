@@ -24,7 +24,11 @@ extension MemoryStore {
     /// Engine keys for the `character_ai` table.
     enum PersonaEngine {
         static let openai = "openai"
-        static let gemmaJP = "gemma_jp"
+        /// JP-slot key. The stored value stays "gemma_jp" (the slot's former
+        /// model) on purpose — it's a persisted DB key, so changing it would
+        /// orphan users' existing JP persona prompts/voices. Only the Swift
+        /// identifier was renamed to match the current model (LLM-jp-3).
+        static let llmJp3 = "gemma_jp"
         static let local = "local"
     }
 
@@ -60,26 +64,67 @@ extension MemoryStore {
 
     /// Sets a single column, preserving the row's other columns. `column` is a
     /// compile-time constant (never user input), so interpolating it is safe.
+    ///
+    /// UPDATE-then-INSERT rather than `INSERT … ON CONFLICT(character, engine)`:
+    /// the upsert form requires a UNIQUE/PRIMARY-KEY index on (character, engine)
+    /// to even *prepare*, and would silently no-op (writes lost — the persona
+    /// prompt/voice never persists) if that constraint is ever absent on a
+    /// device's existing `character_ai` table. This form persists regardless,
+    /// and logs any failure instead of swallowing it. Serialized by `lock`, so
+    /// the UPDATE→INSERT pair can't race into a duplicate row.
     private func upsertPersonaColumn(_ column: String, character: String, engine: String, value: String?) {
         lock.lock()
         defer { lock.unlock() }
-        let sql = """
-        INSERT INTO character_ai (character, engine, \(column)) VALUES (?, ?, ?)
-        ON CONFLICT(character, engine) DO UPDATE SET \(column) = excluded.\(column);
-        """
-        var statement: OpaquePointer?
-        if sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK {
-            sqlite3_bind_text(statement, 1, (character.lowercased() as NSString).utf8String, -1, nil)
-            sqlite3_bind_text(statement, 2, (engine as NSString).utf8String, -1, nil)
-            if let value {
-                sqlite3_bind_text(statement, 3, (value as NSString).utf8String, -1, nil)
+        let key = character.lowercased()
+
+        // 1. Update the existing row if present.
+        var didUpdate = false
+        let updateSQL = "UPDATE character_ai SET \(column) = ? WHERE character = ? AND engine = ?;"
+        var update: OpaquePointer?
+        if sqlite3_prepare_v2(db, updateSQL, -1, &update, nil) == SQLITE_OK {
+            bindPersonaText(update, 1, value)
+            bindPersonaText(update, 2, key)
+            bindPersonaText(update, 3, engine)
+            if sqlite3_step(update) == SQLITE_DONE {
+                didUpdate = sqlite3_changes(db) > 0
             } else {
-                sqlite3_bind_null(statement, 3)
+                nlLog("[MemoryStore] persona UPDATE \(column) step failed: \(String(cString: sqlite3_errmsg(db)!))", level: .warning)
             }
-            _ = sqlite3_step(statement)
+        } else {
+            nlLog("[MemoryStore] persona UPDATE \(column) prepare failed: \(String(cString: sqlite3_errmsg(db)!))", level: .warning)
         }
-        sqlite3_finalize(statement)
+        sqlite3_finalize(update)
+        if didUpdate { return }
+
+        // 2. No existing row — insert a fresh one.
+        let insertSQL = "INSERT INTO character_ai (character, engine, \(column)) VALUES (?, ?, ?);"
+        var insert: OpaquePointer?
+        if sqlite3_prepare_v2(db, insertSQL, -1, &insert, nil) == SQLITE_OK {
+            bindPersonaText(insert, 1, key)
+            bindPersonaText(insert, 2, engine)
+            bindPersonaText(insert, 3, value)
+            if sqlite3_step(insert) != SQLITE_DONE {
+                nlLog("[MemoryStore] persona INSERT \(column) step failed: \(String(cString: sqlite3_errmsg(db)!))", level: .warning)
+            }
+        } else {
+            nlLog("[MemoryStore] persona INSERT \(column) prepare failed: \(String(cString: sqlite3_errmsg(db)!))", level: .warning)
+        }
+        sqlite3_finalize(insert)
     }
+
+    /// Binds `value` as text (TRANSIENT — SQLite copies it, so the temporary
+    /// bridged string can't dangle before `step`), or NULL when nil.
+    private func bindPersonaText(_ stmt: OpaquePointer?, _ index: Int32, _ value: String?) {
+        if let value {
+            sqlite3_bind_text(stmt, index, value, -1, Self.sqliteTransient)
+        } else {
+            sqlite3_bind_null(stmt, index)
+        }
+    }
+
+    /// SQLITE_TRANSIENT — tells SQLite to copy the bound bytes immediately.
+    private static let sqliteTransient = unsafeBitCast(
+        -1, to: sqlite3_destructor_type.self)
 
     /// Returns the column value, or nil when the row is missing OR the column is NULL.
     private func readPersonaColumn(_ column: String, character: String, engine: String) -> String? {
@@ -89,12 +134,14 @@ extension MemoryStore {
         var statement: OpaquePointer?
         var result: String?
         if sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK {
-            sqlite3_bind_text(statement, 1, (character.lowercased() as NSString).utf8String, -1, nil)
-            sqlite3_bind_text(statement, 2, (engine as NSString).utf8String, -1, nil)
+            bindPersonaText(statement, 1, character.lowercased())
+            bindPersonaText(statement, 2, engine)
             if sqlite3_step(statement) == SQLITE_ROW,
                let c = sqlite3_column_text(statement, 0) {   // nil pointer if column is NULL
                 result = String(cString: c)
             }
+        } else {
+            nlLog("[MemoryStore] persona SELECT \(column) prepare failed: \(String(cString: sqlite3_errmsg(db)!))", level: .warning)
         }
         sqlite3_finalize(statement)
         return result
@@ -128,7 +175,7 @@ extension MemoryStore {
         if let prompts = Self.loadLegacyLocalPrompts() {
             for (key, prompt) in prompts {
                 if key.hasSuffix("_jp") {
-                    setPersonaPrompt(character: String(key.dropLast(3)), engine: PersonaEngine.gemmaJP, prompt: prompt)
+                    setPersonaPrompt(character: String(key.dropLast(3)), engine: PersonaEngine.llmJp3, prompt: prompt)
                 } else {
                     setPersonaPrompt(character: key, engine: PersonaEngine.local, prompt: prompt)
                 }
@@ -139,7 +186,7 @@ extension MemoryStore {
         // 3. Voices (VoiceVox → gemma_jp, OpenVoice → local).
         if let voicevox = Self.loadLegacyDict(Int.self, key: "com.neuralink.tts.persona_voicevox_speaker_ids") {
             for (character, id) in voicevox {
-                setPersonaVoice(character: character, engine: PersonaEngine.gemmaJP, voice: String(id))
+                setPersonaVoice(character: character, engine: PersonaEngine.llmJp3, voice: String(id))
                 imported += 1
             }
         }

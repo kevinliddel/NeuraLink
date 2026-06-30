@@ -112,6 +112,12 @@ final class LocalWhisperManager: NSObject, @unchecked Sendable {
                             cont.resume(returning: false)
                             return
                         }
+                        // Free any handle left by a racing setup()/shutdown()
+                        // before overwriting it. All handle mutations run on this
+                        // serial queue, so freeing the prior context here can't
+                        // leak it (the free/reload-during-decode path can briefly
+                        // overlap a fresh setup).
+                        if let old = self.handle { whisper_bridge_free(old) }
                         self.handle = h
                         self.isReady = true
                         nlLog(
@@ -128,12 +134,19 @@ final class LocalWhisperManager: NSObject, @unchecked Sendable {
     }
 
     /// Frees the model and releases its memory. Safe to call when unloading.
+    ///
+    /// Also used to reclaim RAM *during* LLM decode on the 4 GB tier (freed at
+    /// generation start, reloaded at generation end — see LocalLLMManager).
+    /// Clears `setupTask` + `isReady` synchronously so a later `setup()`
+    /// actually reloads instead of short-circuiting on the stale completed task
+    /// and returning `true` with a freed/nil handle.
     func shutdown() {
+        setupLock.withLock { setupTask = nil }
+        isReady = false
         queue.async { [weak self] in
             guard let self, let h = self.handle else { return }
             whisper_bridge_free(h)
             self.handle = nil
-            self.isReady = false
             nlLog("[Whisper] whisper.cpp context freed.", level: .info)
         }
     }
@@ -177,6 +190,12 @@ final class LocalWhisperManager: NSObject, @unchecked Sendable {
 
         let language = await MainActor.run { Self.currentLanguage() }
 
+        // Self-heal: the 4 GB decode-window optimization frees the model during
+        // LLM generation (see LocalLLMManager) and reloads it at generation end.
+        // If an error path skipped that reload, load now so a real utterance is
+        // never dropped. No-op (returns immediately) when already loaded.
+        if !isReadyToUse { _ = await setup() }
+
         let text: String? = await withCheckedContinuation { (cont: CheckedContinuation<String?, Never>) in
             queue.async { [weak self] in
                 guard let self, let handle = self.handle else {
@@ -217,7 +236,7 @@ final class LocalWhisperManager: NSObject, @unchecked Sendable {
     /// `en` otherwise. Explicit beats auto-detect on short utterances.
     @MainActor
     private static func currentLanguage() -> String {
-        LocalModelDownloadManager.shared.selectedConfig == .japaneseGemma2b ? "ja" : "en"
+        LocalModelDownloadManager.shared.selectedConfig == .llmJp3 ? "ja" : "en"
     }
 
     // MARK: - Legacy cleanup
