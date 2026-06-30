@@ -7,7 +7,7 @@
 // the in-repo path of the shared `Dedicatus/NeuraLink` HuggingFace
 // dataset so `RemoteAssetCache` can fetch directly over HTTPS.
 //
-// The in-repo folder layout (`scenes/`, `tts/kokoro/`, `tts/voicevox/`)
+// The in-repo folder layout (`scenes/`, `tts/voicevox/`, `tts/open_voice/`)
 // is what keeps categories isolated even though they share a single
 // dataset repo and a single download path.
 //
@@ -25,11 +25,6 @@ enum RemoteAssetRegistry: Hashable, Sendable {
     // Scenes (§4.2)
     case city
     case campus
-
-    // Kokoro TTS data (§4.5)
-    case kokoroModel
-    case kokoroVoices
-    case kokoroCMU
 
     // VOICEVOX TTS data (§4.5) — per-speaker .vvm + Open JTalk dict files.
     case voicevoxSpeaker(Int)
@@ -54,9 +49,6 @@ enum RemoteAssetRegistry: Hashable, Sendable {
         switch self {
         case .city:                    return "city.glb"
         case .campus:                  return "campus.glb"
-        case .kokoroModel:             return "kokoro.onnx"
-        case .kokoroVoices:            return "voices.bin"
-        case .kokoroCMU:               return "cmu.txt"
         case .voicevoxSpeaker(let id): return "\(id).vvm"
         case .jtalkDictFile(let name): return name
         case .openVoiceMelo:           return "melo_en.onnx"
@@ -74,8 +66,6 @@ enum RemoteAssetRegistry: Hashable, Sendable {
         switch self {
         case .city, .campus:
             return "scenes/\(filename)"
-        case .kokoroModel, .kokoroVoices, .kokoroCMU:
-            return "tts/kokoro/\(filename)"
         case .voicevoxSpeaker:
             return "tts/voicevox/\(filename)"
         case .jtalkDictFile:
@@ -97,7 +87,7 @@ enum RemoteAssetRegistry: Hashable, Sendable {
             return "Models/Environments"
         case .jtalkDictFile:
             return "open_jtalk_dic_utf_8-1.11"
-        case .kokoroModel, .kokoroVoices, .kokoroCMU, .voicevoxSpeaker,
+        case .voicevoxSpeaker,
              .openVoiceMelo, .openVoiceConverter, .openVoiceBert,
              .whisperModel:
             return nil

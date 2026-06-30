@@ -28,11 +28,6 @@ struct PersonaSettingsView: View {
     @State private var previewPlayer = VoicePreviewPlayer()
     @State private var localPreviewPlayer = LocalTTSPreviewPlayer()
     @State private var isLoadingPreview = false
-    // Default-internal so PersonaSettingsView+KokoroDownload can drive
-    // the download UX without making the entire view non-private.
-    @State var kokoroAvailable: Bool = KokoroModelAccess.isAvailable
-    @State var isDownloadingKokoro = false
-    @State var kokoroDownloadError: String?
     @State var voicevoxAvailable: Bool = VoiceVoxModelAccess.isDictionaryAvailable
     @State var isDownloadingVoiceVox = false
     @State var voicevoxDownloadError: String?

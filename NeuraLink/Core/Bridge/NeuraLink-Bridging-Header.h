@@ -16,6 +16,5 @@
 #include "whisper_bridge.h"
 #include "openvoice_bridge.h"
 #include "../../Dependencies/VOICEVOX/voicevox_core.xcframework/ios-arm64/voicevox_core.framework/Headers/voicevox_core.h"
-#import "KokoroBridge.h"
 
 #endif /* NeuraLink_Bridging_Header_h */

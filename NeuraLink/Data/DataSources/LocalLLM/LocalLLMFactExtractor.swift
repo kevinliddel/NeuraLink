@@ -11,18 +11,12 @@
 //  Designed for dependency injection: the LLM call is supplied as a closure
 //  so the extractor can be unit-tested with a deterministic stub.
 //
-//  Part of the 3-tier memory hierarchy described in
-//  docs/local_llm_memory_plan.md.
-//
 //  Created by Dedicatus on 18/05/2026.
 //
 
 import Foundation
 
 /// Callback signature for "generate one completion synchronously for me".
-/// The implementation in Phase 2B will route this through the active engine
-/// with a `state.aiTranscript` / TTS / delegate bypass so the user sees and
-/// hears nothing of the silent compaction step.
 typealias LocalLLMSilentGenerator = (_ prompt: String, _ maxTokens: Int) async -> String
 
 final class LocalLLMFactExtractor {
@@ -89,15 +83,15 @@ final class LocalLLMFactExtractor {
             transcript += "\(speaker): \(turn.detail)\n"
         }
         return """
-        Extract atomic facts the User has stated about themselves from the \
-        exchange below. Output one fact per line, in third person, no \
-        bullet markers. If the exchange contains no factual user-stated \
-        information, output exactly the single word \(nullSentinel).
+            Extract atomic facts the User has stated about themselves from the \
+            exchange below. Output one fact per line, in third person, no \
+            bullet markers. If the exchange contains no factual user-stated \
+            information, output exactly the single word \(nullSentinel).
 
-        Exchange:
-        \(transcript)
-        Facts:
-        """
+            Exchange:
+            \(transcript)
+            Facts:
+            """
     }
 
     // MARK: - Output parsing
@@ -115,16 +109,16 @@ final class LocalLLMFactExtractor {
     /// Prefixes that indicate the model echoed the prompt structure rather
     /// than producing a fact. Compared case-insensitively at line start.
     private let rejectedPrefixes: [String] = [
-        "facts",          // "Facts:" / "Facts the user..."
-        "explanation",    // "Explanation: ..."
-        "summary",        // "Summary: ..."
+        "facts",  // "Facts:" / "Facts the user..."
+        "explanation",  // "Explanation: ..."
+        "summary",  // "Summary: ..."
         "the assistant",  // "The assistant states that ..."
-        "assistant:",     // ChatML role echo
-        "user:",          // ChatML role echo
-        "i ",             // First-person — wrong subject
-        "i'",             // "I'm", "I've", "I'll"
-        "my ",            // First-person possessive
-        "we "             // First-person plural
+        "assistant:",  // ChatML role echo
+        "user:",  // ChatML role echo
+        "i ",  // First-person — wrong subject
+        "i'",  // "I'm", "I've", "I'll"
+        "my ",  // First-person possessive
+        "we "  // First-person plural
     ]
 
     /// Subject prefixes a *valid* fact line must start with. Anything that
@@ -181,13 +175,19 @@ final class LocalLLMFactExtractor {
     /// `1) foo`) so the stored fact is just the statement itself.
     private func stripLeadingMarker(_ line: String) -> String {
         var s = line.trimmingCharacters(in: .whitespaces)
-        if s.hasPrefix("- ") { s.removeFirst(2); return s }
-        if s.hasPrefix("* ") { s.removeFirst(2); return s }
+        if s.hasPrefix("- ") {
+            s.removeFirst(2)
+            return s
+        }
+        if s.hasPrefix("* ") {
+            s.removeFirst(2)
+            return s
+        }
         // Numbered: digits + "." or ")" + space.
         var idx = s.startIndex
         while idx < s.endIndex, s[idx].isNumber { idx = s.index(after: idx) }
         if idx > s.startIndex, idx < s.endIndex,
-           s[idx] == "." || s[idx] == ")" {
+            s[idx] == "." || s[idx] == ")" {
             let after = s.index(after: idx)
             if after < s.endIndex, s[after] == " " {
                 return String(s[s.index(after: after)...])

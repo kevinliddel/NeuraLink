@@ -41,7 +41,7 @@ A high-performance, native iOS VRM character viewer and AI companion built from 
   </tr>
   <tr>
     <td><strong>Semantic Memory</strong><br/>Knowledge Graph remembers structured facts about the user (likes, names, job) to maintain long-term relationships. See <a href="./docs/RAG.md">RAG Documentation</a></td>
-    <td><strong>Neural Lip-Sync</strong><br/>Real-time audio amplitude analysis mapped to VRM blend shapes. See <a href="./docs/LipSync.md">Lip-Sync Documentation</a> and <a href="./docs/openai_realtime_chat.md">Realtime Audio Documentation</a></td>
+    <td><strong>Neural Lip-Sync</strong><br/>Real-time audio amplitude analysis mapped to VRM blend shapes. See <a href="./docs/LipSync.md">Lip-Sync Documentation</a> and <a href="./docs/Openai_Realtime_Chat.md">Realtime Audio Documentation</a></td>
   </tr>
   <tr>
     <td><strong>"Eyes on You" System</strong><br/>Arknights: Endfield-inspired camera tracking — characters maintain eye contact by turning their heads toward the camera after 5 seconds.</td>

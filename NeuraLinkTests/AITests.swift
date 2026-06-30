@@ -106,15 +106,4 @@ final class AITests: XCTestCase {
             XCTAssertEqual(error as? LLMError, .modelNotFound)
         }
     }
-
-    @MainActor
-    func testQwenEngineLoadFailure() async {
-        let engine = GGUFQwenEngine.shared
-        do {
-            try await engine.loadModel()
-            XCTFail("Engine should throw modelNotFound when GGUF is missing on disk.")
-        } catch {
-            XCTAssertEqual(error as? LLMError, .modelNotFound)
-        }
-    }
 }

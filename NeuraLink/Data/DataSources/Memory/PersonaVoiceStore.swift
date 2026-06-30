@@ -9,8 +9,7 @@
 //  VOICEVOX + OpenVoice voices are persisted in the `character_ai` SQL table
 //  (MemoryStore+Personas.swift) alongside that engine's prompt — VOICEVOX
 //  under engine "gemma_jp", OpenVoice under "local". The SQL `voice` column is
-//  a string (the VOICEVOX speaker id is stored as text). Kokoro is being
-//  retired and keeps its UserDefaults map untouched.
+//  a string (the VOICEVOX speaker id is stored as text).
 //
 //  Created by Dedicatus on 26/05/2026.
 //
@@ -24,14 +23,7 @@ final class PersonaVoiceStore {
 
     static let shared = PersonaVoiceStore()
 
-    /// Kokoro is the only remaining UserDefaults-backed map (slated for removal).
-    private(set) var kokoroVoicePresets: [PersonaIdentifier: String]
-
-    nonisolated static let kokoroDefaultsKey = "com.neuralink.tts.persona_kokoro_voice_presets"
-
-    private init() {
-        kokoroVoicePresets = PersonaVoiceStore.loadKokoroFromDefaults()
-    }
+    private init() {}
 
     // MARK: - VOICEVOX (engine "gemma_jp")
 
@@ -52,26 +44,6 @@ final class PersonaVoiceStore {
 
     func clearVoicevoxSpeakerID(for persona: PersonaIdentifier) {
         setVoicevoxSpeakerID(nil, for: persona)
-    }
-
-    // MARK: - Kokoro (legacy, UserDefaults)
-
-    func kokoroVoiceID(for persona: PersonaIdentifier) -> String? {
-        kokoroVoicePresets[persona.lowercased()]
-    }
-
-    func setKokoroVoiceID(_ id: String?, for persona: PersonaIdentifier) {
-        let key = persona.lowercased()
-        if let id {
-            kokoroVoicePresets[key] = id
-        } else {
-            kokoroVoicePresets.removeValue(forKey: key)
-        }
-        persistKokoro()
-    }
-
-    func clearKokoroVoiceID(for persona: PersonaIdentifier) {
-        setKokoroVoiceID(nil, for: persona)
     }
 
     // MARK: - OpenVoice (engine "local")
@@ -104,23 +76,5 @@ final class PersonaVoiceStore {
     nonisolated static func openVoiceVoiceIDFromDefaults(for persona: String) -> String? {
         MemoryStore.shared.personaVoice(
             character: persona, engine: MemoryStore.PersonaEngine.local)
-    }
-
-    nonisolated static func kokoroVoiceIDFromDefaults(for persona: String) -> String? {
-        loadKokoroFromDefaults()[persona.lowercased()]
-    }
-
-    // MARK: - Kokoro persistence
-
-    private nonisolated static func loadKokoroFromDefaults() -> [String: String] {
-        guard let data = UserDefaults.standard.data(forKey: kokoroDefaultsKey),
-            let decoded = try? JSONDecoder().decode([String: String].self, from: data)
-        else { return [:] }
-        return decoded
-    }
-
-    private func persistKokoro() {
-        guard let data = try? JSONEncoder().encode(kokoroVoicePresets) else { return }
-        UserDefaults.standard.set(data, forKey: PersonaVoiceStore.kokoroDefaultsKey)
     }
 }
