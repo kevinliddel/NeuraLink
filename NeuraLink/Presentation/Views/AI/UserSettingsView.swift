@@ -47,24 +47,23 @@ struct UserSettingsView: View {
                     Toggle("Show 3D Environment", isOn: Bindable(settings).showEnvironment)
                     
                     if settings.showEnvironment {
-                        HStack(spacing: 16) {
-                            EnvironmentOptionView(
-                                name: "City",
-                                imageName: "city",
-                                isSelected: settings.selectedEnvironment == "city"
-                            ) {
-                                settings.selectedEnvironment = "city"
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 12) {
+                                ForEach(EnvironmentCatalog.all) { option in
+                                    EnvironmentOptionView(
+                                        name: option.displayName,
+                                        imageName: option.previewImage,
+                                        isSelected: settings.selectedEnvironment == option.id
+                                    ) {
+                                        settings.selectedEnvironment = option.id
+                                    }
+                                }
                             }
-                            
-                            EnvironmentOptionView(
-                                name: "Campus",
-                                imageName: "campus",
-                                isSelected: settings.selectedEnvironment == "campus"
-                            ) {
-                                settings.selectedEnvironment = "campus"
-                            }
+                            .padding(.vertical, 8)
                         }
-                        .padding(.vertical, 8)
+                        // Bleed the scroll to the cell edges so cards aren't clipped
+                        // by the Form row's default content insets.
+                        .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 0))
                     }
                 }
 
@@ -235,8 +234,7 @@ struct EnvironmentOptionView: View {
                 .padding(.horizontal, 10)
                 .padding(.bottom, 10)
             }
-            .frame(maxWidth: .infinity)
-            .aspectRatio(1, contentMode: .fit)
+            .frame(width: 150, height: 150)
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .overlay(
                 RoundedRectangle(cornerRadius: 12)

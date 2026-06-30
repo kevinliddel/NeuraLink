@@ -92,12 +92,7 @@ extension VRMRenderer {
         // Shadow map depth pass — must happen before the main render encoder opens
         drawShadowPass(commandBuffer: commandBuffer)
         if UserSettings.shared.showEnvironment {
-            let selected = UserSettings.shared.selectedEnvironment
-            if selected == "city" {
-                drawCityShadow(commandBuffer: commandBuffer)
-            } else {
-                drawCampusShadow(commandBuffer: commandBuffer)
-            }
+            drawEnvironmentShadow(commandBuffer: commandBuffer)
         } else {
             terrainRenderer?.clearWideShadowMap(commandBuffer: commandBuffer)
         }
@@ -118,20 +113,12 @@ extension VRMRenderer {
 
         // 2. Terrain + Environment
         if UserSettings.shared.showEnvironment {
-            let selected = UserSettings.shared.selectedEnvironment
-            let currentLoaded = (selected == "city" ? cityRenderer?.isLoaded : campusRenderer?.isLoaded) ?? false
-            
-            // Terrain is skipped when the environment GLB is loaded.
-            if !currentLoaded {
+            // Terrain is skipped once the selected environment GLB is loaded.
+            if !(environmentRenderer?.isLoaded ?? false) {
                 drawTerrain(encoder: encoder)
             }
-            
             // Environment GLB (after terrain so it depth-tests against the ground)
-            if selected == "city" {
-                drawCity(encoder: encoder)
-            } else {
-                drawCampus(encoder: encoder)
-            }
+            drawEnvironment(encoder: encoder)
         } else {
             // 3D OFF: only display the usual Terrain
             drawTerrain(encoder: encoder)
@@ -424,12 +411,7 @@ extension VRMRenderer {
     ) {
         terrainRenderer?.clearShadowMapIfNeeded(commandBuffer: commandBuffer)
         if UserSettings.shared.showEnvironment {
-            let selected = UserSettings.shared.selectedEnvironment
-            if selected == "city" {
-                drawCityShadow(commandBuffer: commandBuffer)
-            } else {
-                drawCampusShadow(commandBuffer: commandBuffer)
-            }
+            drawEnvironmentShadow(commandBuffer: commandBuffer)
         } else {
             terrainRenderer?.clearWideShadowMap(commandBuffer: commandBuffer)
         }
@@ -443,18 +425,10 @@ extension VRMRenderer {
         drawSky(encoder: encoder)
 
         if UserSettings.shared.showEnvironment {
-            let selected = UserSettings.shared.selectedEnvironment
-            let currentLoaded = (selected == "city" ? cityRenderer?.isLoaded : campusRenderer?.isLoaded) ?? false
-            
-            if !currentLoaded {
+            if !(environmentRenderer?.isLoaded ?? false) {
                 drawTerrain(encoder: encoder)
             }
-            
-            if selected == "city" {
-                drawCity(encoder: encoder)
-            } else {
-                drawCampus(encoder: encoder)
-            }
+            drawEnvironment(encoder: encoder)
             drawWorldRain(encoder: encoder)
         } else {
             drawTerrain(encoder: encoder)

@@ -1,8 +1,12 @@
 //
-//  VRMRenderer+City.swift
+//  VRMRenderer+Environment.swift
 //  NeuraLink
 //
 //  Created by Dedicatus on 08/05/2026.
+//
+//  Drives the single active environment GLB (city / campus / apartment /
+//  ruined_city). Only the selected environment is loaded; changing the
+//  selection lazily loads the new GLB — terrain shows briefly until it's in.
 //
 
 import Metal
@@ -12,33 +16,44 @@ extension VRMRenderer {
 
     // MARK: - Setup
 
-    func setupCity() {
-        let renderer = CityRenderer(
-            device: device,
-            instanceConfig: (x: 0, y: -0.02, z: 0, rotY: 0, scale: 1.0)
-        )
+    /// Loads the currently selected environment. Called once at init; the draw
+    /// path re-invokes the loader (cheaply) whenever the selection changes.
+    func setupEnvironment() {
+        loadEnvironment(named: UserSettings.shared.selectedEnvironment)
+    }
+
+    /// Swaps in a renderer for `name` and kicks off its GLB load in the
+    /// background. No-ops once `loadedEnvironmentName` already matches, so it's
+    /// safe to call every frame from the draw path.
+    func loadEnvironment(named name: String) {
+        guard loadedEnvironmentName != name else { return }
+
+        let option = EnvironmentCatalog.option(for: name)
+        let renderer = EnvironmentRenderer(device: device, instanceConfig: option.instanceConfig)
         renderer.setup(config: config)
-        cityRenderer = renderer
+        environmentRenderer = renderer
+        loadedEnvironmentName = name
 
         Task.detached(priority: .userInitiated) { [weak renderer] in
             do {
-                let url = try await RemoteAssetCache.shared.url(for: .city)
+                let url = try await RemoteAssetCache.shared.url(for: .scene(name))
                 try await renderer?.load(url: url)
             } catch {
-                nlLog("[CityRenderer] city.glb resolve/load failed: \(error)")
+                nlLog("[EnvironmentRenderer] \(name).glb resolve/load failed: \(error)")
             }
             // Release the launch loading screen once the selected environment's
             // mesh is in (or its load failed — never hang the reveal).
-            await EnvironmentLoadState.shared.environmentDidLoad("city")
+            await EnvironmentLoadState.shared.environmentDidLoad(name)
         }
     }
 
     // MARK: - Shadow pass
 
-    func drawCityShadow(commandBuffer: MTLCommandBuffer) {
+    func drawEnvironmentShadow(commandBuffer: MTLCommandBuffer) {
+        loadEnvironment(named: UserSettings.shared.selectedEnvironment)
         guard let wideShadowMap = terrainRenderer?.exposedWideShadowMap else { return }
         let wideLightVP = terrainRenderer?.exposedWideLightViewProjection ?? matrix_identity_float4x4
-        cityRenderer?.drawShadow(
+        environmentRenderer?.drawShadow(
             commandBuffer: commandBuffer,
             shadowMap: wideShadowMap,
             lightViewProjection: wideLightVP,
@@ -48,13 +63,14 @@ extension VRMRenderer {
 
     // MARK: - Main draw
 
-    func drawCity(encoder: MTLRenderCommandEncoder) {
+    func drawEnvironment(encoder: MTLRenderCommandEncoder) {
+        loadEnvironment(named: UserSettings.shared.selectedEnvironment)
         guard let wideShadowMap = terrainRenderer?.exposedWideShadowMap,
               let sampler       = terrainRenderer?.exposedShadowSampler
         else { return }
 
         // Tight shadow map contains the VRM — used so the character casts a shadow
-        // on the city ground. Falls back to the wide map when unavailable.
+        // on the environment ground. Falls back to the wide map when unavailable.
         let vrmShadowMap  = terrainRenderer?.exposedShadowMap    ?? wideShadowMap
         let vrmLightVP    = terrainRenderer?.exposedLightViewProjection ?? matrix_identity_float4x4
 
@@ -69,7 +85,7 @@ extension VRMRenderer {
         let invView   = viewMatrix.inverse
         let cameraPos = SIMD3<Float>(invView[3][0], invView[3][1], invView[3][2])
 
-        cityRenderer?.draw(
+        environmentRenderer?.draw(
             encoder: encoder,
             viewProjection: vp,
             lightViewProjection: wideLightVP,
@@ -83,5 +99,4 @@ extension VRMRenderer {
             shadowSampler: sampler
         )
     }
-
 }

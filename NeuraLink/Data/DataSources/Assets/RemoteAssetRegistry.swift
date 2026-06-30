@@ -21,9 +21,8 @@
 import Foundation
 
 enum RemoteAssetRegistry: Hashable, Sendable {
-    // Scenes
-    case city
-    case campus
+    // Scenes — `name` is the GLB basename (resolves to `scenes/<name>.glb`).
+    case scene(String)
 
     // VOICEVOX TTS data — per-speaker .vvm + Open JTalk dict files.
     case voicevoxSpeaker(Int)
@@ -46,8 +45,7 @@ enum RemoteAssetRegistry: Hashable, Sendable {
     /// from `pathInRepo`.
     var filename: String {
         switch self {
-        case .city:                    return "city.glb"
-        case .campus:                  return "campus.glb"
+        case .scene(let name):         return "\(name).glb"
         case .voicevoxSpeaker(let id): return "\(id).vvm"
         case .jtalkDictFile(let name): return name
         case .openVoiceMelo:           return "melo_en.onnx"
@@ -63,7 +61,7 @@ enum RemoteAssetRegistry: Hashable, Sendable {
     /// under `<App Support>/hf-assets/`.
     var pathInRepo: String {
         switch self {
-        case .city, .campus:
+        case .scene:
             return "scenes/\(filename)"
         case .voicevoxSpeaker:
             return "tts/voicevox/\(filename)"
@@ -82,7 +80,7 @@ enum RemoteAssetRegistry: Hashable, Sendable {
     /// search path. `nil` means root-level lookup is sufficient.
     var bundleSubdirectory: String? {
         switch self {
-        case .city, .campus:
+        case .scene:
             return "Models/Environments"
         case .jtalkDictFile:
             return "open_jtalk_dic_utf_8-1.11"

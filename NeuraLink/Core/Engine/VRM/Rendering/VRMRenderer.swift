@@ -163,11 +163,12 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
     // Snow terrain + shadow map renderer
     var terrainRenderer: TerrainRenderer?
 
-    // City environment mesh
-    var cityRenderer: CityRenderer?
-    
-    // Campus environment mesh
-    var campusRenderer: CampusRenderer?
+    // Active environment mesh (only the selected one is loaded at a time)
+    var environmentRenderer: EnvironmentRenderer?
+
+    // Id of the environment currently held by `environmentRenderer`. Drives the
+    // lazy reload when the user switches environments at runtime.
+    var loadedEnvironmentName: String?
 
     // Sprite rendering pipeline
     var spritePipelineState: MTLRenderPipelineState?

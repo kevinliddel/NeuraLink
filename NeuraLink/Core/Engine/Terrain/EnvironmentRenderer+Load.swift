@@ -1,5 +1,5 @@
 //
-//  CityRenderer+Load.swift
+//  EnvironmentRenderer+Load.swift
 //  NeuraLink
 //
 //  Created by Dedicatus on 08/05/2026.
@@ -9,7 +9,7 @@ import Foundation
 import Metal
 import simd
 
-extension CityRenderer {
+extension EnvironmentRenderer {
 
     // MARK: - Setup
 
@@ -47,7 +47,7 @@ extension CityRenderer {
                                  document: document, into: &meshInstances)
         }
 
-        nlLog("[CityRenderer] Scene graph: \(meshInstances.count) mesh instance(s) across all nodes")
+        nlLog("[EnvironmentRenderer] Scene graph: \(meshInstances.count) mesh instance(s) across all nodes")
 
         var textureCache: [Int: MTLTexture] = [:]
         var groups: [CityMeshGroup] = []
@@ -144,7 +144,7 @@ extension CityRenderer {
                                     at: texIdx, sRGB: true, withMipmaps: true)
                                 if let tex = texture { textureCache[texIdx] = tex }
                             } catch {
-                                nlLog("[CityRenderer] Texture \(texIdx) load error: \(error)")
+                                nlLog("[EnvironmentRenderer] Texture \(texIdx) load error: \(error)")
                             }
                         }
                     }
@@ -175,7 +175,7 @@ extension CityRenderer {
                 let bcf         = baseColorFactor
                 let emf         = emissive
                 let flags       = "N:\(hasNormal ? "Y":"N") UV:\(hasTexCoord ? "Y":"N") C:\(hasColor0 ? "Y":"N")"
-                nlLog("[CityMat] mesh:\(meshName) mat:\(matName) alpha:\(alphaMode) cut:\(cutoffStr)"
+                nlLog("[EnvMat] mesh:\(meshName) mat:\(matName) alpha:\(alphaMode) cut:\(cutoffStr)"
                      + " bcf:(\(f2(bcf.x)),\(f2(bcf.y)),\(f2(bcf.z)),\(f2(bcf.w)))"
                      + " M:\(f2(metallic)) R:\(f2(roughness))"
                      + " emissive:(\(f3(emf.x)),\(f3(emf.y)),\(f3(emf.z)))"
@@ -198,7 +198,7 @@ extension CityRenderer {
 
         meshGroups = groups
         isReady    = !groups.isEmpty
-        nlLog("[CityRenderer] Loaded \(groups.count) mesh group(s) (\(textureCache.count) unique texture(s))")
+        nlLog("[EnvironmentRenderer] Loaded \(groups.count) mesh group(s) (\(textureCache.count) unique texture(s))")
     }
 
     // MARK: - Private setup
@@ -222,7 +222,7 @@ extension CityRenderer {
               let shadowVert = lib.makeFunction(name: "city_shadow_vertex"),
               let mainVert   = lib.makeFunction(name: "city_vertex"),
               let mainFrag   = lib.makeFunction(name: "city_fragment")
-        else { nlLog("[CityRenderer] Shader functions not found"); return }
+        else { nlLog("[EnvironmentRenderer] Shader functions not found"); return }
 
         let posOff   = MemoryLayout<CityVertex>.offset(of: \.position)!
         let norOff   = MemoryLayout<CityVertex>.offset(of: \.normal)!
@@ -279,7 +279,7 @@ extension CityRenderer {
             blendPipeline  = try VRMPipelineCache.shared.getPipelineState(
                 device: device, descriptor: blendDesc, key: "city_blend_v1")
         } catch {
-            nlLog("[CityRenderer] Pipeline creation failed: \(error)")
+            nlLog("[EnvironmentRenderer] Pipeline creation failed: \(error)")
         }
     }
 
