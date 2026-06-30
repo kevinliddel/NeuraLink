@@ -38,8 +38,7 @@ final class LocalLLMPromptStore {
         config: LocalModelDownloadManager.ModelConfiguration? = nil
     ) -> String {
         if let stored = MemoryStore.shared.personaPrompt(
-            character: characterName, engine: engineKey(for: config))
-        {
+            character: characterName, engine: engineKey(for: config)) {
             return stored
         }
         return Self.defaultPrompt(for: characterName, config: config)
