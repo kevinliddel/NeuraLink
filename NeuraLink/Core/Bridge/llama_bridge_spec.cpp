@@ -40,23 +40,23 @@
 // MARK: - Internal struct
 
 struct LlamaBridgeSpecHandle {
-    llama_model*             target_model    = nullptr;
-    llama_context*           target_ctx      = nullptr;
-    llama_sampler*           target_sampler  = nullptr;
+    llama_model* target_model     = nullptr;
+    llama_context* target_ctx     = nullptr;
+    llama_sampler* target_sampler = nullptr;
 
-    llama_model*             draft_model     = nullptr;
-    llama_context*           draft_ctx       = nullptr;
+    llama_model* draft_model = nullptr;
+    llama_context* draft_ctx = nullptr;
 
-    int32_t                  n_draft         = 4;
-    std::atomic<bool>        cancel_flag     { false };
+    int32_t n_draft = 4;
+    std::atomic<bool> cancel_flag{false};
 
     /// Per-call speculative telemetry (same pattern as the standard bridge's
     /// `last_pld_*` fields). `last_drafted` counts every token the draft
     /// model proposed in the most recent generate call; `last_accepted`
     /// counts how many of those the target verified. Their ratio is the
     /// acceptance rate that drives `llama_bridge_spec_set_n_draft` tuning.
-    int32_t                  last_drafted    = 0;
-    int32_t                  last_accepted   = 0;
+    int32_t last_drafted  = 0;
+    int32_t last_accepted = 0;
 
     /// Tokens currently materialised in both models' KV caches for seq 0.
     /// Both models advance in lockstep so they share this view.
@@ -68,14 +68,14 @@ struct LlamaBridgeSpecHandle {
 //         symbols of the standard bridge).
 
 static llama_sampler* spec_build_default_sampler() {
-    auto sparams = llama_sampler_chain_default_params();
+    auto sparams         = llama_sampler_chain_default_params();
     llama_sampler* chain = llama_sampler_chain_init(sparams);
     if (!chain) { return nullptr; }
     llama_sampler_chain_add(chain, llama_sampler_init_penalties(
-        /*penalty_last_n=*/64,
-        /*penalty_repeat=*/1.1f,
-        /*penalty_freq=*/0.0f,
-        /*penalty_present=*/0.0f));
+                                       /*penalty_last_n=*/64,
+                                       /*penalty_repeat=*/1.1f,
+                                       /*penalty_freq=*/0.0f,
+                                       /*penalty_present=*/0.0f));
     llama_sampler_chain_add(chain, llama_sampler_init_top_k(40));
     llama_sampler_chain_add(chain, llama_sampler_init_top_p(0.9f, 1));
     llama_sampler_chain_add(chain, llama_sampler_init_temp(0.7f));
@@ -85,24 +85,19 @@ static llama_sampler* spec_build_default_sampler() {
 
 // MARK: - Lifecycle
 
-LlamaBridgeSpecHandle* llama_bridge_spec_create(
-    const char* target_path,
-    const char* draft_path,
-    int32_t     n_ctx,
-    int32_t     n_threads,
-    int32_t     n_gpu_layers,
-    int32_t     k_type,
-    int32_t     v_type,
-    int32_t     flash_attn,
-    int32_t     n_draft)
-{
+LlamaBridgeSpecHandle* llama_bridge_spec_create(const char* target_path, const char* draft_path, int32_t n_ctx,
+                                                int32_t n_threads, int32_t n_gpu_layers, int32_t k_type, int32_t v_type,
+                                                int32_t flash_attn, int32_t n_draft) {
     llama_backend_init();
 
     llama_model_params mp = llama_model_default_params();
     mp.n_gpu_layers       = static_cast<int32_t>(n_gpu_layers);
 
     llama_model* target_model = llama_model_load_from_file(target_path, mp);
-    if (!target_model) { llama_backend_free(); return nullptr; }
+    if (!target_model) {
+        llama_backend_free();
+        return nullptr;
+    }
 
     llama_model* draft_model = llama_model_load_from_file(draft_path, mp);
     if (!draft_model) {
@@ -123,68 +118,59 @@ LlamaBridgeSpecHandle* llama_bridge_spec_create(
     }
 
     llama_context_params cp = llama_context_default_params();
-    cp.n_ctx           = static_cast<uint32_t>(n_ctx);
-    cp.n_threads       = static_cast<uint32_t>(n_threads);
-    cp.type_k          = static_cast<enum ggml_type>(k_type);
-    cp.type_v          = static_cast<enum ggml_type>(v_type);
-    cp.flash_attn_type = static_cast<enum llama_flash_attn_type>(flash_attn);
+    cp.n_ctx                = static_cast<uint32_t>(n_ctx);
+    cp.n_threads            = static_cast<uint32_t>(n_threads);
+    cp.type_k               = static_cast<enum ggml_type>(k_type);
+    cp.type_v               = static_cast<enum ggml_type>(v_type);
+    cp.flash_attn_type      = static_cast<enum llama_flash_attn_type>(flash_attn);
 
     llama_context* target_ctx = llama_init_from_model(target_model, cp);
-    llama_context* draft_ctx  = llama_init_from_model(draft_model,  cp);
+    llama_context* draft_ctx  = llama_init_from_model(draft_model, cp);
     llama_sampler* sampler    = spec_build_default_sampler();
 
     if (!target_ctx || !draft_ctx || !sampler) {
-        if (sampler)    { llama_sampler_free(sampler); }
+        if (sampler) { llama_sampler_free(sampler); }
         if (target_ctx) { llama_free(target_ctx); }
-        if (draft_ctx)  { llama_free(draft_ctx); }
+        if (draft_ctx) { llama_free(draft_ctx); }
         llama_model_free(draft_model);
         llama_model_free(target_model);
         llama_backend_free();
         return nullptr;
     }
 
-    auto* h            = new LlamaBridgeSpecHandle();
-    h->target_model    = target_model;
-    h->target_ctx      = target_ctx;
-    h->target_sampler  = sampler;
-    h->draft_model     = draft_model;
-    h->draft_ctx       = draft_ctx;
-    h->n_draft         = std::max(1, n_draft);
+    auto* h           = new LlamaBridgeSpecHandle();
+    h->target_model   = target_model;
+    h->target_ctx     = target_ctx;
+    h->target_sampler = sampler;
+    h->draft_model    = draft_model;
+    h->draft_ctx      = draft_ctx;
+    h->n_draft        = std::max(1, n_draft);
     return h;
 }
 
 void llama_bridge_spec_free(LlamaBridgeSpecHandle* h) {
     if (!h) { return; }
     if (h->target_sampler) { llama_sampler_free(h->target_sampler); }
-    if (h->target_ctx)     { llama_free(h->target_ctx); }
-    if (h->draft_ctx)      { llama_free(h->draft_ctx); }
-    if (h->target_model)   { llama_model_free(h->target_model); }
-    if (h->draft_model)    { llama_model_free(h->draft_model); }
+    if (h->target_ctx) { llama_free(h->target_ctx); }
+    if (h->draft_ctx) { llama_free(h->draft_ctx); }
+    if (h->target_model) { llama_model_free(h->target_model); }
+    if (h->draft_model) { llama_model_free(h->draft_model); }
     llama_backend_free();
     delete h;
 }
 
-int32_t llama_bridge_spec_apply_chat_template(
-    LlamaBridgeSpecHandle* h,
-    const char* const* roles,
-    const char* const* contents,
-    int32_t            n_messages,
-    bool               add_generation_prompt,
-    char*              out_buf,
-    int32_t            out_buf_size)
-{
-    if (!h || !h->target_model || !roles || !contents || n_messages <= 0 ||
-        !out_buf || out_buf_size <= 0) {
+int32_t llama_bridge_spec_apply_chat_template(LlamaBridgeSpecHandle* h, const char* const* roles,
+                                              const char* const* contents, int32_t n_messages,
+                                              bool add_generation_prompt, char* out_buf, int32_t out_buf_size) {
+    if (!h || !h->target_model || !roles || !contents || n_messages <= 0 || !out_buf || out_buf_size <= 0) {
         return -1;
     }
     const char* tmpl = llama_model_chat_template(h->target_model, nullptr);
     std::vector<llama_chat_message> messages;
     messages.reserve(static_cast<size_t>(n_messages));
-    for (int32_t i = 0; i < n_messages; ++i) {
-        messages.push_back({ roles[i], contents[i] });
-    }
-    return llama_chat_apply_template(tmpl, messages.data(), messages.size(),
-                                      add_generation_prompt, out_buf, out_buf_size);
+    for (int32_t i = 0; i < n_messages; ++i) { messages.push_back({roles[i], contents[i]}); }
+    return llama_chat_apply_template(tmpl, messages.data(), messages.size(), add_generation_prompt, out_buf,
+                                     out_buf_size);
 }
 
 void llama_bridge_spec_cancel(LlamaBridgeSpecHandle* h) {
@@ -193,16 +179,14 @@ void llama_bridge_spec_cancel(LlamaBridgeSpecHandle* h) {
 
 // MARK: - Generation helpers
 
-static int spec_token_to_str(llama_model* model, llama_token tok,
-                              char* buf, int buf_size) {
+static int spec_token_to_str(llama_model* model, llama_token tok, char* buf, int buf_size) {
     const auto* vocab = llama_model_get_vocab(model);
     return llama_token_to_piece(vocab, tok, buf, buf_size, 0, true);
 }
 
-static size_t spec_common_prefix_len(const std::vector<llama_token>& a,
-                                     const std::vector<llama_token>& b) {
+static size_t spec_common_prefix_len(const std::vector<llama_token>& a, const std::vector<llama_token>& b) {
     const size_t n = std::min(a.size(), b.size());
-    size_t i = 0;
+    size_t i       = 0;
     while (i < n && a[i] == b[i]) { ++i; }
     return i;
 }
@@ -211,25 +195,21 @@ static size_t spec_common_prefix_len(const std::vector<llama_token>& a,
 /// speed matters more than creativity.
 static llama_token spec_greedy_argmax(const float* logits, int n_vocab) {
     llama_token best = 0;
-    float       best_v = logits[0];
+    float best_v     = logits[0];
     for (int i = 1; i < n_vocab; ++i) {
-        if (logits[i] > best_v) { best_v = logits[i]; best = static_cast<llama_token>(i); }
+        if (logits[i] > best_v) {
+            best_v = logits[i];
+            best   = static_cast<llama_token>(i);
+        }
     }
     return best;
 }
 
 // MARK: - Generate
 
-void llama_bridge_spec_generate(
-    LlamaBridgeSpecHandle* h,
-    const char*            prompt,
-    int32_t                max_new_tokens,
-    LlamaTokenCallback     on_token,
-    LlamaFinishCallback    on_finish,
-    void*                  user_ctx)
-{
-    if (!h || !h->target_model || !h->draft_model ||
-        !h->target_ctx || !h->draft_ctx || !h->target_sampler) {
+void llama_bridge_spec_generate(LlamaBridgeSpecHandle* h, const char* prompt, int32_t max_new_tokens,
+                                LlamaTokenCallback on_token, LlamaFinishCallback on_finish, void* user_ctx) {
+    if (!h || !h->target_model || !h->draft_model || !h->target_ctx || !h->draft_ctx || !h->target_sampler) {
         if (on_finish) { on_finish(user_ctx); }
         return;
     }
@@ -238,53 +218,52 @@ void llama_bridge_spec_generate(
     h->last_accepted = 0;
 
     const auto* tvocab = llama_model_get_vocab(h->target_model);
-    const int   n_vocab = static_cast<int>(llama_vocab_n_tokens(tvocab));
+    const int n_vocab  = static_cast<int>(llama_vocab_n_tokens(tvocab));
 
     // Tokenise via target's vocab (draft shares it by the create-time check).
     std::vector<llama_token> new_tokens(2048);
-    int n = llama_tokenize(tvocab, prompt, static_cast<int32_t>(strlen(prompt)),
-                            new_tokens.data(),
-                            static_cast<int32_t>(new_tokens.size()), true, true);
+    int n = llama_tokenize(tvocab, prompt, static_cast<int32_t>(strlen(prompt)), new_tokens.data(),
+                           static_cast<int32_t>(new_tokens.size()), true, true);
     if (n < 0) {
         new_tokens.resize(static_cast<size_t>(-n));
-        n = llama_tokenize(tvocab, prompt, static_cast<int32_t>(strlen(prompt)),
-                            new_tokens.data(),
-                            static_cast<int32_t>(new_tokens.size()), true, true);
+        n = llama_tokenize(tvocab, prompt, static_cast<int32_t>(strlen(prompt)), new_tokens.data(),
+                           static_cast<int32_t>(new_tokens.size()), true, true);
     }
-    if (n <= 0) { if (on_finish) { on_finish(user_ctx); } return; }
+    if (n <= 0) {
+        if (on_finish) { on_finish(user_ctx); }
+        return;
+    }
     new_tokens.resize(static_cast<size_t>(n));
 
     // KV-prefix reuse, in lockstep across both models.
     auto* target_mem = llama_get_memory(h->target_ctx);
     auto* draft_mem  = llama_get_memory(h->draft_ctx);
-    size_t common = spec_common_prefix_len(h->kv_tokens, new_tokens);
+    size_t common    = spec_common_prefix_len(h->kv_tokens, new_tokens);
     if (common >= new_tokens.size()) { common = new_tokens.size() - 1; }
 
     if (h->kv_tokens.empty() || common == 0) {
         llama_memory_clear(target_mem, true);
-        llama_memory_clear(draft_mem,  true);
+        llama_memory_clear(draft_mem, true);
         common = 0;
     } else if (common < h->kv_tokens.size()) {
         llama_memory_seq_rm(target_mem, 0, static_cast<llama_pos>(common), -1);
-        llama_memory_seq_rm(draft_mem,  0, static_cast<llama_pos>(common), -1);
+        llama_memory_seq_rm(draft_mem, 0, static_cast<llama_pos>(common), -1);
     }
 
     const size_t suffix_len = new_tokens.size() - common;
     if (suffix_len > 0) {
-        llama_batch tb = llama_batch_get_one(
-            new_tokens.data() + common, static_cast<int32_t>(suffix_len));
+        llama_batch tb = llama_batch_get_one(new_tokens.data() + common, static_cast<int32_t>(suffix_len));
         if (llama_decode(h->target_ctx, tb) != 0) {
             llama_memory_clear(target_mem, true);
-            llama_memory_clear(draft_mem,  true);
+            llama_memory_clear(draft_mem, true);
             h->kv_tokens.clear();
             if (on_finish) { on_finish(user_ctx); }
             return;
         }
-        llama_batch db = llama_batch_get_one(
-            new_tokens.data() + common, static_cast<int32_t>(suffix_len));
+        llama_batch db = llama_batch_get_one(new_tokens.data() + common, static_cast<int32_t>(suffix_len));
         if (llama_decode(h->draft_ctx, db) != 0) {
             llama_memory_clear(target_mem, true);
-            llama_memory_clear(draft_mem,  true);
+            llama_memory_clear(draft_mem, true);
             h->kv_tokens.clear();
             if (on_finish) { on_finish(user_ctx); }
             return;
@@ -295,8 +274,8 @@ void llama_bridge_spec_generate(
     // Speculative decode loop.
     char piece_buf[512] = {};
     std::string utf8_buf;
-    int  generated      = 0;
-    const int N         = h->n_draft;
+    int generated = 0;
+    const int N   = h->n_draft;
 
     // See llama_bridge.cpp emit_utf8_safe — same byte-stitching rationale.
     // BPE byte-fallback tokens split multi-byte UTF-8 chars across pieces;
@@ -334,11 +313,17 @@ void llama_bridge_spec_generate(
         bool draft_hit_eog = false;
         for (int i = 0; i < n_this_round; ++i) {
             const float* dlogits = llama_get_logits_ith(h->draft_ctx, -1);
-            llama_token d = spec_greedy_argmax(dlogits, n_vocab);
+            llama_token d        = spec_greedy_argmax(dlogits, n_vocab);
             drafts.push_back(d);
-            if (llama_vocab_is_eog(tvocab, d)) { draft_hit_eog = true; break; }
+            if (llama_vocab_is_eog(tvocab, d)) {
+                draft_hit_eog = true;
+                break;
+            }
             llama_batch db = llama_batch_get_one(&drafts.back(), 1);
-            if (llama_decode(h->draft_ctx, db) != 0) { draft_hit_eog = true; break; }
+            if (llama_decode(h->draft_ctx, db) != 0) {
+                draft_hit_eog = true;
+                break;
+            }
         }
         if (drafts.empty()) { break; }
 
@@ -358,7 +343,7 @@ void llama_bridge_spec_generate(
             llama_batch tb0 = llama_batch_get_one(&target_d0, 1);
             if (llama_decode(h->target_ctx, tb0) != 0) { goto end_generate; }
             llama_batch db0 = llama_batch_get_one(&target_d0, 1);
-            if (llama_decode(h->draft_ctx,  db0) != 0) { goto end_generate; }
+            if (llama_decode(h->draft_ctx, db0) != 0) { goto end_generate; }
             h->kv_tokens.push_back(target_d0);
             generated += 1;
             if (!emit_token(target_d0)) { goto end_generate; }
@@ -371,20 +356,19 @@ void llama_bridge_spec_generate(
         // would only flag the last position, making `sample(row=0)`
         // fail with `batch.logits[0] != true` on the assert.
         const llama_pos draft_base_pos = static_cast<llama_pos>(h->kv_tokens.size());
-        llama_batch tbatch = llama_batch_init(
-            static_cast<int32_t>(drafts.size()), /*embd=*/0, /*n_seq_max=*/1);
+        llama_batch tbatch = llama_batch_init(static_cast<int32_t>(drafts.size()), /*embd=*/0, /*n_seq_max=*/1);
         for (int i = 0; i < static_cast<int>(drafts.size()); ++i) {
-            tbatch.token[tbatch.n_tokens]    = drafts[i];
-            tbatch.pos[tbatch.n_tokens]      = draft_base_pos + i;
-            tbatch.n_seq_id[tbatch.n_tokens] = 1;
+            tbatch.token[tbatch.n_tokens]     = drafts[i];
+            tbatch.pos[tbatch.n_tokens]       = draft_base_pos + i;
+            tbatch.n_seq_id[tbatch.n_tokens]  = 1;
             tbatch.seq_id[tbatch.n_tokens][0] = 0;
-            tbatch.logits[tbatch.n_tokens]   = true;
+            tbatch.logits[tbatch.n_tokens]    = true;
             tbatch.n_tokens++;
         }
         if (llama_decode(h->target_ctx, tbatch) != 0) {
             llama_batch_free(tbatch);
             llama_memory_clear(target_mem, true);
-            llama_memory_clear(draft_mem,  true);
+            llama_memory_clear(draft_mem, true);
             h->kv_tokens.clear();
             break;
         }
@@ -399,7 +383,7 @@ void llama_bridge_spec_generate(
         }
         h->kv_tokens.push_back(drafts[0]);
         generated += 1;
-        int accepted = 1;
+        int accepted    = 1;
         bool stop_round = false;
 
         for (int i = 1; i < static_cast<int>(drafts.size()) && !stop_round; ++i) {
@@ -422,10 +406,9 @@ void llama_bridge_spec_generate(
             } else {
                 // Reject. Rewind both KVs to position draft_base_pos+accepted
                 // and put target's choice in place of drafts[i].
-                const llama_pos rewind_pos = draft_base_pos +
-                    static_cast<llama_pos>(accepted);
+                const llama_pos rewind_pos = draft_base_pos + static_cast<llama_pos>(accepted);
                 llama_memory_seq_rm(target_mem, 0, rewind_pos, -1);
-                llama_memory_seq_rm(draft_mem,  0, rewind_pos, -1);
+                llama_memory_seq_rm(draft_mem, 0, rewind_pos, -1);
 
                 llama_batch tb1 = llama_batch_get_one(&t, 1);
                 if (llama_decode(h->target_ctx, tb1) != 0) {
@@ -446,7 +429,7 @@ void llama_bridge_spec_generate(
             }
         }
 
-        h->last_drafted  += static_cast<int32_t>(drafts.size());
+        h->last_drafted += static_cast<int32_t>(drafts.size());
         h->last_accepted += accepted;
 
         llama_batch_free(tbatch);
@@ -468,10 +451,8 @@ void llama_bridge_spec_set_n_draft(LlamaBridgeSpecHandle* h, int32_t n_draft) {
     h->n_draft = std::min(16, std::max(1, n_draft));
 }
 
-void llama_bridge_spec_get_stats(LlamaBridgeSpecHandle* h,
-                                 int32_t* out_drafted,
-                                 int32_t* out_accepted) {
+void llama_bridge_spec_get_stats(LlamaBridgeSpecHandle* h, int32_t* out_drafted, int32_t* out_accepted) {
     if (!h) { return; }
-    if (out_drafted)  { *out_drafted  = h->last_drafted; }
+    if (out_drafted) { *out_drafted = h->last_drafted; }
     if (out_accepted) { *out_accepted = h->last_accepted; }
 }

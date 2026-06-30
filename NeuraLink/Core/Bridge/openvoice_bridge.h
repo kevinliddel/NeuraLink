@@ -44,12 +44,9 @@ void openvoice_bridge_free(OpenVoiceBridge* voice);
 ///                        [bert, melo, spec, converter] for profiling.
 /// Returns the sample count (>0), or a negative error code. Free with
 /// openvoice_bridge_free_audio.
-int32_t openvoice_bridge_say(OpenVoiceBridge* voice,
-                             const int64_t* phones, const int64_t* tones, const int64_t* langs,
-                             int32_t n, int64_t sid,
-                             const float* src_se, const float* tgt_se,
-                             const int64_t* input_ids, const int32_t* word2ph, int32_t n_ids,
-                             float** out_audio, double* out_stage_ms);
+int32_t openvoice_bridge_say(OpenVoiceBridge* voice, const int64_t* phones, const int64_t* tones, const int64_t* langs,
+                             int32_t n, int64_t sid, const float* src_se, const float* tgt_se, const int64_t* input_ids,
+                             const int32_t* word2ph, int32_t n_ids, float** out_audio, double* out_stage_ms);
 
 void openvoice_bridge_free_audio(float* audio);
 

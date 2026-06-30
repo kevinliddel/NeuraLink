@@ -1,0 +1,26 @@
+# C/C++ style for NeuraLink's first-party bridge code (NeuraLink/Core/Bridge).
+# llama.cpp/ and NeuraLink/Dependencies/ are upstream code 
+# They are never formatted or linted.
+BasedOnStyle: LLVM
+Language: Cpp
+Standard: c++17
+
+IndentWidth: 4
+ColumnLimit: 120
+PointerAlignment: Left
+
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: AllIfsAndElse
+AllowShortLoopsOnASingleLine: true
+AllowShortBlocksOnASingleLine: Always
+
+AlignConsecutiveAssignments: Consecutive
+AlignTrailingComments: true
+AlignAfterOpenBracket: Align
+
+BreakBeforeBraces: Attach
+SpaceBeforeParens: ControlStatements
+KeepEmptyLinesAtTheStartOfBlocks: false
+MaxEmptyLinesToKeep: 1
+ReflowComments: false
+SortIncludes: false
