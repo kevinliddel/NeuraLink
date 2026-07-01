@@ -24,7 +24,7 @@ struct EnvironmentLoadingScreen: View {
             backdrop
                 .ignoresSafeArea()
             statusBadge
-                .padding(.leading, 50)
+                .padding(.leading, 25)
                 .padding(.trailing, 16)
                 .padding(.bottom, 10)
         }
@@ -32,13 +32,17 @@ struct EnvironmentLoadingScreen: View {
 
     @ViewBuilder private var backdrop: some View {
         if let image = Self.backdropImage() {
-            // Fill the whole screen and center the image (cover), cropping any
-            // overflow rather than pinning it to a corner.
-            Image(uiImage: image)
-                .resizable()
-                .scaledToFill()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .clipped()
+            // Cover the screen with the image centered (crop the overflow). The
+            // explicit GeometryReader frame guarantees the image is centered
+            // regardless of the ZStack's bottom-leading alignment or aspect ratio.
+            GeometryReader { geo in
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .clipped()
+                    .position(x: geo.size.width / 2, y: geo.size.height / 2)
+            }
         } else {
             Color.black
         }

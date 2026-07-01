@@ -26,6 +26,9 @@ struct EnvironmentOption: Identifiable, Hashable {
     /// See `EnvironmentRenderer.bakedLighting`. true = textures already lit
     /// (city, campus); false = plain PBR albedo needing runtime lighting.
     let bakedLighting: Bool
+    /// True for enclosed interiors (apartment, art gallery): outdoor 3D world
+    /// rain is suppressed so it can't fall through the ceiling.
+    let isInterior: Bool
 
     static func == (lhs: EnvironmentOption, rhs: EnvironmentOption) -> Bool { lhs.id == rhs.id }
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
@@ -37,6 +40,12 @@ enum EnvironmentCatalog {
     private static let defaultInstance: EnvironmentRenderer.InstanceConfig =
         (x: 0, y: -0.02, z: 0, rotY: 0, scale: 1.0)
 
+    /// Art gallery: yawed 90° to the viewer's right (`rotY`) and nudged forward
+    /// toward the camera (`z`) so the avatar sits better inside it. `z` is world
+    /// units — positive = toward the viewer, negative = away; tune to taste.
+    private static let galleryInstance: EnvironmentRenderer.InstanceConfig =
+        (x: 0, y: -0.02, z: 3, rotY: .pi / 2, scale: 1.0)
+
     /// Every selectable environment, in picker order.
     /// It auto-fits to a ~120-unit footprint
     /// (recentered on the origin); the others render at their native size. Tune
@@ -45,15 +54,19 @@ enum EnvironmentCatalog {
         EnvironmentOption(
             id: "city", displayName: "City",
             previewImage: "city", instanceConfig: defaultInstance,
-            autoFitFootprint: nil, bakedLighting: true),
+            autoFitFootprint: nil, bakedLighting: true, isInterior: false),
         EnvironmentOption(
             id: "campus", displayName: "Campus",
             previewImage: "campus", instanceConfig: defaultInstance,
-            autoFitFootprint: nil, bakedLighting: true),
+            autoFitFootprint: nil, bakedLighting: true, isInterior: false),
         EnvironmentOption(
             id: "apartment", displayName: "Apartment",
             previewImage: "apartment", instanceConfig: defaultInstance,
-            autoFitFootprint: nil, bakedLighting: false)
+            autoFitFootprint: nil, bakedLighting: false, isInterior: true),
+        EnvironmentOption(
+            id: "art_gallery", displayName: "Art Gallery",
+            previewImage: "art_gallery", instanceConfig: galleryInstance,
+            autoFitFootprint: nil, bakedLighting: true, isInterior: true)
     ]
 
     /// The option for an id, falling back to the first (default) environment so a
@@ -61,4 +74,8 @@ enum EnvironmentCatalog {
     static func option(for id: String) -> EnvironmentOption {
         all.first { $0.id == id } ?? all[0]
     }
+
+    /// True for enclosed interior environments where outdoor 3D world rain must
+    /// not fall inside. Keyed by the persisted selection id.
+    static func isInterior(_ id: String) -> Bool { option(for: id).isInterior }
 }

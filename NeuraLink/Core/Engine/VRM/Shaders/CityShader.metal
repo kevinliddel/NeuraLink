@@ -101,7 +101,11 @@ static float3 pbrPerturbNormal(float3 N, float3 worldPos, float2 uv, float3 mapN
     float3 dp1perp = cross(N, dp1);
     float3 T = dp2perp * duv1.x + dp1perp * duv2.x;
     float3 B = dp2perp * duv1.y + dp1perp * duv2.y;
-    float  invmax = rsqrt(max(dot(T, T), dot(B, B)));
+    // Degenerate UVs (zero-area / seam) give a zero basis → rsqrt(0) = inf and a
+    // NaN normal. Fall back to the geometric normal in that case.
+    float  denom = max(dot(T, T), dot(B, B));
+    if (denom < 1e-12f) { return N; }
+    float  invmax = rsqrt(denom);
     float3x3 TBN = float3x3(T * invmax, B * invmax, N);
     return normalize(TBN * mapN);
 }

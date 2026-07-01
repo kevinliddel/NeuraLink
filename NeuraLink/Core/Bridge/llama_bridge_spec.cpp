@@ -209,7 +209,7 @@ static llama_token spec_greedy_argmax(const float* logits, int n_vocab) {
 
 void llama_bridge_spec_generate(LlamaBridgeSpecHandle* h, const char* prompt, int32_t max_new_tokens,
                                 LlamaTokenCallback on_token, LlamaFinishCallback on_finish, void* user_ctx) {
-    if (!h || !h->target_model || !h->draft_model || !h->target_ctx || !h->draft_ctx || !h->target_sampler) {
+    if (!h || !h->target_model || !h->draft_model || !h->target_ctx || !h->draft_ctx || !h->target_sampler || !prompt) {
         if (on_finish) { on_finish(user_ctx); }
         return;
     }

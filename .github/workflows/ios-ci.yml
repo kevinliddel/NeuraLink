@@ -13,6 +13,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          # This job runs PR-controlled scripts; don't leave the token in git config.
+          persist-credentials: false
           submodules: recursive
 
       - name: Install linters
@@ -31,6 +33,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          # This job runs PR-controlled scripts; don't leave the token in git config.
+          persist-credentials: false
           submodules: recursive
       
       - name: Set up Xcode

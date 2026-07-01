@@ -1,5 +1,5 @@
 {
-  "originHash" : "96f20c5ab810f565e5e4685f3031f5d232342ac7708c1871b66d493094e718dd",
+  "originHash" : "45822595d97908c658f97804158c29537c043e8b9e576f5c0dbf89f954388b57",
   "pins" : [
     {
       "identity" : "argmax-oss-swift",
@@ -141,8 +141,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-system.git",
       "state" : {
-        "revision" : "7c6ad0fc39d0763e0b699210e4124afd5041c5df",
-        "version" : "1.6.4"
+        "revision" : "7502b711c92a17741fa625d722b0ccbd595d8ed1",
+        "version" : "1.7.2"
       }
     },
     {

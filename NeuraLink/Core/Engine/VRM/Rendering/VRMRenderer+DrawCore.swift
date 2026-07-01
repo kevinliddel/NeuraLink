@@ -371,8 +371,11 @@ extension VRMRenderer {
             model: model
         )
 
-        // 3D World rain (streaks and ripples)
-        if UserSettings.shared.showEnvironment {
+        // 3D World rain (streaks and ripples) — skipped in interior environments
+        // (apartment / art gallery) where rain falling through the ceiling would
+        // look wrong. The rain-on-glass overlay below still plays.
+        if UserSettings.shared.showEnvironment,
+            !EnvironmentCatalog.isInterior(UserSettings.shared.selectedEnvironment) {
             drawWorldRain(encoder: encoder)
         }
 
@@ -429,7 +432,10 @@ extension VRMRenderer {
                 drawTerrain(encoder: encoder)
             }
             drawEnvironment(encoder: encoder)
-            drawWorldRain(encoder: encoder)
+            // Interior envs suppress the 3D world rain (see main frame above).
+            if !EnvironmentCatalog.isInterior(UserSettings.shared.selectedEnvironment) {
+                drawWorldRain(encoder: encoder)
+            }
         } else {
             drawTerrain(encoder: encoder)
         }

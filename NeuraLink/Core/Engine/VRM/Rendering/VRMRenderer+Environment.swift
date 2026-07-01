@@ -39,12 +39,16 @@ extension VRMRenderer {
         environmentRenderer = renderer
         loadedEnvironmentName = name
 
+        // Resolve the GLB by the catalog id (always a known, safe basename) rather
+        // than the raw persisted selection, so a tampered value can't traverse
+        // paths. The loading-screen gate still keys off the requested `name`.
+        let sceneID = option.id
         Task.detached(priority: .userInitiated) { [weak renderer] in
             do {
-                let url = try await RemoteAssetCache.shared.url(for: .scene(name))
+                let url = try await RemoteAssetCache.shared.url(for: .scene(sceneID))
                 try await renderer?.load(url: url)
             } catch {
-                nlLog("[EnvironmentRenderer] \(name).glb resolve/load failed: \(error)")
+                nlLog("[EnvironmentRenderer] \(sceneID).glb resolve/load failed: \(error)")
             }
             // Release the launch loading screen once the selected environment's
             // mesh is in (or its load failed — never hang the reveal).

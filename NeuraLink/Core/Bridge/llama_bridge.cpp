@@ -456,7 +456,7 @@ static void generate_pld(LlamaBridgeHandle* h, std::vector<llama_token>& new_tok
 
 void llama_bridge_generate(LlamaBridgeHandle* handle, const char* prompt, int32_t max_new_tokens,
                            LlamaTokenCallback on_token, LlamaFinishCallback on_finish, void* user_ctx) {
-    if (!handle || !handle->model || !handle->ctx || !handle->sampler) {
+    if (!handle || !handle->model || !handle->ctx || !handle->sampler || !prompt) {
         if (on_finish) { on_finish(user_ctx); }
         return;
     }
