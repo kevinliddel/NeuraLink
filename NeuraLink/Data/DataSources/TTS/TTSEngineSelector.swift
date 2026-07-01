@@ -92,8 +92,7 @@ final class TTSEngineSelector {
         // OpenVoice (MeloTTS + tone-color converter). OpenVoiceEngine.initialize()
         // downloads its ONNX models on first use, so route to it unconditionally
         // — gating on a cached check would never trigger the first download.
-        // System TTS is the last-resort fallback. (Kokoro routing removed; its
-        // files come out once OpenVoice is verified on device.)
+        // System TTS is the last-resort fallback.
         if config == .llmJp3 {
             return makeVoiceVoxEngine(for: persona)
         }
@@ -101,16 +100,10 @@ final class TTSEngineSelector {
         return makeOpenVoiceEngine(for: persona) ?? makeSystemTTSEngine(for: persona)
     }
 
-    private func hasKokoroVoicesDownloaded() -> Bool {
-        KokoroModelAccess.isAvailable
-    }
-
     private func makeVoiceVoxEngine(for persona: PersonaIdentifier) -> (any TTSEngineProtocol)? {
         // Returns the shared engine in its current state. The caller is
         // responsible for awaiting `initialize()` before the first `speak`
-        // call — engine.speak() throws .notInitialized otherwise. Wiring
-        // happens in Phase 5 (`LocalLLMManager+TTS` swap from
-        // AVSpeechSynthesizer to the selector).
+        // call — engine.speak() throws .notInitialized otherwise.
         _ = persona
         return VoiceVoxEngine.shared
     }
@@ -121,11 +114,6 @@ final class TTSEngineSelector {
         // refinement (voiceName(for:) currently defaults to one voice).
         _ = persona
         return OpenVoiceEngine.shared
-    }
-
-    private func makeKokoroEngine(for persona: PersonaIdentifier) -> (any TTSEngineProtocol)? {
-        _ = persona
-        return KokoroEngine.shared
     }
 
     private func makeSystemTTSEngine(for persona: PersonaIdentifier) -> (any TTSEngineProtocol)? {

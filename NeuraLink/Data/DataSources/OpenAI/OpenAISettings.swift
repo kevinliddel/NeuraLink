@@ -69,7 +69,7 @@ final class OpenAISettings {
             defaults.set(true, forKey: Self.migrationV2Key)
         }
 
-        // Security Phase 1: move the API key off `UserDefaults` and into the
+        // Move the API key off `UserDefaults` and into the
         // Keychain. Must run before reading `_apiKey` so the Keychain is
         // populated by the time the property initializes.
         Self.migrateAPIKeyToKeychainIfNeeded()

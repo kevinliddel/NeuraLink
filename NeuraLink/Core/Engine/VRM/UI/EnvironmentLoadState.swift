@@ -3,8 +3,8 @@
 //  NeuraLink
 //
 //  Drives the game-engine-style launch loading screen. The base scene
-//  (avatar + sky + ground) loads quickly, but on first launch the 3D
-//  environment mesh (city/campus `.glb`) is downloaded from the Hugging Face
+//  (avatar + sky + ground) loads quickly, but on first launch the selected
+//  3D environment mesh (`<name>.glb`) is downloaded from the Hugging Face
 //  dataset and isn't ready yet. We hold the loading screen — showing the
 //  environment's preview image — until the SELECTED environment's mesh has
 //  finished loading, then reveal the scene with the environment already in
@@ -49,8 +49,7 @@ final class EnvironmentLoadState {
     nonisolated static func isLoaderMessage(_ body: String) -> Bool {
         body.contains("[TextureLoader]")
             || body.contains("[ParallelTextureLoader]")
-            || body.contains("[CityRenderer]")
-            || body.contains("[CampusRenderer]")
+            || body.contains("[EnvironmentRenderer]")
     }
 
     /// Records the latest loader line (ignored once the scene is ready). The

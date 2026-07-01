@@ -55,8 +55,6 @@ ggml-*.bin
 RULES.md
 SKILL.md
 agents/
-docs/STREAMING_LATENCY_PLAN.md
-docs/VOICE_CLONING_OPENVOICE_PLAN.md
 .cursorrules
 .clauderules
 .github/copilot-instructions.md

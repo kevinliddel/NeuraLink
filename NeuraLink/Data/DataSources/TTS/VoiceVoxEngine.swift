@@ -2,9 +2,8 @@
 //  VoiceVoxEngine.swift
 //  NeuraLink
 //
-//  Swift wrapper around the VOICEVOX 0.16.4+ Synthesizer C API.
-//  Lifted from feat/voice-vox at Phase 1a and adapted to the unified
-//  `TTSEngineProtocol` (push-streaming via `onBufferReady`, persona-keyed
+//  Swift wrapper around the VOICEVOX 0.16.4+ Synthesizer C API, conforming to
+//  the unified `TTSEngineProtocol` (push-streaming via `onBufferReady`, persona-keyed
 //  `speak(_:persona:)`). The original pull-style `synthesize(text:speakerID:)`
 //  is kept as a public helper for callers that want raw WAV bytes (e.g. unit
 //  tests, debug surfaces).

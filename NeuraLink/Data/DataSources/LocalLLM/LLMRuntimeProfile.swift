@@ -40,7 +40,7 @@ struct LLMRuntimeProfile {
     /// adjustments (CPU fallback, thread cap, RAM-scaled n_ctx) on top.
     ///
     /// Base values below reproduce the pre-refactor hardcoded engine settings
-    /// exactly. The device sweep (see docs / plan Phase 3) replaces the entries
+    /// exactly. A future on-device sweep replaces the entries
     /// marked `UNVERIFIED` with measured winners.
     private static func baseProfile(
         for config: LocalModelDownloadManager.ModelConfiguration

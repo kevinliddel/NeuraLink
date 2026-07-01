@@ -49,7 +49,7 @@ final class VoicePreviewPlayer: NSObject, AVAudioPlayerDelegate, @unchecked Send
 
 // MARK: - Local Engine Preview Player (AVAudioEngine + PCMBuffer streaming)
 
-/// Plays PCMBuffer streams produced by local TTS engines (VoiceVox, Kokoro).
+/// Plays PCMBuffer streams produced by local TTS engines (VoiceVox, OpenVoice).
 /// Owns its own AVAudioEngine so previewing here doesn't interfere with the
 /// chat playback engine in `LocalLLMManager`.
 @Observable

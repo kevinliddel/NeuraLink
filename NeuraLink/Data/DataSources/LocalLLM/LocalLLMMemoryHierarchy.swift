@@ -2,8 +2,7 @@
 //  LocalLLMMemoryHierarchy.swift
 //  NeuraLink
 //
-//  Composes the 3-tier prompt for the local LLM per
-//  docs/local_llm_memory_plan.md §3.2:
+//  Composes the 3-tier prompt for the local LLM:
 //    - Tier 1: system + persona + user context + companion
 //    - Tier 3: relevant atomic facts (RAGManager.fetchFacts, English only)
 //    - Tier 2: verbatim recent dialogue turns (current conversation only)

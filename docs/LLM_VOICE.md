@@ -23,12 +23,12 @@ When `OpenAISettings.isLocalLLMEnabled = true`, the LLM runs on-device via [`Loc
 
 ```mermaid
 flowchart TD
-    Start["Persona + ModelConfig"] --> Q2{"ModelConfig ==\njapaneseGemma2b?"}
+    Start["Persona + ModelConfig"] --> Q2{"ModelConfig ==<br/>llmJp3?"}
 
-    Q2 --> D3["yes"] --> VV["VoiceVoxEngine\nONNX Runtime + OpenJTalk"]
-    Q2 --> D4["no"] --> OV["OpenVoiceEngine\nMeloTTS + tone-color converter (ONNX)"]
+    Q2 --> D3["yes"] --> VV["VoiceVoxEngine<br/>ONNX Runtime + OpenJTalk"]
+    Q2 --> D4["no"] --> OV["OpenVoiceEngine<br/>MeloTTS + tone-color converter (ONNX)"]
 
-    OV -.->|"init / model download fails"| SYS["SystemTTSEngine\nAVSpeechSynthesizer fallback"]
+    OV -.-> D5["Init / Download Failure"] --> SYS["SystemTTSEngine<br/>AVSpeechSynthesizer fallback"]
 
     VV --> D7["Audio Buffer"] --> Done["onBufferReady → AVAudioPCMBuffer"]
     OV --> D7
@@ -42,9 +42,9 @@ flowchart TD
     classDef decision fill:#1e293b,stroke:#94a3b8,color:#e2e8f0
     class Q2 decision
 
-    %% Data / flow nodes (consistent with your other diagrams)
+    %% Data / flow nodes (consistent)
     classDef data fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
-    class D3,D4,D7 data
+    class D3,D4,D5,D7 data
 ```
 
 Each engine conforms to [`TTSEngineProtocol`](../NeuraLink/Domain/Interfaces/TTSEngineProtocol.swift), which is a push-streaming contract: the engine calls back into `onBufferReady` with each PCM buffer as it's synthesised, so the iPhone can start playing before the full sentence has finished synthesising. That callback is what keeps first-audio latency low even when the LLM is producing text faster than the TTS can synthesise it.
@@ -56,7 +56,7 @@ sequenceDiagram
     autonumber
     participant Mic as Microphone<br/>(SileroVAD)
     participant Whisper as LocalWhisperManager
-    participant LLM as GGUFLlama/QwenEngine
+    participant LLM as GGUFLlama/LLMjp3Engine
     participant Parser as LocalToolCallParser
     participant Sel as TTSEngineSelector
     participant Eng as TTSEngine<br/>(VOICEVOX / OpenVoice / System)
@@ -95,7 +95,7 @@ Notes on the flow:
 
 1. The user saves a new voice in `PersonaSettingsView` (so the next synthesis sees the updated `PersonaVoiceStore` entry).
 2. The user clears the override via Reset.
-3. The user switches the active LLM model (e.g. moving to/from the Japanese Gemma tier flips the engine, VOICEVOX ↔ OpenVoice).
+3. The user switches the active LLM model (e.g. moving to/from the Japanese LLM-jp-3 model flips the engine, VOICEVOX ↔ OpenVoice).
 
 ## OpenAI Realtime path
 

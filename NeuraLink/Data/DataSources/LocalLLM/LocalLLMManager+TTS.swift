@@ -7,8 +7,6 @@
 //  cleans the LLM's text, hands it to the engine, and pumps the engine's
 //  PCM buffers into the shared AVAudioEngine / playerNode for playback.
 //
-//  Phase 5 wiring per docs/local_llm_tts_plan.md §3.1.
-//
 //  Created by Dedicatus on 30/04/2026.
 //
 

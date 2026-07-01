@@ -54,8 +54,7 @@ extension VRMRenderer {
         setupTripleBuffering()
         setupSkyRenderer()
         setupTerrain()
-        setupCity()
-        setupCampus()
+        setupEnvironment()
     }
 
     /// Removes the current model from the renderer so only sky and terrain are drawn.

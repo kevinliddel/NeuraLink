@@ -3,8 +3,8 @@
 //  NeuraLink
 //
 //  Manages the download state machine for local SLMs.
-//  Model-specific download strategies live in QwenModelDownloader and LlamaModelDownloader.
-//  URL/path resolution is delegated to QwenModelAccess and LlamaModelAccess.
+//  Model-specific download strategies live in GGUFModelDownloader and GGUFLLMjp3Downloader.
+//  URL/path resolution is delegated to GGUFModelAccess and GGUFLLMjp3ModelAccess.
 //
 //  Created by Dedicatus on 28/04/2026.
 //
@@ -104,8 +104,7 @@ final class LocalModelDownloadManager: @unchecked Sendable {
         LocalModelDownloadManager.defaultConfigForCurrentDevice()
 
     /// Default model on first launch. All devices default to the memory-safe
-    /// Llama-3.2 1B; Qwen 2B and the Japanese model (LLM-jp-3) are opt-in via
-    /// Settings. (Qwen 3B / 7B were removed.)
+    /// Llama-3.2 1B and LLM-jp-3 are opt-in via Settings.
     static func defaultConfigForCurrentDevice() -> ModelConfiguration {
         .llama1b
     }

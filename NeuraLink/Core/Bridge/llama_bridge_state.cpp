@@ -6,8 +6,7 @@
 //  launches so the cold-start persona prefill (~6–17 s on iPhone 11)
 //  doesn't have to be paid every time the user opens the app.
 //
-//  Split out of llama_bridge.cpp per docs/local_llm_memory_plan.md §6 to
-//  keep each translation unit under the 500-line rule.
+//  Split out of llama_bridge.cpp.
 //
 //  Created by Dedicatus on 20/05/2026.
 //
@@ -18,13 +17,8 @@
 size_t llama_bridge_save_kv_state(LlamaBridgeHandle* handle, const char* path) {
     if (!handle || !handle->ctx || !path) { return 0; }
     if (handle->kv_tokens.empty()) { return 0; }
-    return llama_state_seq_save_file(
-        handle->ctx,
-        path,
-        /*seq_id=*/0,
-        handle->kv_tokens.data(),
-        handle->kv_tokens.size()
-    );
+    return llama_state_seq_save_file(handle->ctx, path,
+                                     /*seq_id=*/0, handle->kv_tokens.data(), handle->kv_tokens.size());
 }
 
 int32_t llama_bridge_load_kv_state(LlamaBridgeHandle* handle, const char* path) {
@@ -36,14 +30,8 @@ int32_t llama_bridge_load_kv_state(LlamaBridgeHandle* handle, const char* path) 
     std::vector<llama_token> tokens(cap);
     size_t n_loaded = 0;
 
-    const size_t bytes = llama_state_seq_load_file(
-        handle->ctx,
-        path,
-        /*dest_seq_id=*/0,
-        tokens.data(),
-        cap,
-        &n_loaded
-    );
+    const size_t bytes = llama_state_seq_load_file(handle->ctx, path,
+                                                   /*dest_seq_id=*/0, tokens.data(), cap, &n_loaded);
 
     if (bytes == 0 || n_loaded == 0) {
         // Load failed (missing file, format mismatch, capacity exhausted).
@@ -67,12 +55,8 @@ int32_t llama_bridge_state_seq_version(void) {
     return static_cast<int32_t>(LLAMA_STATE_SEQ_VERSION);
 }
 
-void llama_bridge_get_pld_stats(
-    LlamaBridgeHandle* handle,
-    int32_t*           out_rounds,
-    int32_t*           out_hits)
-{
+void llama_bridge_get_pld_stats(LlamaBridgeHandle* handle, int32_t* out_rounds, int32_t* out_hits) {
     if (!handle) { return; }
     if (out_rounds) { *out_rounds = handle->last_pld_rounds; }
-    if (out_hits)   { *out_hits   = handle->last_pld_hits;   }
+    if (out_hits) { *out_hits = handle->last_pld_hits; }
 }

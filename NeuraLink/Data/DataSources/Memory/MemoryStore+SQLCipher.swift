@@ -2,7 +2,7 @@
 //  MemoryStore+SQLCipher.swift
 //  NeuraLink
 //
-//  Optional zero-knowledge layer on top of Phase 2a (file-level Data
+//  Optional zero-knowledge layer on top of the file-level Data
 //  Protection). When the user opts in via the `sqlcipherEnabled` flag,
 //  the conversation DB is encrypted page-by-page with AES-CBC + HMAC
 //  using a 32-byte random key stored in the Keychain. This survives
@@ -10,9 +10,8 @@
 //  exploits that lift class keys) at the cost of an extra dependency and
 //  a one-shot plaintext-to-encrypted conversion.
 //
-//  Phase 2b of the security audit remediation plan. See
-//  `docs/security_audit_plan.md` §3.2 Path B and §3.7 (future passphrase
-//  mode, which builds on this).
+//  A future passphrase mode (deriving the page key from a user secret)
+//  would build on this.
 //
 //  Design notes:
 //    - `sqlcipherEnabled` (UserDefaults) is the user's intent.
@@ -36,7 +35,7 @@ extension MemoryStore {
     // MARK: - Feature flags
 
     /// UserDefaults key: user's intent to encrypt the DB at the page level.
-    /// Public surface that the (future) Settings UI / Phase 7 passphrase
+    /// Public surface that the (future) Settings UI / passphrase
     /// flow flips. Reading is cheap; we re-check on every launch.
     static let sqlcipherEnabledFlag = "com.neuralink.security.sqlcipherEnabled"
 

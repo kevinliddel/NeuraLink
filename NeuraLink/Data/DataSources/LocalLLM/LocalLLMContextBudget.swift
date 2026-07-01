@@ -7,9 +7,6 @@
 //  user turn. Pure functions only — no I/O, no engine references — so it
 //  can be unit-tested in isolation.
 //
-//  Part of the 3-tier memory hierarchy described in
-//  docs/local_llm_memory_plan.md.
-//
 //  Created by Dedicatus on 18/05/2026.
 //
 
@@ -20,7 +17,7 @@ enum LocalLLMContextBudget {
     // MARK: - Tunables
 
     /// Bytes-per-token heuristic. Empirically holds within ±10% across the
-    /// Llama-3, Qwen-2.5 and Llama-3.2 BPE vocabularies for mixed
+    /// Llama-3.2 and LLM-jp BPE vocabularies for mixed
     /// English + Japanese conversational text. Tokenising via the bridge
     /// would be more accurate but would require holding the bridge across
     /// threads (it is not safe to share between in-flight generations).

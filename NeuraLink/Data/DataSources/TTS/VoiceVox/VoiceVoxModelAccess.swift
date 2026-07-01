@@ -8,8 +8,8 @@
 //
 //  Big files (per-speaker `.vvm` ~57 MB, JTalk dict ~102 MB) are
 //  on-demand via `RemoteAssetCache` against the public
-//  `Dedicatus/NeuraLink` HuggingFace dataset (§4.5 of
-//  docs/app_size_reduction_plan.md). Bundle is consulted first so
+//  `Dedicatus/NeuraLink` HuggingFace dataset under `tts/voicevox/`. Bundle
+//  is consulted first so
 //  builds with the assets still embedded behave identically.
 //
 //  Created by Dedicatus on 29/04/2026.

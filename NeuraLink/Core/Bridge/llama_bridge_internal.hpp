@@ -21,10 +21,10 @@
 #include <vector>
 
 struct LlamaBridgeHandle {
-    llama_model*             model       = nullptr;
-    llama_context*           ctx         = nullptr;
-    llama_sampler*           sampler     = nullptr;
-    std::atomic<bool>        cancel_flag { false };
+    llama_model* model     = nullptr;
+    llama_context* ctx     = nullptr;
+    llama_sampler* sampler = nullptr;
+    std::atomic<bool> cancel_flag{false};
 
     /// Tokens currently materialised in the KV cache for sequence 0.
     /// Used to compute the common prefix with the next prompt so we only
@@ -32,17 +32,17 @@ struct LlamaBridgeHandle {
     std::vector<llama_token> kv_tokens;
 
     /// Prompt-Lookup Decoding config. See `llama_bridge_set_prompt_lookup`.
-    bool                     pld_enabled = false;
-    int32_t                  pld_n       = 3;
-    int32_t                  pld_n_draft = 5;
+    bool pld_enabled    = false;
+    int32_t pld_n       = 3;
+    int32_t pld_n_draft = 5;
 
     /// Per-call prefill telemetry, populated by `sync_kv_for_prompt`. Read
     /// from Swift via `llama_bridge_get_prefill_stats` after generate returns
     /// — lets the benchmark log distinguish prefix-reuse hits from full
     /// re-prefills on multi-turn dialogue.
-    int32_t                  last_prefill_reused = 0;
-    int32_t                  last_prefill_new    = 0;
-    double                   last_prefill_ms     = 0.0;
+    int32_t last_prefill_reused = 0;
+    int32_t last_prefill_new    = 0;
+    double last_prefill_ms      = 0.0;
 
     /// Per-call PLD (prompt-lookup decoding) telemetry. `pld_rounds` counts
     /// every iteration of the speculative loop; `pld_hits` counts only those
@@ -50,8 +50,8 @@ struct LlamaBridgeHandle {
     /// rate = hits/rounds. Useful for deciding whether PLD's overhead is
     /// paying off — particularly relevant on Japanese where n-gram matches
     /// are rarer than in English conversation.
-    int32_t                  last_pld_rounds     = 0;
-    int32_t                  last_pld_hits       = 0;
+    int32_t last_pld_rounds = 0;
+    int32_t last_pld_hits   = 0;
 };
 
 // MARK: - UTF-8 stream assembly
@@ -84,18 +84,23 @@ inline std::size_t utf8_safe_prefix(const std::string& s) {
         }
         // Lead byte (or ASCII) — determine its expected length.
         int expected = 1;
-        if ((b & 0x80) == 0)      { expected = 1; }
-        else if ((b & 0xE0) == 0xC0) { expected = 2; }
-        else if ((b & 0xF0) == 0xE0) { expected = 3; }
-        else if ((b & 0xF8) == 0xF0) { expected = 4; }
+        if ((b & 0x80) == 0) {
+            expected = 1;
+        } else if ((b & 0xE0) == 0xC0) {
+            expected = 2;
+        } else if ((b & 0xF0) == 0xE0) {
+            expected = 3;
+        } else if ((b & 0xF8) == 0xF0) {
+            expected = 4;
+        }
         // Anything else is malformed — fall through with expected=1
         // so we emit the lead alone rather than block the stream.
-        const std::size_t lead_pos = pos - 1;
+        const std::size_t lead_pos  = pos - 1;
         const std::size_t available = s.size() - lead_pos;
         if (available >= static_cast<std::size_t>(expected)) {
-            return s.size();          // last char is complete
+            return s.size(); // last char is complete
         }
-        return lead_pos;              // last char incomplete; keep tail buffered
+        return lead_pos; // last char incomplete; keep tail buffered
     }
-    return s.size();                  // all continuation bytes (malformed) — flush
+    return s.size(); // all continuation bytes (malformed) — flush
 }

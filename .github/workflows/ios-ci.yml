@@ -8,18 +8,23 @@ on:
 
 jobs:
   lint:
-    name: Linting
+    name: Linting (Swift + C/C++)
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
         with:
+          # This job runs PR-controlled scripts; don't leave the token in git config.
+          persist-credentials: false
           submodules: recursive
-      
-      - name: Install SwiftLint
-        run: brew install swiftlint
-        
+
+      - name: Install linters
+        run: brew install swiftlint clang-format cppcheck
+
       - name: Run SwiftLint
         run: swiftlint lint --strict --reporter github-actions-logging
+
+      - name: Run C/C++ lint (clang-format + cppcheck)
+        run: scripts/lint-cpp.sh
 
   test:
     name: Test Coverage
@@ -28,6 +33,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          # This job runs PR-controlled scripts; don't leave the token in git config.
+          persist-credentials: false
           submodules: recursive
       
       - name: Set up Xcode

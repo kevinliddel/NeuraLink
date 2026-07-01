@@ -2,12 +2,11 @@
 // RemoteAssetRegistry.swift
 // NeuraLink
 //
-// Catalogues every remote on-demand asset covered by §4.2 (scenes) and
-// §4.5 (TTS data) of docs/app_size_reduction_plan.md. Each case carries
+// Catalogues every remote on-demand asset (scenes + TTS data). Each case carries
 // the in-repo path of the shared `Dedicatus/NeuraLink` HuggingFace
 // dataset so `RemoteAssetCache` can fetch directly over HTTPS.
 //
-// The in-repo folder layout (`scenes/`, `tts/kokoro/`, `tts/voicevox/`)
+// The in-repo folder layout (`scenes/`, `tts/voicevox/`, `tts/open_voice/`)
 // is what keeps categories isolated even though they share a single
 // dataset repo and a single download path.
 //
@@ -22,16 +21,10 @@
 import Foundation
 
 enum RemoteAssetRegistry: Hashable, Sendable {
-    // Scenes (§4.2)
-    case city
-    case campus
+    // Scenes — `name` is the GLB basename (resolves to `scenes/<name>.glb`).
+    case scene(String)
 
-    // Kokoro TTS data (§4.5)
-    case kokoroModel
-    case kokoroVoices
-    case kokoroCMU
-
-    // VOICEVOX TTS data (§4.5) — per-speaker .vvm + Open JTalk dict files.
+    // VOICEVOX TTS data — per-speaker .vvm + Open JTalk dict files.
     case voicevoxSpeaker(Int)
     case jtalkDictFile(String)
 
@@ -52,11 +45,7 @@ enum RemoteAssetRegistry: Hashable, Sendable {
     /// from `pathInRepo`.
     var filename: String {
         switch self {
-        case .city:                    return "city.glb"
-        case .campus:                  return "campus.glb"
-        case .kokoroModel:             return "kokoro.onnx"
-        case .kokoroVoices:            return "voices.bin"
-        case .kokoroCMU:               return "cmu.txt"
+        case .scene(let name):         return "\(name).glb"
         case .voicevoxSpeaker(let id): return "\(id).vvm"
         case .jtalkDictFile(let name): return name
         case .openVoiceMelo:           return "melo_en.onnx"
@@ -72,10 +61,8 @@ enum RemoteAssetRegistry: Hashable, Sendable {
     /// under `<App Support>/hf-assets/`.
     var pathInRepo: String {
         switch self {
-        case .city, .campus:
+        case .scene:
             return "scenes/\(filename)"
-        case .kokoroModel, .kokoroVoices, .kokoroCMU:
-            return "tts/kokoro/\(filename)"
         case .voicevoxSpeaker:
             return "tts/voicevox/\(filename)"
         case .jtalkDictFile:
@@ -93,11 +80,11 @@ enum RemoteAssetRegistry: Hashable, Sendable {
     /// search path. `nil` means root-level lookup is sufficient.
     var bundleSubdirectory: String? {
         switch self {
-        case .city, .campus:
+        case .scene:
             return "Models/Environments"
         case .jtalkDictFile:
             return "open_jtalk_dic_utf_8-1.11"
-        case .kokoroModel, .kokoroVoices, .kokoroCMU, .voicevoxSpeaker,
+        case .voicevoxSpeaker,
              .openVoiceMelo, .openVoiceConverter, .openVoiceBert,
              .whisperModel:
             return nil

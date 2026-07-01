@@ -137,45 +137,6 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         try? audioEngine.start()
     }
 
-    /// Kicks off model loading at app launch.
-    func preload() {
-        Task {
-            try? await llmEngine.loadModel()
-            // Restore the persisted prefix and kick off warm-up BEFORE Whisper
-            // setup, not after — so Whisper init overlaps the warm-up instead of
-            // serializing in front of it (Whisper init used to delay the warm-up
-            // start by its whole duration). loadModel already compiled the Metal
-            // kernels, so the warm-up is just a short forward pass that reuses
-            // them — no new big allocation, safe to overlap Whisper's CoreML load.
-            //
-            // KV-cache restore: if a previous session persisted the prefilled
-            // persona prefix, loading it back means the first warm-up hits ~100%
-            // prefix-reuse and cold-turn ttft drops to <1 s. Must run after
-            // loadModel and before any prefill (it seeds the KV warm-up reuses).
-            await tryRestoreKVCache()
-            // Cold-start warm-up: prefill the persona prefix so the first user
-            // turn doesn't pay the full empty-KV ttft on iPhone 11. Fire-and-
-            // forget, so the Whisper setup below is not blocked by it.
-            warmupPrefill()
-            _ = await whisperManager.setup()
-        }
-        // Parallel TTS engine pre-warm: builds the bridge (ONNX session for
-        // Kokoro, OpenJTalk + synthesizer for VoiceVox) ahead of the first
-        // speakChunk so the user's perceived first-audio latency drops by
-        // the engine's init cost (~500 ms–1 s on iPhone 11). Independent of
-        // LLM loading — runs in parallel with `loadModel()`.
-        Task { @MainActor in
-            let persona = state.selectedCharacterName
-            guard let engine = TTSEngineSelector.shared.engine(for: persona) else { return }
-            do {
-                try await engine.initialize()
-                nlLog("[LocalLLM] TTS engine pre-warmed for '\(persona)'", level: .info)
-            } catch {
-                nlLog("[LocalLLM] TTS pre-warm failed for '\(persona)': \(error)", level: .warning)
-            }
-        }
-    }
-
     func startListening() {
         guard
             stateLock.withLock({

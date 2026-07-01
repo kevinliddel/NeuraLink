@@ -8,8 +8,6 @@
 //  in `RAGManager` (source = "fact") and surfaced into Tier 3 of the next
 //  prompt by `LocalLLMMemoryHierarchy`.
 //
-//  Part of Phase 2B in docs/local_llm_memory_plan.md.
-//
 //  Created by Dedicatus on 19/05/2026.
 //
 

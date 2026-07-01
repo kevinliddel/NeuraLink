@@ -2,7 +2,7 @@
 //  PersonaSettingsView+VoiceVoxDownload.swift
 //  NeuraLink
 //
-//  Mirrors `+KokoroDownload` for the VOICEVOX path. Surfaces the
+//  Surfaces the VOICEVOX
 //  Japanese voice-pack download UX inside PersonaSettings — the button
 //  + progress + error states + the async downloader that drives them.
 //  Extracted from `PersonaSettingsView.swift` to keep that file under

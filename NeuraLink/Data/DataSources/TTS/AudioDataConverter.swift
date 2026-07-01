@@ -4,7 +4,7 @@
 //
 //  Utility to convert raw audio Data (WAV/PCM) into AVAudioPCMBuffer.
 //  Single source of truth for the bytes <-> buffer conversion path used by
-//  every TTS engine. Lifted from feat/voice-vox at Phase 1a.
+//  every TTS engine.
 //
 //  Created by Dedicatus on 29/04/2026.
 //
@@ -28,10 +28,12 @@ enum AudioDataConverter {
             try data.write(to: tempURL)
             let file = try AVAudioFile(forReading: tempURL)
 
-            guard let buffer = AVAudioPCMBuffer(
-                pcmFormat: file.processingFormat,
-                frameCapacity: AVAudioFrameCount(file.length)
-            ) else { return nil }
+            guard
+                let buffer = AVAudioPCMBuffer(
+                    pcmFormat: file.processingFormat,
+                    frameCapacity: AVAudioFrameCount(file.length)
+                )
+            else { return nil }
 
             try file.read(into: buffer)
             try? FileManager.default.removeItem(at: tempURL)
@@ -42,8 +44,8 @@ enum AudioDataConverter {
         }
     }
 
-    /// Converts raw mono float samples into an `AVAudioPCMBuffer`. Used by
-    /// F5-TTS which emits float-array output from its Vocos vocoder.
+    /// Converts raw mono float samples into an `AVAudioPCMBuffer`.
+    /// Emits float-array output from its Vocos vocoder.
     /// Returns nil — never crashes — if the format or samples are invalid.
     static func toPCMBuffer(samples: [Float], sampleRate: Double) -> AVAudioPCMBuffer? {
         guard !samples.isEmpty, sampleRate > 0 else { return nil }

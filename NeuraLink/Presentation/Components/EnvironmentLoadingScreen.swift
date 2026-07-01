@@ -24,7 +24,7 @@ struct EnvironmentLoadingScreen: View {
             backdrop
                 .ignoresSafeArea()
             statusBadge
-                .padding(.leading, 50)
+                .padding(.leading, 25)
                 .padding(.trailing, 16)
                 .padding(.bottom, 10)
         }
@@ -32,30 +32,43 @@ struct EnvironmentLoadingScreen: View {
 
     @ViewBuilder private var backdrop: some View {
         if let image = Self.backdropImage() {
-            Image(uiImage: image)
-                .resizable()
-                .scaledToFill()
+            // Cover the screen with the image centered (crop the overflow). The
+            // explicit GeometryReader frame guarantees the image is centered
+            // regardless of the ZStack's bottom-leading alignment or aspect ratio.
+            GeometryReader { geo in
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .clipped()
+                    .position(x: geo.size.width / 2, y: geo.size.height / 2)
+            }
         } else {
             Color.black
         }
     }
 
     private var statusBadge: some View {
-        HStack(spacing: 12) {
+        // Black text on the bright day backdrop, white on the dark night one,
+        // each with a contrasting soft shadow so it stays legible either way.
+        let onDark = !Self.isDaytime
+        let foreground: Color = onDark ? .white : .black
+        let shadowColor: Color = onDark ? .black.opacity(0.7) : .white.opacity(0.6)
+        return HStack(spacing: 12) {
             ProgressView()
                 .controlSize(.small)
-                .tint(.white)
+                .tint(foreground)
             // Live loader/texture log line (game-console feel), tag stripped;
             // a neutral "Loading…" before the first log / in Release builds.
             Text(envLoad.currentLogLine ?? "Loading…")
                 .font(.callout.weight(.semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(foreground)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .animation(.easeOut(duration: 0.15), value: envLoad.currentLogLine)
         }
-        .shadow(color: .black.opacity(0.7), radius: 5)
+        .shadow(color: shadowColor, radius: 5)
     }
 
     // MARK: - Backdrop selection

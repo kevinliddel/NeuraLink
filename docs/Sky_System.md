@@ -7,17 +7,17 @@ NeuraLink features a fully procedural, physically-inspired sky rendered entirely
 ## Gallery
 
 <p align="center">
-  <img src="./Environments/sunrise.jpeg" alt="Sunrise sky" width="280" style="margin:6px;" />
-  <img src="./Environments/early-morning.jpeg" alt="Early morning sky" width="280" style="margin:6px;" />
-  <img src="./Environments/morning.jpeg" alt="Morning sky" width="280" style="margin:6px;" />
-  <img src="./Environments/afternoon-sun.jpeg" alt="Afternoon sun sky" width="280" style="margin:6px;" />
-  <img src="./Environments/evening-sun-1.jpeg" alt="Evening sky (phase 1)" width="280" style="margin:6px;" />
-  <img src="./Environments/evening-sun-2.jpeg" alt="Evening sky (phase 2)" width="280" style="margin:6px;" />
+  <img src="./Environments/sunrise.png" alt="Sunrise sky" width="280" style="margin:6px;" />
+  <img src="./Environments/early-morning.png" alt="Early morning sky" width="280" style="margin:6px;" />
+  <img src="./Environments/morning.png" alt="Morning sky" width="280" style="margin:6px;" />
+  <img src="./Environments/afternoon-sun.png" alt="Afternoon sun sky" width="280" style="margin:6px;" />
+  <img src="./Environments/evening-sun-1.png" alt="Evening sky (phase 1)" width="280" style="margin:6px;" />
+  <img src="./Environments/evening-sun-2.png" alt="Evening sky (phase 2)" width="280" style="margin:6px;" />
 </p>
 <p align="center">
-  <img src="./Environments/sunset.jpeg" alt="Sunset sky" width="280" style="margin:6px;" />
-  <img src="./Environments/early-night.jpeg" alt="Early night sky" width="280" style="margin:6px;" />
-  <img src="./Environments/night.jpeg" alt="Night sky" width="280" style="margin:6px;" />
+  <img src="./Environments/sunset.png" alt="Sunset sky" width="280" style="margin:6px;" />
+  <img src="./Environments/early-night.png" alt="Early night sky" width="280" style="margin:6px;" />
+  <img src="./Environments/night.png" alt="Night sky" width="280" style="margin:6px;" />
 </p>
 
 *From left to right: sunrise · early morning · afternoon · evening (phase 1) · evening (phase 2) · sunset · early night · night*

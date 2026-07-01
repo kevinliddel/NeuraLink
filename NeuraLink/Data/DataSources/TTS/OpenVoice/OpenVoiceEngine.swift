@@ -10,7 +10,7 @@
 //  (22.05 kHz mono float) -> AVAudioPCMBuffer -> onBufferReady. Unlike
 //  SynapLink's VoiceCloner, this engine does NOT own an AVAudioEngine: it
 //  pushes buffers through `onBufferReady` and LocalLLMManager+TTS schedules
-//  playback (matching VoiceVox/Kokoro).
+//  playback (matching VoiceVox).
 //
 //  Ported from SynapLink's VoiceCloner (synth / chunkize / trimSilence).
 //
@@ -130,7 +130,7 @@ final class OpenVoiceEngine: NSObject, @unchecked Sendable, TTSEngineProtocol {
 
     func stop() {
         // Synthesis runs synchronously on `queue`; cancellation/playback is
-        // owned by LocalLLMManager's audio player node (same as Kokoro).
+        // owned by LocalLLMManager's audio player node (same as VoiceVox).
     }
 
     // MARK: - TTSEngineProtocol.speak
