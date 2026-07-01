@@ -40,10 +40,14 @@ struct CityMeshGroup {
     let indexBuffer: MTLBuffer
     let indexCount: Int
     let indexType: MTLIndexType
-    let texture: MTLTexture?
+    let texture: MTLTexture?  // base colour / diffuse
+    let normalTexture: MTLTexture?
+    let mrTexture: MTLTexture?  // metallic-roughness: g = roughness, b = metallic
+    let emissiveTexture: MTLTexture?
     let baseColorFactor: SIMD4<Float>
     let emissivePacked: SIMD4<Float>  // xyz = emissiveFactor, w = alphaCutoff
-    let materialParams: SIMD4<Float>  // x = metallic, y = roughness
+    let materialParams: SIMD4<Float>  // x = metallic, y = roughness, z = normalScale
+    let texFlags: SIMD4<Float>  // x = hasNormal, y = hasMR, z = hasEmissive
     let transform: simd_float4x4
     let isBlend: Bool
 }
@@ -69,15 +73,34 @@ final class EnvironmentRenderer: @unchecked Sendable {
     var isReady = false
     let instanceConfig: InstanceConfig
 
+    /// When set, the loaded GLB is uniformly scaled so its larger horizontal
+    /// (x/z) extent equals this many world units — used to normalize models authored in the wrong units.
+    /// `nil` keeps the model's native size at `instanceConfig.scale`.
+    let autoFitFootprint: Float?
+
+    /// False for GLBs whose textures are plain PBR albedo (apartment) — the shader then applies runtime diffuse lighting.
+    /// True for GLBs with lighting baked into their textures (city, campus), which the shader passes through almost directly.
+    let bakedLighting: Bool
+
+    /// Uniform scale actually applied at load (auto-fit or `instanceConfig.scale`).
+    /// Used to scale the distance-haze range so a scaled-up env isn't hazed out.
+    /// Set by `load(url:)` in the +Load extension, so not `private(set)`.
+    var appliedScale: Float = 1
+
     /// True once the GLB has finished loading. Used by VRMRenderer to suppress
     /// terrain rendering while the environment is active.
     var isLoaded: Bool { isReady }
 
     init(
-        device: MTLDevice, instanceConfig: InstanceConfig = (x: 0, y: 0, z: 0, rotY: 0, scale: 1.0)
+        device: MTLDevice,
+        instanceConfig: InstanceConfig = (x: 0, y: 0, z: 0, rotY: 0, scale: 1.0),
+        autoFitFootprint: Float? = nil,
+        bakedLighting: Bool = true
     ) {
         self.device = device
         self.instanceConfig = instanceConfig
+        self.autoFitFootprint = autoFitFootprint
+        self.bakedLighting = bakedLighting
     }
 
     // MARK: - Shadow pass
@@ -147,7 +170,11 @@ final class EnvironmentRenderer: @unchecked Sendable {
             viewProjection: viewProjection,
             lightViewProjection: lightViewProjection,
             sunDirection: SIMD4<Float>(sunDirection.x, sunDirection.y, sunDirection.z, sunHeight),
-            cityParams: SIMD4<Float>(shadowSoft, 0, 0, 0),
+            // x = shadowSoft, y/z = distance-haze start/end (scaled with the
+            // model so a large auto-fit env isn't hazed out), w = lighting mode
+            // (0 = baked passthrough, 1 = runtime-lit albedo).
+            cityParams: SIMD4<Float>(
+                shadowSoft, 80 * appliedScale, 160 * appliedScale, bakedLighting ? 0 : 1),
             cameraPosition: SIMD4<Float>(cameraPosition.x, cameraPosition.y, cameraPosition.z, 0),
             vrmLightViewProjection: vrmLightViewProjection
         )
@@ -167,13 +194,18 @@ final class EnvironmentRenderer: @unchecked Sendable {
             var baseColor = group.baseColorFactor
             var emissivePacked = group.emissivePacked
             var matParams = group.materialParams
+            var texFlags = group.texFlags
             encoder.setVertexBuffer(group.vertexBuffer, offset: 0, index: 0)
             encoder.setVertexBytes(&transform, length: MemoryLayout<simd_float4x4>.stride, index: 2)
             encoder.setFragmentBytes(&baseColor, length: MemoryLayout<SIMD4<Float>>.size, index: 2)
             encoder.setFragmentBytes(
                 &emissivePacked, length: MemoryLayout<SIMD4<Float>>.size, index: 3)
             encoder.setFragmentBytes(&matParams, length: MemoryLayout<SIMD4<Float>>.size, index: 4)
+            encoder.setFragmentBytes(&texFlags, length: MemoryLayout<SIMD4<Float>>.size, index: 5)
             encoder.setFragmentTexture(group.texture ?? fallbackTexture, index: 0)
+            encoder.setFragmentTexture(group.normalTexture ?? fallbackTexture, index: 3)
+            encoder.setFragmentTexture(group.mrTexture ?? fallbackTexture, index: 4)
+            encoder.setFragmentTexture(group.emissiveTexture ?? fallbackTexture, index: 5)
             encoder.drawIndexedPrimitives(
                 type: .triangle, indexCount: group.indexCount,
                 indexType: group.indexType, indexBuffer: group.indexBuffer,

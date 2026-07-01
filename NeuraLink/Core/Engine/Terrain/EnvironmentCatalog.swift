@@ -20,6 +20,12 @@ struct EnvironmentOption: Identifiable, Hashable {
     let previewImage: String
     /// World placement applied when this environment's GLB is rendered.
     let instanceConfig: EnvironmentRenderer.InstanceConfig
+    /// Optional uniform auto-fit target (see `EnvironmentRenderer.autoFitFootprint`).
+    /// `nil` keeps the model's native size.
+    let autoFitFootprint: Float?
+    /// See `EnvironmentRenderer.bakedLighting`. true = textures already lit
+    /// (city, campus); false = plain PBR albedo needing runtime lighting.
+    let bakedLighting: Bool
 
     static func == (lhs: EnvironmentOption, rhs: EnvironmentOption) -> Bool { lhs.id == rhs.id }
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
@@ -32,15 +38,22 @@ enum EnvironmentCatalog {
         (x: 0, y: -0.02, z: 0, rotY: 0, scale: 1.0)
 
     /// Every selectable environment, in picker order.
+    /// It auto-fits to a ~120-unit footprint
+    /// (recentered on the origin); the others render at their native size. Tune
+    /// the footprint here if needed — the loaded extent + scale are logged.
     static let all: [EnvironmentOption] = [
-        EnvironmentOption(id: "city", displayName: "City",
-                          previewImage: "city", instanceConfig: defaultInstance),
-        EnvironmentOption(id: "campus", displayName: "Campus",
-                          previewImage: "campus", instanceConfig: defaultInstance),
-        EnvironmentOption(id: "apartment", displayName: "Apartment",
-                          previewImage: "apartment", instanceConfig: defaultInstance),
-        EnvironmentOption(id: "ruined_city", displayName: "Ruined City",
-                          previewImage: "ruined_city", instanceConfig: defaultInstance)
+        EnvironmentOption(
+            id: "city", displayName: "City",
+            previewImage: "city", instanceConfig: defaultInstance,
+            autoFitFootprint: nil, bakedLighting: true),
+        EnvironmentOption(
+            id: "campus", displayName: "Campus",
+            previewImage: "campus", instanceConfig: defaultInstance,
+            autoFitFootprint: nil, bakedLighting: true),
+        EnvironmentOption(
+            id: "apartment", displayName: "Apartment",
+            previewImage: "apartment", instanceConfig: defaultInstance,
+            autoFitFootprint: nil, bakedLighting: false)
     ]
 
     /// The option for an id, falling back to the first (default) environment so a

@@ -88,6 +88,48 @@ static float citySampleShadow(
     return s / 9.0f;
 }
 
+// MARK: - PBR helpers (metallic-roughness Cook-Torrance)
+
+// Tangent-space normal perturbation using a cotangent frame reconstructed from
+// screen-space derivatives — avoids needing per-vertex tangents.
+static float3 pbrPerturbNormal(float3 N, float3 worldPos, float2 uv, float3 mapN) {
+    float3 dp1  = dfdx(worldPos);
+    float3 dp2  = dfdy(worldPos);
+    float2 duv1 = dfdx(uv);
+    float2 duv2 = dfdy(uv);
+    float3 dp2perp = cross(dp2, N);
+    float3 dp1perp = cross(N, dp1);
+    float3 T = dp2perp * duv1.x + dp1perp * duv2.x;
+    float3 B = dp2perp * duv1.y + dp1perp * duv2.y;
+    float  invmax = rsqrt(max(dot(T, T), dot(B, B)));
+    float3x3 TBN = float3x3(T * invmax, B * invmax, N);
+    return normalize(TBN * mapN);
+}
+
+static float pbrDistributionGGX(float NdotH, float rough) {
+    float a  = rough * rough;
+    float a2 = a * a;
+    float d  = NdotH * NdotH * (a2 - 1.0f) + 1.0f;
+    return a2 / max(3.14159265f * d * d, 1e-5f);
+}
+
+static float pbrGeometrySmith(float NdotV, float NdotL, float rough) {
+    float k  = (rough + 1.0f);
+          k  = k * k / 8.0f;
+    float gv = NdotV / (NdotV * (1.0f - k) + k);
+    float gl = NdotL / (NdotL * (1.0f - k) + k);
+    return gv * gl;
+}
+
+static float3 pbrFresnel(float cosT, float3 F0) {
+    return F0 + (1.0f - F0) * pow(saturate(1.0f - cosT), 5.0f);
+}
+
+static float3 pbrFresnelRough(float cosT, float3 F0, float rough) {
+    float3 Fr = max(float3(1.0f - rough), F0);
+    return F0 + (Fr - F0) * pow(saturate(1.0f - cosT), 5.0f);
+}
+
 // MARK: - Fragment
 
 fragment float4 city_fragment(
@@ -96,11 +138,16 @@ fragment float4 city_fragment(
     constant float4           &baseColorFactor [[buffer(2)]],
     // xyz = emissiveFactor (capped in shader), w = alphaCutoff
     constant float4           &emissivePacked  [[buffer(3)]],
-    // x = metallicFactor, y = roughnessFactor
+    // x = metallic, y = roughness, z = normalScale
     constant float4           &materialParams  [[buffer(4)]],
+    // x = hasNormal, y = hasMR (ORM), z = hasEmissive — PBR path only
+    constant float4           &texFlags        [[buffer(5)]],
     texture2d<float>           albedo          [[texture(0)]],
     texture2d<float>           shadowMap       [[texture(1)]],  // wide city shadow
     texture2d<float>           vrmShadowMap    [[texture(2)]],  // tight VRM shadow
+    texture2d<float>           normalMap       [[texture(3)]],
+    texture2d<float>           mrMap           [[texture(4)]],  // MR: g=roughness b=metallic
+    texture2d<float>           emissiveMap     [[texture(5)]],
     sampler                    shadowSmp       [[sampler(0)]]
 ) {
     constexpr sampler smp(filter::linear, mip_filter::linear,
@@ -110,12 +157,30 @@ fragment float4 city_fragment(
     float4 color = albedo.sample(smp, in.texcoord) * baseColorFactor * in.vertexColor;
     if (color.a < emissivePacked.w) discard_fragment();
 
-    float3 N         = normalize(in.normal);
+    bool   pbr       = u.cityParams.w > 0.5f;
     float3 sunDir    = u.sunDirection.xyz;
     float  sunH      = u.sunDirection.w;
     float  sunStr    = saturate(sunH + 0.30f);
     float  metallic  = materialParams.x;
     float  roughness = max(materialParams.y, 0.04f);
+
+    // Geometric normal, perturbed by a tangent-space normal map on the PBR path.
+    float3 N = normalize(in.normal);
+    if (pbr && texFlags.x > 0.5f) {
+        float3 mapN = normalMap.sample(smp, in.texcoord).xyz * 2.0f - 1.0f;
+        mapN.xy *= materialParams.z;
+        N = pbrPerturbNormal(N, in.worldPos, in.texcoord, mapN);
+    }
+
+    // Metallic/roughness from the MR texture where present (glTF: G=roughness,
+    // B=metallic; R is unused). AO stays 1 — occlusion is a separate map we
+    // don't sample.
+    float ao = 1.0f;
+    if (pbr && texFlags.y > 0.5f) {
+        float2 mr = mrMap.sample(smp, in.texcoord).gb;
+        roughness = max(mr.x * materialParams.y, 0.04f);
+        metallic  = mr.y * materialParams.x;
+    }
 
     float NdotL = max(dot(N, sunDir), 0.0f);
     float cityShadow = (u.cityParams.x > 0.0f)
@@ -151,51 +216,83 @@ fragment float4 city_fragment(
     float3 cityArtificial = float3(0.10f, 0.06f, 0.02f) * (1.0f - dayFactor) * (1.0f - hemi);
     ambient += cityArtificial;
 
-    float  dirStr    = 0.20f * NdotL * sunStr;
-    float  shadowF   = 1.0f - shadow * sunStr * 0.30f; // stronger contrast in daylight
-    float  diffScale = 1.0f - metallic * 0.8f;
-    float3 lit = color.rgb * (ambient + dirStr) * shadowF * diffScale;
-
-    // View direction — used for specular and glass.
     float3 viewDir = normalize(u.cameraPosition.xyz - in.worldPos);
+    float3 lit;
 
-    // Unified Blinn-Phong specular — metallic AND dielectric surfaces.
-    // Metallic  → strong albedo-tinted highlight, scales with (1-roughness).
-    // Dielectric → subtle neutral highlight, F0≈0.04, scales with (1-roughness)².
-    // e.g. CityGenbasic_metal.001 (M:0, R:0.26) and CityGenroof (M:0, R:0.50)
-    //      both pick up a small sheen; fully rough surfaces (R:1.0) get nothing.
-    if (sunStr > 0.0f) {
-        float3 halfVec   = normalize(sunDir + viewDir);
-        float  NdotH     = max(dot(N, halfVec), 0.0f);
-        float  shininess = 2.0f / (roughness * roughness + 0.001f);
-        float  specPow   = pow(NdotH, clamp(shininess, 2.0f, 2048.0f));
-        float  litMask   = sunStr * (1.0f - shadow);
+    if (pbr) {
+        // ---- Physically-based metallic-roughness + analytic sky IBL ----
+        float3 V = viewDir;
+        float3 H = normalize(V + sunDir);
+        float  NdotV = max(dot(N, V), 1e-3f);
+        float  NdotH = max(dot(N, H), 0.0f);
+        float  VdotH = max(dot(V, H), 0.0f);
 
-        float  metStr  = metallic * (1.0f - roughness) * 0.40f * litMask;
-        float3 metSpec = mix(float3(0.04f), color.rgb, metallic) * specPow * metStr;
+        float3 F0 = mix(float3(0.04f), color.rgb, metallic);
 
-        float  dielStr = (1.0f - metallic) * pow(1.0f - roughness, 2.0f) * 0.10f * litMask;
-        float3 dielSpec = float3(specPow * dielStr);
+        // Direct sun: Cook-Torrance specular + Lambert diffuse.
+        float  D = pbrDistributionGGX(NdotH, roughness);
+        float  G = pbrGeometrySmith(NdotV, NdotL, roughness);
+        float3 F = pbrFresnel(VdotH, F0);
+        float3 spec = (D * G * F) / max(4.0f * NdotV * NdotL, 1e-3f);
+        float3 diff = (1.0f - F) * (1.0f - metallic) * color.rgb * (1.0f / 3.14159265f);
+        float3 sunColor = mix(float3(1.00f, 0.98f, 0.95f),
+                              float3(1.30f, 0.90f, 0.62f), sunsetFactor) * (sunStr * 3.3f);
+        float  sunShadow = 1.0f - shadow * (0.35f + 0.45f * sunStr);
+        float3 direct = (diff + spec) * sunColor * NdotL * sunShadow;
 
-        lit += metSpec + dielSpec;
+        // Analytic IBL from the procedural sky: hemisphere irradiance for the
+        // diffuse term, a direction-dependent (roughness-blurred) sky colour for
+        // the specular term.
+        float3 diffuseIBL = ambient * color.rgb * (1.0f - metallic);
+        float3 R = reflect(-V, N);
+        float3 envColor = mix(gndAmb, skyAmb, saturate(R.y * 0.5f + 0.5f));
+               envColor = mix(envColor, ambient, roughness);
+        float3 specIBL = envColor * pbrFresnelRough(NdotV, F0, roughness);
+
+        lit = (diffuseIBL + specIBL) * ao + direct;
+    } else {
+        // ---- Baked-lighting passthrough (city / campus), unchanged ----
+        float  shadowF   = 1.0f - shadow * sunStr * 0.30f;
+        float  diffScale = 1.0f - metallic * 0.8f;
+        lit = color.rgb * (ambient + 0.20f * NdotL * sunStr) * shadowF * diffScale;
+
+        // Unified Blinn-Phong specular for metallic + dielectric surfaces.
+        if (sunStr > 0.0f) {
+            float3 halfVec   = normalize(sunDir + viewDir);
+            float  NdotH     = max(dot(N, halfVec), 0.0f);
+            float  shininess = 2.0f / (roughness * roughness + 0.001f);
+            float  specPow   = pow(NdotH, clamp(shininess, 2.0f, 2048.0f));
+            float  litMask   = sunStr * (1.0f - shadow);
+            float  metStr    = metallic * (1.0f - roughness) * 0.40f * litMask;
+            float3 metSpec   = mix(float3(0.04f), color.rgb, metallic) * specPow * metStr;
+            float  dielStr   = (1.0f - metallic) * pow(1.0f - roughness, 2.0f) * 0.10f * litMask;
+            float3 dielSpec  = float3(specPow * dielStr);
+            lit += metSpec + dielSpec;
+        }
+
+        // Glass: very smooth + semi-transparent → Fresnel sky-reflection tint.
+        if (roughness < 0.05f && color.a < 0.9f) {
+            float  cosTheta = saturate(dot(N, viewDir));
+            float  fresnel  = pow(1.0f - cosTheta, 5.0f);
+            float3 reflTint = float3(0.78f, 0.88f, 1.00f);
+            lit     = mix(lit, reflTint, 0.25f + fresnel * 0.55f);
+            color.a = saturate(color.a + fresnel * 0.50f);
+        }
     }
 
-    // Glass: very smooth + semi-transparent → add Fresnel sky-reflection tint.
-    // Matches CityGenGlass.001 (R=0, alpha=0.25, no texture).
-    if (roughness < 0.05f && color.a < 0.9f) {
-        float  cosTheta = saturate(dot(N, viewDir));
-        float  fresnel  = pow(1.0f - cosTheta, 5.0f);
-        float3 reflTint = float3(0.78f, 0.88f, 1.00f);  // sky reflection tint
-        lit     = mix(lit, reflTint, 0.25f + fresnel * 0.55f);
-        color.a = saturate(color.a + fresnel * 0.50f);
+    // Emissive: texture × factor on the PBR path; capped factor on the baked path.
+    if (pbr) {
+        float3 em = emissivePacked.xyz;
+        if (texFlags.z > 0.5f) em *= emissiveMap.sample(smp, in.texcoord).rgb;
+        lit += em;
+    } else {
+        lit += min(emissivePacked.xyz, float3(0.35f));
     }
 
-    // Emissive
-    lit += min(emissivePacked.xyz, float3(0.35f));
-
-    // Distance haze — city scale (80–160 m), tinted by time of day
+    // Distance haze — range (cityParams.y→z) scales with the env so a large
+    // auto-fit model isn't hazed out; tinted by time of day.
     float  dist     = length(in.worldPos.xz);
-    float  haze     = smoothstep(80.0f, 160.0f, dist);
+    float  haze     = smoothstep(u.cityParams.y, u.cityParams.z, dist);
     float3 dayHaze  = float3(0.70f, 0.76f, 0.88f);  // blue-gray midday
     float3 sunHaze  = float3(0.88f, 0.70f, 0.58f);  // orange sunset haze
     float3 nightHaze = float3(0.05f, 0.06f, 0.12f); // near-black night

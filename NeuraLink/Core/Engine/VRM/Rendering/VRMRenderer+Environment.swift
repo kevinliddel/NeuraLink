@@ -4,8 +4,8 @@
 //
 //  Created by Dedicatus on 08/05/2026.
 //
-//  Drives the single active environment GLB (city / campus / apartment /
-//  ruined_city). Only the selected environment is loaded; changing the
+//  Drives the single active environment GLB (city / campus / apartment).
+// Only the selected environment is loaded; changing the
 //  selection lazily loads the new GLB — terrain shows briefly until it's in.
 //
 
@@ -29,7 +29,12 @@ extension VRMRenderer {
         guard loadedEnvironmentName != name else { return }
 
         let option = EnvironmentCatalog.option(for: name)
-        let renderer = EnvironmentRenderer(device: device, instanceConfig: option.instanceConfig)
+        let renderer = EnvironmentRenderer(
+            device: device,
+            instanceConfig: option.instanceConfig,
+            autoFitFootprint: option.autoFitFootprint,
+            bakedLighting: option.bakedLighting
+        )
         renderer.setup(config: config)
         environmentRenderer = renderer
         loadedEnvironmentName = name
@@ -52,7 +57,8 @@ extension VRMRenderer {
     func drawEnvironmentShadow(commandBuffer: MTLCommandBuffer) {
         loadEnvironment(named: UserSettings.shared.selectedEnvironment)
         guard let wideShadowMap = terrainRenderer?.exposedWideShadowMap else { return }
-        let wideLightVP = terrainRenderer?.exposedWideLightViewProjection ?? matrix_identity_float4x4
+        let wideLightVP =
+            terrainRenderer?.exposedWideLightViewProjection ?? matrix_identity_float4x4
         environmentRenderer?.drawShadow(
             commandBuffer: commandBuffer,
             shadowMap: wideShadowMap,
@@ -66,23 +72,24 @@ extension VRMRenderer {
     func drawEnvironment(encoder: MTLRenderCommandEncoder) {
         loadEnvironment(named: UserSettings.shared.selectedEnvironment)
         guard let wideShadowMap = terrainRenderer?.exposedWideShadowMap,
-              let sampler       = terrainRenderer?.exposedShadowSampler
+            let sampler = terrainRenderer?.exposedShadowSampler
         else { return }
 
         // Tight shadow map contains the VRM — used so the character casts a shadow
         // on the environment ground. Falls back to the wide map when unavailable.
-        let vrmShadowMap  = terrainRenderer?.exposedShadowMap    ?? wideShadowMap
-        let vrmLightVP    = terrainRenderer?.exposedLightViewProjection ?? matrix_identity_float4x4
+        let vrmShadowMap = terrainRenderer?.exposedShadowMap ?? wideShadowMap
+        let vrmLightVP = terrainRenderer?.exposedLightViewProjection ?? matrix_identity_float4x4
 
-        let vp          = projectionMatrix * viewMatrix
-        let wideLightVP = terrainRenderer?.exposedWideLightViewProjection ?? matrix_identity_float4x4
-        let env         = skyRenderer?.currentEnvironment
-        let rawSun      = env?.sunDirection ?? SIMD3<Float>(0, 1, 0)
-        let sunHeight   = rawSun.y
+        let vp = projectionMatrix * viewMatrix
+        let wideLightVP =
+            terrainRenderer?.exposedWideLightViewProjection ?? matrix_identity_float4x4
+        let env = skyRenderer?.currentEnvironment
+        let rawSun = env?.sunDirection ?? SIMD3<Float>(0, 1, 0)
+        let sunHeight = rawSun.y
         let effectiveSun: SIMD3<Float> = rawSun.y >= 0 ? rawSun : rawSun * -1.0
         let shadowSoft: Float = rawSun.y >= 0 ? 2.5 : 1.5
 
-        let invView   = viewMatrix.inverse
+        let invView = viewMatrix.inverse
         let cameraPos = SIMD3<Float>(invView[3][0], invView[3][1], invView[3][2])
 
         environmentRenderer?.draw(
