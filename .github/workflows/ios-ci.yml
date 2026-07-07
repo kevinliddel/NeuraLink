@@ -165,7 +165,7 @@ jobs:
           xcodebuild build-for-testing \
             -project NeuraLink.xcodeproj \
             -scheme NeuraLink \
-            -destination 'platform=iOS Simulator,name=iPhone 16e' \
+            -destination 'platform=iOS Simulator,name=iPhone 17' \
             -derivedDataPath ./build-ci \
             CODE_SIGNING_ALLOWED=NO
 
@@ -173,16 +173,16 @@ jobs:
         run: |
           # Ensure a clean slate
           xcrun simctl shutdown all || true
-          xcrun simctl erase "iPhone 16e" || true
-          xcrun simctl boot "iPhone 16e" || true
-          xcrun simctl bootstatus "iPhone 16e" -b
+          xcrun simctl erase "iPhone 17" || true
+          xcrun simctl boot "iPhone 17" || true
+          xcrun simctl bootstatus "iPhone 17" -b
 
       - name: Test Without Building
         run: |
           xcodebuild test-without-building \
             -project NeuraLink.xcodeproj \
             -scheme NeuraLink \
-            -destination 'platform=iOS Simulator,name=iPhone 16e' \
+            -destination 'platform=iOS Simulator,name=iPhone 17' \
             -derivedDataPath ./build-ci \
             -parallel-testing-enabled NO \
             -retry-tests-on-failure \
