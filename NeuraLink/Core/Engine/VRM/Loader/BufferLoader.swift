@@ -52,7 +52,7 @@ public class BufferLoader: @unchecked Sendable {
         guard let bufferViewIndex = accessor.bufferView else {
             // Sparse accessor or zero-filled
             return Array(
-                repeating: 0 as! T, count: accessor.count * componentCount(for: accessor.type))
+                repeating: 0, count: accessor.count * componentCount(for: accessor.type))
         }
 
         let (data, bufferView) = try loadBufferView(bufferViewIndex)

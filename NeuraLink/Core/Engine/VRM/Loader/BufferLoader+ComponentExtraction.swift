@@ -16,46 +16,46 @@ extension BufferLoader {
         // CRITICAL: Check that we have enough bytes for the entire type, not just the offset
         switch componentType {
         case 5120:  // BYTE (1 byte)
-            guard offset + MemoryLayout<Int8>.size <= data.count else { return 0 as! T }
+            guard offset + MemoryLayout<Int8>.size <= data.count else { return 0 }
             let value = data.withUnsafeBytes {
                 $0.loadUnaligned(fromByteOffset: offset, as: Int8.self)
             }
-            return T(exactly: value) ?? (0 as! T)
+            return T(exactly: value) ?? 0
         case 5121:  // UNSIGNED_BYTE (1 byte)
-            guard offset + MemoryLayout<UInt8>.size <= data.count else { return 0 as! T }
+            guard offset + MemoryLayout<UInt8>.size <= data.count else { return 0 }
             let value = data.withUnsafeBytes {
                 $0.loadUnaligned(fromByteOffset: offset, as: UInt8.self)
             }
-            return T(exactly: value) ?? (0 as! T)
+            return T(exactly: value) ?? 0
         case 5122:  // SHORT (2 bytes)
-            guard offset + MemoryLayout<Int16>.size <= data.count else { return 0 as! T }
+            guard offset + MemoryLayout<Int16>.size <= data.count else { return 0 }
             let value = data.withUnsafeBytes {
                 $0.loadUnaligned(fromByteOffset: offset, as: Int16.self)
             }
-            return T(exactly: value) ?? (0 as! T)
+            return T(exactly: value) ?? 0
         case 5123:  // UNSIGNED_SHORT (2 bytes)
-            guard offset + MemoryLayout<UInt16>.size <= data.count else { return 0 as! T }
+            guard offset + MemoryLayout<UInt16>.size <= data.count else { return 0 }
             let value = data.withUnsafeBytes {
                 $0.loadUnaligned(fromByteOffset: offset, as: UInt16.self)
             }
-            return T(exactly: value) ?? (0 as! T)
+            return T(exactly: value) ?? 0
         case 5125:  // UNSIGNED_INT (4 bytes)
-            guard offset + MemoryLayout<UInt32>.size <= data.count else { return 0 as! T }
+            guard offset + MemoryLayout<UInt32>.size <= data.count else { return 0 }
             let value = data.withUnsafeBytes {
                 $0.loadUnaligned(fromByteOffset: offset, as: UInt32.self)
             }
-            return T(exactly: value) ?? (0 as! T)
+            return T(exactly: value) ?? 0
         case 5126:  // FLOAT (4 bytes)
-            guard offset + MemoryLayout<Float>.size <= data.count else { return 0 as! T }
+            guard offset + MemoryLayout<Float>.size <= data.count else { return 0 }
             let value = data.withUnsafeBytes {
                 $0.loadUnaligned(fromByteOffset: offset, as: Float.self)
             }
-            if T.self == Float.self {
-                return value as! T
+            if let result = value as? T {
+                return result
             }
-            return T(exactly: Int(value)) ?? (0 as! T)
+            return T(exactly: Int(value)) ?? 0
         default:
-            return 0 as! T
+            return 0
         }
     }
 

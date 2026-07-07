@@ -179,4 +179,45 @@ struct NeuraLinkTests {
         let clip = try VRMAnimationLoader.loadVRMA(from: vrmaURL, model: model)
         print("DIAGNOSTIC: Clip loaded successfully, duration=\(clip.duration)")
     }
+
+    @Test("Parser Robustness - Corrupt/Empty Data")
+    func testParserRobustnessWithCorruptData() {
+        let parser = GLTFParser()
+        let emptyData = Data()
+        
+        do {
+            _ = try parser.parse(data: emptyData)
+            Issue.record("Expected parser to throw an error for empty data")
+        } catch let error as VRMError {
+            switch error {
+            case .invalidGLBFormat(let reason, _):
+                #expect(reason.contains("too small"))
+            default:
+                Issue.record("Unexpected error case: \(error)")
+            }
+        } catch {
+            Issue.record("Unexpected error type: \(error)")
+        }
+    }
+
+    @Test("Parser Robustness - Truncated Data Header")
+    func testParserRobustnessWithTruncatedData() {
+        let parser = GLTFParser()
+        // Truncated header (only magic, missing version and length)
+        let truncatedHeader = Data([0x67, 0x6C, 0x54, 0x46]) // "glTF"
+        
+        do {
+            _ = try parser.parse(data: truncatedHeader)
+            Issue.record("Expected parser to throw an error for truncated header")
+        } catch let error as VRMError {
+            switch error {
+            case .invalidGLBFormat(let reason, _):
+                #expect(reason.contains("too small"))
+            default:
+                Issue.record("Unexpected error case: \(error)")
+            }
+        } catch {
+            Issue.record("Unexpected error type: \(error)")
+        }
+    }
 }

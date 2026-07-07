@@ -34,6 +34,7 @@ public struct VRMSceneView: View {
     // On app launch we never auto-connect; subsequent model switches reconnect
     // using whatever is currently enabled in settings.
     @State private var isFirstLoad = true
+    @State private var toastMessage: String? = nil
 
     public init(modelURL: URL?) {
         self.modelURL = modelURL
@@ -51,6 +52,40 @@ public struct VRMSceneView: View {
                 }
             }
             primaryContent
+
+            if let toastMessage {
+                VStack {
+                    HStack(spacing: 10) {
+                        Image(systemName: "info.circle.fill")
+                            .foregroundColor(.yellow)
+                        Text(toastMessage)
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.white)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(Color.black.opacity(0.85))
+                    .cornerRadius(8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                    )
+                    .shadow(color: Color.black.opacity(0.3), radius: 10, y: 5)
+                    .padding(.top, 20)
+                    
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .onAppear {
+                    Task {
+                        try? await Task.sleep(nanoseconds: 5_000_000_000) // 5 seconds
+                        withAnimation(.easeInOut(duration: 0.35)) {
+                            self.toastMessage = nil
+                        }
+                    }
+                }
+            }
         }
         .task(id: modelURL) { await loadModel() }
         // Connect when the user explicitly enables a setting — not on launch.
@@ -166,8 +201,24 @@ public struct VRMSceneView: View {
             let model = try await VRMModel.load(from: url, device: device)
             state.display(model)
         } catch {
-            state.errorMessage = error.localizedDescription
-            EnvironmentLoadState.shared.forceReady()
+            nlLog("[VRMSceneView] Failed to load model from \(url.path): \(error.localizedDescription)", level: .error)
+            
+            if let defaultEntry = VRMModelRegistry.defaultModel, defaultEntry.url != url {
+                do {
+                    nlLog("[VRMSceneView] Falling back to default model '\(defaultEntry.name)'")
+                    guard let device = state.mtkView.device else { return }
+                    let model = try await VRMModel.load(from: defaultEntry.url, device: device)
+                    state.display(model)
+                    toastMessage = "Couldn't load that avatar — using the default"
+                } catch {
+                    nlLog("[VRMSceneView] Fallback model load failed: \(error.localizedDescription)", level: .error)
+                    state.errorMessage = "Failed to load model and default fallback failed: \(error.localizedDescription)"
+                    EnvironmentLoadState.shared.forceReady()
+                }
+            } else {
+                state.errorMessage = error.localizedDescription
+                EnvironmentLoadState.shared.forceReady()
+            }
         }
 
         // On the first load (app launch) never auto-connect — the user must
