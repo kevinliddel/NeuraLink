@@ -29,6 +29,7 @@
 // Created by Dedicatus on 29/05/2026.
 //
 
+import CryptoKit
 import Foundation
 
 actor RemoteAssetCache {
@@ -38,6 +39,8 @@ actor RemoteAssetCache {
         case assetNotFound
         case downloadFailed(Error)
         case httpStatus(Int)
+        case sizeMismatch(expected: Int64, actual: Int64)
+        case checksumMismatch(expected: String, actual: String)
     }
 
     private var resolved: [RemoteAssetRegistry: URL] = [:]
@@ -67,8 +70,18 @@ actor RemoteAssetCache {
         }
         if let onDisk = Self.cachedURL(for: asset),
             FileManager.default.fileExists(atPath: onDisk.path) {
-            resolved[asset] = onDisk
-            return onDisk
+            // Cheap size check (one stat) heals files truncated by pre-hardening
+            // downloads: purge and fall through to a fresh, verified download.
+            if let expected = asset.integrity?.size,
+                Self.fileSize(at: onDisk) != expected {
+                nlLog(
+                    "[RemoteAssetCache] Cached \(asset.pathInRepo) has wrong size — purging and re-downloading.",
+                    level: .warning)
+                try? FileManager.default.removeItem(at: onDisk)
+            } else {
+                resolved[asset] = onDisk
+                return onDisk
+            }
         }
         if let existing = inFlight[asset] {
             return try await existing.value
@@ -139,6 +152,11 @@ actor RemoteAssetCache {
     /// When `onProgress` is supplied, the download runs through a delegate-backed
     /// session that reports byte counts; otherwise it uses the lighter
     /// delegate-free `download(from:)`.
+    ///
+    /// Downloads land at a `.part` sibling first and are size- + SHA-256-verified
+    /// against the asset's pinned `integrity` before being renamed into place,
+    /// so a truncated or tampered fetch never enters the cache. A mismatch is
+    /// deleted and retried once, then surfaced as a `CacheError`.
     private static func download(
         asset: RemoteAssetRegistry,
         onProgress: (@Sendable (Int64, Int64) -> Void)?
@@ -158,11 +176,58 @@ actor RemoteAssetCache {
             throw CacheError.assetNotFound
         }
 
-        if let onProgress {
-            return try await downloadWithProgress(
-                from: remoteURL, to: target, onProgress: onProgress)
+        let integrity = asset.integrity
+        if integrity == nil {
+            nlLog(
+                "[RemoteAssetCache] No pinned integrity for \(asset.pathInRepo) — accepting download unverified.",
+                level: .warning)
         }
+        let partURL = target.appendingPathExtension("part")
 
+        for attempt in 0..<2 {
+            try? FileManager.default.removeItem(at: partURL)
+            do {
+                try await fetch(from: remoteURL, to: partURL, onProgress: onProgress)
+                try verify(fileAt: partURL, against: integrity)
+                if FileManager.default.fileExists(atPath: target.path) {
+                    try? FileManager.default.removeItem(at: target)
+                }
+                try FileManager.default.moveItem(at: partURL, to: target)
+                return target
+            } catch {
+                try? FileManager.default.removeItem(at: partURL)
+                // Only an integrity mismatch earns the single retry — it's the
+                // signature of a corrupt-in-transit fetch that a second attempt
+                // can plausibly fix. Transport/HTTP errors keep their original
+                // fail-fast behavior (callers own their own retry policy).
+                let isIntegrityFailure: Bool
+                switch error as? CacheError {
+                case .sizeMismatch, .checksumMismatch: isIntegrityFailure = true
+                default: isIntegrityFailure = false
+                }
+                guard isIntegrityFailure, attempt == 0 else { throw error }
+                nlLog(
+                    "[RemoteAssetCache] \(asset.pathInRepo) failed verification (\(error)) — retrying once.",
+                    level: .warning)
+            }
+        }
+        // Unreachable: the loop either returns or throws on the second pass.
+        throw CacheError.assetNotFound
+    }
+
+    /// Fetches `remoteURL` into `destination` (replacing it), via the
+    /// delegate-backed progress path or the plain one. Throws `CacheError`
+    /// on HTTP/transport failure.
+    private static func fetch(
+        from remoteURL: URL,
+        to destination: URL,
+        onProgress: (@Sendable (Int64, Int64) -> Void)?
+    ) async throws {
+        if let onProgress {
+            try await downloadWithProgress(
+                from: remoteURL, to: destination, onProgress: onProgress)
+            return
+        }
         do {
             let (downloadedTempURL, response) = try await URLSession.shared.download(
                 from: remoteURL)
@@ -171,11 +236,7 @@ actor RemoteAssetCache {
                 try? FileManager.default.removeItem(at: downloadedTempURL)
                 throw CacheError.httpStatus(http.statusCode)
             }
-            if FileManager.default.fileExists(atPath: target.path) {
-                try? FileManager.default.removeItem(at: target)
-            }
-            try FileManager.default.moveItem(at: downloadedTempURL, to: target)
-            return target
+            try FileManager.default.moveItem(at: downloadedTempURL, to: destination)
         } catch let err as CacheError {
             throw err
         } catch {
@@ -183,22 +244,69 @@ actor RemoteAssetCache {
         }
     }
 
+    // MARK: - Integrity verification
+
+    /// Verifies `url` against the pinned `integrity`: size first (one stat),
+    /// then a streaming SHA-256. No-op when `integrity` is nil. Internal (not
+    /// private) so tests can exercise it directly.
+    static func verify(
+        fileAt url: URL,
+        against integrity: RemoteAssetRegistry.AssetIntegrity?
+    ) throws {
+        guard let integrity else { return }
+        let actualSize = fileSize(at: url)
+        guard actualSize == integrity.size else {
+            throw CacheError.sizeMismatch(expected: integrity.size, actual: actualSize)
+        }
+        let actualHash = try sha256Hex(of: url)
+        guard actualHash == integrity.sha256 else {
+            throw CacheError.checksumMismatch(
+                expected: integrity.sha256, actual: actualHash)
+        }
+    }
+
+    /// On-disk size of `url`, `-1` when unreadable (never matches a pin).
+    static func fileSize(at url: URL) -> Int64 {
+        let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
+        return (attrs?[.size] as? NSNumber)?.int64Value ?? -1
+    }
+
+    /// Streaming SHA-256 (lowercase hex) — chunked reads keep peak memory flat
+    /// even for the ~170 MB ONNX models.
+    static func sha256Hex(of url: URL) throws -> String {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        var hasher = SHA256()
+        var done = false
+        while !done {
+            try autoreleasepool {
+                if let chunk = try handle.read(upToCount: 4 << 20), !chunk.isEmpty {
+                    hasher.update(data: chunk)
+                } else {
+                    done = true
+                }
+            }
+        }
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+
     /// Downloads with byte-progress via a dedicated delegate-backed session.
-    /// The delegate moves the temp file into place (it's deleted the moment its
-    /// callback returns) and resumes the continuation, so this bridges the
-    /// classic download-task API into async/await. Cancelling the awaiting task
-    /// cancels the underlying `URLSessionDownloadTask`.
+    /// The delegate moves the temp file to `destination` (it's deleted the
+    /// moment its callback returns) and resumes the continuation, so this
+    /// bridges the classic download-task API into async/await. Cancelling the
+    /// awaiting task cancels the underlying `URLSessionDownloadTask`.
     private static func downloadWithProgress(
         from remoteURL: URL,
-        to target: URL,
+        to destination: URL,
         onProgress: @escaping @Sendable (Int64, Int64) -> Void
-    ) async throws -> URL {
-        let delegate = DownloadProgressDelegate(target: target, onProgress: onProgress)
+    ) async throws {
+        let delegate = DownloadProgressDelegate(
+            destination: destination, onProgress: onProgress)
         let session = URLSession(
             configuration: .default, delegate: delegate, delegateQueue: nil)
         defer { session.finishTasksAndInvalidate() }
-        return try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { continuation in
+        _ = try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL, Error>) in
                 delegate.setContinuation(continuation)
                 let task = session.downloadTask(with: remoteURL)
                 delegate.attach(task)
@@ -213,13 +321,13 @@ actor RemoteAssetCache {
 // MARK: - Progress delegate
 
 /// Bridges a `URLSessionDownloadTask` into async/await while forwarding
-/// byte-progress. On completion it moves the temp file into `target` (the
+/// byte-progress. On completion it moves the temp file into `destination` (the
 /// system deletes it once `didFinishDownloadingTo` returns) and resumes the
-/// continuation exactly once. Progress is throttled to ~every 256 KB so a
-/// multi-hundred-MB fetch doesn't flood the main actor.
+/// continuation exactly once. Progress is throttled so a multi-hundred-MB
+/// fetch doesn't flood the main actor.
 private final class DownloadProgressDelegate: NSObject, URLSessionDownloadDelegate,
     @unchecked Sendable {
-    private let target: URL
+    private let destination: URL
     private let onProgress: @Sendable (Int64, Int64) -> Void
     private let lock = NSLock()
     private var lastReported: Int64 = 0
@@ -227,8 +335,8 @@ private final class DownloadProgressDelegate: NSObject, URLSessionDownloadDelega
     private var didResume = false
     private var task: URLSessionDownloadTask?
 
-    init(target: URL, onProgress: @escaping @Sendable (Int64, Int64) -> Void) {
-        self.target = target
+    init(destination: URL, onProgress: @escaping @Sendable (Int64, Int64) -> Void) {
+        self.destination = destination
         self.onProgress = onProgress
     }
 
@@ -294,11 +402,11 @@ private final class DownloadProgressDelegate: NSObject, URLSessionDownloadDelega
             return
         }
         do {
-            if FileManager.default.fileExists(atPath: target.path) {
-                try? FileManager.default.removeItem(at: target)
+            if FileManager.default.fileExists(atPath: destination.path) {
+                try? FileManager.default.removeItem(at: destination)
             }
-            try FileManager.default.moveItem(at: location, to: target)
-            resume(.success(target))
+            try FileManager.default.moveItem(at: location, to: destination)
+            resume(.success(destination))
         } catch {
             resume(.failure(RemoteAssetCache.CacheError.downloadFailed(error)))
         }
