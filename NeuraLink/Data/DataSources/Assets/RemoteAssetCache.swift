@@ -48,7 +48,16 @@ actor RemoteAssetCache {
     /// Resolves the on-disk URL for `asset`. Cheap when the bundle or the
     /// in-actor resolved cache satisfies the lookup; only the cold path
     /// touches the network.
-    func url(for asset: RemoteAssetRegistry) async throws -> URL {
+    ///
+    /// `onProgress` (optional) reports download progress as
+    /// `(bytesWritten, bytesExpected)` — `bytesExpected` is `-1` when the
+    /// server omits `Content-Length`. It fires only on the cold network path;
+    /// bundle / on-disk / in-flight-share hits never call it. Callers that
+    /// don't pass it keep the lighter, delegate-free download path.
+    func url(
+        for asset: RemoteAssetRegistry,
+        onProgress: (@Sendable (Int64, Int64) -> Void)? = nil
+    ) async throws -> URL {
         if let cached = resolved[asset] {
             return cached
         }
@@ -65,13 +74,22 @@ actor RemoteAssetCache {
             return try await existing.value
         }
         let task = Task<URL, Error> {
-            try await Self.download(asset: asset)
+            try await Self.download(asset: asset, onProgress: onProgress)
         }
         inFlight[asset] = task
         defer { inFlight[asset] = nil }
         let url = try await task.value
         resolved[asset] = url
         return url
+    }
+
+    /// Drops any cached/in-flight resolution for `asset` so the next `url(for:)`
+    /// re-downloads from scratch. Cancels a hung in-flight download — used by
+    /// the loading-screen "Retry" affordance when a first-launch fetch stalls.
+    func invalidate(_ asset: RemoteAssetRegistry) {
+        inFlight[asset]?.cancel()
+        inFlight[asset] = nil
+        resolved[asset] = nil
     }
 
     // MARK: - Path resolution
@@ -117,7 +135,14 @@ actor RemoteAssetCache {
     /// HTTPS — no auth, no token discovery, no HubApi caching layer.
     /// Resolves redirects automatically (URLSession default) so the CDN
     /// hop to xet-bridge is transparent.
-    private static func download(asset: RemoteAssetRegistry) async throws -> URL {
+    ///
+    /// When `onProgress` is supplied, the download runs through a delegate-backed
+    /// session that reports byte counts; otherwise it uses the lighter
+    /// delegate-free `download(from:)`.
+    private static func download(
+        asset: RemoteAssetRegistry,
+        onProgress: (@Sendable (Int64, Int64) -> Void)?
+    ) async throws -> URL {
         guard let target = cachedURL(for: asset) else {
             throw CacheError.assetNotFound
         }
@@ -131,6 +156,11 @@ actor RemoteAssetCache {
             "https://huggingface.co/datasets/\(RemoteAssetRegistry.repoID)/resolve/main/\(asset.pathInRepo)"
         guard let remoteURL = URL(string: urlString) else {
             throw CacheError.assetNotFound
+        }
+
+        if let onProgress {
+            return try await downloadWithProgress(
+                from: remoteURL, to: target, onProgress: onProgress)
         }
 
         do {
@@ -150,6 +180,139 @@ actor RemoteAssetCache {
             throw err
         } catch {
             throw CacheError.downloadFailed(error)
+        }
+    }
+
+    /// Downloads with byte-progress via a dedicated delegate-backed session.
+    /// The delegate moves the temp file into place (it's deleted the moment its
+    /// callback returns) and resumes the continuation, so this bridges the
+    /// classic download-task API into async/await. Cancelling the awaiting task
+    /// cancels the underlying `URLSessionDownloadTask`.
+    private static func downloadWithProgress(
+        from remoteURL: URL,
+        to target: URL,
+        onProgress: @escaping @Sendable (Int64, Int64) -> Void
+    ) async throws -> URL {
+        let delegate = DownloadProgressDelegate(target: target, onProgress: onProgress)
+        let session = URLSession(
+            configuration: .default, delegate: delegate, delegateQueue: nil)
+        defer { session.finishTasksAndInvalidate() }
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                delegate.setContinuation(continuation)
+                let task = session.downloadTask(with: remoteURL)
+                delegate.attach(task)
+                task.resume()
+            }
+        } onCancel: {
+            delegate.cancel()
+        }
+    }
+}
+
+// MARK: - Progress delegate
+
+/// Bridges a `URLSessionDownloadTask` into async/await while forwarding
+/// byte-progress. On completion it moves the temp file into `target` (the
+/// system deletes it once `didFinishDownloadingTo` returns) and resumes the
+/// continuation exactly once. Progress is throttled to ~every 256 KB so a
+/// multi-hundred-MB fetch doesn't flood the main actor.
+private final class DownloadProgressDelegate: NSObject, URLSessionDownloadDelegate,
+    @unchecked Sendable {
+    private let target: URL
+    private let onProgress: @Sendable (Int64, Int64) -> Void
+    private let lock = NSLock()
+    private var lastReported: Int64 = 0
+    private var continuation: CheckedContinuation<URL, Error>?
+    private var didResume = false
+    private var task: URLSessionDownloadTask?
+
+    init(target: URL, onProgress: @escaping @Sendable (Int64, Int64) -> Void) {
+        self.target = target
+        self.onProgress = onProgress
+    }
+
+    func setContinuation(_ continuation: CheckedContinuation<URL, Error>) {
+        lock.lock()
+        self.continuation = continuation
+        lock.unlock()
+    }
+
+    func attach(_ task: URLSessionDownloadTask) {
+        lock.lock()
+        self.task = task
+        lock.unlock()
+    }
+
+    func cancel() {
+        lock.lock()
+        let task = self.task
+        lock.unlock()
+        task?.cancel()
+    }
+
+    /// Resumes the continuation at most once (finish, HTTP error, or transport
+    /// error can all race).
+    private func resume(_ result: Result<URL, Error>) {
+        lock.lock()
+        guard !didResume, let continuation else { lock.unlock(); return }
+        didResume = true
+        self.continuation = nil
+        lock.unlock()
+        continuation.resume(with: result)
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        downloadTask: URLSessionDownloadTask,
+        didWriteData bytesWritten: Int64,
+        totalBytesWritten: Int64,
+        totalBytesExpectedToWrite: Int64
+    ) {
+        lock.lock()
+        let atEnd = totalBytesExpectedToWrite > 0
+            && totalBytesWritten >= totalBytesExpectedToWrite
+        // Report the first callback, then every ~64 KB, plus the final one. Small
+        // enough that a slow (but live) download still shows movement and keeps
+        // the stall detector fed; coarse enough not to flood the main actor.
+        let shouldReport = lastReported == 0
+            || totalBytesWritten - lastReported >= 65_536
+            || atEnd
+        if shouldReport { lastReported = totalBytesWritten }
+        lock.unlock()
+        if shouldReport { onProgress(totalBytesWritten, totalBytesExpectedToWrite) }
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        downloadTask: URLSessionDownloadTask,
+        didFinishDownloadingTo location: URL
+    ) {
+        if let http = downloadTask.response as? HTTPURLResponse,
+            !(200..<300).contains(http.statusCode) {
+            resume(.failure(RemoteAssetCache.CacheError.httpStatus(http.statusCode)))
+            return
+        }
+        do {
+            if FileManager.default.fileExists(atPath: target.path) {
+                try? FileManager.default.removeItem(at: target)
+            }
+            try FileManager.default.moveItem(at: location, to: target)
+            resume(.success(target))
+        } catch {
+            resume(.failure(RemoteAssetCache.CacheError.downloadFailed(error)))
+        }
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didCompleteWithError error: Error?
+    ) {
+        // Fires after `didFinishDownloadingTo` on success (a no-op then, since
+        // the continuation already resumed) or on transport failure/cancel.
+        if let error {
+            resume(.failure(RemoteAssetCache.CacheError.downloadFailed(error)))
         }
     }
 }

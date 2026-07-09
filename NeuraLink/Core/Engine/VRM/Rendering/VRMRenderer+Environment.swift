@@ -43,15 +43,43 @@ extension VRMRenderer {
         // than the raw persisted selection, so a tampered value can't traverse
         // paths. The loading-screen gate still keys off the requested `name`.
         let sceneID = option.id
+        kickEnvironmentDownload(sceneID: sceneID, name: name, renderer: renderer)
+
+        // Wire the loading-screen "Retry" affordance to a fresh fetch: drop the
+        // stalled cache entry, then re-kick against the current renderer.
+        Task { @MainActor in
+            EnvironmentLoadState.shared.setRetryHandler { [weak self] in
+                guard let self else { return }
+                Task { [weak self] in
+                    await RemoteAssetCache.shared.invalidate(.scene(sceneID))
+                    self?.kickEnvironmentDownload(
+                        sceneID: sceneID, name: name, renderer: self?.environmentRenderer)
+                }
+            }
+        }
+    }
+
+    /// Downloads the environment GLB in the background and loads it into
+    /// `renderer`, then releases the launch loading screen (on success OR
+    /// failure — the reveal must never hang). Progress is forwarded to
+    /// `EnvironmentLoadState` so the loading screen can show bytes/%.
+    func kickEnvironmentDownload(
+        sceneID: String, name: String, renderer: EnvironmentRenderer?
+    ) {
         Task.detached(priority: .userInitiated) { [weak renderer] in
+            let onProgress: @Sendable (Int64, Int64) -> Void = { downloaded, total in
+                Task { @MainActor in
+                    EnvironmentLoadState.shared.reportDownloadProgress(
+                        downloaded: downloaded, total: total)
+                }
+            }
             do {
-                let url = try await RemoteAssetCache.shared.url(for: .scene(sceneID))
+                let url = try await RemoteAssetCache.shared.url(
+                    for: .scene(sceneID), onProgress: onProgress)
                 try await renderer?.load(url: url)
             } catch {
                 nlLog("[EnvironmentRenderer] \(sceneID).glb resolve/load failed: \(error)")
             }
-            // Release the launch loading screen once the selected environment's
-            // mesh is in (or its load failed — never hang the reveal).
             await EnvironmentLoadState.shared.environmentDidLoad(name)
         }
     }

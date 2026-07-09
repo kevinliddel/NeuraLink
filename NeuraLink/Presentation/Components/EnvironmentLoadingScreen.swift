@@ -23,10 +23,19 @@ struct EnvironmentLoadingScreen: View {
             // notch, rounded corners, or home indicator.
             backdrop
                 .ignoresSafeArea()
-            statusBadge
-                .padding(.leading, 25)
-                .padding(.trailing, 16)
-                .padding(.bottom, 10)
+            VStack(alignment: .leading, spacing: 16) {
+                // After a prolonged stall the escape hatch appears above the
+                // status badge (Retry / Continue) so a hung first-install
+                // download is never a silent, inescapable spinner.
+                if envLoad.isStalled {
+                    stallPanel
+                }
+                statusBadge
+            }
+            .padding(.leading, 25)
+            .padding(.trailing, 16)
+            .padding(.bottom, 10)
+            .animation(.easeInOut(duration: 0.25), value: envLoad.isStalled)
         }
     }
 
@@ -54,21 +63,68 @@ struct EnvironmentLoadingScreen: View {
         let onDark = !Self.isDaytime
         let foreground: Color = onDark ? .white : .black
         let shadowColor: Color = onDark ? .black.opacity(0.7) : .white.opacity(0.6)
-        return HStack(spacing: 12) {
-            ProgressView()
-                .controlSize(.small)
-                .tint(foreground)
-            // Live loader/texture log line (game-console feel), tag stripped;
-            // a neutral "Loading…" before the first log / in Release builds.
-            Text(envLoad.currentLogLine ?? "Loading…")
-                .font(.callout.weight(.semibold))
-                .foregroundStyle(foreground)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .animation(.easeOut(duration: 0.15), value: envLoad.currentLogLine)
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 12) {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(foreground)
+                // Live loader/texture log line (game-console feel), tag stripped;
+                // a neutral "Loading…" before the first log / in Release builds.
+                Text(envLoad.currentLogLine ?? "Loading…")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(foreground)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .animation(.easeOut(duration: 0.15), value: envLoad.currentLogLine)
+            }
+            // Real download progress (bytes / %) once the environment mesh
+            // starts streaming, so a slow first-install fetch shows movement.
+            if let progress = envLoad.progressText {
+                Text(progress)
+                    .font(.caption.weight(.medium).monospacedDigit())
+                    .foregroundStyle(foreground.opacity(0.85))
+                    .lineLimit(1)
+                    .padding(.leading, 28)
+            }
         }
         .shadow(color: shadowColor, radius: 5)
+        .animation(.easeOut(duration: 0.2), value: envLoad.progressText)
+    }
+
+    /// Escape hatch shown after a prolonged download stall: retry the fetch or
+    /// continue into the app with the default scene.
+    private var stallPanel: some View {
+        let onDark = !Self.isDaytime
+        let foreground: Color = onDark ? .white : .black
+        return VStack(alignment: .leading, spacing: 12) {
+            Text("This is taking longer than expected.")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(foreground)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 12) {
+                Button {
+                    EnvironmentLoadState.shared.requestRetry()
+                } label: {
+                    Text("Retry").font(.callout.weight(.semibold))
+                }
+                .buttonStyle(.bordered)
+
+                Button {
+                    EnvironmentLoadState.shared.forceReady()
+                } label: {
+                    Text("Continue to app").font(.callout.weight(.semibold))
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .tint(foreground)
+        .padding(16)
+        .background(
+            .ultraThinMaterial,
+            in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .frame(maxWidth: 420, alignment: .leading)
+        .transition(.opacity.combined(with: .move(edge: .bottom)))
     }
 
     // MARK: - Backdrop selection

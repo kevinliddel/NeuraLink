@@ -30,8 +30,99 @@ final class EnvironmentLoadState {
     /// neutral "Loading…" in that case).
     private(set) var currentLogLine: String?
 
+    // MARK: - Download progress + stall detection
+
+    /// Bytes of the selected environment mesh downloaded so far. `0` until the
+    /// first progress callback (or when the asset is already cached locally).
+    private(set) var downloadedBytes: Int64 = 0
+    /// Expected total bytes (`0` when the server omits `Content-Length`).
+    private(set) var totalBytes: Int64 = 0
+    /// `true` once no progress has arrived for `stallThresholdSeconds`, so the
+    /// loading screen can offer an escape hatch instead of a silent spinner.
+    private(set) var isStalled = false
+
+    /// Seconds of no progress before we consider the load stalled.
+    private let stallThresholdSeconds = 35
+    @ObservationIgnored private var secondsSinceProgress = 0
+    @ObservationIgnored private var stallMonitor: Task<Void, Never>?
+
+    /// Invoked by `requestRetry()`. Set by the environment loader to invalidate
+    /// the cached download and re-kick a fresh fetch.
+    @ObservationIgnored private var retryHandler: (() -> Void)?
+
     private init() {
         installLogTap()
+        startStallMonitor()
+    }
+
+    /// Human-readable progress line, e.g. "12.3 MB / 45.0 MB (27%)". `nil`
+    /// before any bytes arrive; shows just the downloaded size when the total
+    /// is unknown.
+    var progressText: String? {
+        guard downloadedBytes > 0 else { return nil }
+        let done = ByteCountFormatter.string(fromByteCount: downloadedBytes, countStyle: .file)
+        guard totalBytes > 0 else { return done }
+        let all = ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file)
+        let pct = Int((Double(downloadedBytes) / Double(totalBytes)) * 100)
+        return "\(done) / \(all) (\(pct)%)"
+    }
+
+    /// Fractional download progress in `0...1`, or `nil` when the total size is
+    /// unknown (so the UI shows an indeterminate spinner instead of a bar).
+    var progressFraction: Double? {
+        guard totalBytes > 0 else { return nil }
+        return min(1, max(0, Double(downloadedBytes) / Double(totalBytes)))
+    }
+
+    /// 1 s heartbeat that trips `isStalled` after `stallThresholdSeconds`
+    /// without progress. Self-cancels once the scene is ready.
+    private func startStallMonitor() {
+        stallMonitor = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                guard let self else { return }
+                if self.isReady {
+                    self.stallMonitor?.cancel()
+                    self.stallMonitor = nil
+                    return
+                }
+                self.secondsSinceProgress += 1
+                if self.secondsSinceProgress >= self.stallThresholdSeconds, !self.isStalled {
+                    self.isStalled = true
+                }
+            }
+        }
+    }
+
+    /// Resets the stall clock — called on any sign of forward progress.
+    private func noteProgress() {
+        secondsSinceProgress = 0
+        if isStalled { isStalled = false }
+    }
+
+    /// Records selected-environment download progress. Ignored once ready.
+    func reportDownloadProgress(downloaded: Int64, total: Int64) {
+        guard !isReady else { return }
+        downloadedBytes = downloaded
+        if total > 0 { totalBytes = total }
+        noteProgress()
+    }
+
+    /// Registers the "Retry" action for the loading screen (invalidate cache +
+    /// re-kick the environment download). Set by the environment loader.
+    func setRetryHandler(_ handler: @escaping () -> Void) {
+        retryHandler = handler
+    }
+
+    /// Loading-screen "Retry": re-attempt the environment download from scratch
+    /// in the background and reveal the app now (the mesh pops in when it lands).
+    func requestRetry() {
+        downloadedBytes = 0
+        totalBytes = 0
+        secondsSinceProgress = 0
+        isStalled = false
+        retryHandler?()
+        forceReady()
     }
 
     // MARK: - Live loader log feed
@@ -57,6 +148,7 @@ final class EnvironmentLoadState {
     func report(_ line: String) {
         guard !isReady else { return }
         currentLogLine = Self.stripTag(line)
+        noteProgress()
     }
 
     /// Drops a leading "[Tag] " (e.g. "[TextureLoader] Drawing image to
@@ -73,7 +165,10 @@ final class EnvironmentLoadState {
         return UserSettings.shared.showEnvironment ? environmentMeshReady : true
     }
 
-    func markBaseSceneReady() { baseSceneReady = true }
+    func markBaseSceneReady() {
+        baseSceneReady = true
+        noteProgress()
+    }
 
     /// Called when a scene's mesh finishes loading. Only the SELECTED
     /// environment releases the loading screen — the other environment also
