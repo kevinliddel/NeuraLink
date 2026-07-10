@@ -1,3 +1,6 @@
 [submodule "llama.cpp"]
 	path = llama.cpp
 	url = https://github.com/ggerganov/llama.cpp.git
+[submodule "DropDown"]
+	path = DropDown
+	url = https://github.com/AssistoLab/DropDown.git

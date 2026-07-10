@@ -34,9 +34,10 @@ struct UserSettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                     
-                    Picker("Gender", selection: Bindable(settings).gender) {
-                        ForEach(genders, id: \.self) { gender in
-                            Text(gender).tag(gender)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Gender")
+                        DropDownSelector(items: genders, selection: Bindable(settings).gender) { gender in
+                            gender
                         }
                     }
                     

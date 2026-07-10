@@ -27,11 +27,11 @@ struct MemoryTimelineView: View {
                         .listRowSeparator(memorySettings.isEnabled ? .hidden : .automatic)
 
                     if memorySettings.isEnabled {
-                        Picker("Auto-forget", selection: Bindable(memorySettings).autoForgetDays) {
-                            Text("Never").tag(0)
-                            Text("7 days").tag(7)
-                            Text("14 days").tag(14)
-                            Text("30 days").tag(30)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Auto-forget")
+                            DropDownSelector(items: [0, 7, 14, 30], selection: Bindable(memorySettings).autoForgetDays) { days in
+                                days == 0 ? "Never" : "\(days) days"
+                            }
                         }
                         .listRowSeparator(.hidden)
 

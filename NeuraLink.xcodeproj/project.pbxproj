@@ -26,6 +26,7 @@
 		04F3BD6F2F9630CD00D2DDF2 /* RealTimeCutVADLibrary in Frameworks */ = {isa = PBXBuildFile; productRef = 04F3BD6E2F9630CD00D2DDF2 /* RealTimeCutVADLibrary */; };
 		AFECF4B6451C234E9720E970 /* llama.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = AC9FBDA126D2084ED6E64CC8 /* llama.xcframework */; };
 		B28C440838DF8F0459096F14 /* llama.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = AC9FBDA126D2084ED6E64CC8 /* llama.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		DD0000000000000000000001 /* DropDown in Frameworks */ = {isa = PBXBuildFile; productRef = DD0000000000000000000003 /* DropDown */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -127,6 +128,7 @@
 				04CCE3AF2FC5B55500C119D0 /* MLXFFT in Frameworks */,
 				04CCE3B52FC5B55500C119D0 /* MLXNN in Frameworks */,
 				AFECF4B6451C234E9720E970 /* llama.xcframework in Frameworks */,
+				DD0000000000000000000001 /* DropDown in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -214,6 +216,7 @@
 				04CCE3B02FC5B55500C119D0 /* MLXFast */,
 				04CCE3B22FC5B55500C119D0 /* MLXLinalg */,
 				04CCE3B42FC5B55500C119D0 /* MLXNN */,
+				DD0000000000000000000003 /* DropDown */,
 			);
 			productName = NeuraLink;
 			productReference = 041E11DE2F8E782300D2D110 /* NeuraLink.app */;
@@ -301,6 +304,7 @@
 				041885C32F99F90100609CCE /* XCRemoteSwiftPackageReference "argmax-oss-swift" */,
 				04C8954F2FC041F90015EDC0 /* XCRemoteSwiftPackageReference "SQLCipher.swift" */,
 				04CCE3AB2FC5B55500C119D0 /* XCRemoteSwiftPackageReference "mlx-swift" */,
+				DD0000000000000000000002 /* XCLocalSwiftPackageReference "DropDown" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 041E11DF2F8E782300D2D110 /* Products */;
@@ -707,6 +711,13 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		DD0000000000000000000002 /* XCLocalSwiftPackageReference "DropDown" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = DropDown;
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCRemoteSwiftPackageReference section */
 		041885A92F99F0B200609CCE /* XCRemoteSwiftPackageReference "swift-transformers" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -851,6 +862,10 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 04F3BD6D2F9630CD00D2DDF2 /* XCRemoteSwiftPackageReference "RealTimeCutVADLibrary" */;
 			productName = RealTimeCutVADLibrary;
+		};
+		DD0000000000000000000003 /* DropDown */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = DropDown;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

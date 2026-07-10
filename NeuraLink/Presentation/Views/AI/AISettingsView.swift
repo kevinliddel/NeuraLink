@@ -203,29 +203,19 @@ struct AISettingsView: View {
             .listRowSeparator(settings.isEnabled && settings.isProactiveVisionEnabled ? .hidden : .automatic)
 
             if settings.isEnabled && settings.isProactiveVisionEnabled {
-                HStack {
+                VStack(alignment: .leading, spacing: 4) {
                     Text("Interval")
-                    Spacer()
-                    Picker("Interval", selection: $settings.proactiveVisionIntervalSec) {
-                        Text("10s").tag(10.0)
-                        Text("20s").tag(20.0)
-                        Text("30s").tag(30.0)
-                        Text("60s").tag(60.0)
+                    DropDownSelector(items: [10.0, 20.0, 30.0, 60.0], selection: $settings.proactiveVisionIntervalSec) { seconds in
+                        "\(Int(seconds))s"
                     }
-                    .labelsHidden()
                 }
                 .listRowSeparator(.hidden)
 
-                HStack {
+                VStack(alignment: .leading, spacing: 4) {
                     Text("Cooldown after speech")
-                    Spacer()
-                    Picker("Cooldown", selection: $settings.proactiveVisionCooldownAfterSpeechSec) {
-                        Text("0s").tag(0.0)
-                        Text("8s").tag(8.0)
-                        Text("12s").tag(12.0)
-                        Text("20s").tag(20.0)
+                    DropDownSelector(items: [0.0, 8.0, 12.0, 20.0], selection: $settings.proactiveVisionCooldownAfterSpeechSec) { seconds in
+                        "\(Int(seconds))s"
                     }
-                    .labelsHidden()
                 }
             }
         }

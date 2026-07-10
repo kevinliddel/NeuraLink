@@ -107,10 +107,8 @@ struct PersonaSettingsView: View {
                 }
 
                 Section("Voice") {
-                    Picker("Voice", selection: $persona.voice) {
-                        ForEach(voices, id: \.self) { voice in
-                            Text(voice.capitalized).tag(voice)
-                        }
+                    DropDownSelector(items: voices, selection: $persona.voice) { voice in
+                        voice.capitalized
                     }
                 }
 
@@ -214,13 +212,15 @@ struct PersonaSettingsView: View {
     // MARK: - Voice Picker Sections
 
     private var voicevoxVoiceSection: some View {
-        Section {
-            Picker("Voice", selection: $voicevoxSpeakerID) {
-                ForEach(VoiceVoxSpeaker.allBuiltIn) { speaker in
-                    Text(speaker.name).tag(speaker.id)
-                }
-            }
-            .pickerStyle(.menu)
+        let speakers = VoiceVoxSpeaker.allBuiltIn
+        return Section {
+            DropDownSelector(
+                options: speakers.map(\.name),
+                selectedIndex: Binding(
+                    get: { speakers.firstIndex { $0.id == voicevoxSpeakerID } ?? 0 },
+                    set: { voicevoxSpeakerID = speakers[$0].id }
+                )
+            )
             if !voicevoxAvailable {
                 voicevoxDownloadButton
             }
@@ -233,12 +233,12 @@ struct PersonaSettingsView: View {
 
     private var openVoiceVoiceSection: some View {
         Section {
-            Picker("Voice", selection: $openVoiceVoiceID) {
-                ForEach(OpenVoiceVoicePreset.allCases) { preset in
-                    Text(preset.displayName).tag(preset.rawValue)
-                }
+            DropDownSelector(
+                items: OpenVoiceVoicePreset.allCases.map(\.rawValue),
+                selection: $openVoiceVoiceID
+            ) { rawValue in
+                OpenVoiceVoicePreset(rawValue: rawValue)?.displayName ?? rawValue
             }
-            .pickerStyle(.menu)
         } header: {
             Text("Voice (OpenVoice)")
         } footer: {
