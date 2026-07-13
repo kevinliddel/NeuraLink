@@ -334,6 +334,11 @@ private final class DownloadProgressDelegate: NSObject, URLSessionDownloadDelega
     private var continuation: CheckedContinuation<URL, Error>?
     private var didResume = false
     private var task: URLSessionDownloadTask?
+    private var wasCancelled = false
+    /// Transport-error recoveries left in this download: a dropped connection
+    /// mid-fetch continues from the partial bytes via URLSession resume data
+    /// instead of failing the whole 100 MB fetch back to the caller.
+    private var resumeAttemptsLeft = 2
 
     init(destination: URL, onProgress: @escaping @Sendable (Int64, Int64) -> Void) {
         self.destination = destination
@@ -349,11 +354,16 @@ private final class DownloadProgressDelegate: NSObject, URLSessionDownloadDelega
     func attach(_ task: URLSessionDownloadTask) {
         lock.lock()
         self.task = task
+        let cancelled = wasCancelled
         lock.unlock()
+        // Closes the race where cancel() lands between an errored task and its
+        // resume-data replacement being attached.
+        if cancelled { task.cancel() }
     }
 
     func cancel() {
         lock.lock()
+        wasCancelled = true
         let task = self.task
         lock.unlock()
         task?.cancel()
@@ -419,8 +429,28 @@ private final class DownloadProgressDelegate: NSObject, URLSessionDownloadDelega
     ) {
         // Fires after `didFinishDownloadingTo` on success (a no-op then, since
         // the continuation already resumed) or on transport failure/cancel.
-        if let error {
-            resume(.failure(RemoteAssetCache.CacheError.downloadFailed(error)))
+        guard let error else { return }
+
+        let nsError = error as NSError
+        let isCancel =
+            nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled
+        let resumeData = nsError.userInfo[NSURLSessionDownloadTaskResumeData] as? Data
+
+        lock.lock()
+        let canResume = !isCancel && !wasCancelled && !didResume
+            && resumeData != nil && resumeAttemptsLeft > 0
+        if canResume { resumeAttemptsLeft -= 1 }
+        lock.unlock()
+
+        if canResume, let resumeData {
+            nlLog(
+                "[RemoteAssetCache] Download interrupted (\(nsError.code)) — resuming from partial data.",
+                level: .warning)
+            let resumed = session.downloadTask(withResumeData: resumeData)
+            attach(resumed)
+            resumed.resume()
+            return
         }
+        resume(.failure(RemoteAssetCache.CacheError.downloadFailed(error)))
     }
 }

@@ -111,4 +111,25 @@ struct RemoteAssetIntegrityTests {
     func testUnknownSceneHasNoPin() {
         #expect(RemoteAssetRegistry.scene("future_scene_added_upstream").integrity == nil)
     }
+
+    // The environment loader must retry transient failures (holding the launch
+    // loading screen) but exit silently when superseded by a manual Retry —
+    // misclassifying a cancel as a failure would double-fire the reveal gate.
+    @Test("Cancellation classification for the environment retry loop")
+    func testIsCancellation() {
+        #expect(VRMRenderer.isCancellation(CancellationError()))
+        #expect(VRMRenderer.isCancellation(URLError(.cancelled)))
+        #expect(
+            VRMRenderer.isCancellation(
+                RemoteAssetCache.CacheError.downloadFailed(URLError(.cancelled))))
+        #expect(
+            VRMRenderer.isCancellation(
+                RemoteAssetCache.CacheError.downloadFailed(CancellationError())))
+
+        #expect(!VRMRenderer.isCancellation(URLError(.timedOut)))
+        #expect(
+            !VRMRenderer.isCancellation(
+                RemoteAssetCache.CacheError.downloadFailed(URLError(.networkConnectionLost))))
+        #expect(!VRMRenderer.isCancellation(RemoteAssetCache.CacheError.httpStatus(500)))
+    }
 }

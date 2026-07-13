@@ -51,7 +51,8 @@ struct DropDownSelector: UIViewRepresentable {
         var config = UIButton.Configuration.plain()
         config.baseForegroundColor = .label
         // Trailing inset reserves room for the chevron pinned below.
-        config.contentInsets = NSDirectionalEdgeInsets(top: 13, leading: 16, bottom: 13, trailing: 42)
+        config.contentInsets = NSDirectionalEdgeInsets(
+            top: 15, leading: 16, bottom: 15, trailing: 45)
 
         let button = UIButton(configuration: config)
         button.contentHorizontalAlignment = .leading
@@ -60,10 +61,12 @@ struct DropDownSelector: UIViewRepresentable {
         // than plain text. CGColor doesn't adapt to appearance changes on
         // its own, hence the trait-change re-resolution.
         button.layer.borderWidth = 1
-        button.layer.borderColor = UIColor.separator.resolvedColor(with: button.traitCollection).cgColor
+        button.layer.borderColor =
+            UIColor.separator.resolvedColor(with: button.traitCollection).cgColor
         button.layer.cornerRadius = 10
         button.registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (button: UIButton, _) in
-            button.layer.borderColor = UIColor.separator.resolvedColor(with: button.traitCollection).cgColor
+            button.layer.borderColor =
+                UIColor.separator.resolvedColor(with: button.traitCollection).cgColor
         }
 
         let chevron = UIImageView(

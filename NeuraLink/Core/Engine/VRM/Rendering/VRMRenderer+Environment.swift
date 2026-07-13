@@ -60,9 +60,17 @@ extension VRMRenderer {
     }
 
     /// Downloads the environment GLB in the background and loads it into
-    /// `renderer`, then releases the launch loading screen (on success OR
-    /// failure — the reveal must never hang). Progress is forwarded to
-    /// `EnvironmentLoadState` so the loading screen can show bytes/%.
+    /// `renderer`, then releases the launch loading screen. Progress is
+    /// forwarded to `EnvironmentLoadState` so the loading screen shows bytes/%.
+    ///
+    /// A first-install download is long (67–100 MB per scene) and real-world
+    /// networks hiccup, so a failed fetch is retried up to 3 times with a
+    /// short backoff — the loading screen must hold, game-style, until the
+    /// environment is genuinely in (the pre-retry behavior revealed an empty
+    /// scene on the first transient error). Only after the final attempt does
+    /// `environmentDidLoad` release the reveal regardless, so the screen still
+    /// can never hang forever. A cancelled download (superseded by a manual
+    /// Retry, which owns a fresh kick) exits without touching the gate.
     func kickEnvironmentDownload(
         sceneID: String, name: String, renderer: EnvironmentRenderer?
     ) {
@@ -73,15 +81,35 @@ extension VRMRenderer {
                         downloaded: downloaded, total: total)
                 }
             }
-            do {
-                let url = try await RemoteAssetCache.shared.url(
-                    for: .scene(sceneID), onProgress: onProgress)
-                try await renderer?.load(url: url)
-            } catch {
-                nlLog("[EnvironmentRenderer] \(sceneID).glb resolve/load failed: \(error)")
+            let maxAttempts = 3
+            for attempt in 1...maxAttempts {
+                do {
+                    let url = try await RemoteAssetCache.shared.url(
+                        for: .scene(sceneID), onProgress: onProgress)
+                    try await renderer?.load(url: url)
+                    break
+                } catch {
+                    if Self.isCancellation(error) { return }
+                    nlLog(
+                        "[EnvironmentRenderer] \(sceneID).glb attempt \(attempt)/\(maxAttempts) failed: \(error)",
+                        level: .warning)
+                    guard attempt < maxAttempts else { break }
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                }
             }
             await EnvironmentLoadState.shared.environmentDidLoad(name)
         }
+    }
+
+    /// True when `error` is a cancellation — either of the awaiting Task or of
+    /// the underlying `URLSessionDownloadTask` (surfaced wrapped in
+    /// `CacheError.downloadFailed`).
+    static func isCancellation(_ error: Error) -> Bool {
+        if error is CancellationError { return true }
+        if case RemoteAssetCache.CacheError.downloadFailed(let inner) = error {
+            return inner is CancellationError || (inner as? URLError)?.code == .cancelled
+        }
+        return (error as? URLError)?.code == .cancelled
     }
 
     // MARK: - Shadow pass

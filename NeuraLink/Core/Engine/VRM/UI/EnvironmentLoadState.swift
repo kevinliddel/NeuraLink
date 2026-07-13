@@ -114,15 +114,16 @@ final class EnvironmentLoadState {
         retryHandler = handler
     }
 
-    /// Loading-screen "Retry": re-attempt the environment download from scratch
-    /// in the background and reveal the app now (the mesh pops in when it lands).
+    /// Loading-screen "Retry": cancel the stalled fetch and re-attempt the
+    /// environment download from scratch, keeping the loading screen up —
+    /// game-style, the scene only reveals once the environment is genuinely in.
+    /// "Continue to app" (`forceReady`) remains the explicit escape hatch.
     func requestRetry() {
         downloadedBytes = 0
         totalBytes = 0
         secondsSinceProgress = 0
         isStalled = false
         retryHandler?()
-        forceReady()
     }
 
     // MARK: - Live loader log feed
