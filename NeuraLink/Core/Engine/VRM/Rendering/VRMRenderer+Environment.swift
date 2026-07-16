@@ -101,10 +101,10 @@ extension VRMRenderer {
                 } catch {
                     if Self.isCancellation(error) { return }
                     // NOTE: tag must stay out of EnvironmentLoadState
-                    // .isLoaderMessage — a matching tag would splash this raw
-                    // error dump onto the loading screen.
+                    // .isLoaderMessage — a matching tag would splash this
+                    // error onto the loading screen.
                     nlLog(
-                        "[EnvironmentDownload] \(sceneID).glb attempt \(attempt)/\(maxAttempts) failed: \(error)",
+                        "[EnvironmentDownload] \(sceneID).glb attempt \(attempt)/\(maxAttempts) failed: \(Self.compactError(error))",
                         level: .warning)
                     guard attempt < maxAttempts else { break }
                     if Self.isConnectivityError(error) {
@@ -139,12 +139,23 @@ extension VRMRenderer {
                         nlLog("[EnvironmentDownload] Prefetched scene '\(option.id)'", level: .info)
                     } catch {
                         nlLog(
-                            "[EnvironmentDownload] Prefetch failed for '\(option.id)': \(error)",
+                            "[EnvironmentDownload] Prefetch failed for '\(option.id)': \(Self.compactError(error))",
                             level: .warning)
                     }
                 }
             }
         }
+    }
+
+    /// One-line description for download-failure logs — `domain(code):
+    /// description` instead of the full NSError userInfo dump (which is pages
+    /// of CFNetwork internals for a simple "offline" failure).
+    nonisolated static func compactError(_ error: Error) -> String {
+        if case RemoteAssetCache.CacheError.downloadFailed(let inner) = error {
+            let ns = inner as NSError
+            return "\(ns.domain)(\(ns.code)): \(ns.localizedDescription)"
+        }
+        return String(describing: error)
     }
 
     /// True when `error` is an offline-class transport failure worth waiting
