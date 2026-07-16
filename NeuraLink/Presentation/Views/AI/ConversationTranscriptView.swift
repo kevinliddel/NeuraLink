@@ -5,7 +5,10 @@
 //  Read-only text transcript of a past conversation: user turns trailing,
 //  assistant/tool turns leading. There is no input — live talking always
 //  happens in the current/new 3D session. "New Chat" closes this and returns
-//  to the live avatar.
+//  to the live avatar. Assistant messages carry a play button that speaks the
+//  text through the TTS matching the current mode (see TranscriptSpeechPlayer).
+//
+//  Created by Dedicatus on 16/07/2026.
 //
 
 import SwiftUI
@@ -19,6 +22,7 @@ struct ConversationTranscriptView: View {
 
     @State private var messages: [ConversationMessage] = []
     @State private var title: String = "Chat"
+    @State private var speech = TranscriptSpeechPlayer()
 
     var body: some View {
         NavigationStack {
@@ -35,19 +39,24 @@ struct ConversationTranscriptView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button { onClose() } label: {
+                    Button {
+                        onClose()
+                    } label: {
                         Image(systemName: "xmark")
                     }
                     .accessibilityLabel("Close")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { onNewChat() } label: {
+                    Button {
+                        onNewChat()
+                    } label: {
                         Label("New Chat", systemImage: "plus.bubble")
                     }
                 }
             }
         }
         .onAppear(perform: load)
+        .onDisappear { speech.stop() }
     }
 
     @ViewBuilder private func bubble(_ message: ConversationMessage) -> some View {
@@ -56,22 +65,68 @@ struct ConversationTranscriptView: View {
                 Spacer(minLength: 40)
                 Text(message.content)
                     .padding(10)
-                    .background(Color.accentColor.opacity(0.9), in: RoundedRectangle(cornerRadius: 14))
+                    .background(
+                        Color.accentColor.opacity(0.9), in: RoundedRectangle(cornerRadius: 14)
+                    )
                     .foregroundStyle(.white)
             } else {
-                Text(message.content)
-                    .padding(10)
-                    .background(Color.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 14))
-                    .foregroundStyle(.primary)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(message.content)
+                    // Spoken playback for assistant text only — tool-call rows
+                    // are payload dumps, not something to read aloud.
+                    if message.isAssistant && message.kind == "message" {
+                        playButton(message)
+                    }
+                }
+                .padding(10)
+                .background(Color.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 14))
+                .foregroundStyle(.primary)
                 Spacer(minLength: 40)
             }
         }
         .frame(maxWidth: .infinity, alignment: message.isUser ? .trailing : .leading)
     }
 
+    /// Play / loading / stop control for one assistant message. Disabled (not
+    /// hidden) when the current mode can't synthesize — OpenAI mode without a
+    /// valid key — so the affordance stays discoverable.
+    @ViewBuilder private func playButton(_ message: ConversationMessage) -> some View {
+        let phase = speech.phase(for: message.id)
+        Button {
+            speech.toggle(message)
+        } label: {
+            ZStack {
+                Circle()
+                    .fill((phase == .idle ? Color.blue : Color.red).opacity(0.12))
+                    .frame(width: 28, height: 28)
+                switch phase {
+                case .loading:
+                    ProgressView()
+                        .tint(.secondary)
+                        .scaleEffect(0.6)
+                case .playing:
+                    Image(systemName: "stop.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.red)
+                case .idle:
+                    Image(systemName: "speaker.wave.2.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.blue)
+                }
+            }
+            .animation(.easeInOut(duration: 0.18), value: phase)
+        }
+        .buttonStyle(.borderless)
+        .disabled(!speech.isAvailable)
+        .opacity(speech.isAvailable ? 1 : 0.35)
+        .accessibilityLabel(phase == .idle ? "Play message aloud" : "Stop playback")
+    }
+
     private func load() {
         messages = ConversationStore.shared.messages(conversationID: conversationID)
-        if let convo = ConversationStore.shared.conversations().first(where: { $0.id == conversationID }) {
+        if let convo = ConversationStore.shared.conversations().first(where: {
+            $0.id == conversationID
+        }) {
             title = convo.title
         }
     }

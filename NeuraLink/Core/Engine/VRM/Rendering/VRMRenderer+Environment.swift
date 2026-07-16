@@ -2,15 +2,20 @@
 //  VRMRenderer+Environment.swift
 //  NeuraLink
 //
-//  Created by Dedicatus on 08/05/2026.
-//
 //  Drives the single active environment GLB (city / campus / apartment).
 // Only the selected environment is loaded; changing the
 //  selection lazily loads the new GLB — terrain shows briefly until it's in.
 //
+//  Created by Dedicatus on 08/05/2026.
+//
 
 import Metal
 import simd
+
+/// One-shot per app session: the remaining-scene prefetch kicks once, no
+/// matter how many times the environment loader re-runs (retries, manual
+/// Retry, selection changes).
+@MainActor private var didStartScenePrefetch = false
 
 extension VRMRenderer {
 
@@ -64,13 +69,18 @@ extension VRMRenderer {
     /// forwarded to `EnvironmentLoadState` so the loading screen shows bytes/%.
     ///
     /// A first-install download is long (67–100 MB per scene) and real-world
-    /// networks hiccup, so a failed fetch is retried up to 3 times with a
-    /// short backoff — the loading screen must hold, game-style, until the
-    /// environment is genuinely in (the pre-retry behavior revealed an empty
-    /// scene on the first transient error). Only after the final attempt does
+    /// networks hiccup, so a failed fetch is retried up to 3 times — the
+    /// loading screen must hold, game-style, until the environment is genuinely
+    /// in. Offline-class failures (on a fresh install the first requests race
+    /// iOS's network-access grant → NSURLError -1009) wait for connectivity via
+    /// `NetworkWaiter` instead of a blind backoff, with a friendly status line
+    /// on the loading screen — the raw error is logged under a tag the screen's
+    /// log tap does NOT mirror. Only after the final attempt does
     /// `environmentDidLoad` release the reveal regardless, so the screen still
     /// can never hang forever. A cancelled download (superseded by a manual
     /// Retry, which owns a fresh kick) exits without touching the gate.
+    /// Once the selected scene is in, the remaining catalog scenes prefetch in
+    /// the background.
     func kickEnvironmentDownload(
         sceneID: String, name: String, renderer: EnvironmentRenderer?
     ) {
@@ -90,21 +100,77 @@ extension VRMRenderer {
                     break
                 } catch {
                     if Self.isCancellation(error) { return }
+                    // NOTE: tag must stay out of EnvironmentLoadState
+                    // .isLoaderMessage — a matching tag would splash this raw
+                    // error dump onto the loading screen.
                     nlLog(
-                        "[EnvironmentRenderer] \(sceneID).glb attempt \(attempt)/\(maxAttempts) failed: \(error)",
+                        "[EnvironmentDownload] \(sceneID).glb attempt \(attempt)/\(maxAttempts) failed: \(error)",
                         level: .warning)
                     guard attempt < maxAttempts else { break }
-                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    if Self.isConnectivityError(error) {
+                        await EnvironmentLoadState.shared.report(
+                            "[EnvironmentDownload] Waiting for connection…")
+                        await NetworkWaiter.waitForConnectivity(timeout: 60)
+                    } else {
+                        try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    }
+                    await EnvironmentLoadState.shared.report(
+                        "[EnvironmentDownload] Retrying download…")
                 }
             }
             await EnvironmentLoadState.shared.environmentDidLoad(name)
+            Self.prefetchRemainingScenes(excluding: sceneID)
+        }
+    }
+
+    /// Best-effort background download of every catalog scene that isn't the
+    /// selected one, sequentially so it never competes with a foreground
+    /// download for bandwidth. Runs once per app session, after the selected
+    /// scene concludes — a failure just means that scene downloads on first
+    /// selection instead (the pre-existing lazy path).
+    nonisolated static func prefetchRemainingScenes(excluding selectedID: String) {
+        Task { @MainActor in
+            guard !didStartScenePrefetch else { return }
+            didStartScenePrefetch = true
+            Task.detached(priority: .utility) {
+                for option in EnvironmentCatalog.all where option.id != selectedID {
+                    do {
+                        _ = try await RemoteAssetCache.shared.url(for: .scene(option.id))
+                        nlLog("[EnvironmentDownload] Prefetched scene '\(option.id)'", level: .info)
+                    } catch {
+                        nlLog(
+                            "[EnvironmentDownload] Prefetch failed for '\(option.id)': \(error)",
+                            level: .warning)
+                    }
+                }
+            }
+        }
+    }
+
+    /// True when `error` is an offline-class transport failure worth waiting
+    /// out (vs. an HTTP/parse error a wait won't fix).
+    nonisolated static func isConnectivityError(_ error: Error) -> Bool {
+        let urlError: URLError?
+        if case RemoteAssetCache.CacheError.downloadFailed(let inner) = error {
+            urlError = inner as? URLError
+        } else {
+            urlError = error as? URLError
+        }
+        switch urlError?.code {
+        case .notConnectedToInternet, .networkConnectionLost, .cannotConnectToHost,
+            .cannotFindHost, .dnsLookupFailed, .timedOut, .dataNotAllowed,
+            .internationalRoamingOff:
+            return true
+        default:
+            return false
         }
     }
 
     /// True when `error` is a cancellation — either of the awaiting Task or of
     /// the underlying `URLSessionDownloadTask` (surfaced wrapped in
-    /// `CacheError.downloadFailed`).
-    static func isCancellation(_ error: Error) -> Bool {
+    /// `CacheError.downloadFailed`). `nonisolated`: pure logic, called from
+    /// the detached download-retry task.
+    nonisolated static func isCancellation(_ error: Error) -> Bool {
         if error is CancellationError { return true }
         if case RemoteAssetCache.CacheError.downloadFailed(let inner) = error {
             return inner is CancellationError || (inner as? URLError)?.code == .cancelled
