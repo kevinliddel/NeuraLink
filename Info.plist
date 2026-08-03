@@ -4,6 +4,43 @@
 <dict>
 	<key>CFBundleDocumentTypes</key>
 	<array/>
+	<key>UTImportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.neuralink.vrm</string>
+			<key>UTTypeDescription</key>
+			<string>VRM 3D Avatar</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>vrm</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.neuralink.glb</string>
+			<key>UTTypeDescription</key>
+			<string>Binary glTF Model</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>glb</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>NeuraLink uses the camera so the AI avatar can see and describe what you show it.</string>
 	<key>NSMicrophoneUsageDescription</key>

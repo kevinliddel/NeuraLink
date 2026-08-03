@@ -167,6 +167,18 @@ struct PersonaSettingsView: View {
     // MARK: - Save / Reset
 
     private func saveChanges() {
+        // Imported characters: the canonical display name lives in
+        // `imported_characters` (it feeds the picker card) — keep it in sync
+        // in BOTH modes. Bundled characters skip this; in local mode their
+        // name field stays display-only as before.
+        let slug = modelID.lowercased()
+        if ImportedCharacterStore.shared.isImported(slug: slug) {
+            let trimmed = persona.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                ImportedCharacterStore.shared.rename(slug: slug, to: trimmed)
+                VRMModelRegistry.shared.refresh()
+            }
+        }
         if isLocalLLMMode {
             nlLog(
                 "[PersonaSettings.save] LOCAL mode — modelID='\(modelID)' "

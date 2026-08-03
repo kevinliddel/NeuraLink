@@ -198,12 +198,23 @@ public struct VRMSceneView: View {
 
         do {
             guard let device = state.mtkView.device else { return }
+            // Imported characters: re-verify the stored file against its SQL
+            // size+hash pin before handing it to the loader. A mismatch
+            // quarantines the row (VRMIntegrityCheck) and lands in the
+            // fallback-to-default path below like any other load failure.
+            if let imported = ImportedCharacterStore.fromSQL(slug: characterName.lowercased()) {
+                let verified = await Task.detached { VRMIntegrityCheck.verify(imported) }.value
+                guard verified else {
+                    VRMModelRegistry.shared.refresh()
+                    throw VRMImportError.unreadable(detail: "This character failed its integrity check and was removed from the picker.")
+                }
+            }
             let model = try await VRMModel.load(from: url, device: device)
             state.display(model)
         } catch {
             nlLog("[VRMSceneView] Failed to load model from \(url.path): \(error.localizedDescription)", level: .error)
-            
-            if let defaultEntry = VRMModelRegistry.defaultModel, defaultEntry.url != url {
+
+            if let defaultEntry = VRMModelRegistry.shared.defaultModel, defaultEntry.url != url {
                 do {
                     nlLog("[VRMSceneView] Falling back to default model '\(defaultEntry.name)'")
                     guard let device = state.mtkView.device else { return }

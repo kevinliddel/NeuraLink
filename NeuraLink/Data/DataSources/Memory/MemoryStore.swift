@@ -237,6 +237,26 @@ final class MemoryStore {
             name      TEXT,
             PRIMARY KEY (character, engine)
         );
+        CREATE TABLE IF NOT EXISTS imported_characters (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            slug          TEXT    NOT NULL UNIQUE,
+            display_name  TEXT    NOT NULL,
+            file_path     TEXT    NOT NULL,
+            file_size     INTEGER NOT NULL,
+            sha256        TEXT    NOT NULL,
+            thumbnail_path TEXT,
+            source_filename TEXT,
+            vrm_spec      TEXT,
+            meta_name     TEXT,
+            meta_authors  TEXT,
+            meta_license_url TEXT,
+            meta_avatar_permission TEXT,
+            meta_commercial_usage  TEXT,
+            quarantined   INTEGER NOT NULL DEFAULT 0,
+            created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at    DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_imported_characters_sha ON imported_characters(sha256);
         """
 
         // Enforce ON DELETE CASCADE for messages when a conversation is

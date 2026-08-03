@@ -10,10 +10,13 @@ import SwiftUI
 /// Root view that hosts the VRM Viewer.
 struct ContentView: View {
 
-    @State private var selectedModelURL: URL? = VRMModelRegistry.defaultModel?.url
+    @State private var selectedModelURL: URL? = VRMModelRegistry.shared.initialSelection?.url
     @Bindable private var aiState = RealtimeChatState.shared
     private var camera = CameraManager.shared
+    private var registry = VRMModelRegistry.shared
     @State private var showModelSelection = false
+    @State private var showImportPicker = false
+    @State private var pendingDelete: VRMModelRegistry.Entry?
     @State private var isMenuExpanded = false
     @State private var envLoad = EnvironmentLoadState.shared
 
@@ -32,9 +35,16 @@ struct ContentView: View {
                         Spacer()
                         ModelSelectionOverlay(
                             selectedModelURL: $selectedModelURL,
-                            models: VRMModelRegistry.all,
+                            models: registry.all,
                             onSelection: {
                                 withAnimation { showModelSelection = false }
+                            },
+                            onImport: {
+                                withAnimation { showModelSelection = false }
+                                showImportPicker = true
+                            },
+                            onDelete: { entry in
+                                pendingDelete = entry
                             }
                         )
                         .padding(.horizontal, 16)
@@ -141,6 +151,28 @@ struct ContentView: View {
                 }
             }
             .animation(.easeInOut(duration: 0.8), value: envLoad.isReady)
+            // Persist the choice so relaunches restore it (initialSelection).
+            .onChange(of: selectedModelURL) { _, newValue in
+                guard let url = newValue else { return }
+                UserSettings.shared.selectedCharacter =
+                    url.deletingPathExtension().lastPathComponent.lowercased()
+            }
+            .characterImportFlow(isPickerPresented: $showImportPicker) { imported in
+                if let url = imported.fileURL {
+                    selectedModelURL = url
+                }
+            }
+            .confirmationDialog(
+                "Delete “\(pendingDelete?.displayName ?? "")”?",
+                isPresented: Binding(
+                    get: { pendingDelete != nil },
+                    set: { if !$0 { pendingDelete = nil } }),
+                titleVisibility: .visible
+            ) {
+                Button("Delete Character", role: .destructive) { performDelete() }
+            } message: {
+                Text("Removes the model file and its persona settings. Chat history is kept.")
+            }
             .task {
                 // The reveal is normally driven by `environmentDidLoad` — fired
                 // when the selected environment's mesh finishes downloading +
@@ -205,6 +237,23 @@ struct ContentView: View {
         }
     }
 
+    // MARK: - Character deletion
+
+    /// Full removal of an imported character: files + SQL rows + persona rows
+    /// (ImportedCharacterStore.delete), TTS engine cache, and — when it was
+    /// on screen — a switch back to the default model.
+    private func performDelete() {
+        guard let entry = pendingDelete else { return }
+        pendingDelete = nil
+        let wasSelected = selectedModelURL == entry.url
+        ImportedCharacterStore.shared.delete(slug: entry.name)
+        TTSEngineSelector.shared.invalidateCache(for: entry.name)
+        registry.refresh()
+        if wasSelected {
+            selectedModelURL = registry.defaultModel?.url
+        }
+    }
+
     // MARK: - Session
 
     /// Starts a fresh chat session and returns to the live 3D avatar.
@@ -229,59 +278,8 @@ struct ContentView: View {
 
 }
 
-// MARK: VRM Model Registry
-
-/// Locates `.vrm` and `.glb` model files inside the app bundle.
-///
-/// **Search order:**
-/// 1. Known names looked up directly via `Bundle.main.url(forResource:withExtension:)`.
-/// 2. Anything inside a `Models/` folder reference, if one is present.
-///
-/// Entries are deduplicated by lowercased name.
-enum VRMModelRegistry {
-
-    struct Entry {
-        let name: String
-        let url: URL
-    }
-
-    static let all: [Entry] = {
-        var seen = Set<String>()
-        return (namedEntries() + folderEntries())
-            .filter { seen.insert($0.name.lowercased()).inserted }
-    }()
-
-    static var defaultModel: Entry? {
-        all.first { $0.name.lowercased() == "ekaterina" } ?? all.first
-    }
-
-    private static func namedEntries() -> [Entry] {
-        [
-            ("Sonya", "vrm"), ("Ekaterina", "vrm"),
-            ("Sonya", "glb"), ("Ekaterina", "glb")
-        ]
-        .compactMap { name, ext -> Entry? in
-            guard let url = Bundle.main.url(forResource: name, withExtension: ext) else {
-                return nil
-            }
-            return Entry(name: name, url: url)
-        }
-    }
-
-    private static func folderEntries() -> [Entry] {
-        guard let dir = Bundle.main.url(forResource: "Models", withExtension: nil) else {
-            return []
-        }
-        let urls =
-            (try? FileManager.default
-                .contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
-        return
-            urls
-            .filter { ["vrm", "glb"].contains($0.pathExtension.lowercased()) }
-            .sorted { $0.lastPathComponent < $1.lastPathComponent }
-            .map { Entry(name: $0.deletingPathExtension().lastPathComponent, url: $0) }
-    }
-}
+// The VRM model registry lives in VRMModelRegistry.swift — extracted from
+// this file and made @Observable so imported characters appear at runtime.
 
 // MARK: Preview
 

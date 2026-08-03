@@ -23,6 +23,9 @@ struct NeuraLinkApp: App {
         // conversation (created lazily on the first turn).
         ConversationStore.shared.startNewChat()
 
+        // Clean up VRM import staging files orphaned by a kill mid-import.
+        Task { await VRMImportService.shared.sweepStaging() }
+
         let settings = OpenAISettings.shared
 
         if settings.isEnabled && settings.hasValidKey {
