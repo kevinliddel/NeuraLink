@@ -28,8 +28,9 @@ public struct MToonMaterialUniforms {
     public var emissiveG: Float = 0.0
     public var emissiveB: Float = 0.0
 
-    // Block 3: 16 bytes - PBR factors
-    public var metallicFactor: Float = 0.0
+    // Block 3: 16 bytes - normal-map scale + PBR factor (same offsets —
+    // normalScale reuses the slot of the never-consumed metallicFactor)
+    public var normalScale: Float = 1.0
     public var roughnessFactor: Float = 1.0
     public var giIntensityFactor: Float = 1.0  // spec default is 1.0
     public var shadingShiftTextureScale: Float = 1.0

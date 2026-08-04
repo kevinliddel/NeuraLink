@@ -271,6 +271,11 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
         // OPAQUE base=2000, MASK base=2450, BLEND base=3000
         let materialRenderQueue: Int
 
+        // Material declares TransparentWithZWrite (VRM 1.0 flag or 0.x
+        // BlendMode 3 / _ZWrite): BLEND items draw with depth write ON so
+        // layered cloth occludes correctly instead of double-blending.
+        let transparentZWrite: Bool
+
         // Scene graph order for stable tie-breaking in sort (global)
         let primitiveIndex: Int
 

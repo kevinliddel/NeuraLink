@@ -48,7 +48,7 @@ struct MToonMaterial {
  float emissiveB;                           // 4 bytes
 
  // Block 3: 16 bytes - PBR factors
- float metallicFactor;                      // 4 bytes
+ float normalScale;                         // 4 bytes
  float roughnessFactor;                     // 4 bytes
  float giIntensityFactor;                   // 4 bytes
  float shadingShiftTextureScale;            // 4 bytes

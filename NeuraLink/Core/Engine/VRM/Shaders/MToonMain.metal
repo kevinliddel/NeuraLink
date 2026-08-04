@@ -88,8 +88,29 @@ fragment float4 mtoon_fragment_v2(VertexOut in [[stage_in]],
         viewNormal = -viewNormal;
     }
     if (material.hasNormalTexture > 0) {
+        // Tangent-space normal mapping without vertex tangents: build the
+        // cotangent frame from screen-space derivatives (Schüler,
+        // thetenthplanet.de/archives/1180). The previous code added the raw
+        // tangent-space sample into the WORLD normal, which dragged every
+        // normal toward world +Z even for a neutral (flat) map — most
+        // visible as smeared/shifted shading on outfits with fabric maps.
         float3 nmap = normalTexture.sample(textureSampler, uv).xyz * 2.0 - 1.0;
-        normal = normalize(normal + nmap * 0.8);
+        nmap.xy *= material.normalScale;
+        float3 dp1 = dfdx(in.worldPosition);
+        float3 dp2 = dfdy(in.worldPosition);
+        float2 duv1 = dfdx(uv);
+        float2 duv2 = dfdy(uv);
+        float3 dp2perp = cross(dp2, normal);
+        float3 dp1perp = cross(normal, dp1);
+        float3 tangent = dp2perp * duv1.x + dp1perp * duv2.x;
+        float3 bitangent = dp2perp * duv1.y + dp1perp * duv2.y;
+        float invmax = rsqrt(max(dot(tangent, tangent), dot(bitangent, bitangent)));
+        // Degenerate UV derivatives (e.g. flat-mapped islands) leave the
+        // geometric normal untouched instead of producing NaNs.
+        if (isfinite(invmax)) {
+            float3x3 tbn = float3x3(tangent * invmax, bitangent * invmax, normal);
+            normal = normalize(tbn * nmap);
+        }
     }
 
     // ── Shading shift (spec: texture remapped to [-1,1] × scale) ─

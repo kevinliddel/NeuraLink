@@ -35,7 +35,7 @@ struct MToonMaterial {
     float emissiveR;
     float emissiveG;
     float emissiveB;
-    float metallicFactor;
+    float normalScale;
     float roughnessFactor;
     float giIntensityFactor;
     float shadingShiftTextureScale;
