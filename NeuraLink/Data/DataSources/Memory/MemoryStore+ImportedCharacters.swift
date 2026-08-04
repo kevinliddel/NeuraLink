@@ -143,6 +143,13 @@ extension MemoryStore {
             texts: [slug.lowercased()], label: "quarantined")
     }
 
+    /// nil clears the path (the card falls back to the letter placeholder).
+    func updateImportedCharacterThumbnailPath(slug: String, path: String?) {
+        execImportedUpdate(
+            "UPDATE imported_characters SET thumbnail_path = ?, updated_at = CURRENT_TIMESTAMP WHERE slug = ?;",
+            texts: [path, slug.lowercased()], label: "thumbnail_path")
+    }
+
     // MARK: - Delete
 
     /// Removes the SQL row only. File cleanup and `character_ai` row cleanup
@@ -193,9 +200,10 @@ extension MemoryStore {
         )
     }
 
-    /// Runs a single UPDATE/DELETE whose placeholders are all text.
-    /// SQL strings are compile-time constants; only values are bound.
-    private func execImportedUpdate(_ sql: String, texts: [String], label: String) {
+    /// Runs a single UPDATE/DELETE whose placeholders are all text (nil
+    /// binds SQL NULL). SQL strings are compile-time constants; only values
+    /// are bound.
+    private func execImportedUpdate(_ sql: String, texts: [String?], label: String) {
         lock.lock()
         defer { lock.unlock() }
         var statement: OpaquePointer?

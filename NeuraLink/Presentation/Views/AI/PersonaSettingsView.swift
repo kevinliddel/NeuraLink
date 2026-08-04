@@ -75,6 +75,10 @@ struct PersonaSettingsView: View {
                 TextField("Name", text: $persona.name)
             }
 
+            if ImportedCharacterStore.shared.isImported(slug: modelID.lowercased()) {
+                CharacterImageSection(slug: modelID.lowercased())
+            }
+
             if isLocalLLMMode {
                 Section {
                     TextEditor(text: $localPrompt)

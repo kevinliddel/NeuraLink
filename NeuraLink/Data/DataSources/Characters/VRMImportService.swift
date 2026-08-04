@@ -185,7 +185,15 @@ actor VRMImportService {
     /// Moves the staged files into protected storage and registers the row.
     /// Rolls the files back out on SQL rejection so no orphan can shadow a
     /// future import.
-    func finalize(_ candidate: VRMImportCandidate, displayName: String) throws -> ImportedCharacter {
+    ///
+    /// `customThumbnailPNG`: user-picked card image (raw picker bytes, any
+    /// format UIImage can decode) — takes precedence over the thumbnail
+    /// embedded in the VRM file; downscaled + re-encoded before hitting disk.
+    func finalize(
+        _ candidate: VRMImportCandidate,
+        displayName: String,
+        customThumbnailPNG: Data? = nil
+    ) throws -> ImportedCharacter {
         guard let baseDir = try? ProtectedStorage.privateApplicationSupportURL() else {
             throw VRMImportError.protectedStorageUnavailable
         }
@@ -203,11 +211,24 @@ actor VRMImportService {
             throw VRMImportError.unreadable(detail: "couldn't move into secure storage: \(error.localizedDescription)")
         }
         var thumbnailURL: URL?
-        if let staged = candidate.stagedThumbnailURL {
-            let dest = charDir.appendingPathComponent("\(slug).png")
+        let thumbnailDest = charDir.appendingPathComponent("\(slug).png")
+        if let customThumbnailPNG,
+           let image = UIImage(data: customThumbnailPNG),
+           let png = Self.downscaledPNG(image, maxDimension: 512) {
             do {
-                try FileManager.default.moveItem(at: staged, to: dest)
-                thumbnailURL = dest
+                try png.write(to: thumbnailDest, options: .atomic)
+                thumbnailURL = thumbnailDest
+            } catch {
+                nlLog("[VRMImportService] Custom thumbnail write failed (placeholder card instead): \(error)", level: .warning)
+            }
+            // The embedded thumbnail lost to the user's pick — drop the staged copy.
+            if let staged = candidate.stagedThumbnailURL {
+                try? FileManager.default.removeItem(at: staged)
+            }
+        } else if let staged = candidate.stagedThumbnailURL {
+            do {
+                try FileManager.default.moveItem(at: staged, to: thumbnailDest)
+                thumbnailURL = thumbnailDest
             } catch {
                 nlLog("[VRMImportService] Thumbnail move failed (placeholder card instead): \(error)", level: .warning)
             }
@@ -395,7 +416,9 @@ actor VRMImportService {
         }
     }
 
-    private static func downscaledPNG(_ image: UIImage, maxDimension: CGFloat) -> Data? {
+    /// Internal (not private): ImportedCharacterStore.setThumbnail reuses it
+    /// when the user changes the card image after import.
+    static func downscaledPNG(_ image: UIImage, maxDimension: CGFloat) -> Data? {
         let largest = max(image.size.width, image.size.height)
         guard largest > 0 else { return nil }
         let scale = min(1, maxDimension / largest)

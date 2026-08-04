@@ -9,6 +9,7 @@
 
 import Testing
 import Foundation
+import UIKit
 @testable import NeuraLink
 
 @Suite("Imported Characters (SQL layer)")
@@ -177,6 +178,35 @@ struct ImportedCharacterStoreTests {
         #expect(MemoryStore.shared.insertImportedCharacter(draft) != nil)
         MemoryStore.shared.updateImportedCharacterDisplayName(slug: draft.slug, displayName: "Renamed")
         #expect(MemoryStore.shared.importedCharacter(slug: draft.slug)?.displayName == "Renamed")
+    }
+
+    @Test("Card image set/remove round-trips the file and SQL path")
+    @MainActor
+    func thumbnailRoundTrip() throws {
+        var draft = makeDraft(tag: "thumb")
+        draft.thumbnailPath = nil  // exercise the path-backfill branch
+        cleanup(draft.slug)
+        defer { cleanup(draft.slug) }
+
+        #expect(MemoryStore.shared.insertImportedCharacter(draft) != nil)
+
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 10, height: 10))
+        let image = renderer.image { context in
+            UIColor.red.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 10, height: 10))
+        }
+        let pngData = try #require(image.pngData())
+
+        ImportedCharacterStore.shared.setThumbnail(slug: draft.slug, imageData: pngData)
+        let updated = MemoryStore.shared.importedCharacter(slug: draft.slug)
+        #expect(updated?.thumbnailPath == "characters/\(draft.slug).png")
+        let fileURL = try #require(updated?.thumbnailURL)
+        #expect(FileManager.default.fileExists(atPath: fileURL.path))
+
+        ImportedCharacterStore.shared.setThumbnail(slug: draft.slug, imageData: nil)
+        let cleared = MemoryStore.shared.importedCharacter(slug: draft.slug)
+        #expect(cleared?.thumbnailPath == nil)
+        #expect(!FileManager.default.fileExists(atPath: fileURL.path))
     }
 
     @Test("Delete removes the row; persona rows are cleaned separately")

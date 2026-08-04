@@ -4,24 +4,30 @@
 //
 //  Confirmation step of the VRM import flow: shows the staged candidate's
 //  thumbnail, metadata, license permissions, and capability warnings; lets
-//  the user pick the display name; and gates restricted-use models behind an
-//  explicit acknowledgment. Import commits the files to protected storage
-//  (VRMImportService.finalize) — Cancel discards the staging copy.
+//  the user pick the display name and (optionally) a custom card image from
+//  Photos; and gates restricted-use models behind an explicit acknowledgment.
+//  Import commits the files to protected storage (VRMImportService.finalize)
+//  — Cancel discards the staging copy.
 //
 
+import PhotosUI
 import SwiftUI
 
 struct CharacterImportConfirmSheet: View {
     let candidate: VRMImportCandidate
-    var onConfirm: (String) -> Void
+    /// (displayName, customCardImage) — image nil means "use the thumbnail
+    /// embedded in the VRM file" (or the placeholder when there is none).
+    var onConfirm: (String, Data?) -> Void
     var onCancel: () -> Void
 
     @State private var displayName: String
     @State private var acknowledgedRestriction = false
+    @State private var photoItem: PhotosPickerItem?
+    @State private var customImageData: Data?
 
     init(
         candidate: VRMImportCandidate,
-        onConfirm: @escaping (String) -> Void,
+        onConfirm: @escaping (String, Data?) -> Void,
         onCancel: @escaping () -> Void
     ) {
         self.candidate = candidate
@@ -55,22 +61,40 @@ struct CharacterImportConfirmSheet: View {
                     Button("Cancel", action: onCancel)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Import") { onConfirm(displayName) }
+                    Button("Import") { onConfirm(displayName, customImageData) }
                         .fontWeight(.semibold)
                         .disabled(!canImport)
                 }
             }
             .interactiveDismissDisabled()
+            .onChange(of: photoItem) { _, item in
+                guard let item else { return }
+                Task {
+                    if let data = try? await item.loadTransferable(type: Data.self) {
+                        customImageData = data
+                    }
+                }
+            }
         }
     }
 
     // MARK: - Sections
 
+    /// Custom pick → embedded VRM thumbnail → placeholder.
+    private var cardImage: UIImage? {
+        if let customImageData, let image = UIImage(data: customImageData) {
+            return image
+        }
+        if let url = candidate.stagedThumbnailURL {
+            return UIImage(contentsOfFile: url.path)
+        }
+        return nil
+    }
+
     private var previewSection: some View {
         Section {
             HStack(spacing: 16) {
-                if let url = candidate.stagedThumbnailURL,
-                   let image = UIImage(contentsOfFile: url.path) {
+                if let image = cardImage {
                     Image(uiImage: image)
                         .resizable()
                         .scaledToFill()
@@ -98,6 +122,25 @@ struct CharacterImportConfirmSheet: View {
                     }
                 }
             }
+
+            PhotosPicker(selection: $photoItem, matching: .images) {
+                Label(
+                    customImageData == nil ? "Choose Card Image…" : "Change Card Image…",
+                    systemImage: "photo")
+            }
+            if customImageData != nil {
+                Button(role: .destructive) {
+                    customImageData = nil
+                    photoItem = nil
+                } label: {
+                    Label(
+                        candidate.stagedThumbnailURL != nil
+                            ? "Use Model's Thumbnail" : "Remove Image",
+                        systemImage: "arrow.uturn.backward")
+                }
+            }
+        } footer: {
+            Text("The card image is shown in the character picker. It defaults to the thumbnail embedded in the VRM file.")
         }
     }
 

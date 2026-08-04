@@ -16,6 +16,7 @@
 
 import Foundation
 import Observation
+import UIKit
 
 @Observable
 @MainActor
@@ -71,6 +72,42 @@ final class ImportedCharacterStore {
     /// in SQL (visible via includeQuarantined fetches) but leaves the registry.
     func quarantine(slug: String) {
         MemoryStore.shared.setImportedCharacterQuarantined(slug: slug, true)
+        lastUpdated = Date()
+    }
+
+    /// Sets or replaces the character's card image; nil removes it (the
+    /// picker card falls back to the letter placeholder). Raw picker bytes
+    /// in, downscaled ≤512 px PNG on disk — always at `characters/<slug>.png`
+    /// so the extension-swap thumbnail convention keeps working.
+    func setThumbnail(slug: String, imageData: Data?) {
+        guard let row = MemoryStore.shared.importedCharacter(slug: slug),
+              let baseDir = try? ProtectedStorage.privateApplicationSupportURL()
+        else { return }
+        let path = "characters/\(row.slug).png"
+        let dest = baseDir.appendingPathComponent(path)
+        try? FileManager.default.createDirectory(
+            at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
+
+        if let imageData {
+            guard let image = UIImage(data: imageData),
+                  let png = VRMImportService.downscaledPNG(image, maxDimension: 512) else {
+                nlLog("[ImportedCharacterStore] Unusable image data for '\(row.slug)' thumbnail", level: .warning)
+                return
+            }
+            do {
+                try png.write(to: dest, options: .atomic)
+                try? ProtectedStorage.protect(dest)
+                if row.thumbnailPath == nil {
+                    MemoryStore.shared.updateImportedCharacterThumbnailPath(slug: slug, path: path)
+                }
+            } catch {
+                nlLog("[ImportedCharacterStore] Thumbnail write failed for '\(row.slug)': \(error)", level: .warning)
+                return
+            }
+        } else {
+            try? FileManager.default.removeItem(at: dest)
+            MemoryStore.shared.updateImportedCharacterThumbnailPath(slug: slug, path: nil)
+        }
         lastUpdated = Date()
     }
 
