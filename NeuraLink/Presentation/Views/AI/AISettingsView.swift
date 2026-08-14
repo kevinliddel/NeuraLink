@@ -112,7 +112,7 @@ struct AISettingsView: View {
         _ = personaStore.lastUpdated // Observe changes
         let modelID = RealtimeChatState.shared.selectedCharacterName
         let persona = CharacterPersona.forCharacter(named: modelID)
-        let avatarImage: UIImage? = VRMModelRegistry.all
+        let avatarImage: UIImage? = VRMModelRegistry.shared.all
             .first { $0.name.lowercased() == modelID.lowercased() }
             .flatMap { entry -> UIImage? in
                 let pngURL = entry.url.deletingPathExtension().appendingPathExtension("png")

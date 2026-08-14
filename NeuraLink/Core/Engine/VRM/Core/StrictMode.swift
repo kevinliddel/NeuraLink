@@ -33,7 +33,9 @@ public struct RendererConfig {
     public var strict: StrictLevel = .off
 
     /// Color attachment pixel format for render pipelines (defaults to match MTKView default)
-    public var colorPixelFormat: MTLPixelFormat = .bgra8Unorm
+    // Must match the MTKView drawable (VRMMetalState) — sRGB so linear-space
+    // shader output is gamma-encoded on write instead of crushing darks.
+    public var colorPixelFormat: MTLPixelFormat = .bgra8Unorm_srgb
 
     #if DEBUG
     /// Enable Metal validation layers (debug builds only)
@@ -76,7 +78,7 @@ public struct RendererConfig {
     public var depthBiasScale: Float = 1.0
 
     public init(
-        strict: StrictLevel = .off, colorPixelFormat: MTLPixelFormat = .bgra8Unorm,
+        strict: StrictLevel = .off, colorPixelFormat: MTLPixelFormat = .bgra8Unorm_srgb,
         renderFilter: RenderFilter? = nil, drawUntil: Int? = nil, drawOnlyIndex: Int? = nil,
         testIdentityPalette: Int? = nil, sampleCount: Int = 1, depthBiasScale: Float = 1.0
     ) {

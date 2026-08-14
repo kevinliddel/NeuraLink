@@ -132,4 +132,23 @@ struct RemoteAssetIntegrityTests {
                 RemoteAssetCache.CacheError.downloadFailed(URLError(.networkConnectionLost))))
         #expect(!VRMRenderer.isCancellation(RemoteAssetCache.CacheError.httpStatus(500)))
     }
+
+    // Offline-class failures wait for connectivity (NetworkWaiter) instead of
+    // burning retry attempts; anything else keeps the plain backoff.
+    @Test("Connectivity-error classification for the environment retry loop")
+    func testIsConnectivityError() {
+        #expect(VRMRenderer.isConnectivityError(URLError(.notConnectedToInternet)))
+        #expect(VRMRenderer.isConnectivityError(URLError(.networkConnectionLost)))
+        #expect(VRMRenderer.isConnectivityError(URLError(.timedOut)))
+        #expect(
+            VRMRenderer.isConnectivityError(
+                RemoteAssetCache.CacheError.downloadFailed(URLError(.notConnectedToInternet))))
+
+        #expect(!VRMRenderer.isConnectivityError(URLError(.cancelled)))
+        #expect(!VRMRenderer.isConnectivityError(RemoteAssetCache.CacheError.httpStatus(404)))
+        #expect(!VRMRenderer.isConnectivityError(CancellationError()))
+        #expect(
+            !VRMRenderer.isConnectivityError(
+                RemoteAssetCache.CacheError.checksumMismatch(expected: "a", actual: "b")))
+    }
 }

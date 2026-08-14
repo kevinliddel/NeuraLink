@@ -11,6 +11,10 @@ struct ModelSelectionOverlay: View {
     @Binding var selectedModelURL: URL?
     let models: [VRMModelRegistry.Entry]
     var onSelection: () -> Void
+    /// Presents the VRM file picker. Nil hides the trailing "+" card.
+    var onImport: (() -> Void)?
+    /// Long-press delete for imported entries. Nil disables the context menu.
+    var onDelete: ((VRMModelRegistry.Entry) -> Void)?
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -26,6 +30,19 @@ struct ModelSelectionOverlay: View {
                         }
                         onSelection()
                     }
+                    .contextMenu {
+                        if entry.isImported, let onDelete {
+                            Button(role: .destructive) {
+                                onDelete(entry)
+                            } label: {
+                                Label("Delete Character", systemImage: "trash")
+                            }
+                        }
+                    }
+                }
+
+                if let onImport {
+                    ImportCard(action: onImport)
                 }
             }
             .padding(.horizontal, 16)
@@ -54,7 +71,7 @@ private struct ModelCard: View {
         switch entry.name.lowercased() {
         case "ekaterina": return "温かく、優しいお姉さんタイプ――思いやりがあり、愛情深い"
         case "sonya": return "鋭いツンデレの女王様――高慢な中にも隠れた優しさ"
-        default: return "AI Companion"
+        default: return entry.isImported ? "Imported character" : "AI Companion"
         }
     }
 
@@ -70,6 +87,12 @@ private struct ModelCard: View {
             } else {
                 Color.gray.opacity(0.3)
                     .frame(width: 160, height: 220)
+                    .overlay(
+                        Text(String(entry.displayName.prefix(1)).uppercased())
+                            .font(.system(size: 56, weight: .bold))
+                            .foregroundColor(.white.opacity(0.35))
+                            .padding(.bottom, 60)
+                    )
             }
 
             // Gradient Overlay
@@ -82,9 +105,10 @@ private struct ModelCard: View {
 
             // Text and Icons
             VStack(spacing: 4) {
-                Text(entry.name)
+                Text(entry.displayName)
                     .font(.system(size: 14, weight: .bold))
                     .foregroundColor(.white)
+                    .lineLimit(1)
 
                 Text(descriptionText)
                     .font(.system(size: 8, weight: .medium))
@@ -123,5 +147,38 @@ private struct ModelCard: View {
                 .stroke(isSelected ? Color.white : Color.clear, lineWidth: 2)
         )
         .opacity(isSelected ? 1.0 : 0.6)
+    }
+}
+
+/// Trailing "add your own" card — opens the VRM file picker.
+private struct ImportCard: View {
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 10) {
+                Image(systemName: "plus.circle.fill")
+                    .font(.system(size: 36))
+                    .foregroundColor(.white.opacity(0.8))
+                Text("Import VRM")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.white)
+                Text("From Files")
+                    .font(.system(size: 9))
+                    .foregroundColor(.white.opacity(0.6))
+            }
+            .frame(width: 160, height: 220)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color.white.opacity(0.06))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .strokeBorder(
+                        Color.white.opacity(0.35),
+                        style: StrokeStyle(lineWidth: 1.5, dash: [6, 5]))
+            )
+        }
+        .buttonStyle(.plain)
     }
 }

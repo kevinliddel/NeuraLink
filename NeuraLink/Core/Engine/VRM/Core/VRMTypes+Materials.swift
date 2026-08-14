@@ -10,6 +10,48 @@ import simd
 
 // MARK: - VRM 0.x Material Properties
 
+extension Array where Element == VRM0MaterialProperty {
+    /// Resolves the 0.x property block for a glTF material. The spec pairs
+    /// the arrays positionally, but real files from converters/re-exports
+    /// sometimes truncate or reorder `materialProperties` — a silent
+    /// positional mispair applies another material's alpha/shading state,
+    /// which corrupts exactly the last-listed materials (usually the outfit).
+    ///
+    /// Strategy: trust the positional entry when its name agrees (or either
+    /// side has no name); otherwise fall back to a unique name match and log.
+    public func vrm0Property(forMaterialNamed name: String?, at index: Int) -> VRM0MaterialProperty? {
+        if index < count {
+            let positional = self[index]
+            if name == nil || positional.name == nil || positional.name == name {
+                return positional
+            }
+        }
+        if let name {
+            let named = filter { $0.name == name }
+            if named.count == 1 {
+                nlLog(
+                    "[VRM0MaterialProperty] materialProperties misaligned at index \(index) — matched material '\(name)' by name",
+                    level: .warning)
+                return named.first
+            }
+        }
+        // No unique name match — keep the positional entry anyway (pre-fix
+        // behavior). Some exporters name the two arrays differently while
+        // keeping them aligned; dropping the entry would strip MToon and
+        // the 0.x alpha state entirely, which is worse than a suspect pair.
+        if index < count {
+            nlLog(
+                "[VRM0MaterialProperty] Name mismatch at index \(index) for material '\(name ?? "unnamed")' (entry named '\(self[index].name ?? "unnamed")') — using positional entry",
+                level: .warning)
+            return self[index]
+        }
+        nlLog(
+            "[VRM0MaterialProperty] No materialProperties entry for material '\(name ?? "unnamed")' (index \(index), \(count) entries) — glTF block only",
+            level: .warning)
+        return nil
+    }
+}
+
 /// VRM 0.x stores MToon properties in materialProperties array at document level
 public struct VRM0MaterialProperty {
     public var name: String?

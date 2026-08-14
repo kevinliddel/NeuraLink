@@ -162,9 +162,8 @@ extension VRMModel {
                     itemsCompleted: materialIndex, totalItems: materialCount)
 
                 if let gltfMaterial = gltf.materials?[safe: materialIndex] {
-                    let vrm0Prop =
-                        materialIndex < vrm0MaterialProperties.count
-                        ? vrm0MaterialProperties[materialIndex] : nil
+                    let vrm0Prop = vrm0MaterialProperties.vrm0Property(
+                        forMaterialNamed: gltfMaterial.name, at: materialIndex)
                     let material = VRMMaterial(
                         from: gltfMaterial, textures: textures, vrm0MaterialProperty: vrm0Prop,
                         vrmVersion: specVersion)

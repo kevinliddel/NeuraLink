@@ -94,7 +94,12 @@ final class VRMMetalState {
         }
         isMetalAvailable = true
         mtkView = MTKView(frame: .zero, device: device)
-        mtkView.colorPixelFormat = .bgra8Unorm
+        // sRGB drawable: the shaders light in LINEAR space (textures are
+        // sRGB-decoded on sample), so the target must gamma-encode on write.
+        // With plain .bgra8Unorm the linear values were displayed as-is,
+        // crushing every dark tone — black fabric lost all fold/pattern
+        // detail vs reference viewers (three-vrm/Unity encode on output).
+        mtkView.colorPixelFormat = .bgra8Unorm_srgb
         mtkView.depthStencilPixelFormat = .depth32Float
         mtkView.clearColor = MTLClearColor(red: 0.0, green: 0.0, blue: 0.0, alpha: 0.0)
         mtkView.isOpaque = false

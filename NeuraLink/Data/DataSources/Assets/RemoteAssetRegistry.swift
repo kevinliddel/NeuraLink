@@ -17,10 +17,16 @@
 // Renamed from `SceneAssetRegistry` on 29/05/2026 when the first TTS
 // cases joined the enum. VoiceVox cases added 29/05/2026.
 //
+// Created by Dedicatus on 16/05/2026.
+//
 
 import Foundation
 
-enum RemoteAssetRegistry: Hashable, Sendable {
+// `nonisolated`: pure value logic — under the module's default-MainActor
+// isolation the synthesized Hashable conformance would otherwise be
+// MainActor-isolated, which the `RemoteAssetCache` actor (which keys its
+// tables by this enum) can't use in Swift 6 language mode.
+nonisolated enum RemoteAssetRegistry: Hashable, Sendable {
     // Scenes — `name` is the GLB basename (resolves to `scenes/<name>.glb`).
     case scene(String)
 
@@ -45,13 +51,13 @@ enum RemoteAssetRegistry: Hashable, Sendable {
     /// from `pathInRepo`.
     var filename: String {
         switch self {
-        case .scene(let name):         return "\(name).glb"
+        case .scene(let name): return "\(name).glb"
         case .voicevoxSpeaker(let id): return "\(id).vvm"
         case .jtalkDictFile(let name): return name
-        case .openVoiceMelo:           return "melo_en.onnx"
-        case .openVoiceConverter:      return "voice_conversion.onnx"
-        case .openVoiceBert:           return "bert_en.onnx"
-        case .whisperModel:            return "ggml-base.bin"
+        case .openVoiceMelo: return "melo_en.onnx"
+        case .openVoiceConverter: return "voice_conversion.onnx"
+        case .openVoiceBert: return "bert_en.onnx"
+        case .whisperModel: return "ggml-base.bin"
         }
     }
 
@@ -85,8 +91,8 @@ enum RemoteAssetRegistry: Hashable, Sendable {
         case .jtalkDictFile:
             return "open_jtalk_dic_utf_8-1.11"
         case .voicevoxSpeaker,
-             .openVoiceMelo, .openVoiceConverter, .openVoiceBert,
-             .whisperModel:
+            .openVoiceMelo, .openVoiceConverter, .openVoiceBert,
+            .whisperModel:
             return nil
         }
     }
@@ -248,10 +254,10 @@ enum RemoteAssetRegistry: Hashable, Sendable {
             return true
         }
         if let subdir = bundleSubdirectory,
-           Bundle.main.url(
-            forResource: resource,
-            withExtension: ext,
-            subdirectory: subdir) != nil {
+            Bundle.main.url(
+                forResource: resource,
+                withExtension: ext,
+                subdirectory: subdir) != nil {
             return true
         }
         guard
@@ -262,7 +268,8 @@ enum RemoteAssetRegistry: Hashable, Sendable {
                 create: false
             )
         else { return false }
-        let cached = support
+        let cached =
+            support
             .appendingPathComponent("hf-assets")
             .appendingPathComponent(pathInRepo)
         return FileManager.default.fileExists(atPath: cached.path)

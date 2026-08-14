@@ -202,12 +202,25 @@ extension VRMRenderer {
                     clamp: depthBiasCalculator.clamp, encoder: encoder)
 
             case "blend":
-                if let blendDepthState = depthStencilStates["blend"] {
-                    setDepthStencilStateCached(blendDepthState, encoder: encoder)
+                if item.transparentZWrite {
+                    // TransparentWithZWrite (VRM 1.0 flag / 0.x BlendMode 3):
+                    // blend with depth write ON — the "face" state is
+                    // lessEqual + write. Culling honors the material here;
+                    // forcing double-sided while writing depth makes layered
+                    // cloth self-occlude in draw order.
+                    setDepthStencilStateCached(
+                        depthStencilStates["face"] ?? depthStencilStates["opaque"],
+                        encoder: encoder)
+                    let cullMode = isDoubleSided ? MTLCullMode.none : .back
+                    setCullModeCached(cullMode, encoder: encoder)
                 } else {
-                    setDepthStencilStateCached(depthStencilStates["opaque"], encoder: encoder)
+                    if let blendDepthState = depthStencilStates["blend"] {
+                        setDepthStencilStateCached(blendDepthState, encoder: encoder)
+                    } else {
+                        setDepthStencilStateCached(depthStencilStates["opaque"], encoder: encoder)
+                    }
+                    setCullModeCached(.none, encoder: encoder)
                 }
-                setCullModeCached(.none, encoder: encoder)
                 // Apply base depth bias for BLEND materials
                 setDepthBiasCached(
                     baseBias, slopeScale: depthBiasCalculator.slopeScale,
@@ -249,7 +262,7 @@ extension VRMRenderer {
 
             // Set base PBR properties
             mtoonUniforms.baseColorFactor = material.baseColorFactor
-            mtoonUniforms.metallicFactor = material.metallicFactor
+            mtoonUniforms.normalScale = material.normalScale
             mtoonUniforms.roughnessFactor = material.roughnessFactor
             mtoonUniforms.emissiveFactor = material.emissiveFactor
 
@@ -300,6 +313,9 @@ extension VRMRenderer {
             if let mtoon = material.mtoon {
                 mtoonUniforms = MToonMaterialUniforms(from: mtoon)
                 mtoonUniforms.baseColorFactor = material.baseColorFactor  // Keep base color from PBR
+                // Re-apply: (from:) resets normalScale to 1, which would
+                // silently drop glTF normalTexture.scale / VRM 0.x _BumpScale.
+                mtoonUniforms.normalScale = material.normalScale
                 // Set VRM version for version-aware shading (0 = VRM 0.0, 1 = VRM 1.0)
                 mtoonUniforms.vrmVersion = material.vrmVersion == .v0_0 ? 0 : 1
 

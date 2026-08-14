@@ -63,6 +63,11 @@ struct EnvironmentLoadingScreen: View {
         let onDark = !Self.isDaytime
         let foreground: Color = onDark ? .white : .black
         let shadowColor: Color = onDark ? .black.opacity(0.7) : .white.opacity(0.6)
+        // No implicit animations here: the log line and the byte counter both
+        // update many times per second during a download, and independently
+        // animated layout shifts made the two texts visibly overlap mid-frame
+        // on device. The progress line's space is always reserved (hidden when
+        // empty) so the badge never re-flows.
         return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 12) {
                 ProgressView()
@@ -76,20 +81,17 @@ struct EnvironmentLoadingScreen: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .animation(.easeOut(duration: 0.15), value: envLoad.currentLogLine)
             }
             // Real download progress (bytes / %) once the environment mesh
             // starts streaming, so a slow first-install fetch shows movement.
-            if let progress = envLoad.progressText {
-                Text(progress)
-                    .font(.caption.weight(.medium).monospacedDigit())
-                    .foregroundStyle(foreground.opacity(0.85))
-                    .lineLimit(1)
-                    .padding(.leading, 28)
-            }
+            Text(envLoad.progressText ?? " ")
+                .font(.caption.weight(.medium).monospacedDigit())
+                .foregroundStyle(foreground.opacity(0.85))
+                .lineLimit(1)
+                .padding(.leading, 28)
+                .opacity(envLoad.progressText == nil ? 0 : 1)
         }
         .shadow(color: shadowColor, radius: 5)
-        .animation(.easeOut(duration: 0.2), value: envLoad.progressText)
     }
 
     /// Escape hatch shown after a prolonged download stall: retry the fetch or

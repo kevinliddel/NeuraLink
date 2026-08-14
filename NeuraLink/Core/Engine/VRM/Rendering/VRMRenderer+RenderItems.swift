@@ -68,6 +68,12 @@ extension VRMRenderer {
                         idx < model.materials.count ? model.materials[idx].renderQueue : 2000
                     } ?? 2000
 
+                let transparentZWrite =
+                    primitive.materialIndex.flatMap { idx in
+                        idx < model.materials.count
+                            ? model.materials[idx].isTransparentWithZWrite : false
+                    } ?? false
+
                 // OPTIMIZATION: Single face/body detection pass (consolidates 3 separate checks)
                 // Include body, clothing, and transparentZWrite materials for proper categorization
                 let isFaceMaterial =
@@ -104,6 +110,7 @@ extension VRMRenderer {
                     isMouthOrLip: false,
                     renderOrder: 0,  // Will be set based on category
                     materialRenderQueue: materialRenderQueue,
+                    transparentZWrite: transparentZWrite,
                     primitiveIndex: globalPrimitiveIndex,
                     primIdxInMesh: primIdxInMesh
                 )

@@ -20,12 +20,20 @@ final class UserSettings {
     private let birthdayKey = "com.neuralink.user.birthday"
     private let showEnvironmentKey = "com.neuralink.user.showEnvironment"
     private let selectedEnvironmentKey = "com.neuralink.user.selectedEnvironment"
+    private let selectedCharacterKey = "com.neuralink.user.selectedCharacter"
     var showEnvironment: Bool {
         didSet { UserDefaults.standard.set(showEnvironment, forKey: showEnvironmentKey) }
     }
     
     var selectedEnvironment: String {
         didSet { UserDefaults.standard.set(selectedEnvironment, forKey: selectedEnvironmentKey) }
+    }
+
+    /// Lowercased character name/slug of the last selected model, so the
+    /// choice survives relaunch (a plain pointer, not sensitive — same tier
+    /// as `selectedEnvironment`). Nil = never chosen → factory default.
+    var selectedCharacter: String? {
+        didSet { UserDefaults.standard.set(selectedCharacter, forKey: selectedCharacterKey) }
     }
     
     var name: String {
@@ -60,6 +68,7 @@ final class UserSettings {
         }
         
         self.selectedEnvironment = UserDefaults.standard.string(forKey: selectedEnvironmentKey) ?? "city"
+        self.selectedCharacter = UserDefaults.standard.string(forKey: selectedCharacterKey)
         self.name = UserDefaults.standard.string(forKey: "com.neuralink.user.name") ?? ""
         self.gender = UserDefaults.standard.string(forKey: "com.neuralink.user.gender") ?? "Prefer not to say"
         

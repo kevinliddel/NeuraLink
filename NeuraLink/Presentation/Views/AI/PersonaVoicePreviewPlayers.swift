@@ -10,6 +10,37 @@
 import AVFoundation
 import Observation
 
+// MARK: - Playback session routing
+
+/// Puts the shared audio session into plain playback shape before standalone
+/// TTS (voice preview, transcript playback) starts.
+///
+/// The live pipelines leave the session in voice-call configurations —
+/// `PiPManager` sets `mode: .voiceChat`, whose voice processing audibly
+/// attenuates any subsequent playback, and without `.defaultToSpeaker` a
+/// `.playAndRecord` session routes to the earpiece. The category stays
+/// `.playAndRecord` so an active mic pipeline isn't torn down; only the mode
+/// and options are normalised (mirrors `LocalLLMManager+Audio`, which does
+/// the same before live chat TTS).
+enum TTSPlaybackSession {
+    static func activate() {
+        let session = AVAudioSession.sharedInstance()
+        let needsConfig = session.category != .playAndRecord
+            || session.mode != .default
+            || !session.categoryOptions.contains(.defaultToSpeaker)
+        if needsConfig {
+            do {
+                try session.setCategory(
+                    .playAndRecord, mode: .default,
+                    options: [.defaultToSpeaker, .allowBluetoothA2DP, .mixWithOthers])
+            } catch {
+                nlLog("[TTSPlayback] setCategory failed: \(error)", level: .warning)
+            }
+        }
+        try? session.setActive(true)
+    }
+}
+
 // MARK: - OpenAI / Cloud Preview Player (AVAudioPlayer)
 
 /// Plays a complete encoded audio file (MP3/AAC, as returned by OpenAI's
@@ -22,7 +53,7 @@ final class VoicePreviewPlayer: NSObject, AVAudioPlayerDelegate, @unchecked Send
     func start(data: Data) {
         stop()
         do {
-            try AVAudioSession.sharedInstance().setActive(true)
+            TTSPlaybackSession.activate()
             let p = try AVAudioPlayer(data: data)
             p.delegate = self
             player = p
@@ -69,7 +100,9 @@ final class LocalTTSPreviewPlayer: @unchecked Sendable {
         // Activate the session first: connecting to mainMixerNode with an
         // inactive session gives the engine output a 0-rate format and trips
         // AVAudioEngine's IsFormatSampleRateAndChannelCountValid assertion.
-        try? AVAudioSession.sharedInstance().setActive(true)
+        // (Also normalises a stale voice-chat mode that would mute playback —
+        // see TTSPlaybackSession.)
+        TTSPlaybackSession.activate()
         ensureAttached(format: buffer.format)
         if !audioEngine.isRunning {
             try? audioEngine.start()

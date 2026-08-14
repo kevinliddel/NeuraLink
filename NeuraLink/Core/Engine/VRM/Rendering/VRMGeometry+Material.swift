@@ -19,6 +19,9 @@ public class VRMMaterial {
     public var emissiveTexture: VRMTexture?
     public var metallicFactor: Float = 0.0
     public var roughnessFactor: Float = 1.0
+    /// Normal-map strength: glTF `normalTexture.scale`, overridden by the
+    /// VRM 0.x `_BumpScale` when present.
+    public var normalScale: Float = 1.0
     public var emissiveFactor: SIMD3<Float> = [0, 0, 0]
     public var doubleSided: Bool = false
     public var alphaMode: String = "OPAQUE"
@@ -59,7 +62,11 @@ public class VRMMaterial {
         if blendMode == 3 {
             return true
         }
-        // VRM 0.x: Infer from properties - transparent material with zWrite enabled
+        // VRM 0.x only: transparent material whose _ZWrite stayed on.
+        // Gated to 0.x — `zWriteEnabled` defaults true, so without the gate
+        // every VRM 1.0 BLEND material lacking the explicit flag would flip
+        // to depth-write, changing how existing 1.0 models render.
+        guard vrmVersion == .v0_0 else { return false }
         let isTransparent = alphaMode == "BLEND" || blendMode == 2
         return isTransparent && zWriteEnabled
     }
@@ -91,6 +98,7 @@ public class VRMMaterial {
         if let normalTextureInfo = gltfMaterial.normalTexture,
             normalTextureInfo.index < textures.count {
             normalTexture = textures[normalTextureInfo.index]
+            normalScale = normalTextureInfo.scale ?? 1.0
         }
 
         // Load emissive texture (for glow effects)
@@ -137,11 +145,34 @@ public class VRMMaterial {
                 renderQueue = base + rqOffset
             }
         }
-        // VRM 0.x: material properties from document-level VRM extension
+        // VRM 0.x: material properties from document-level VRM extension.
+        // These are the AUTHORITATIVE material state for 0.x — the glTF
+        // block is only a courtesy duplicate that some exporters (VRoid 2.x)
+        // fill in and others leave at defaults. Trusting glTF alone renders
+        // cutout/transparent/double-sided outfits opaque and single-sided.
         else if let vrm0Prop = vrm0MaterialProperty {
-            mtoon = vrm0Prop.toMToonMaterial()
+            // Spec: "If VRM_USE_GLTFSHADER is specified, use same index of
+            // gltf's material settings" — the materialProperties entry is a
+            // placeholder and must not override anything.
+            let shaderName = vrm0Prop.shader ?? "VRM/MToon"
+            if shaderName == "VRM_USE_GLTFSHADER" {
+                nlLog(
+                    "[VRM0Material] '\(name ?? "unnamed")' uses VRM_USE_GLTFSHADER — glTF settings as-is (alphaMode=\(alphaMode))",
+                    level: .info)
+                return
+            }
+
+            // Non-MToon shaders (VRM/Unlit*, Standard) must NOT get toon
+            // shading — mirrors how VRM 1.0 materials without
+            // VRMC_materials_mtoon take the unshaded branch. A missing
+            // shader string is treated as MToon (pre-spec exports).
+            let isMToonShader = shaderName == "VRM/MToon"
+            if isMToonShader {
+                mtoon = vrm0Prop.toMToonMaterial()
+            }
 
             // Also get base color from VRM 0.x _Color vector property if present (sRGB to Linear)
+            // (applies to MToon and Unlit alike — both use _Color/_MainTex)
             if let colorVec = vrm0Prop.vectorProperties["_Color"], colorVec.count >= 4 {
                 // Convert RGB from sRGB to linear, alpha stays linear
                 let r = sRGBToLinear(colorVec[0])
@@ -156,15 +187,85 @@ public class VRMMaterial {
                 renderQueue = queue
             }
 
-            // VRM 0.x: Read _ZWrite and _BlendMode from floatProperties
-            // _ZWrite: 1 = writes to depth, 0 = no depth write
+            // Alpha mode. MToon: from _BlendMode
+            // (0=Opaque, 1=Cutout, 2=Transparent, 3=TransparentWithZWrite).
+            // Unlit shaders: implied by the shader name.
+            if isMToonShader {
+                if let bm = vrm0Prop.floatProperties["_BlendMode"] {
+                    blendMode = Int(bm)
+                    switch blendMode {
+                    case 0: alphaMode = "OPAQUE"
+                    case 1: alphaMode = "MASK"
+                    case 2, 3: alphaMode = "BLEND"
+                    default: break  // unknown value — keep the glTF block's answer
+                    }
+                }
+            } else {
+                // Keep blendMode in sync — the _ZWrite default below infers
+                // "plain transparent ⇒ no depth write" from blendMode == 2.
+                switch shaderName {
+                case "VRM/UnlitCutout":
+                    alphaMode = "MASK"
+                    blendMode = 1
+                case "VRM/UnlitTransparent":
+                    alphaMode = "BLEND"
+                    blendMode = 2
+                case "VRM/UnlitTransparentZWrite":
+                    alphaMode = "BLEND"
+                    blendMode = 3
+                default: break  // UnlitTexture / Standard: keep glTF (OPAQUE default)
+                }
+            }
+
+            // A file that omits renderQueue keeps the 2000 default, which
+            // the sorter never Z-sorts (view-Z ordering starts at queue
+            // 2500) — transparent materials would draw in definition order.
+            // Mirror the 1.0 per-alpha-mode bases; zwrite-blend (3) sits at
+            // 2500 so it draws before plain blend.
+            if vrm0Prop.renderQueue == nil {
+                switch blendMode {
+                case 1: renderQueue = 2450
+                case 2: renderQueue = 3000
+                case 3: renderQueue = 2500
+                default: break
+                }
+            }
+
+            // Cutout threshold for MASK mode.
+            if let cutoff = vrm0Prop.floatProperties["_Cutoff"] {
+                alphaCutoff = cutoff
+            }
+
+            // _CullMode: 0=Off (double-sided), 1=Front, 2=Back. Front culling
+            // has no engine support — treat it as single-sided like Back.
+            if let cull = vrm0Prop.floatProperties["_CullMode"] {
+                doubleSided = (cull == 0)
+            }
+
+            // Normal-map strength.
+            if let bumpScale = vrm0Prop.floatProperties["_BumpScale"] {
+                normalScale = bumpScale
+            }
+
+            // _ZWrite: 1 = writes to depth, 0 = no depth write. When absent,
+            // mirror Unity MToon's BlendMode setter: ZWrite off for plain
+            // Transparent, on for everything else.
             if let zWrite = vrm0Prop.floatProperties["_ZWrite"] {
                 zWriteEnabled = (zWrite == 1.0)
+            } else {
+                zWriteEnabled = (blendMode != 2)
             }
-            // _BlendMode: 0=Opaque, 1=Cutout, 2=Transparent, 3=TransparentWithZWrite
-            if let bm = vrm0Prop.floatProperties["_BlendMode"] {
-                blendMode = Int(bm)
-            }
+
+            nlLog(
+                "[VRM0Material] '\(name ?? "unnamed")' shader=\(shaderName) blendMode=\(blendMode) → \(alphaMode) cutoff=\(alphaCutoff) doubleSided=\(doubleSided) zWrite=\(zWriteEnabled) queue=\(renderQueue) mtoon=\(mtoon != nil)",
+                level: .info)
+        }
+        // VRM 0.x material with no properties entry at all — worth knowing
+        // when debugging why a material renders as plain PBR.
+        else if vrmVersion == .v0_0 {
+            nlLog(
+                "[VRM0Material] '\(name ?? "unnamed")' has no materialProperties entry — glTF block only (alphaMode=\(alphaMode))",
+                level: .warning)
         }
     }
 
@@ -194,8 +295,16 @@ public class VRMMaterial {
             mtoon.shadingShiftFactor = Float(shadingShiftFactor)
         }
 
-        // Global illumination
-        if let giIntensityFactor = mtoonExt["giIntensityFactor"] as? Double {
+        // Global illumination. Real VRM 1.0 files carry giEqualizationFactor
+        // (spec name) — giIntensityFactor was the pre-release name, kept as a
+        // fallback. The engine's ambient term uses intensity semantics; the
+        // documented relation is giEqualizationFactor = 1 − giIntensityFactor.
+        // Without this mapping every 1.0 material silently fell to the 0.05
+        // struct default while the 0.x path honored _IndirectLightIntensity —
+        // a visible ambient mismatch between the two spec paths.
+        if let giEqualization = mtoonExt["giEqualizationFactor"] as? Double {
+            mtoon.giIntensityFactor = Float(1.0 - giEqualization)
+        } else if let giIntensityFactor = mtoonExt["giIntensityFactor"] as? Double {
             mtoon.giIntensityFactor = Float(giIntensityFactor)
         }
 

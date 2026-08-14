@@ -50,10 +50,8 @@ public final class ParallelMaterialLoader: @unchecked Sendable {
                         return
                     }
 
-                    let vrm0Prop =
-                        materialIndex < self.vrm0MaterialProperties.count
-                        ? self.vrm0MaterialProperties[materialIndex]
-                        : nil
+                    let vrm0Prop = self.vrm0MaterialProperties.vrm0Property(
+                        forMaterialNamed: gltfMaterial.name, at: materialIndex)
 
                     let material = VRMMaterial(
                         from: gltfMaterial,
