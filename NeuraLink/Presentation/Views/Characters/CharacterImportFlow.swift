@@ -39,6 +39,9 @@ struct CharacterImportFlow: ViewModifier {
     @State private var pendingDiscard: VRMImportCandidate?
     @State private var importError: String?
     @State private var setupCharacter: ImportedCharacter?
+    /// Holds the finalized row until the confirm sheet finishes dismissing —
+    /// presenting the setup sheet mid-dismissal can silently drop it.
+    @State private var pendingSetup: ImportedCharacter?
 
     private static let allowedTypes: [UTType] = [
         UTType(importedAs: "com.neuralink.vrm"),
@@ -60,7 +63,7 @@ struct CharacterImportFlow: ViewModifier {
                     importError = error.localizedDescription
                 }
             }
-            .sheet(item: $candidate, onDismiss: discardIfPending) { candidate in
+            .sheet(item: $candidate, onDismiss: confirmSheetDismissed) { candidate in
                 CharacterImportConfirmSheet(
                     candidate: candidate,
                     onConfirm: { displayName, cardImage in
@@ -116,7 +119,7 @@ struct CharacterImportFlow: ViewModifier {
                 ImportedCharacterStore.shared.noteExternalMutation()
                 VRMModelRegistry.shared.refresh()
                 onImported(row)
-                setupCharacter = row
+                pendingSetup = row
             } catch {
                 // finalize cleans up after itself on failure — the staged
                 // files are consumed either way, so nothing left to discard.
@@ -125,6 +128,15 @@ struct CharacterImportFlow: ViewModifier {
                 importError = (error as? VRMImportError)?.errorDescription
                     ?? error.localizedDescription
             }
+        }
+    }
+
+    private func confirmSheetDismissed() {
+        discardIfPending()
+        // Present persona setup only after the confirm sheet fully dismissed.
+        if let next = pendingSetup {
+            pendingSetup = nil
+            setupCharacter = next
         }
     }
 

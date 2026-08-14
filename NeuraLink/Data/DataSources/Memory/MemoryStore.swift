@@ -253,8 +253,8 @@ final class MemoryStore {
             meta_avatar_permission TEXT,
             meta_commercial_usage  TEXT,
             quarantined   INTEGER NOT NULL DEFAULT 0,
-            created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at    DATETIME DEFAULT CURRENT_TIMESTAMP
+            created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         CREATE UNIQUE INDEX IF NOT EXISTS idx_imported_characters_sha ON imported_characters(sha256);
         """

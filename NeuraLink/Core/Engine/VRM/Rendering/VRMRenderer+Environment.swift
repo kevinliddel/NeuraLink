@@ -114,6 +114,10 @@ extension VRMRenderer {
                     } else {
                         try? await Task.sleep(nanoseconds: 3_000_000_000)
                     }
+                    // The waits above don't throw on cancellation (`try?`
+                    // swallows it; the connectivity wait suspends through it)
+                    // — bail here instead of reporting/starting another fetch.
+                    if Task.isCancelled { return }
                     await EnvironmentLoadState.shared.report(
                         "[EnvironmentDownload] Retrying download…")
                 }

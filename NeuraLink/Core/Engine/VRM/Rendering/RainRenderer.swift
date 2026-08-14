@@ -187,7 +187,7 @@ final class RainRenderer {
             desc.fragmentFunction = fragFn
             desc.rasterSampleCount = 1
             let ca = desc.colorAttachments[0]!
-            ca.pixelFormat = .bgra8Unorm_srgb  // must match the drawable (VRMMetalState)
+            ca.pixelFormat = config.colorPixelFormat  // must match the render target
             ca.isBlendingEnabled = true
             ca.rgbBlendOperation = .add
             ca.alphaBlendOperation = .add

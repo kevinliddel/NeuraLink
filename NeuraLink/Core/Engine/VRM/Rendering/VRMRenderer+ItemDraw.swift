@@ -313,6 +313,9 @@ extension VRMRenderer {
             if let mtoon = material.mtoon {
                 mtoonUniforms = MToonMaterialUniforms(from: mtoon)
                 mtoonUniforms.baseColorFactor = material.baseColorFactor  // Keep base color from PBR
+                // Re-apply: (from:) resets normalScale to 1, which would
+                // silently drop glTF normalTexture.scale / VRM 0.x _BumpScale.
+                mtoonUniforms.normalScale = material.normalScale
                 // Set VRM version for version-aware shading (0 = VRM 0.0, 1 = VRM 1.0)
                 mtoonUniforms.vrmVersion = material.vrmVersion == .v0_0 ? 0 : 1
 

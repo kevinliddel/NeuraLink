@@ -165,7 +165,11 @@ struct CharacterImportConfirmSheet: View {
             if let usage = report.commercialUsage {
                 LabeledContent("Commercial use", value: usage)
             }
-            if let raw = report.licenseURL, let url = URL(string: raw) {
+            // Web schemes only — the URL comes from the untrusted VRM file,
+            // and a crafted value could otherwise open an arbitrary app.
+            if let raw = report.licenseURL, let url = URL(string: raw),
+               let scheme = url.scheme?.lowercased(),
+               scheme == "http" || scheme == "https" {
                 Link("View license", destination: url)
                     .font(.footnote)
             }

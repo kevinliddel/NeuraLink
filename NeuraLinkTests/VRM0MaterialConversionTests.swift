@@ -83,6 +83,25 @@ struct VRM0MaterialConversionTests {
         #expect(material.isTransparentWithZWrite == false)
     }
 
+    @Test("Missing renderQueue falls back to the per-blend-mode base", arguments: [
+        (1, 2450),
+        (2, 3000),
+        (3, 2500)
+    ])
+    func renderQueueFallback(blendMode: Int, expectedQueue: Int) throws {
+        let material = try makeMaterial(
+            vrm0Prop(floats: ["_BlendMode": Float(blendMode)]))
+        #expect(material.renderQueue == expectedQueue)
+    }
+
+    @Test("Explicit renderQueue wins over the blend-mode fallback")
+    func renderQueueExplicit() throws {
+        var prop = vrm0Prop(floats: ["_BlendMode": 2])
+        prop.renderQueue = 2750
+        let material = try makeMaterial(prop)
+        #expect(material.renderQueue == 2750)
+    }
+
     // MARK: - _CullMode is authoritative
 
     @Test("_CullMode 0 makes a glTF-single-sided material double-sided")

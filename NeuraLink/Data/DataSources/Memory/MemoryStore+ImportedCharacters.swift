@@ -195,8 +195,10 @@ extension MemoryStore {
             metaAvatarPermission: columnText(statement, 12),
             metaCommercialUsage: columnText(statement, 13),
             quarantined: sqlite3_column_int(statement, 14) != 0,
-            createdAt: Self.parseSQLiteTimestamp(String(cString: sqlite3_column_text(statement, 15))) ?? Date(),
-            updatedAt: Self.parseSQLiteTimestamp(String(cString: sqlite3_column_text(statement, 16))) ?? Date()
+            // Nil-safe despite NOT NULL: pre-fix rows created without the
+            // constraint could carry NULL, which must not crash the mapper.
+            createdAt: columnText(statement, 15).flatMap(Self.parseSQLiteTimestamp) ?? Date(),
+            updatedAt: columnText(statement, 16).flatMap(Self.parseSQLiteTimestamp) ?? Date()
         )
     }
 

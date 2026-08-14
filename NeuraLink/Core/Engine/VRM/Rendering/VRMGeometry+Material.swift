@@ -217,6 +217,20 @@ public class VRMMaterial {
                 }
             }
 
+            // A file that omits renderQueue keeps the 2000 default, which
+            // the sorter never Z-sorts (view-Z ordering starts at queue
+            // 2500) — transparent materials would draw in definition order.
+            // Mirror the 1.0 per-alpha-mode bases; zwrite-blend (3) sits at
+            // 2500 so it draws before plain blend.
+            if vrm0Prop.renderQueue == nil {
+                switch blendMode {
+                case 1: renderQueue = 2450
+                case 2: renderQueue = 3000
+                case 3: renderQueue = 2500
+                default: break
+                }
+            }
+
             // Cutout threshold for MASK mode.
             if let cutoff = vrm0Prop.floatProperties["_Cutoff"] {
                 alphaCutoff = cutoff

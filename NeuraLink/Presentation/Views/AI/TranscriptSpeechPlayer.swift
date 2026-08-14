@@ -42,6 +42,9 @@ final class TranscriptSpeechPlayer {
     /// a failed fetch that never produced audio.
     private var isWorking = false
     private var speakTask: Task<Void, Never>?
+    /// Monotonic playback token: an older run that resumes after a newer
+    /// toggle must not clear the newer run's `isWorking`.
+    private var playbackGeneration = 0
     /// Engine currently synthesizing, so `stop()` can abort the synthesis
     /// itself — cancelling the Task alone wouldn't interrupt `engine.speak`.
     private var activeEngine: (any TTSEngineProtocol)?
@@ -85,6 +88,8 @@ final class TranscriptSpeechPlayer {
 
         speakingMessageID = message.id
         isWorking = true
+        playbackGeneration += 1
+        let generation = playbackGeneration
         let local = isLocalMode
         // Await the previous run before starting: its callback-restore (the
         // `defer` in speakLocal) must land first, or this run would capture
@@ -98,7 +103,12 @@ final class TranscriptSpeechPlayer {
             } else {
                 await self.speakOpenAI(text)
             }
-            self.isWorking = false
+            // Only the run that still owns the active generation may clear
+            // the flag — a cancelled predecessor resuming here would
+            // otherwise flip the NEW run's loading state back to idle.
+            if self.playbackGeneration == generation {
+                self.isWorking = false
+            }
         }
     }
 

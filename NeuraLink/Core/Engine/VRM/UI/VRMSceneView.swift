@@ -210,8 +210,15 @@ public struct VRMSceneView: View {
                 }
             }
             let model = try await VRMModel.load(from: url, device: device)
+            // `.task(id: modelURL)` cancelled this load (user switched
+            // models) — the replacement task owns the scene now.
+            guard !Task.isCancelled else { return }
             state.display(model)
         } catch {
+            // A cancelled load surfaces as CancellationError from the
+            // loader's checkpoints — that's a model switch, not a failure,
+            // and must not trigger the fallback-to-default path.
+            if error is CancellationError || Task.isCancelled { return }
             nlLog("[VRMSceneView] Failed to load model from \(url.path): \(error.localizedDescription)", level: .error)
 
             if let defaultEntry = VRMModelRegistry.shared.defaultModel, defaultEntry.url != url {
@@ -219,6 +226,7 @@ public struct VRMSceneView: View {
                     nlLog("[VRMSceneView] Falling back to default model '\(defaultEntry.name)'")
                     guard let device = state.mtkView.device else { return }
                     let model = try await VRMModel.load(from: defaultEntry.url, device: device)
+                    guard !Task.isCancelled else { return }
                     state.display(model)
                     toastMessage = "Couldn't load that avatar — using the default"
                 } catch {
@@ -231,6 +239,10 @@ public struct VRMSceneView: View {
                 EnvironmentLoadState.shared.forceReady()
             }
         }
+
+        // A cancelled task must not reconnect the AI — the replacement
+        // task handles that after its own load completes.
+        guard !Task.isCancelled else { return }
 
         // On the first load (app launch) never auto-connect — the user must
         // explicitly enable a setting. On subsequent model switches, reconnect
