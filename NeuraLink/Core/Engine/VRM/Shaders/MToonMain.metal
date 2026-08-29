@@ -161,9 +161,15 @@ fragment float4 mtoon_fragment_v2(VertexOut in [[stage_in]],
 
     lightingForRim *= uniforms.lightNormalizationFactor;
 
-    // ── GI / ambient (spec: baseColor × ambientColor × giFactor) ─
+    // ── GI / ambient ────────────────────────────────────────────
+    // Spec: `color = color + gi × baseColorTerm` — indirect light is added at
+    // FULL strength. giEqualizationFactor only blends directional (SH) GI
+    // against its uniform average; with a single uniform ambient colour that
+    // blend is a no-op, so the factor must NOT scale the ambient. Scaling it
+    // (×0.05–0.1) starved the shade side, which read darker/more saturated
+    // than reference viewers — most visible on skin.
     float3 litColor = (lit0 + lit1 + lit2) * uniforms.lightNormalizationFactor
-                    + uniforms.ambientColor.xyz * baseColor.rgb * material.giIntensityFactor;
+                    + uniforms.ambientColor.xyz * baseColor.rgb;
 
     // ── Emissive ────────────────────────────────────────────────
     float3 emissive = float3(material.emissiveR, material.emissiveG, material.emissiveB);

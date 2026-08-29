@@ -31,10 +31,14 @@ final class PersonaStore {
     /// Saves a persona for a given model ID (usually the filename).
     func savePersona(_ persona: CharacterPersona, for modelID: String) {
         let key = modelID.lowercased()
+        // Store only the body. The runtime text handed to the UI carries the
+        // emotion preamble (re-applied on read); saving it verbatim stacked
+        // one more preamble per save, growing the prompt on every edit.
+        let body = CharacterPersona.strippingEmotionInstructions(persona.instructions)
         MemoryStore.shared.setPersonaName(character: key, engine: Self.engine, name: persona.name)
-        MemoryStore.shared.setPersonaPrompt(character: key, engine: Self.engine, prompt: persona.instructions)
+        MemoryStore.shared.setPersonaPrompt(character: key, engine: Self.engine, prompt: body)
         MemoryStore.shared.setPersonaVoice(character: key, engine: Self.engine, voice: persona.voice)
-        nlLog("[PersonaStore] Saving persona for '\(key)' (voice=\(persona.voice), instructions length=\(persona.instructions.count))", level: .info)
+        nlLog("[PersonaStore] Saving persona for '\(key)' (voice=\(persona.voice), body length=\(body.count))", level: .info)
         lastUpdated = Date()
     }
 
@@ -48,14 +52,12 @@ final class PersonaStore {
         }
         let name = MemoryStore.shared.personaName(character: key, engine: Self.engine) ?? modelID.capitalized
         let voice = MemoryStore.shared.personaVoice(character: key, engine: Self.engine) ?? "alloy"
-        var persona = CharacterPersona(name: name, instructions: prompt, voice: voice)
-
-        let marker = "\n\n    IMPORTANT: You MUST express"
-        if let range = persona.instructions.range(of: marker) {
-            persona.instructions = String(persona.instructions[..<range.lowerBound])
-        }
-        persona.instructions = CharacterPersona.emotionInstructions + "\n" + persona.instructions
-        return persona
+        // Rows written before the body-only rule may carry stacked or legacy
+        // preambles — strip them all, then prepend the current one exactly once.
+        return CharacterPersona(
+            name: name,
+            instructions: CharacterPersona.withEmotionInstructions(prompt),
+            voice: voice)
     }
 
     /// Removes any custom persona for a given model ID, reverting to defaults.

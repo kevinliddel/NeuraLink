@@ -83,6 +83,31 @@ struct CharacterPersona: Codable {
         voice: "alloy"
     )
 
+    // MARK: - Emotion preamble handling
+
+    /// Legacy marker — early builds APPENDED the emotion block, so anything
+    /// from this marker to the end of the text is preamble.
+    private static let legacyEmotionMarker = "\n\n    IMPORTANT: You MUST express"
+
+    /// Returns only the character body: every emotion preamble is removed —
+    /// the current format (possibly stacked by repeated save/load cycles)
+    /// and the legacy appended format. Idempotent on clean text.
+    static func strippingEmotionInstructions(_ instructions: String) -> String {
+        var body = instructions
+        body = body.replacingOccurrences(of: emotionInstructions + "\n", with: "")
+        body = body.replacingOccurrences(of: emotionInstructions, with: "")
+        if let range = body.range(of: legacyEmotionMarker) {
+            body = String(body[..<range.lowerBound])
+        }
+        return body.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Runtime instructions: exactly one current emotion preamble in front
+    /// of the (cleaned) body.
+    static func withEmotionInstructions(_ body: String) -> String {
+        emotionInstructions + "\n" + strippingEmotionInstructions(body)
+    }
+
     // MARK: - Lookup
 
     /// Returns the persona matching the given VRM model file name (case-insensitive).
