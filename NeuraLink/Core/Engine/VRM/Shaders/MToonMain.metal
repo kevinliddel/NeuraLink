@@ -95,7 +95,11 @@ fragment float4 mtoon_fragment_v2(VertexOut in [[stage_in]],
         // normal toward world +Z even for a neutral (flat) map — most
         // visible as smeared/shifted shading on outfits with fabric maps.
         float3 nmap = normalTexture.sample(textureSampler, uv).xyz * 2.0 - 1.0;
-        nmap.xy *= material.normalScale;
+        // glTF normal maps are OpenGL-convention (+Y = image up), but the
+        // derivative bitangent below points along +v (image down), so Y
+        // must be negated — same as three.js GLTFLoader's
+        // `normalScale.y *= -1` when using derivative tangents.
+        nmap.xy *= float2(material.normalScale, -material.normalScale);
         float3 dp1 = dfdx(in.worldPosition);
         float3 dp2 = dfdy(in.worldPosition);
         float2 duv1 = dfdx(uv);

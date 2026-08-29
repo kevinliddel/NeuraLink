@@ -59,7 +59,19 @@ vertex VertexOut mtoon_outline_vertex(VertexIn in [[stage_in]],
 // 0 = pure outline colour (unaffected by light), 1 = outline tinted by lighting.
 fragment float4 mtoon_outline_fragment(VertexOut in [[stage_in]],
                                 constant MToonMaterial& material [[buffer(8)]],
-                                constant Uniforms& uniforms [[buffer(1)]]) {
+                                constant Uniforms& uniforms [[buffer(1)]],
+                                texture2d<float> baseColorTexture [[texture(0)]],
+                                sampler textureSampler [[sampler(0)]]) {
+    // Same alpha cutout as the main pass: the hull of alpha-hidden geometry
+    // must not paint solid outline-colored panels where the surface itself
+    // was discarded.
+    float alpha = material.baseColorFactor.a;
+    if (material.hasBaseColorTexture > 0) {
+        alpha *= baseColorTexture.sample(textureSampler, in.texCoord).a;
+    }
+    if (material.alphaMode == 1 && alpha < material.alphaCutoff) { discard_fragment(); }
+    if (material.alphaMode == 2 && alpha < 0.004) { discard_fragment(); }
+
     float3 outlineMaterial = float3(material.outlineColorR,
                                     material.outlineColorG,
                                     material.outlineColorB);
@@ -71,5 +83,5 @@ fragment float4 mtoon_outline_fragment(VertexOut in [[stage_in]],
 
     // spec: lerp(1, lighting, factor) — 0=pure, 1=lit
     float3 outlineColor = outlineMaterial * mix(float3(1.0), lighting, material.outlineLightingMixFactor);
-    return float4(outlineColor, 1.0);
+    return float4(outlineColor, material.alphaMode == 2 ? alpha : 1.0);
 }

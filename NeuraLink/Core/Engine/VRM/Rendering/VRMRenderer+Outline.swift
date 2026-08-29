@@ -77,6 +77,43 @@ extension VRMRenderer {
             mtoonUniforms.vrmVersion = material.vrmVersion == .v0_0 ? 0 : 1
             mtoonUniforms.outlineWidthFactor *= self.outlineWidth / 0.02
 
+            // The hull must honor the same alpha cutout as the main pass.
+            // VRoid hides unused outfit geometry (long skirts, pant legs) with
+            // alpha-0 texels under MASK; the main pass discards them and writes
+            // no depth, so an outline hull without cutout paints them as solid
+            // outline-colored panels.
+            switch item.effectiveAlphaMode {
+            case "mask":
+                mtoonUniforms.alphaMode = 1
+                mtoonUniforms.alphaCutoff = item.effectiveAlphaCutoff
+            case "blend":
+                mtoonUniforms.alphaMode = 2
+            default:
+                mtoonUniforms.alphaMode = 0
+            }
+            if let baseTexture = material.baseColorTexture?.mtlTexture {
+                mtoonUniforms.hasBaseColorTexture = 1
+                encoder.setFragmentTexture(baseTexture, index: 0)
+            } else {
+                mtoonUniforms.hasBaseColorTexture = 0
+                encoder.setFragmentTexture(nil, index: 0)
+            }
+            // Width-multiply texture: bind it, or clear the flag. The vertex
+            // shader multiplies the width by the sample, so a set flag with
+            // no bound texture zeroed the outline on those materials.
+            if let widthIndex = mtoon.outlineWidthMultiplyTexture,
+               widthIndex < model.textures.count,
+               let widthTexture = model.textures[widthIndex].mtlTexture {
+                mtoonUniforms.hasOutlineWidthMultiplyTexture = 1
+                encoder.setVertexTexture(widthTexture, index: 0)
+            } else {
+                mtoonUniforms.hasOutlineWidthMultiplyTexture = 0
+            }
+            if let sampler = samplerStates["default"] {
+                encoder.setFragmentSamplerState(sampler, index: 0)
+                encoder.setVertexSamplerState(sampler, index: 0)
+            }
+
             let globalColor = self.outlineColor
             if globalColor.x > 0 || globalColor.y > 0 || globalColor.z > 0 {
                 mtoonUniforms.outlineColorFactor = globalColor
