@@ -95,21 +95,10 @@ struct ContentView: View {
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
-            // Song-recognition pop-up card (listening → match with links).
-            .overlay(alignment: .top) {
-                if !aiState.isUIHidden && songRecognition.phase != .idle {
-                    SongRecognitionOverlay()
-                        .padding(.horizontal, 16)
-                        .padding(.top, 60)
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                }
-            }
-            .animation(
-                .spring(response: 0.38, dampingFraction: 0.75),
-                value: songRecognition.phase)
             .toolbar {
                 if !aiState.isUIHidden && envLoad.isReady {
                     chatHistoryToggleButton
+                    songRecognitionToolbarItem
                     menuToggleButton
                 }
             }
@@ -234,6 +223,18 @@ struct ContentView: View {
                     .contentTransition(.symbolEffect(.replace))
             }
             .accessibilityLabel("Menu")
+        }
+    }
+
+    /// Song-recognition status capsule (listening → match with links) in the
+    /// navigation bar's principal slot, between the history and menu buttons —
+    /// deliberately NOT a scene overlay so it never covers the model's face.
+    @ToolbarContentBuilder
+    private var songRecognitionToolbarItem: some ToolbarContent {
+        ToolbarItem(placement: .principal) {
+            if songRecognition.phase != .idle {
+                SongRecognitionOverlay()
+            }
         }
     }
 
