@@ -11,7 +11,11 @@ HUD FAB button ─┐
                 ├─→ SongRecognitionManager.run()
 identify_song ──┘        │
 tool call                ├─ SHManagedSession records + matches (Shazam catalog, ≤18 s)
-                         ├─ phase drives SongRecognitionOverlay (pop-up card)
+                         ├─ avatar vibes while listening: random dancing.vrma /
+                         │    enjoying_song.vrma via VRMMetalState.current?
+                         │    .startListeningDance() — suppresses the random-idle
+                         │    controller; stopListeningDance() fades back to neutral
+                         ├─ phase drives SongRecognitionOverlay (nav-bar capsule)
                          └─ on match:
                               • triggerEmotion("surprised") — instant avatar delight
                               • HUD path: inject "*The song … is playing nearby*"
@@ -27,7 +31,8 @@ tool call                ├─ SHManagedSession records + matches (Shazam catal
 |---|---|
 | `Domain/Entities/RecognizedSong.swift` | Framework-free entity; builds Apple Music / YouTube links |
 | `Data/DataSources/SongRecognitionManager.swift` | `@Observable` singleton; ShazamKit session, phase machine, persona-reaction injection |
-| `Presentation/Views/AI/SongRecognitionOverlay.swift` | Top pop-up card: pulsing listening state → artwork + link pills |
+| `Presentation/Views/AI/SongRecognitionOverlay.swift` | Nav-bar principal capsule: pulsing listening state → artwork + link pills |
+| `Core/Engine/VRM/UI/VRMMetalState+Actions.swift` | `startListeningDance()` / `stopListeningDance()` (listening-dance extension) |
 | `Domain/Entities/Skills/IdentifySongSkill.swift` | `identify_song` tool (awaits the result and returns it to the AI) |
 | `Data/DataSources/AppFunctionTool.swift` | `identifySongTool` schema |
 

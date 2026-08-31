@@ -305,6 +305,9 @@ extension VRMMetalState {
             guard let self, let pose = note.userInfo?["pose"] as? String else { return }
             self.playPose(named: pose)
         }
+        NotificationCenter.default.addObserver(forName: Notification.Name("VRMStopPoseAnimation"), object: nil, queue: .main) { [weak self] _ in
+            self?.stopPose()
+        }
     }
 
     private func playPose(named name: String) {
@@ -318,6 +321,7 @@ extension VRMMetalState {
                 let clip = try await VRMAnimationLoader.loadVRMA(from: url, model: model)
                 await MainActor.run {
                     self.isPlayingRandomAnim = false // Interrupt random idle
+                    self.randomAnimTimer = -1  // Pause idles until stopPose re-arms
                     self.animationPlayer.isLooping = true
                     self.animationPlayer.crossfade(to: clip, duration: 0.5, from: model)
                     nlLog("[Pose] Playing '\(name)'")
@@ -326,5 +330,19 @@ extension VRMMetalState {
                 nlLog("[VRMMetalState] ⚠️ Failed to load pose '\(name)': \(error)")
             }
         }
+    }
+
+    /// Crossfades back to the neutral idle and re-arms the random-idle timer.
+    /// Counterpart to `playPose` for callers whose pose has a defined end
+    /// (e.g. song recognition's listening dance) — without this a pose loops
+    /// until the random-idle timer happens to fire.
+    private func stopPose() {
+        guard let model = currentModel, let clip = defaultClip else { return }
+        isPlayingRandomAnim = false
+        randomAnimElapsed = 0
+        animationPlayer.isLooping = true
+        animationPlayer.crossfade(to: clip, duration: 0.5, from: model)
+        scheduleNextRandomAnim()
+        nlLog("[Pose] ↩ neutral (pose ended)")
     }
 }

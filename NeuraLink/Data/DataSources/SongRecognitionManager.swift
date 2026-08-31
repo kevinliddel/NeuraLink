@@ -108,6 +108,9 @@ final class SongRecognitionManager {
         // triggering a spurious turn while we listen.
         LocalLLMManager.shared.gateMicCapture(forSeconds: Self.listenTimeout + 2)
 
+        // Lively touch: the avatar vibes to the music while we identify it.
+        Self.startListeningAnimation()
+
         let session = SHManagedSession()
         managedSession = session
         timedOut = false
@@ -128,8 +131,10 @@ final class SongRecognitionManager {
         let result = await session.result()
         timeout.cancel()
         managedSession = nil
-        // Release the mic gate back to the normal post-speech cool-down.
+        // Release the mic gate back to the normal post-speech cool-down and
+        // fade the avatar back from the listening dance to the neutral idle.
         LocalLLMManager.shared.gateMicCapture(forSeconds: 0.8)
+        Self.stopListeningAnimation()
 
         // If the user cancelled while we were listening, phase is already
         // .idle — don't overwrite it with a stale result.
@@ -207,6 +212,27 @@ final class SongRecognitionManager {
         if source == .hudButton {
             injectPersonaReaction(for: song)
         }
+    }
+
+    // MARK: - Listening animation
+
+    /// Vibe animations bundled in Resources/Animations, one picked at random
+    /// per recognition. Played through the same notification channel as the
+    /// photo poses (observer in VRMMetalState+Actions).
+    private static let listeningAnimations = ["dancing", "enjoying_song"]
+
+    private static func startListeningAnimation() {
+        guard let name = listeningAnimations.randomElement() else { return }
+        NotificationCenter.default.post(
+            name: Notification.Name("VRMPlayPoseAnimation"),
+            object: nil,
+            userInfo: ["pose": name]
+        )
+    }
+
+    private static func stopListeningAnimation() {
+        NotificationCenter.default.post(
+            name: Notification.Name("VRMStopPoseAnimation"), object: nil)
     }
 
     // MARK: - Persona reaction

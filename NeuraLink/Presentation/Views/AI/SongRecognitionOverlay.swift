@@ -45,7 +45,7 @@ struct SongRecognitionOverlay: View {
 
     private var listeningBar: some View {
         bar {
-            PulsingMusicNote(size: 22)
+            PulsingMusicNote(size: 26)
 
             Text("Listening…")
                 .font(.caption.weight(.semibold))
@@ -102,7 +102,7 @@ struct SongRecognitionOverlay: View {
                 manager.startFromUI()
             } label: {
                 Image(systemName: "arrow.clockwise.circle.fill")
-                    .font(.body)
+                    .font(.title3)
                     .foregroundStyle(.cyan)
             }
             .buttonStyle(.plain)
@@ -114,14 +114,14 @@ struct SongRecognitionOverlay: View {
 
     // MARK: - Building blocks
 
-    /// HUD capsule idiom (translucent black + hairline stroke), sized to fit
-    /// the navigation bar's principal slot.
+    /// HUD capsule idiom (translucent black + hairline stroke), pinned to the
+    /// toolbar buttons' 44 pt height so the header row reads as one line.
     private func bar(@ViewBuilder content: () -> some View) -> some View {
         HStack(spacing: 8) {
             content()
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 4)
+        .padding(.horizontal, 12)
+        .frame(height: 44)
         .background(.black.opacity(0.4), in: Capsule())
         .overlay(Capsule().strokeBorder(.white.opacity(0.18), lineWidth: 1))
     }
@@ -137,17 +137,17 @@ struct SongRecognitionOverlay: View {
                     .foregroundStyle(.white.opacity(0.5))
             }
         }
-        .frame(width: 28, height: 28)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.white.opacity(0.15), lineWidth: 1))
+        .frame(width: 34, height: 34)
+        .clipShape(RoundedRectangle(cornerRadius: 9))
+        .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(.white.opacity(0.15), lineWidth: 1))
     }
 
     private func linkIcon(url: URL, icon: String, tint: Color, label: String) -> some View {
         Link(destination: url) {
             Image(systemName: icon)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.white)
-                .frame(width: 26, height: 26)
+                .frame(width: 30, height: 30)
                 .background(tint.opacity(0.85), in: Circle())
                 .overlay(Circle().strokeBorder(.white.opacity(0.25), lineWidth: 1))
         }
@@ -158,7 +158,7 @@ struct SongRecognitionOverlay: View {
         Button(action: action) {
             Image(systemName: "x.circle.fill")
                 .foregroundStyle(.white.opacity(0.7))
-                .font(.body)
+                .font(.title3)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Dismiss")
