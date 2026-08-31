@@ -82,6 +82,30 @@ extension LocalLLMManager {
     /// spurious user turn. Passing a short value hands the gate back to the
     /// normal cool-down; while the AI is busy `processCapturedAudio` keeps
     /// bumping the gate forward regardless, so a short release is safe.
+    /// Pauses the audio engine so its voice-processing input unit releases
+    /// the mic path: AEC/noise suppression is tuned to erase exactly the
+    /// non-speech content ShazamKit needs, so an active engine makes match
+    /// attempts fail (SHErrorCode 202). Returns whether it was running so
+    /// the caller only resumes what it suspended.
+    func pauseCaptureForMusicRecognition() -> Bool {
+        guard audioEngine.isRunning else { return false }
+        isCaptureSuspendedForMusic = true
+        audioEngine.pause()
+        nlLog("[LocalLLM] Audio engine paused for music recognition", level: .info)
+        return true
+    }
+
+    func resumeCaptureAfterMusicRecognition() {
+        isCaptureSuspendedForMusic = false
+        guard !audioEngine.isRunning else { return }
+        do {
+            try audioEngine.start()
+            nlLog("[LocalLLM] Audio engine resumed after music recognition", level: .info)
+        } catch {
+            nlLog("[LocalLLM] Failed to resume audio engine after music recognition: \(error)", level: .error)
+        }
+    }
+
     func gateMicCapture(forSeconds seconds: TimeInterval) {
         micGatedUntilUptime = ProcessInfo.processInfo.systemUptime + seconds
     }
