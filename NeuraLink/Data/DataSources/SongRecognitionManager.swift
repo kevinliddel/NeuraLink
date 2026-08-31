@@ -50,11 +50,6 @@ final class SongRecognitionManager {
     /// ~4–10 s of clean audio; anything longer means it won't match at all.
     private static let listenTimeout: TimeInterval = 18
 
-    // Title-announcement playback (persona-voice TTS, no LLM turn).
-    private let cloudAnnouncer = VoicePreviewPlayer()
-    private let localAnnouncer = LocalTTSPreviewPlayer()
-    private var announceTask: Task<Void, Never>?
-
     private init() {}
 
     // MARK: - Public entry points
@@ -90,13 +85,11 @@ final class SongRecognitionManager {
     /// User dismissed the card mid-listen.
     func cancel() {
         managedSession?.cancel()
-        stopAnnouncement()
         phase = .idle
     }
 
     /// User dismissed a finished (matched / no-match / failed) card.
     func dismiss() {
-        stopAnnouncement()
         phase = .idle
     }
 
@@ -260,102 +253,23 @@ final class SongRecognitionManager {
 
     // MARK: - Title announcement
 
-    /// Speaks the matched title in the persona's own voice — deterministic
-    /// TTS rather than an LLM turn, so the model names the song instead of
-    /// riffing on it. Both engines' mics stay gated until playback ends so
-    /// the announcement can't feed back into VAD or the realtime session.
+    /// Speaks the matched title through each mode's NORMAL assistant speech
+    /// path — audible by construction, lip-synced, and recorded in chat
+    /// history like any other assistant line.
     private func announceTitle(for song: RecognizedSong) {
         let line = "This is \"\(song.title)\" by \(song.artist)."
-        announceTask?.cancel()
-        announceTask = Task { [weak self] in
-            guard let self else { return }
-            LocalLLMManager.shared.gateMicCapture(forSeconds: 30)
-            OpenAIRealtimeManager.shared.setMicGated(true)
-            defer {
-                LocalLLMManager.shared.gateMicCapture(forSeconds: 0.8)
-                OpenAIRealtimeManager.shared.setMicGated(false)
-            }
-
-            let settings = OpenAISettings.shared
-            if settings.isLocalLLMEnabled {
-                await self.announceLocal(line)
-            } else if settings.isEnabled && settings.hasValidKey {
-                await self.announceOpenAI(line)
-            }
-            await self.waitForAnnouncementPlayback()
-        }
-    }
-
-    private func stopAnnouncement() {
-        announceTask?.cancel()
-        announceTask = nil
-        cloudAnnouncer.stop()
-        localAnnouncer.stop()
-    }
-
-    /// Playback runs on the announcer players after synthesis returns; hold
-    /// the mic gates until they drain (bounded backstop for safety).
-    private func waitForAnnouncementPlayback() async {
-        let deadline = Date().addingTimeInterval(20)
-        while cloudAnnouncer.isSpeaking || localAnnouncer.isSpeaking,
-              Date() < deadline, !Task.isCancelled {
-            try? await Task.sleep(nanoseconds: 100_000_000)
-        }
-    }
-
-    private var announcePersona: String {
-        let name = RealtimeChatState.shared.selectedCharacterName
-        guard name.isEmpty else { return name }
-        return VRMModelRegistry.shared.defaultModel?.name ?? "Ekaterina"
-    }
-
-    /// Local mode: synthesize through the persona's resolved engine, routing
-    /// buffers to our own player (callback saved/restored — same pattern as
-    /// TranscriptSpeechPlayer) so a live chat turn's audio isn't hijacked.
-    private func announceLocal(_ text: String) async {
-        let persona = announcePersona
-        guard let engine = TTSEngineSelector.shared.engine(for: persona) else {
-            nlLog("[SongID] No TTS engine for '\(persona)' — skipping announcement", level: .warning)
-            return
-        }
-        let previousCallback = engine.onBufferReady
-        engine.onBufferReady = { [weak localAnnouncer] buffer in
-            DispatchQueue.main.async { localAnnouncer?.schedule(buffer) }
-        }
-        defer { engine.onBufferReady = previousCallback }
-        do {
-            try await engine.initialize()
-            guard !Task.isCancelled else { return }
-            try await engine.speak(text, persona: persona)
-        } catch {
-            nlLog("[SongID] Local announcement failed: \(error)", level: .warning)
-        }
-    }
-
-    /// OpenAI mode: one-shot TTS with the persona's voice (the realtime
-    /// session can't speak arbitrary literal text deterministically).
-    private func announceOpenAI(_ text: String) async {
         let settings = OpenAISettings.shared
-        guard let url = URL(string: "https://api.openai.com/v1/audio/speech") else { return }
-        let voice = CharacterPersona.forCharacter(named: announcePersona).voice
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(settings.apiKey)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 30
-        let body: [String: Any] = ["model": "tts-1", "input": text, "voice": voice]
-        guard let httpBody = try? JSONSerialization.data(withJSONObject: body) else { return }
-        request.httpBody = httpBody
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard (response as? HTTPURLResponse)?.statusCode == 200 else {
-                nlLog("[SongID] Announcement TTS failed: HTTP \((response as? HTTPURLResponse)?.statusCode ?? -1)", level: .warning)
-                return
-            }
-            guard !Task.isCancelled else { return }
-            cloudAnnouncer.start(data: data)
-        } catch {
-            nlLog("[SongID] Announcement TTS request failed: \(error)", level: .warning)
+        if settings.isLocalLLMEnabled {
+            // The local pipeline doesn't transcribe direct TTS — surface the
+            // line in the live overlay and log it to history ourselves.
+            RealtimeChatState.shared.aiTranscript = line
+            ChatTimelineStore.logAIMessage(line)
+            LocalLLMManager.shared.speakChunk(line)
+        } else if settings.isEnabled && settings.hasValidKey {
+            // The realtime response speaks AND transcribes the line; the
+            // transcript handler logs it to history — appending here too
+            // would double-log.
+            OpenAIRealtimeManager.shared.speakVerbatim(line)
         }
     }
 }
