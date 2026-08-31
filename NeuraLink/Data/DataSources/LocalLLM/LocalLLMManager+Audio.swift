@@ -77,6 +77,15 @@ extension LocalLLMManager {
         }
     }
 
+    /// Extends the mic self-loop gate so ambient audio (e.g. music during a
+    /// song-recognition session) never reaches the VAD and triggers a
+    /// spurious user turn. Passing a short value hands the gate back to the
+    /// normal cool-down; while the AI is busy `processCapturedAudio` keeps
+    /// bumping the gate forward regardless, so a short release is safe.
+    func gateMicCapture(forSeconds seconds: TimeInterval) {
+        micGatedUntilUptime = ProcessInfo.processInfo.systemUptime + seconds
+    }
+
     func reportAmplitude(_ buffer: AVAudioPCMBuffer) {
         guard let channelData = buffer.floatChannelData else { return }
         let length = Int(buffer.frameLength)

@@ -14,6 +14,7 @@ struct ContentView: View {
     @Bindable private var aiState = RealtimeChatState.shared
     private var camera = CameraManager.shared
     private var registry = VRMModelRegistry.shared
+    private var songRecognition = SongRecognitionManager.shared
     @State private var showModelSelection = false
     @State private var showImportPicker = false
     @State private var pendingDelete: VRMModelRegistry.Entry?
@@ -77,6 +78,9 @@ struct ContentView: View {
                                 Task { await camera.requestPermissionAndStart() }
                             }
                         },
+                        onIdentifySong: {
+                            songRecognition.startFromUI()
+                        },
                         onPiP: {
                             PiPManager.shared.startPiP()
                         }
@@ -91,6 +95,18 @@ struct ContentView: View {
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
+            // Song-recognition pop-up card (listening → match with links).
+            .overlay(alignment: .top) {
+                if !aiState.isUIHidden && songRecognition.phase != .idle {
+                    SongRecognitionOverlay()
+                        .padding(.horizontal, 16)
+                        .padding(.top, 60)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
+            .animation(
+                .spring(response: 0.38, dampingFraction: 0.75),
+                value: songRecognition.phase)
             .toolbar {
                 if !aiState.isUIHidden && envLoad.isReady {
                     chatHistoryToggleButton

@@ -15,6 +15,7 @@ struct ExpandableFABMenu: View {
     let onRelationship: () -> Void
     let onModelSelection: () -> Void
     let onCameraToggle: () -> Void
+    let onIdentifySong: () -> Void
     let onPiP: () -> Void
 
     var body: some View {
@@ -52,11 +53,18 @@ struct ExpandableFABMenu: View {
                     .transition(childTransition(delay: 0.04))
 
                     FABButton(
+                        icon: Image(systemName: "music.note"),
+                        label: "Identify Song",
+                        showLabel: true
+                    ) { collapse(); onIdentifySong() }
+                    .transition(childTransition(delay: 0.08))
+
+                    FABButton(
                         icon: Image(systemName: "pip.fill"),
                         label: "PiP",
                         showLabel: true
                     ) { collapse(); onPiP() }
-                    .transition(childTransition(delay: 0.08))
+                    .transition(childTransition(delay: 0.12))
                 }
 
                 // Chevron — always last
@@ -73,7 +81,7 @@ struct ExpandableFABMenu: View {
                         .clipShape(Circle())
                 }
                 .buttonStyle(.plain)
-                .transition(childTransition(delay: 0.12))
+                .transition(childTransition(delay: 0.16))
             }
         }
         .padding(.trailing, 20)
