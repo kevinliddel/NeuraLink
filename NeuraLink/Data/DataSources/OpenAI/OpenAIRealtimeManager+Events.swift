@@ -14,6 +14,17 @@ import Foundation
 import WebRTC
 
 extension OpenAIRealtimeManager {
+    /// Cancels any in-flight assistant response. Song recognition calls
+    /// this when it starts listening so a mid-sentence reply can't resume
+    /// after the capture window and talk over the flow — the only assistant
+    /// output around a recognition is the title announcement afterwards.
+    func cancelActiveResponse() {
+        let payload: [String: Any] = ["type": "response.cancel"]
+        guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return }
+        remoteDataChannel?.sendData(RTCDataBuffer(data: data, isBinary: false))
+        nlLog("[AI]: active response cancelled (song recognition)", level: .info)
+    }
+
     /// Makes the assistant SAY a literal line (e.g. the song-recognition
     /// title announcement). Uses the normal response pipeline, so the audio
     /// is audible through the live session and the transcript handler logs
@@ -28,10 +39,10 @@ extension OpenAIRealtimeManager {
                     [
                         "type": "input_text",
                         "text":
-                            "Announce to the user, saying exactly this and nothing else: \(line)",
+                            "Announce to the user, saying exactly this and nothing else: \(line)"
                     ]
-                ],
-            ],
+                ]
+            ]
         ]
         let trigger: [String: Any] = ["type": "response.create"]
 
@@ -51,8 +62,8 @@ extension OpenAIRealtimeManager {
                 "role": "system",
                 "content": [
                     ["type": "input_text", "text": action]
-                ],
-            ],
+                ]
+            ]
         ]
         let trigger: [String: Any] = ["type": "response.create"]
 

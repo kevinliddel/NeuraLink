@@ -110,6 +110,10 @@ final class SongRecognitionManager {
         // listen, so neither engine treats the song as user speech.
         LocalLLMManager.shared.gateMicCapture(forSeconds: Self.listenTimeout + 2)
         OpenAIRealtimeManager.shared.setMicGated(true)
+        // A mid-sentence assistant reply must not resume and talk over (or
+        // after) the music — cancel it now. The only assistant output around
+        // a recognition is the title announcement afterwards.
+        OpenAIRealtimeManager.shared.cancelActiveResponse()
 
         // Music needs a CLEAN mic. With a voice pipeline active the capture
         // path runs voice processing (AEC + noise suppression) tuned to
@@ -118,9 +122,6 @@ final class SongRecognitionManager {
         // I/O for the listen window; restored below on every exit path.
         let suspendedLocalCapture = LocalLLMManager.shared.pauseCaptureForMusicRecognition()
         OpenAIRealtimeManager.shared.suspendAudioUnit()
-
-        // Lively touch: the avatar vibes to the music while we identify it.
-        Self.startListeningAnimation()
 
         let session = SHManagedSession()
         managedSession = session
@@ -131,7 +132,7 @@ final class SongRecognitionManager {
         // result() below rather than as a silent stall.
         await session.prepare()
 
-        // Give up after the timeout window — cancel() unblocks result().
+        // Give up after the timeout window — cancel() ends the result stream.
         let timeout = Task {
             try? await Task.sleep(for: .seconds(Self.listenTimeout))
             guard !Task.isCancelled else { return }
@@ -139,18 +140,33 @@ final class SongRecognitionManager {
             session.cancel()
         }
 
-        let result = await session.result()
+        // `result()` would be a SINGLE match attempt (only the first few
+        // seconds of audio) — one early miss and we'd report no-match even
+        // though more listening would land it. Iterate successive attempts
+        // until a match arrives or the watchdog cancels the session.
+        var result: SHSession.Result?
+        for await attempt in session.results {
+            if case .noMatch = attempt {
+                nlLog("[SongID] Attempt missed — still listening…", level: .info)
+                result = attempt
+                continue
+            }
+            result = attempt
+            break
+        }
         timeout.cancel()
         managedSession = nil
-        // Release the mic gate back to the normal post-speech cool-down and
-        // fade the avatar back from the listening dance to the neutral idle.
+        // Release the mic gate back to the normal post-speech cool-down.
         LocalLLMManager.shared.gateMicCapture(forSeconds: 0.8)
         OpenAIRealtimeManager.shared.resumeAudioUnit()
         if suspendedLocalCapture {
             LocalLLMManager.shared.resumeCaptureAfterMusicRecognition()
         }
         OpenAIRealtimeManager.shared.setMicGated(false)
-        Self.stopListeningAnimation()
+        // The capture window's mode churn can silently re-route output to
+        // the receiver — put it back on the speaker so the announcement
+        // plays at normal volume.
+        try? AVAudioSession.sharedInstance().overrideOutputAudioPort(.speaker)
 
         // If the user cancelled while we were listening, phase is already
         // .idle — don't overwrite it with a stale result.
@@ -159,8 +175,8 @@ final class SongRecognitionManager {
         switch result {
         case .match(let match):
             handleMatch(match, source: source)
-        case .noMatch:
-            nlLog("[SongID] No match found.", level: .info)
+        case .noMatch, nil:
+            nlLog(timedOut ? "[SongID] Timed out without a match." : "[SongID] No match found.", level: .info)
             phase = .noMatch
         case .error(let error, _):
             // A timeout-triggered cancel() also surfaces here — report it as
@@ -230,34 +246,26 @@ final class SongRecognitionManager {
         }
     }
 
-    // MARK: - Listening animation
-
-    /// Vibe animations bundled in Resources/Animations, one picked at random
-    /// per recognition. Played through the same notification channel as the
-    /// photo poses (observer in VRMMetalState+Actions).
-    private static let listeningAnimations = ["dancing", "enjoying_song"]
-
-    private static func startListeningAnimation() {
-        guard let name = listeningAnimations.randomElement() else { return }
-        NotificationCenter.default.post(
-            name: Notification.Name("VRMPlayPoseAnimation"),
-            object: nil,
-            userInfo: ["pose": name]
-        )
-    }
-
-    private static func stopListeningAnimation() {
-        NotificationCenter.default.post(
-            name: Notification.Name("VRMStopPoseAnimation"), object: nil)
-    }
-
     // MARK: - Title announcement
 
     /// Speaks the matched title through each mode's NORMAL assistant speech
     /// path — audible by construction, lip-synced, and recorded in chat
     /// history like any other assistant line.
+    /// Playful variants so the reaction never sounds canned — one is picked
+    /// at random per match.
+    private static let announcementTemplates: [(String, String) -> String] = [
+        { "Oh~ I know this one!! It's \"\($0)\" by \($1)!" },
+        { "Ooh, that song! That's \"\($0)\" by \($1)~" },
+        { "Hehe, got it — \"\($0)\" by \($1)!" },
+        { "I remember this one! It's \"\($0)\" by \($1)." },
+        { "Ah, this is \"\($0)\" by \($1). Nice pick~" },
+        { "Found it! \"\($0)\" by \($1) — love this one!" }
+    ]
+
     private func announceTitle(for song: RecognizedSong) {
-        let line = "This is \"\(song.title)\" by \(song.artist)."
+        let line = Self.announcementTemplates.randomElement()
+            .map { $0(song.title, song.artist) }
+            ?? "This is \"\(song.title)\" by \(song.artist)."
         let settings = OpenAISettings.shared
         if settings.isLocalLLMEnabled {
             // The local pipeline doesn't transcribe direct TTS — surface the
