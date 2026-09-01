@@ -45,8 +45,7 @@ extension OpenAIRealtimeManager {
             case "response.output_item.added":
                 if let item = json["item"] as? [String: Any],
                     let itemType = item["type"] as? String,
-                    itemType == "function_call"
-                {
+                    itemType == "function_call" {
                     // Begin accumulating a function call
                     pendingFunctionCallId = item["call_id"] as? String ?? ""
                     pendingFunctionName = item["name"] as? String ?? ""
@@ -85,8 +84,7 @@ extension OpenAIRealtimeManager {
                         (try? JSONSerialization.jsonObject(
                             with: Data(pendingFunctionArgsJSON.utf8)) as? [String: Any]) ?? [:]
                     if let emotion = args["emotion"] as? String,
-                        let duration = args["duration"] as? Double
-                    {
+                        let duration = args["duration"] as? Double {
                         state.triggerEmotion(emotion, duration: Float(duration))
                         nlLog(
                             "֎ [FunctionCall] set_emotion → \(emotion) for \(duration)s (synchronous, pre-speech)",
@@ -220,8 +218,8 @@ extension OpenAIRealtimeManager {
             "item": [
                 "type": "function_call_output",
                 "call_id": callId,
-                "output": result,
-            ],
+                "output": result
+            ]
         ]
         let trigger: [String: Any] = ["type": "response.create"]
 
@@ -242,8 +240,8 @@ extension OpenAIRealtimeManager {
                 "role": "system",
                 "content": [
                     ["type": "input_text", "text": content]
-                ],
-            ],
+                ]
+            ]
         ]
         let trigger: [String: Any] = ["type": "response.create"]
 
@@ -299,8 +297,7 @@ extension OpenAIRealtimeManager: RTCPeerConnectionDelegate {
         }
     }
 
-    func peerConnection(_ peerConnection: RTCPeerConnection, didGenerate candidate: RTCIceCandidate)
-    {
+    func peerConnection(_ peerConnection: RTCPeerConnection, didGenerate candidate: RTCIceCandidate) {
         nlLog("[AI]: Generated ICE candidate: \(candidate.sdpMid ?? "none")", level: .info)
     }
 
@@ -432,10 +429,10 @@ extension OpenAIRealtimeManager: RTCDataChannelDelegate {
                             // OpenAI receives over WebRTC.
                             "noise_reduction": [
                                 "type": "near_field"
-                            ],
+                            ]
                         ]
-                    ],
-                ],
+                    ]
+                ]
             ]
 
             guard let data = try? JSONSerialization.data(withJSONObject: update) else { return }
