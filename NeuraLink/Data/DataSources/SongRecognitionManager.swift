@@ -248,36 +248,30 @@ final class SongRecognitionManager {
 
     // MARK: - Title announcement
 
-    /// Speaks the matched title through each mode's NORMAL assistant speech
-    /// path — audible by construction, lip-synced, and recorded in chat
-    /// history like any other assistant line.
-    /// Playful variants so the reaction never sounds canned — one is picked
-    /// at random per match.
-    private static let announcementTemplates: [(String, String) -> String] = [
-        { "Oh~ I know this one!! It's \"\($0)\" by \($1)!" },
-        { "Ooh, that song! That's \"\($0)\" by \($1)~" },
-        { "Hehe, got it — \"\($0)\" by \($1)!" },
-        { "I remember this one! It's \"\($0)\" by \($1)." },
-        { "Ah, this is \"\($0)\" by \($1). Nice pick~" },
-        { "Found it! \"\($0)\" by \($1) — love this one!" }
-    ]
-
+    /// Asks the active model to announce the matched title IN CHARACTER —
+    /// generated, not templated, so each persona keeps its own style and
+    /// language (Ekaterina announces in Japanese). OpenAI: the realtime
+    /// session generates, speaks, and its transcript handler logs history.
+    /// Local: a focused generation turn through the normal pipeline, only
+    /// when it isn't mid-turn.
     private func announceTitle(for song: RecognizedSong) {
-        let line = Self.announcementTemplates.randomElement()
-            .map { $0(song.title, song.artist) }
-            ?? "This is \"\(song.title)\" by \(song.artist)."
+        let event = "*You just identified a song playing nearby: "
+            + "\"\(song.title)\" by \(song.artist). "
+            + "Tell the user its title and artist in ONE short, excited, playful sentence, "
+            + "in your usual speaking style and language. "
+            + "Do not add anything beyond announcing the song.*"
+
         let settings = OpenAISettings.shared
         if settings.isLocalLLMEnabled {
-            // The local pipeline doesn't transcribe direct TTS — surface the
-            // line in the live overlay and log it to history ourselves.
-            RealtimeChatState.shared.aiTranscript = line
-            ChatTimelineStore.logAIMessage(line)
-            LocalLLMManager.shared.speakChunk(line)
+            // Never barge in on an in-flight generation or TTS playback.
+            let status = RealtimeChatState.shared.status
+            guard status == .ready || status == .listening else {
+                nlLog("[SongID] Skipping announcement — pipeline busy (\(status.label)).", level: .info)
+                return
+            }
+            LocalLLMManager.shared.handleUserInput(event, logToTimeline: false)
         } else if settings.isEnabled && settings.hasValidKey {
-            // The realtime response speaks AND transcribes the line; the
-            // transcript handler logs it to history — appending here too
-            // would double-log.
-            OpenAIRealtimeManager.shared.speakVerbatim(line)
+            OpenAIRealtimeManager.shared.sendInteractionEvent(event)
         }
     }
 }
