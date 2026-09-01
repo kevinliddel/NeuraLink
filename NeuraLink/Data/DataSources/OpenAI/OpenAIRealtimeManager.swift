@@ -183,16 +183,24 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
     func resumeAudioUnit() {
         guard peerConnection != nil else { return }
         let rtcSession = RTCAudioSession.sharedInstance()
+        // Restore the FULL WebRTC session configuration, not just the mode:
+        // the capture window can leave the hardware at a different sample
+        // rate (Shazam records at the device default), and restarting the
+        // audio units against the wrong rate pitch-shifts/accelerates all
+        // assistant speech until the next reconnect.
+        let config = RTCAudioSessionConfiguration.webRTC()
+        config.category = AVAudioSession.Category.playAndRecord.rawValue
+        config.categoryOptions = [.allowBluetoothHFP, .defaultToSpeaker]
+        config.mode = AVAudioSession.Mode.videoChat.rawValue
         rtcSession.lockForConfiguration()
         do {
-            try rtcSession.setMode(.videoChat)
-            try rtcSession.setActive(true)
+            try rtcSession.setConfiguration(config, active: true)
         } catch {
-            nlLog("[AI]: Failed to restore session mode after music capture: \(error)", level: .warning)
+            nlLog("[AI]: Failed to restore WebRTC session configuration: \(error)", level: .warning)
         }
         rtcSession.isAudioEnabled = true
         rtcSession.unlockForConfiguration()
-        nlLog("[AI]: WebRTC audio resumed after music recognition", level: .info)
+        nlLog("[AI]: WebRTC audio resumed after music recognition (rate \(config.sampleRate) Hz)", level: .info)
     }
 
     /// Gates the outgoing mic while song recognition listens or announces,
