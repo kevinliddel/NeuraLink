@@ -14,6 +14,7 @@ struct ContentView: View {
     @Bindable private var aiState = RealtimeChatState.shared
     private var camera = CameraManager.shared
     private var registry = VRMModelRegistry.shared
+    private var songRecognition = SongRecognitionManager.shared
     @State private var showModelSelection = false
     @State private var showImportPicker = false
     @State private var pendingDelete: VRMModelRegistry.Entry?
@@ -77,6 +78,9 @@ struct ContentView: View {
                                 Task { await camera.requestPermissionAndStart() }
                             }
                         },
+                        onIdentifySong: {
+                            songRecognition.startFromUI()
+                        },
                         onPiP: {
                             PiPManager.shared.startPiP()
                         }
@@ -94,6 +98,7 @@ struct ContentView: View {
             .toolbar {
                 if !aiState.isUIHidden && envLoad.isReady {
                     chatHistoryToggleButton
+                    songRecognitionToolbarItem
                     menuToggleButton
                 }
             }
@@ -218,6 +223,18 @@ struct ContentView: View {
                     .contentTransition(.symbolEffect(.replace))
             }
             .accessibilityLabel("Menu")
+        }
+    }
+
+    /// Song-recognition status capsule (listening → match with links) in the
+    /// navigation bar's principal slot, between the history and menu buttons —
+    /// deliberately NOT a scene overlay so it never covers the model's face.
+    @ToolbarContentBuilder
+    private var songRecognitionToolbarItem: some ToolbarContent {
+        ToolbarItem(placement: .principal) {
+            if songRecognition.phase != .idle {
+                SongRecognitionOverlay()
+            }
         }
     }
 

@@ -204,8 +204,17 @@ extension VRMRenderer {
                     // Enforce effective alpha modes per face part for correct pipeline selection
                     switch item.faceCategory {
                     case "eye":
-                        // Eyes should be fully opaque geometry rendered after face skin
-                        item.effectiveAlphaMode = "opaque"
+                        // Eyes render after face skin and must stay out of the
+                        // transparent sort — but authored MASK must survive:
+                        // VRoid iris/white textures are small alpha-cutout
+                        // discs (the measured iris sheet is >80% alpha-0), and
+                        // forcing OPAQUE renders the transparent surround too,
+                        // so irises appear enlarged vs reference viewers.
+                        // MASK keeps depth-write + the opaque PSO, so render
+                        // ordering is unchanged; only BLEND is demoted.
+                        if item.effectiveAlphaMode == "blend" {
+                            item.effectiveAlphaMode = "opaque"
+                        }
                         item.effectiveDoubleSided = true
                     case "highlight":
                         // Eye highlights remain blended overlays

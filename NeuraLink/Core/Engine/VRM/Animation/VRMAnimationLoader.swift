@@ -59,6 +59,26 @@ public enum VRMAnimationLoader {
         let animationExpressionMap = parseExpressionNodeMap(from: document)
         let modelNameToBone        = buildModelNameToBoneMap(model: model)
 
+        // World REST rotation of each humanoid bone's parent, composed from
+        // bind-pose locals root→parent. This is the basis in which VRMA's
+        // normalized rotations are applied (see makeRotationSampler).
+        let parentWorldRestRotations: [VRMHumanoidBone: simd_quatf] = {
+            guard let model, let humanoid = model.humanoid else { return [:] }
+            var map: [VRMHumanoidBone: simd_quatf] = [:]
+            for bone in VRMHumanoidBone.allCases {
+                guard let idx = humanoid.getBoneNode(bone),
+                      let node = model.nodes[safe: idx] else { continue }
+                var rotation = simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
+                var ancestor = node.parent
+                while let current = ancestor {
+                    rotation = current.initialRotation * rotation
+                    ancestor = current.parent
+                }
+                map[bone] = simd_normalize(rotation)
+            }
+            return map
+        }()
+
         // Resolve bones for each node and check for metacarpals
         var resolvedBones: [Int: VRMHumanoidBone] = [:]
         for nodeIndex in nodeTracks.keys {
@@ -75,6 +95,18 @@ public enum VRMAnimationLoader {
         let modelHasLeftMetacarpal = modelRestTransforms[.leftThumbMetacarpal] != nil
         let modelHasRightMetacarpal = modelRestTransforms[.rightThumbMetacarpal] != nil
         let isTargetVRM1 = model != nil && !model!.isVRM0
+
+        // VRMC_vrm_animation: hips translation is authored for the animation
+        // model's proportions — scale the delta by the hips-height ratio so
+        // shorter/taller targets keep correct bob amplitude and stride.
+        let hipsTranslationScale: Float = {
+            guard let modelHipsY = modelRestTransforms[.hips]?.translation.y,
+                  let animHipsIndex = resolvedBones.first(where: { $0.value == .hips })?.key,
+                  let animHipsY = animRestTransforms[animHipsIndex]?.translation.y,
+                  animHipsY > 0.01, modelHipsY > 0.01
+            else { return 1 }
+            return min(max(modelHipsY / animHipsY, 0.5), 2.0)
+        }()
 
         // Tracks nodes whose bone was remapped between metacarpal/proximal.
         // These skip modelRest to avoid stacking the T-pose spread on the animation delta.
@@ -119,16 +151,13 @@ public enum VRMAnimationLoader {
                     || bone == .leftThumbProximal || bone == .rightThumbProximal
 
                 let animRest = animRestTransforms[nodeIndex] ?? .identity
-                let rawModelRest: RestTransform? = remappedNodes.contains(nodeIndex)
+                // Spec-correct retargeting composes the delta in the parent's
+                // rest basis (see makeRotationSampler), so baked rest
+                // rotations like VRoid's thumb-metacarpal spread apply as
+                // authored — the old ±25° compensation hack is gone.
+                let effectiveModelRest: RestTransform? = remappedNodes.contains(nodeIndex)
                     ? nil
                     : modelRestTransforms[bone]
-                // VRoid-exported VRM 1.x models bake a ~45° outward spread into the thumb
-                // metacarpal's rest rotation. Standard retargeting (`modelRest * q`) stacks
-                // that spread on top of the animation pose and bends the thumb at ~90°.
-                // Pre-multiplying ~35° inward on the modelRest brings the resting bone to a
-                // natural closed-thumb pose so animation deltas compose around it cleanly.
-                let effectiveModelRest = applyVRoidThumbCompensation(
-                    bone: bone, rest: rawModelRest, isVRM1: isTargetVRM1)
 
                 // Diagnostic: log thumb quaternion values so we can derive the correct formula.
                 if isThumb {
@@ -152,7 +181,9 @@ public enum VRMAnimationLoader {
                     bone: bone, tracks: tracks,
                     animRest: animRest,
                     modelRest: effectiveModelRest,
-                    convertForVRM0: convertForVRM0))
+                    parentWorldRest: parentWorldRestRotations[bone],
+                    convertForVRM0: convertForVRM0,
+                    translationDeltaScale: bone == .hips ? hipsTranslationScale : 1))
             } else {
                 clip.addNodeTrack(makeNodeTrack(
                     nodeName: nodeName, tracks: tracks,
@@ -198,18 +229,22 @@ private func makeJointTrack(
     tracks: [String: KeyTrack],
     animRest: RestTransform,
     modelRest: RestTransform?,
-    convertForVRM0: Bool
+    parentWorldRest: simd_quatf? = nil,
+    convertForVRM0: Bool,
+    translationDeltaScale: Float = 1
 ) -> JointTrack {
     JointTrack(
         bone: bone,
         rotationSampler: tracks["rotation"].map {
             makeRotationSampler(track: $0, animRest: animRest.rotation,
                                 modelRest: modelRest?.rotation,
+                                parentWorldRest: parentWorldRest,
                                 convertForVRM0: convertForVRM0)
         },
         translationSampler: tracks["translation"].map {
             makeTranslationSampler(track: $0, animRest: animRest.translation,
-                                   modelRest: modelRest?.translation, convertForVRM0: convertForVRM0)
+                                   modelRest: modelRest?.translation, convertForVRM0: convertForVRM0,
+                                   deltaScale: translationDeltaScale)
         },
         scaleSampler: tracks["scale"].map {
             makeScaleSampler(track: $0, animRest: animRest.scale, modelRest: modelRest?.scale)
@@ -283,38 +318,6 @@ private func buildModelNameToBoneMap(model: VRMModel?) -> [String: VRMHumanoidBo
         map[normalizeNodeName(name)] = bone
     }
     return map
-}
-
-// MARK: - VRoid Thumb Compensation
-
-/// VRoid-exported VRM 1.x models encode a ~45° outward thumb spread in the metacarpal's
-/// node rotation. Standard retargeting (`modelRest * q`) stacks that spread on top of the
-/// animation pose and produces a ~90° bent thumb. Pre-multiplying ~25° inward on the
-/// metacarpal's rest brings the resting bone to a natural thumb-base angle so animation
-/// deltas compose around it cleanly. Mirrored (-Z left, +Z right) for the baked spread.
-///
-/// We deliberately *don't* compensate proximal/distal: any constant correction there acts
-/// as a permanent offset that masks the small per-joint deltas the .vrma carries between
-/// non-neutral animations, making the thumb appear frozen across gestures. The proximal/
-/// distal natural curl comes from the .vrma's own keyframes plus the small (~2.6°) curl
-/// baked into the model rest.
-private func applyVRoidThumbCompensation(
-    bone: VRMHumanoidBone, rest: RestTransform?, isVRM1: Bool
-) -> RestTransform? {
-    guard isVRM1, let rest else { return rest }
-    let sign: Float
-    switch bone {
-    case .leftThumbMetacarpal:  sign = -1
-    case .rightThumbMetacarpal: sign = +1
-    default: return rest
-    }
-    // Skip the metacarpal correction for models whose rest is near-identity (no baked
-    // T-pose spread to compensate) so we don't over-curl them.
-    if abs(rest.rotation.real) > 0.97 { return rest }
-
-    let correction = simd_quatf(angle: sign * 25.0 * .pi / 180.0, axis: SIMD3<Float>(0, 0, 1))
-    let corrected = simd_normalize(rest.rotation * correction)
-    return RestTransform(rotation: corrected, translation: rest.translation, scale: rest.scale)
 }
 
 // MARK: - Utilities

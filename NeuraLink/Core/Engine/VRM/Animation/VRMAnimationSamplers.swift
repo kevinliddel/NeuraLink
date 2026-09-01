@@ -21,10 +21,12 @@ func makeRotationSampler(
     track: KeyTrack,
     animRest: simd_quatf,
     modelRest: simd_quatf?,
+    parentWorldRest: simd_quatf? = nil,
     convertForVRM0: Bool = false
 ) -> (Float) -> simd_quatf {
     let normalizedAnimRest  = simd_normalize(animRest)
     let normalizedModelRest = modelRest.map { simd_normalize($0) }
+    let basis = parentWorldRest.map { simd_normalize($0) }
 
     return { t in
         var q = sampleQuaternion(track, at: t)
@@ -34,9 +36,22 @@ func makeRotationSampler(
 
         guard let modelRestNorm = normalizedModelRest else { return q }
 
-        // VRM Spec: result = modelRest * (inv(animRest) * q)
+        // Spec retarget (three-vrm humanoid rig / UniVRM control rig):
+        //   rawLocal = inv(parentWorldRest) · delta · parentWorldRest · restLocal
+        // VRMA deltas live in normalized (T-pose, world-aligned) space;
+        // conjugating by the parent's world rest moves them into the bone's
+        // parent space, and composing the rest LAST keeps baked rest
+        // rotations (e.g. VRoid's ~45° thumb-metacarpal spread) from
+        // re-rotating the delta — the old `restLocal · delta` order did
+        // exactly that, which the ±25° VRoid thumb hack used to fight.
         let delta = simd_normalize(simd_inverse(normalizedAnimRest) * q)
-        return simd_normalize(modelRestNorm * delta)
+        let localDelta: simd_quatf
+        if let basis {
+            localDelta = simd_normalize(simd_inverse(basis) * delta * basis)
+        } else {
+            localDelta = delta
+        }
+        return simd_normalize(localDelta * modelRestNorm)
     }
 }
 
@@ -44,13 +59,17 @@ func makeTranslationSampler(
     track: KeyTrack,
     animRest: SIMD3<Float>,
     modelRest: SIMD3<Float>?,
-    convertForVRM0: Bool = false
+    convertForVRM0: Bool = false,
+    deltaScale: Float = 1
 ) -> (Float) -> SIMD3<Float> {
     return { t in
         var v = sampleVector3(track, at: t)
         if convertForVRM0 { v = convertTranslationForVRM0(v) }
         guard let modelRest else { return v }
-        return modelRest + (v - animRest)
+        // deltaScale: VRMC_vrm_animation retargets hips translation by the
+        // hips-height ratio between model and animation, so bob amplitude
+        // and root-motion stride match the target's proportions.
+        return modelRest + (v - animRest) * deltaScale
     }
 }
 

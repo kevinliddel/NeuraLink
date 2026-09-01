@@ -5,6 +5,8 @@
 //  Extension for handling incoming WebRTC data channel events,
 //  function calling, and protocol conformances.
 //
+//  Created by Dedicatus on 31/04/2026.
+//
 
 import Foundation
 import WebRTC
@@ -252,26 +254,6 @@ extension OpenAIRealtimeManager {
     }
 
     /// Sends a physical interaction event (e.g. head pat) to the AI.
-    func sendInteractionEvent(_ action: String) {
-        let item: [String: Any] = [
-            "type": "conversation.item.create",
-            "item": [
-                "type": "message",
-                "role": "system",
-                "content": [
-                    ["type": "input_text", "text": action]
-                ]
-            ]
-        ]
-        let trigger: [String: Any] = ["type": "response.create"]
-
-        for payload in [item, trigger] {
-            guard let data = try? JSONSerialization.data(withJSONObject: payload) else { continue }
-            let buffer = RTCDataBuffer(data: data, isBinary: false)
-            remoteDataChannel?.sendData(buffer)
-        }
-        nlLog("[AI Interaction]: sent event: \(action)", level: .info)
-    }
 }
 
 // MARK: - RTCPeerConnectionDelegate

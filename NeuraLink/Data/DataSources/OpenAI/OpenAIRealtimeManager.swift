@@ -23,6 +23,8 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
     static let shared = OpenAIRealtimeManager()
 
     var peerConnection: RTCPeerConnection?
+    /// The outgoing (mic) track — kept so song recognition can gate it.
+    var localAudioTrack: RTCAudioTrack?
     var remoteDataChannel: RTCDataChannel?
     let factory: RTCPeerConnectionFactory
     private var statsTimer: Timer?
@@ -65,6 +67,10 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
                 .playAndRecord, with: [.allowBluetoothHFP, .defaultToSpeaker])
             try rtcSession.setMode(.videoChat)
             try rtcSession.setActive(true)
+            // Manual audio so `isAudioEnabled` actually gates the audio
+            // units (it is a no-op otherwise) — song recognition suspends
+            // them to get an unprocessed mic signal.
+            rtcSession.useManualAudio = true
             rtcSession.isAudioEnabled = true
             nlLog("[AI]: RTCAudioSession configured for speaker output", level: .info)
         } catch {
@@ -145,12 +151,65 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
         let audioSource = factory.audioSource(with: nil)
         let audioTrack = factory.audioTrack(with: audioSource, trackId: "audio0")
         peerConnection?.add(audioTrack, streamIds: ["stream0"])
+        self.localAudioTrack = audioTrack
 
         // Setup Data Channel
         let dataChannelConfig = RTCDataChannelConfiguration()
         self.remoteDataChannel = peerConnection?.dataChannel(
             forLabel: "oai-events", configuration: dataChannelConfig)
         self.remoteDataChannel?.delegate = self
+    }
+
+    /// Suspends WebRTC's audio units for the song-recognition listen window.
+    /// The voice-processing unit scrubs music out of the mic (AEC/noise
+    /// suppression), which makes Shazam match attempts fail (code 202); the
+    /// session also drops to `.default` mode so the raw mic reaches the
+    /// recorder. The peer connection stays alive; `resumeAudioUnit()`
+    /// restores voice mode. No-op when offline.
+    func suspendAudioUnit() {
+        guard peerConnection != nil else { return }
+        let rtcSession = RTCAudioSession.sharedInstance()
+        rtcSession.lockForConfiguration()
+        rtcSession.isAudioEnabled = false
+        do {
+            try rtcSession.setMode(.default)
+        } catch {
+            nlLog("[AI]: Failed to drop session mode for music capture: \(error)", level: .warning)
+        }
+        rtcSession.unlockForConfiguration()
+        nlLog("[AI]: WebRTC audio suspended for music recognition", level: .info)
+    }
+
+    func resumeAudioUnit() {
+        guard peerConnection != nil else { return }
+        let rtcSession = RTCAudioSession.sharedInstance()
+        // Restore the FULL WebRTC session configuration, not just the mode:
+        // the capture window can leave the hardware at a different sample
+        // rate (Shazam records at the device default), and restarting the
+        // audio units against the wrong rate pitch-shifts/accelerates all
+        // assistant speech until the next reconnect.
+        let config = RTCAudioSessionConfiguration.webRTC()
+        config.category = AVAudioSession.Category.playAndRecord.rawValue
+        config.categoryOptions = [.allowBluetoothHFP, .defaultToSpeaker]
+        config.mode = AVAudioSession.Mode.videoChat.rawValue
+        rtcSession.lockForConfiguration()
+        do {
+            try rtcSession.setConfiguration(config, active: true)
+        } catch {
+            nlLog("[AI]: Failed to restore WebRTC session configuration: \(error)", level: .warning)
+        }
+        rtcSession.isAudioEnabled = true
+        rtcSession.unlockForConfiguration()
+        nlLog("[AI]: WebRTC audio resumed after music recognition (rate \(config.sampleRate) Hz)", level: .info)
+    }
+
+    /// Gates the outgoing mic while song recognition listens or announces,
+    /// so the realtime session never hears the music (or our own TTS) and
+    /// can't respond to it as if the user had spoken. No-op when offline.
+    func setMicGated(_ gated: Bool) {
+        guard let track = localAudioTrack else { return }
+        track.isEnabled = !gated
+        nlLog("[AI]: Outgoing mic \(gated ? "gated" : "restored") (song recognition)", level: .info)
     }
 
     func createAndSendOffer() {

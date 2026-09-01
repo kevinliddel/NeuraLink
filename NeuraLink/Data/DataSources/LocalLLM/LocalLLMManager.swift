@@ -31,6 +31,10 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
 
     // Audio Engine for TTS Lip-sync
     internal let audioEngine = AVAudioEngine()
+    /// True while song recognition holds the mic — the auto-restart
+    /// observers must not bring the engine (and its voice-processing input
+    /// unit) back mid-listen.
+    internal var isCaptureSuspendedForMusic = false
     internal let playerNode = AVAudioPlayerNode()
     /// Fixed-rate (48 kHz) mixer between `playerNode` and the main mixer.
     /// TTS engines emit different sample rates (Kokoro/VoiceVox 24 kHz,
@@ -127,13 +131,14 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             let type = AVAudioSession.InterruptionType(rawValue: typeVal)
         else { return }
         if type == .ended {
+            guard !isCaptureSuspendedForMusic else { return }
             try? AVAudioSession.sharedInstance().setActive(true)
             if !audioEngine.isRunning { try? audioEngine.start() }
         }
     }
 
     @objc private func handleEngineConfigChange() {
-        guard !audioEngine.isRunning else { return }
+        guard !audioEngine.isRunning, !isCaptureSuspendedForMusic else { return }
         try? audioEngine.start()
     }
 

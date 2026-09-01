@@ -25,15 +25,35 @@ enum AppFunctionTool {
     static let analyzeCamera = "analyze_camera"
     static let rememberFact = "remember_fact"
     static let poseForPhoto = "pose_for_photo"
+    static let identifySong = "identify_song"
 
     // MARK: - OpenAI tool schema array
 
     /// Returns the full `tools` array ready to embed in a session.update payload.
     static var all: [[String: Any]] {
-        [emotionTool, weatherTool, searchTool, musicTool, reminderTool, noteTool, openAppTool, cameraTool, factTool, photoTool]
+        [
+            emotionTool, weatherTool, searchTool, musicTool, reminderTool,
+            noteTool, openAppTool, cameraTool, factTool, photoTool, identifySongTool
+        ]
     }
 
     // MARK: - Individual schemas
+
+    private static var identifySongTool: [String: Any] {
+        [
+            "type": "function",
+            "name": identifySong,
+            "description": "Listen through the microphone and identify the song currently "
+                + "playing nearby (like Shazam). Use this whenever the user asks what song "
+                + "is playing, who sings this, or to name the music they can hear. "
+                + "Listening takes several seconds; the result appears on screen with links.",
+            "parameters": [
+                "type": "object",
+                "properties": [String: Any](),
+                "required": [String]()
+            ]
+        ]
+    }
 
     private static var photoTool: [String: Any] {
         [

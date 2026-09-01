@@ -248,6 +248,13 @@ public class VRMExtensionParser {
         return meta
     }
 
+    private static let vrm0ThumbRenames: [String: String] = [
+        "leftThumbProximal": "leftThumbMetacarpal",
+        "leftThumbIntermediate": "leftThumbProximal",
+        "rightThumbProximal": "rightThumbMetacarpal",
+        "rightThumbIntermediate": "rightThumbProximal"
+    ]
+
     private func parseHumanoid(_ dict: [String: Any]) throws -> VRMHumanoid {
         let humanoid = VRMHumanoid()
 
@@ -267,12 +274,20 @@ public class VRMExtensionParser {
         } else if let humanBonesArray = dict["humanBones"] as? [[String: Any]] {
             // VRM 0.0 format - array of bone objects
             for boneData in humanBonesArray {
-                guard let boneName = boneData["bone"] as? String,
-                    let bone = VRMHumanoidBone(rawValue: boneName),
+                guard let rawName = boneData["bone"] as? String,
                     let nodeIndex = anyToInt(boneData["node"])
                 else {
                     continue
                 }
+
+                // VRM 0.x → 1.0 thumb rename — the only humanoid bone whose
+                // name changed between specs: 0.x proximal/intermediate/distal
+                // is 1.0 metacarpal/proximal/distal. Feeding 0.x names straight
+                // into the 1.0 enum landed the first joint one link too deep
+                // and dropped the middle joint entirely, so thumbs barely
+                // animated on every 0.x model.
+                let boneName = Self.vrm0ThumbRenames[rawName] ?? rawName
+                guard let bone = VRMHumanoidBone(rawValue: boneName) else { continue }
 
                 humanoid.humanBones[bone] = VRMHumanoid.VRMHumanBone(node: nodeIndex)
             }
