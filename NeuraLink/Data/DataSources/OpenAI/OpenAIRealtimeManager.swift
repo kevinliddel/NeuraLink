@@ -116,6 +116,7 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
         speakingStartTime = nil
         transcriptDoneTime = nil
         AppFunctionExecutor.shared.pendingUIAction = nil
+        micGateReasons.removeAll()
         sileroVAD.stop()
         ProactiveVisionManager.shared.stop()
         remoteDataChannel?.close()
@@ -152,6 +153,9 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
         let audioTrack = factory.audioTrack(with: audioSource, trackId: "audio0")
         peerConnection?.add(audioTrack, streamIds: ["stream0"])
         self.localAudioTrack = audioTrack
+        // Fresh track starts enabled — stale gate reasons from a previous
+        // connection must not linger and mute it.
+        micGateReasons.removeAll()
 
         // Setup Data Channel
         let dataChannelConfig = RTCDataChannelConfiguration()
@@ -203,13 +207,36 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
         nlLog("[AI]: WebRTC audio resumed after music recognition (rate \(config.sampleRate) Hz)", level: .info)
     }
 
-    /// Gates the outgoing mic while song recognition listens or announces,
-    /// so the realtime session never hears the music (or our own TTS) and
-    /// can't respond to it as if the user had spoken. No-op when offline.
-    func setMicGated(_ gated: Bool) {
+    /// Why the outgoing mic track is currently gated. The track stays
+    /// disabled while ANY reason is held, so overlapping holders (song
+    /// recognition listening while the assistant announces, say) can't
+    /// release each other's gate.
+    enum MicGateReason: String {
+        /// Song recognition is listening or announcing — the session must
+        /// not hear the music (or our own TTS) as user speech.
+        case songRecognition
+        /// The assistant is speaking. Residual echo of its own voice that
+        /// AEC misses (phone on a desk in PiP, speaker up) was reaching
+        /// server_vad and coming back as phantom "user" turns; gate the
+        /// track for the duration of the response instead.
+        case assistantSpeaking
+    }
+
+    var micGateReasons: Set<MicGateReason> = []
+
+    /// Gates or releases the outgoing mic for one reason; the track is
+    /// re-enabled only when no reason remains. No-op when offline.
+    func setMicGated(_ gated: Bool, reason: MicGateReason) {
+        if gated {
+            micGateReasons.insert(reason)
+        } else {
+            micGateReasons.remove(reason)
+        }
         guard let track = localAudioTrack else { return }
-        track.isEnabled = !gated
-        nlLog("[AI]: Outgoing mic \(gated ? "gated" : "restored") (song recognition)", level: .info)
+        let shouldEnable = micGateReasons.isEmpty
+        guard track.isEnabled != shouldEnable else { return }
+        track.isEnabled = shouldEnable
+        nlLog("[AI]: Outgoing mic \(shouldEnable ? "restored" : "gated") (\(reason.rawValue))", level: .info)
     }
 
     func createAndSendOffer() {
