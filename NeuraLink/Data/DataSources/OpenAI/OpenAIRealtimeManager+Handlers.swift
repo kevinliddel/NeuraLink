@@ -34,12 +34,22 @@ extension OpenAIRealtimeManager {
 
             case "conversation.item.input_audio_transcription.completed":
                 if let transcript = json["transcript"] as? String {
-                    nlLogSensitive("[User Transcript]: \(transcript)", level: .info)
-                    state.userTranscript = transcript
+                    // Whisper returns "", "\n", or lone punctuation when
+                    // server_vad opened a turn on noise rather than speech.
+                    // Don't let those pollute the visible history or the
+                    // RAG store (phantom entries were resurfacing later as
+                    // remembered "user" statements).
+                    let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard trimmed.rangeOfCharacter(from: .alphanumerics) != nil else {
+                        nlLogSensitive("[User Transcript]: dropped empty/noise transcript: \"\(transcript)\"", level: .info)
+                        break
+                    }
+                    nlLogSensitive("[User Transcript]: \(trimmed)", level: .info)
+                    state.userTranscript = trimmed
                     ProactiveVisionManager.shared.notifyUserSpoke()
                     // RAG: Store user input in long-term memory
-                    RAGManager.shared.store(text: transcript, source: "user")
-                    ChatTimelineStore.logUserMessage(transcript)
+                    RAGManager.shared.store(text: trimmed, source: "user")
+                    ChatTimelineStore.logUserMessage(trimmed)
                 }
 
             case "response.output_item.added":
@@ -59,6 +69,13 @@ extension OpenAIRealtimeManager {
                     state.status = .speaking
                     speakingStartTime = Date()
                     transcriptDoneTime = nil
+                    // Gate the outgoing mic while the assistant speaks so
+                    // residual echo of its own voice can't come back as a
+                    // phantom user turn (worst with the phone on a desk in
+                    // PiP). Barge-in stays possible: the local Silero VAD
+                    // taps the AEC-processed input and lifts this gate the
+                    // moment it hears real near-field speech.
+                    setMicGated(true, reason: .assistantSpeaking)
                 }
 
             // Fired when all transcript text for this response has been received.
@@ -111,6 +128,7 @@ extension OpenAIRealtimeManager {
             case "response.done":
                 nlLogSensitive("[OpenAI] Full response: \(state.aiTranscript)", level: .info)
                 state.status = .ready
+                setMicGated(false, reason: .assistantSpeaking)
 
                 // RAG: Store AI response in long-term memory
                 RAGManager.shared.store(text: state.aiTranscript, source: "ai")
@@ -416,8 +434,18 @@ extension OpenAIRealtimeManager: RTCDataChannelDelegate {
                             "transcription": [
                                 "model": "whisper-1"
                             ],
+                            // Defaults (threshold 0.5, silence 500ms) are
+                            // too trigger-happy for speaker-on use: room
+                            // noise and echo residue were opening phantom
+                            // user turns, which Whisper then "transcribed"
+                            // into words the user never said. Higher
+                            // threshold = needs louder/closer speech;
+                            // longer silence window = fewer mid-pause cuts.
                             "turn_detection": [
-                                "type": "server_vad"
+                                "type": "server_vad",
+                                "threshold": 0.75,
+                                "prefix_padding_ms": 300,
+                                "silence_duration_ms": 700
                             ],
                             // Server-side noise reduction on the user's mic
                             // input. `near_field` is calibrated for
@@ -455,21 +483,5 @@ extension OpenAIRealtimeManager: RTCDataChannelDelegate {
         }
 
         handleIncomingJSON(json)
-    }
-}
-
-// MARK: - Silero VAD
-
-extension OpenAIRealtimeManager: SileroVADDelegate {
-    func sileroVADDidDetectVoiceStart() {
-        guard state.status == .ready else { return }
-        state.status = .listening
-        nlLog("[SileroVAD]: Voice detected → listening", level: .info)
-    }
-
-    func sileroVADDidDetectVoiceEnd(wavData: Data?) {
-        guard state.status == .listening else { return }
-        state.status = .ready
-        nlLog("[SileroVAD]: Voice ended → ready", level: .info)
     }
 }
