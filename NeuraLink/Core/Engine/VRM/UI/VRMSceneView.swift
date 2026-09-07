@@ -192,7 +192,9 @@ public struct VRMSceneView: View {
         let characterName = url.deletingPathExtension().lastPathComponent
         RealtimeChatState.shared.selectedCharacterName = characterName
 
-        // Stop any active AI before switching characters.
+        // Stop any active AI before switching characters. Boundary first —
+        // the outgoing character's session gets reflected on.
+        SessionLifecycle.shared.sessionEnded(reason: "characterSwitch")
         OpenAIRealtimeManager.shared.disconnect()
         LocalLLMManager.shared.stop()
 

@@ -278,6 +278,9 @@ struct ContentView: View {
     /// history); OpenAI's context is server-side, so we reconnect for a clean
     /// session.
     private func startNewChatSession() {
+        // Boundary BEFORE the reset — captures the outgoing conversation id
+        // for the reflection pipeline.
+        SessionLifecycle.shared.sessionEnded(reason: "newChat")
         ConversationStore.shared.startNewChat()
         aiState.clearTranscripts()
 

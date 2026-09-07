@@ -19,6 +19,10 @@ struct NeuraLinkApp: App {
     }
 
     private func autoConnectAI() {
+        // Session-boundary observer (backgrounding → lastSeen stamp +
+        // sessionDidEnd for the reflection pipeline). Idempotent.
+        SessionLifecycle.shared.start()
+
         // New session = new chat: every cold launch starts a fresh
         // conversation (created lazily on the first turn).
         ConversationStore.shared.startNewChat()

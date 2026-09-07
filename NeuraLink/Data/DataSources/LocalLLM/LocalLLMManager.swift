@@ -273,6 +273,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         }
 
         ProactiveVisionManager.shared.notifyUserSpoke()
+        InteractionClock.shared.noteUserSpoke()
         // `logUserMessage` already drops empty/whitespace turns; the flag
         // additionally excludes physical-interaction actions.
         if logToTimeline {

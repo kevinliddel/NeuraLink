@@ -64,32 +64,10 @@ final class ConversationTitler: @unchecked Sendable {
     }
 
     private static func titleViaOpenAI(transcript: String) async -> String? {
-        let key = OpenAISettings.shared.apiKey
-        guard !key.isEmpty,
-              let url = URL(string: "https://api.openai.com/v1/chat/completions")
-        else { return nil }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let body: [String: Any] = [
-            "model": "gpt-4o-mini",
-            "messages": [
-                ["role": "system", "content": systemInstruction],
-                ["role": "user", "content": transcript]
-            ],
-            "max_tokens": 16,
-            "temperature": 0.3
-        ]
-        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
-
-        guard let (data, response) = try? await URLSession.shared.data(for: request),
-              let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let choices = json["choices"] as? [[String: Any]],
-              let message = choices.first?["message"] as? [String: Any],
-              let content = message["content"] as? String
+        guard let content = await OpenAIChatClient.complete(
+            system: systemInstruction,
+            user: transcript,
+            maxTokens: 16)
         else { return nil }
         return clean(content)
     }

@@ -49,7 +49,7 @@ flowchart TD
 
 ---
 
-## Phase 0 — Foundations (prerequisite for everything above)
+## Phase 0 — Foundations (prerequisite for everything above) ✅ DONE 2026-09-07
 
 Exploration found these seams **do not exist yet** and are shared by ①⑤⑥:
 
@@ -103,7 +103,7 @@ and migrate `ConversationTitler` to it as proof.
 
 **Behavior**: when a session ends, the companion "reflects": writes a 1–2-sentence
 diary entry about the conversation, an opener for next time, and a notification line.
-Hours later a local push arrives ("Miku has been thinking about what you said…").
+Hours later a local push arrives ("Dedicatus has been thinking about what you said…").
 Next launch, the persona greets with the opener (delivered via Phase 3's manager).
 
 ### Design
