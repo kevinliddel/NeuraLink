@@ -6,23 +6,25 @@ the LLM's job is the *interaction*: reacting to the match in character.
 
 ## Flow
 
-```
-HUD FAB button ─┐
-                ├─→ SongRecognitionManager.run()
-identify_song ──┘        │
-tool call                ├─ SHManagedSession records + matches (Shazam catalog, ≤18 s)
-                         ├─ avatar vibes while listening: random dancing.vrma /
-                         │    enjoying_song.vrma via VRMMetalState.current?
-                         │    .startListeningDance() — suppresses the random-idle
-                         │    controller; stopListeningDance() fades back to neutral
-                         ├─ phase drives SongRecognitionOverlay (nav-bar capsule)
-                         └─ on match:
-                              • triggerEmotion("surprised") — instant avatar delight
-                              • HUD path: inject "*The song … is playing nearby*"
-                                event into the active chat backend (local LLM or
-                                OpenAI realtime) so the persona reacts in character
-                              • skill path: the tool-call result string carries the
-                                answer instead (the AI speaks it) — no double reply
+```mermaid
+flowchart TD
+    FAB["🎵 HUD FAB button<br/>(Identify Song)"] --> RUN
+    TOOL["🛠 identify_song tool call<br/>(user asks the persona)"] --> RUN
+
+    RUN["SongRecognitionManager.run()"] --> GATE["LocalLLMManager.gateMicCapture()<br/>VAD ignores the music while listening"]
+    RUN --> DANCE["VRMMetalState.current?.startListeningDance()<br/>random dancing.vrma / enjoying_song.vrma<br/>(random-idle controller suppressed)"]
+    RUN --> CAPSULE["phase = .listening<br/>SongRecognitionOverlay (nav-bar capsule)"]
+    RUN --> SHZ["SHManagedSession<br/>records + matches Shazam catalog (≤18 s)"]
+
+    SHZ --> CLEANUP["stopListeningDance() → neutral idle<br/>mic gate released (0.8 s cool-down)"]
+    CLEANUP -->|match| SONG["phase = .matched(RecognizedSong)<br/>artwork + Apple Music / YouTube links"]
+    CLEANUP -->|no match / timeout| NOMATCH["phase = .noMatch"]
+    CLEANUP -->|error| FAIL["phase = .failed<br/>mapped reason + raw domain code"]
+
+    SONG --> EMO["triggerEmotion('surprised')<br/>instant avatar delight"]
+    SONG --> SRC{source?}
+    SRC -->|HUD button| INJECT["inject '*The song … is playing nearby*'<br/>into the active backend (local LLM or<br/>OpenAI realtime) — persona reacts in character"]
+    SRC -->|skill| RESULT["tool-call result string carries the answer<br/>(the AI speaks it — no double reply)"]
 ```
 
 ## Files
