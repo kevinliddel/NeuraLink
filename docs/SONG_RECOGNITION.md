@@ -9,22 +9,35 @@ the LLM's job is the *interaction*: reacting to the match in character.
 ```mermaid
 flowchart TD
     FAB["🎵 HUD FAB button<br/>(Identify Song)"] --> RUN
-    TOOL["🛠 identify_song tool call<br/>(user asks the persona)"] --> RUN
+    TOOL["🛠 identify_song tool call<br/>(persona request)"] --> RUN
 
-    RUN["SongRecognitionManager.run()"] --> GATE["LocalLLMManager.gateMicCapture()<br/>VAD ignores the music while listening"]
-    RUN --> DANCE["VRMMetalState.current?.startListeningDance()<br/>random dancing.vrma / enjoying_song.vrma<br/>(random-idle controller suppressed)"]
-    RUN --> CAPSULE["phase = .listening<br/>SongRecognitionOverlay (nav-bar capsule)"]
-    RUN --> SHZ["SHManagedSession<br/>records + matches Shazam catalog (≤18 s)"]
+    RUN["SongRecognitionManager.run()"] --> GATE["LocalLLMManager.gateMicCapture()<br/>VAD ignores music"]
+    RUN --> DANCE["startListeningDance()<br/>random VRMA<br/>(idle suppressed)"]
+    RUN --> CAPSULE["phase = listening<br/>overlay capsule"]
+    RUN --> SHZ["SHManagedSession<br/>record + match (≤18s)"]
 
-    SHZ --> CLEANUP["stopListeningDance() → neutral idle<br/>mic gate released (0.8 s cool-down)"]
-    CLEANUP -->|match| SONG["phase = .matched(RecognizedSong)<br/>artwork + Apple Music / YouTube links"]
-    CLEANUP -->|no match / timeout| NOMATCH["phase = .noMatch"]
-    CLEANUP -->|error| FAIL["phase = .failed<br/>mapped reason + raw domain code"]
+    SHZ --> CLEANUP["stopListeningDance()<br/>mic release (0.8s)"]
 
-    SONG --> EMO["triggerEmotion('surprised')<br/>instant avatar delight"]
-    SONG --> SRC{source?}
-    SRC -->|HUD button| INJECT["inject '*The song … is playing nearby*'<br/>into the active backend (local LLM or<br/>OpenAI realtime) — persona reacts in character"]
-    SRC -->|skill| RESULT["tool-call result string carries the answer<br/>(the AI speaks it — no double reply)"]
+    CLEANUP --> D1["match"] --> SONG["phase = matched<br/>artwork + links"]
+    CLEANUP --> D2["no match / timeout"] --> NOMATCH["phase = noMatch"]
+    CLEANUP --> D3["error"] --> FAIL["phase = failed<br/>mapped reason"]
+
+    SONG --> EMO["triggerEmotion('surprised')<br/>avatar reaction"]
+    SONG --> SRC{"source?"}
+
+    SRC --> D4["HUD"] --> INJECT["inject contextual line<br/>into active backend"]
+    SRC --> D5["tool"] --> RESULT["tool result string<br/>(no double reply)"]
+
+    %% Styles
+    classDef core fill:#0f172a,stroke:#7c3aed,color:#a78bfa
+    classDef decision fill:#1e293b,stroke:#94a3b8,color:#e2e8f0
+
+    class RUN,GATE,DANCE,CAPSULE,SHZ,CLEANUP core
+    class SRC decision
+
+    %% Data nodes (consistent system-wide)
+    classDef data fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
+    class D1,D2,D3,D4,D5 data
 ```
 
 ## Files
