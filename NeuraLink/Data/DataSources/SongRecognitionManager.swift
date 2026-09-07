@@ -109,7 +109,7 @@ final class SongRecognitionManager {
         // pipeline's VAD AND the realtime session's outgoing mic while we
         // listen, so neither engine treats the song as user speech.
         LocalLLMManager.shared.gateMicCapture(forSeconds: Self.listenTimeout + 2)
-        OpenAIRealtimeManager.shared.setMicGated(true)
+        OpenAIRealtimeManager.shared.setMicGated(true, reason: .songRecognition)
         // A mid-sentence assistant reply must not resume and talk over (or
         // after) the music — cancel it now. The only assistant output around
         // a recognition is the title announcement afterwards.
@@ -162,7 +162,7 @@ final class SongRecognitionManager {
         if suspendedLocalCapture {
             LocalLLMManager.shared.resumeCaptureAfterMusicRecognition()
         }
-        OpenAIRealtimeManager.shared.setMicGated(false)
+        OpenAIRealtimeManager.shared.setMicGated(false, reason: .songRecognition)
         // The capture window's mode churn can silently re-route output to
         // the receiver — put it back on the speaker so the announcement
         // plays at normal volume.

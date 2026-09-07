@@ -32,11 +32,18 @@ final class PiPManager: NSObject, ObservableObject, AVPictureInPictureController
     }
 
     private func setupAudioSession() {
-        // PiP requires an active audio session. Since we use VAD/TTS, this is likely already
-        // configured, but we ensure it is ready for playback so PiP doesn't fail.
+        // PiP requires an active audio session, but the voice pipelines
+        // (OpenAIRealtimeManager via RTCAudioSession, LocalLLMManager) own
+        // the session configuration. Rewriting it here used to fight them:
+        // a different mode (.voiceChat vs .videoChat) plus .mixWithOthers
+        // could degrade WebRTC's echo cancellation and let other apps'
+        // audio bleed into the open mic — phantom "user" speech in PiP.
+        // Only configure when nothing else has claimed the session yet.
         let session = AVAudioSession.sharedInstance()
+        guard session.category != .playAndRecord else { return }
         do {
-            try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.mixWithOthers, .allowBluetooth, .defaultToSpeaker])
+            try session.setCategory(
+                .playAndRecord, mode: .videoChat, options: [.allowBluetoothHFP, .defaultToSpeaker])
             try session.setActive(true)
         } catch {
             nlLog("[PiPManager] Failed to set audio session for PiP: \(error)", level: .error)
