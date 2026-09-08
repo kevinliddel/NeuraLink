@@ -265,6 +265,21 @@ extension MemoryStore {
         return items
     }
 
+    /// Multiplies every trait weight for a character by `factor` (< 1 —
+    /// per-reflection decay so unused traits sink toward eviction).
+    func decayTraits(character: String, factor: Double) {
+        lock.lock()
+        defer { lock.unlock() }
+        let query = "UPDATE persona_traits SET weight = weight * ? WHERE character = ?;"
+        var statement: OpaquePointer?
+        if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
+            sqlite3_bind_double(statement, 1, factor)
+            sqlite3_bind_text(statement, 2, (character as NSString).utf8String, -1, nil)
+            _ = sqlite3_step(statement)
+        }
+        sqlite3_finalize(statement)
+    }
+
     func deleteTrait(id: Int64) {
         lock.lock()
         defer { lock.unlock() }

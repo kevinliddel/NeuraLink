@@ -142,7 +142,7 @@ clamping (all swift-testing, no device needed); device test for notification del
 
 ---
 
-## Phase 2 — ⑤ Personality evolution
+## Phase 2 — ⑤ Personality evolution ✅ DONE 2026-09-08
 
 **Behavior**: the companion visibly changes with the relationship — its prompt carries
 distilled traits ("teases the user about coffee", "knows they work night shifts"), the

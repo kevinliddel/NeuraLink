@@ -86,7 +86,8 @@ final class LocalLLMMemoryHierarchy {
         let systemContent = buildSystemContent(
             base: baseSystemPrompt,
             characterName: characterName,
-            isLLMjp: isJP
+            isLLMjp: isJP,
+            compactCompanionState: config == .llama1b
         )
 
         // Tier 3 (facts) is appended AFTER history as its own system
@@ -136,7 +137,8 @@ final class LocalLLMMemoryHierarchy {
         let systemContent = buildSystemContent(
             base: baseSystemPrompt,
             characterName: characterName,
-            isLLMjp: isJP
+            isLLMjp: isJP,
+            compactCompanionState: config == .llama1b
         )
         var messages: [LLMChatMessage] = [
             .init(role: "system", content: systemContent)
@@ -234,7 +236,8 @@ final class LocalLLMMemoryHierarchy {
     private func buildSystemContent(
         base: String,
         characterName: String,
-        isLLMjp: Bool
+        isLLMjp: Bool,
+        compactCompanionState: Bool = false
     ) -> String {
         if isLLMjp {
             // 1B model attends most to the first ~30 tokens. Order: (1)
@@ -258,7 +261,8 @@ final class LocalLLMMemoryHierarchy {
         return Self.buildEnglishRoleClarification(characterName: characterName)
             + base
             + UserSettings.shared.systemPromptContext
-            + CompanionStateManager.shared.promptContext(characterName: characterName)
+            + CompanionStateManager.shared.promptContext(
+                characterName: characterName, compact: compactCompanionState)
     }
 
     /// Returns a single-line JP user context block (`ユーザーの名前は{name}、{age}歳。\n`)

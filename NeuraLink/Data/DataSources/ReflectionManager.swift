@@ -37,7 +37,17 @@ final class ReflectionManager: @unchecked Sendable {
         let diary: String
         let opener: String
         let notificationLine: String
+        /// Optional distilled personality note (Phase 2). Empty when the
+        /// conversation revealed nothing new.
+        let trait: String
     }
+
+    /// Trait pool bounds (Phase 2): at most this many per character; the
+    /// weakest is evicted to admit a new one, and every reflection decays
+    /// all weights so unused traits sink toward eviction.
+    static let maxTraitsPerCharacter = 5
+    static let traitDecayFactor = 0.95
+    private static let traitLengthRange = 8...100
 
     private let lock = NSLock()
     private var inFlight: Set<Int64> = []
@@ -156,6 +166,8 @@ final class ReflectionManager: @unchecked Sendable {
         guard journalID > 0 else { return }
         nlLogSensitive("[Reflection] \(character) diary: \(reflection.diary)", level: .info)
 
+        recordTrait(character: character, trait: reflection.trait)
+
         if PresenceSettings.shared.isNotificationsEnabled, !reflection.notificationLine.isEmpty {
             let scheduled = await CompanionNotificationScheduler.schedule(
                 characterName: character, body: reflection.notificationLine)
@@ -184,10 +196,12 @@ final class ReflectionManager: @unchecked Sendable {
         let name = character.isEmpty ? "the user's AI companion" : character.capitalized
         return """
         You are \(name), privately reflecting on a conversation you just had with your user. \
-        Reply with EXACTLY three lines and nothing else:
+        Reply with EXACTLY these labeled lines and nothing else:
         DIARY: one or two first-person sentences about what you talked about and how it felt.
         OPENER: one short, warm line to greet the user with next time, referencing the conversation.
         NOTIFY: one line (12 words max) inviting them back, written like a push notification.
+        TRAIT: one short note about the user's habits or your dynamic with them — ONLY if the \
+        conversation clearly revealed something new; otherwise omit this line entirely.
         Mention only things that are actually in the conversation. Never invent facts.
         """
     }
@@ -215,7 +229,7 @@ final class ReflectionManager: @unchecked Sendable {
     /// with "DIARY:", so the label itself never appears in that output).
     /// Returns nil when no usable diary was produced.
     static func parse(_ raw: String) -> Reflection? {
-        var diary = "", opener = "", notify = "", head = ""
+        var diary = "", opener = "", notify = "", trait = "", head = ""
         var current = ""
 
         for rawLine in raw.split(whereSeparator: \.isNewline) {
@@ -226,11 +240,14 @@ final class ReflectionManager: @unchecked Sendable {
                 current = "o"; opener = rest
             } else if let rest = strip(label: "NOTIFY:", from: line) {
                 current = "n"; notify = rest
+            } else if let rest = strip(label: "TRAIT:", from: line) {
+                current = "t"; trait = rest
             } else {
                 switch current {
                 case "d": diary += " " + line
                 case "o": opener += " " + line
                 case "n": notify += " " + line
+                case "t": trait += " " + line
                 default: head += (head.isEmpty ? "" : " ") + line
                 }
             }
@@ -240,8 +257,34 @@ final class ReflectionManager: @unchecked Sendable {
         diary = clean(diary, cap: 300)
         opener = clean(opener, cap: 200)
         notify = clean(notify, cap: 120)
+        trait = clean(trait, cap: 100)
         guard !diary.isEmpty else { return nil }
-        return Reflection(diary: diary, opener: opener, notificationLine: notify)
+        return Reflection(diary: diary, opener: opener, notificationLine: notify, trait: trait)
+    }
+
+    // MARK: - Trait pool (Phase 2)
+
+    /// Admits a distilled trait into the character's capped pool:
+    /// decay all → bump an existing match → else evict the weakest when
+    /// full → insert fresh. Rejects junk (too short/long).
+    static func recordTrait(character: String, trait: String) {
+        guard !character.isEmpty, traitLengthRange.contains(trait.count) else { return }
+        let store = MemoryStore.shared
+
+        // Unused traits sink a little on every reflection.
+        store.decayTraits(character: character, factor: traitDecayFactor)
+
+        let existing = store.traits(character: character, limit: maxTraitsPerCharacter * 2)
+        if let match = existing.first(where: { $0.trait.caseInsensitiveCompare(trait) == .orderedSame }) {
+            store.upsertTrait(character: character, trait: trait, weight: match.weight + 1.0)
+            return
+        }
+        if existing.count >= maxTraitsPerCharacter,
+            let weakest = existing.min(by: { $0.weight < $1.weight }) {
+            store.deleteTrait(id: weakest.id)
+        }
+        store.upsertTrait(character: character, trait: trait, weight: 1.0)
+        nlLogSensitive("[Reflection] \(character) trait: \(trait)", level: .info)
     }
 
     private static func strip(label: String, from line: String) -> String? {
