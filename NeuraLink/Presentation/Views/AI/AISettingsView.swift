@@ -16,6 +16,7 @@ struct AISettingsView: View {
     @State private var showVADInfo = false
     @State private var showProactiveVisionInfo = false
     @State private var showPresenceInfo = false
+    @State private var showProactiveEngagementInfo = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -248,6 +249,47 @@ struct AISettingsView: View {
 
             if presence.isPresenceEnabled {
                 Toggle("\"Thinking of you\" notifications", isOn: $presence.isNotificationsEnabled)
+            }
+
+            Toggle(isOn: $presence.isProactiveEngagementEnabled) {
+                HStack(spacing: 8) {
+                    Text("Proactive Engagement")
+                    Button {
+                        showProactiveEngagementInfo = true
+                    } label: {
+                        Image(systemName: "info.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .popover(isPresented: $showProactiveEngagementInfo) {
+                        Text(
+                            "The character speaks first: greets you when you return after time away, and breaks long silences with a short line of its own."
+                        )
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .padding(12)
+                        .presentationCompactAdaptation(.popover)
+                    }
+                }
+            }
+            .listRowSeparator(presence.isProactiveEngagementEnabled ? .hidden : .automatic)
+
+            if presence.isProactiveEngagementEnabled {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Greet after time away")
+                    DropDownSelector(items: [1.0, 6.0, 12.0, 24.0], selection: $presence.absenceGreetingHours) { hours in
+                        "\(Int(hours))h"
+                    }
+                }
+                .listRowSeparator(.hidden)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Break silence after")
+                    DropDownSelector(items: [45.0, 90.0, 180.0, 300.0], selection: $presence.silenceSmallTalkSec) { seconds in
+                        "\(Int(seconds))s"
+                    }
+                }
             }
         }
     }

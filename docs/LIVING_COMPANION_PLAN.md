@@ -179,7 +179,7 @@ cap/decay/upsert, unified label curve, prompt-block budget, empty-state returns 
 
 ---
 
-## Phase 3 — ⑥ Time-based proactive engagement
+## Phase 3 — ⑥ Time-based proactive engagement ✅ DONE 2026-09-08
 
 **Behavior**: the companion speaks first. Returning after ≥6 h → greeted with the
 Phase 1 opener ("I kept thinking about that book you mentioned…"). Going quiet ≥90 s

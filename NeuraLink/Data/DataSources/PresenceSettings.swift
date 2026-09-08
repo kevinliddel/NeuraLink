@@ -21,14 +21,23 @@ final class PresenceSettings {
 
     private static let enabledKey = "com.neuralink.presence.enabled"
     private static let notificationsKey = "com.neuralink.presence.notificationsEnabled"
+    private static let proactiveKey = "com.neuralink.presence.proactiveEnabled"
+    private static let absenceHoursKey = "com.neuralink.presence.absenceGreetingHours"
+    private static let silenceSecKey = "com.neuralink.presence.silenceSmallTalkSec"
 
     @ObservationIgnored private var _isPresenceEnabled: Bool = false
     @ObservationIgnored private var _isNotificationsEnabled: Bool = false
+    @ObservationIgnored private var _isProactiveEngagementEnabled: Bool = false
+    @ObservationIgnored private var _absenceGreetingHours: Double = 6
+    @ObservationIgnored private var _silenceSmallTalkSec: Double = 90
 
     private init() {
         let defaults = UserDefaults.standard
         _isPresenceEnabled = defaults.bool(forKey: Self.enabledKey)
         _isNotificationsEnabled = defaults.bool(forKey: Self.notificationsKey)
+        _isProactiveEngagementEnabled = defaults.bool(forKey: Self.proactiveKey)
+        _absenceGreetingHours = defaults.object(forKey: Self.absenceHoursKey) as? Double ?? 6
+        _silenceSmallTalkSec = defaults.object(forKey: Self.silenceSecKey) as? Double ?? 90
     }
 
     /// Master switch: end-of-session reflection (diary + opener). Opt-in.
@@ -62,6 +71,55 @@ final class PresenceSettings {
                 Task { _ = await CompanionNotificationScheduler.requestAuthorization() }
             } else {
                 CompanionNotificationScheduler.cancelPending()
+            }
+        }
+    }
+
+    /// Trigger switch for absence greetings + silence small talk (Phase 3).
+    /// Independent of `isPresenceEnabled` — without reflections the greeting
+    /// simply falls back to a generic warm welcome.
+    var isProactiveEngagementEnabled: Bool {
+        get {
+            access(keyPath: \.isProactiveEngagementEnabled)
+            return _isProactiveEngagementEnabled
+        }
+        set {
+            withMutation(keyPath: \.isProactiveEngagementEnabled) {
+                _isProactiveEngagementEnabled = newValue
+                UserDefaults.standard.set(newValue, forKey: Self.proactiveKey)
+            }
+            if newValue {
+                ProactivePresenceManager.shared.start()
+            } else {
+                ProactivePresenceManager.shared.stop()
+            }
+        }
+    }
+
+    /// Hours away before the return greeting fires.
+    var absenceGreetingHours: Double {
+        get {
+            access(keyPath: \.absenceGreetingHours)
+            return _absenceGreetingHours
+        }
+        set {
+            withMutation(keyPath: \.absenceGreetingHours) {
+                _absenceGreetingHours = newValue
+                UserDefaults.standard.set(newValue, forKey: Self.absenceHoursKey)
+            }
+        }
+    }
+
+    /// Seconds of in-session silence before the first small talk.
+    var silenceSmallTalkSec: Double {
+        get {
+            access(keyPath: \.silenceSmallTalkSec)
+            return _silenceSmallTalkSec
+        }
+        set {
+            withMutation(keyPath: \.silenceSmallTalkSec) {
+                _silenceSmallTalkSec = newValue
+                UserDefaults.standard.set(newValue, forKey: Self.silenceSecKey)
             }
         }
     }
