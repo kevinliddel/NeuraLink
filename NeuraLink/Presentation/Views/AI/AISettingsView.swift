@@ -9,11 +9,13 @@ import SwiftUI
 struct AISettingsView: View {
     @Bindable var settings = OpenAISettings.shared
     @Bindable var appearance = AppearanceSettings.shared
+    @Bindable var presence = PresenceSettings.shared
     private var downloader = LocalModelDownloadManager.shared
     private var personaStore = PersonaStore.shared
     @State private var showModelLibrary = false
     @State private var showVADInfo = false
     @State private var showProactiveVisionInfo = false
+    @State private var showPresenceInfo = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -217,6 +219,35 @@ struct AISettingsView: View {
                         "\(Int(seconds))s"
                     }
                 }
+            }
+
+            // Engine-agnostic (works with the local LLM too) — not gated on
+            // settings.isEnabled like the OpenAI-only toggles above.
+            Toggle(isOn: $presence.isPresenceEnabled) {
+                HStack(spacing: 8) {
+                    Text("Companion Presence")
+                    Button {
+                        showPresenceInfo = true
+                    } label: {
+                        Image(systemName: "info.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .popover(isPresented: $showPresenceInfo) {
+                        Text(
+                            "After each conversation the character reflects on it — keeping a diary and preparing a greeting for next time. Everything stays on this device and is visible in the journal."
+                        )
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .padding(12)
+                        .presentationCompactAdaptation(.popover)
+                    }
+                }
+            }
+
+            if presence.isPresenceEnabled {
+                Toggle("\"Thinking of you\" notifications", isOn: $presence.isNotificationsEnabled)
             }
         }
     }

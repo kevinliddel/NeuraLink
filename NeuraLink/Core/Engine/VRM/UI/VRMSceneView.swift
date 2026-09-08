@@ -189,12 +189,14 @@ public struct VRMSceneView: View {
         }
         state.clear()
 
+        // Session boundary BEFORE the new name lands in RealtimeChatState —
+        // the reflection must be attributed to the OUTGOING character.
+        SessionLifecycle.shared.sessionEnded(reason: "characterSwitch")
+
         let characterName = url.deletingPathExtension().lastPathComponent
         RealtimeChatState.shared.selectedCharacterName = characterName
 
-        // Stop any active AI before switching characters. Boundary first —
-        // the outgoing character's session gets reflected on.
-        SessionLifecycle.shared.sessionEnded(reason: "characterSwitch")
+        // Stop any active AI before switching characters.
         OpenAIRealtimeManager.shared.disconnect()
         LocalLLMManager.shared.stop()
 

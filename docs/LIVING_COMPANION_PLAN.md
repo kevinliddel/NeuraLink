@@ -99,7 +99,7 @@ and migrate `ConversationTitler` to it as proof.
 
 ---
 
-## Phase 1 — ① Between-session presence (the Animates headline)
+## Phase 1 — ① Between-session presence (the Animates headline) ✅ DONE 2026-09-07
 
 **Behavior**: when a session ends, the companion "reflects": writes a 1–2-sentence
 diary entry about the conversation, an opener for next time, and a notification line.

@@ -22,6 +22,9 @@ struct NeuraLinkApp: App {
         // Session-boundary observer (backgrounding → lastSeen stamp +
         // sessionDidEnd for the reflection pipeline). Idempotent.
         SessionLifecycle.shared.start()
+        // Reflection pipeline: listens for boundaries, clears stale pending
+        // notifications, runs launch catch-up. Idempotent.
+        ReflectionManager.shared.start()
 
         // New session = new chat: every cold launch starts a fresh
         // conversation (created lazily on the first turn).

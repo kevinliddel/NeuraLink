@@ -162,6 +162,27 @@ extension MemoryStore {
         return items
     }
 
+    /// Spoken user turns in a conversation (reflection's ≥N-turns guard —
+    /// `messageCount` counts all roles and kinds, which over-counts).
+    func userMessageCount(conversationID: Int64) -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        let query = """
+        SELECT COUNT(*) FROM messages
+        WHERE conversation_id = ? AND role = 'user' AND kind = 'message';
+        """
+        var statement: OpaquePointer?
+        var count: Int32 = 0
+        if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
+            sqlite3_bind_int64(statement, 1, conversationID)
+            if sqlite3_step(statement) == SQLITE_ROW {
+                count = sqlite3_column_int(statement, 0)
+            }
+        }
+        sqlite3_finalize(statement)
+        return Int(count)
+    }
+
     private func journalRow(from statement: OpaquePointer?) -> JournalEntry {
         let createdRaw = sqlite3_column_text(statement, 8).map { String(cString: $0) } ?? ""
         return JournalEntry(
