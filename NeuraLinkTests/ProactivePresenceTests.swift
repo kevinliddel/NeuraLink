@@ -89,9 +89,12 @@ struct ProactivePresenceTests {
 
     @Test("Normalization collapses case and punctuation for dedupe")
     func dedupeNormalization() {
+        // Punctuation (apostrophes included) becomes a word boundary — two
+        // events differing only in case/punctuation collapse to the same key.
         let a = ProactivePresenceManager.normalize("It's late night — you're Friends!")
-        let b = ProactivePresenceManager.normalize("its late night youre friends")
+        let b = ProactivePresenceManager.normalize("it s late night, you re friends")
         #expect(a == b)
+        #expect(a == "it s late night you re friends")
 
         let c = ProactivePresenceManager.normalize("It's early morning — you're Friends!")
         #expect(a != c)

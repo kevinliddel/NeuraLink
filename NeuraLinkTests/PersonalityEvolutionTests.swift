@@ -20,23 +20,76 @@ struct PersonalityEvolutionTests {
         MemoryStore.shared.deleteJournal(character: character)
     }
 
-    // MARK: - Unified affinity curve
+    // MARK: - Relationship curve (v2 — connection, not XP)
 
-    @Test("Score saturates: turns dominate, facts add a bounded bonus")
-    func affinityScore() {
-        #expect(CompanionAffinity.score(turns: 0, factCount: 0) == 0.0)
-        #expect(CompanionAffinity.score(turns: 20, factCount: 0) == 0.35)
-        #expect(CompanionAffinity.score(turns: 40, factCount: 0) == 0.7)
-        // Ceiling is 0.95 — never a "perfect" relationship.
-        #expect(CompanionAffinity.score(turns: 1_000, factCount: 1_000) == 0.95)
+    private func inputs(
+        turns: Int = 0, facts: Int = 0, days: Int = 0,
+        reflections: Int = 0, sinceSeen: Double? = 0
+    ) -> CompanionAffinity.Inputs {
+        CompanionAffinity.Inputs(
+            turns: turns, factCount: facts, sharedDays: days,
+            reflectionCount: reflections, daysSinceLastSeen: sinceSeen)
     }
 
-    @Test("Labels follow one curve for meter and prompt")
+    @Test("Volume alone can't buy closeness — one chatty night stays Acquaintances")
+    func volumeCannotGrind() {
+        // 1000 turns, all on a single day, nothing learned.
+        let allNighter = CompanionAffinity.score(
+            inputs(turns: 1_000, days: 1, sinceSeen: 0))
+        #expect(allNighter < 0.25, "one marathon night scored \(allNighter)")
+        #expect(CompanionAffinity.label(forScore: allNighter, turns: 1_000) == "Acquaintances")
+    }
+
+    @Test("Shared days and depth carry the relationship")
+    func daysAndDepthDominate() {
+        // A month of genuine, regular contact with real learning.
+        let genuine = CompanionAffinity.score(
+            inputs(turns: 150, facts: 20, days: 30, reflections: 12, sinceSeen: 1))
+        #expect(genuine >= 0.75, "a month of real contact scored \(genuine)")
+        #expect(CompanionAffinity.label(forScore: genuine, turns: 150) == "Close")
+
+        // Same volume, crammed into 3 days with little depth → much lower.
+        let crammed = CompanionAffinity.score(
+            inputs(turns: 150, facts: 2, days: 3, reflections: 1, sinceSeen: 1))
+        #expect(crammed < genuine / 2)
+    }
+
+    @Test("Score is zero before the first turn and capped at 0.95")
+    func scoreBounds() {
+        #expect(CompanionAffinity.score(inputs(turns: 0, facts: 50, days: 50)) == 0)
+        let maxed = CompanionAffinity.score(
+            inputs(turns: 10_000, facts: 500, days: 500, reflections: 500, sinceSeen: 0))
+        #expect(maxed == 0.95)
+    }
+
+    @Test("Absence cools the bond gently and never resets it")
+    func absenceCooling() {
+        #expect(CompanionAffinity.recencyFactor(daysSince: nil) == 1.0)
+        #expect(CompanionAffinity.recencyFactor(daysSince: 2) == 1.0)
+        let month = CompanionAffinity.recencyFactor(daysSince: 30)
+        #expect(month < 1.0 && month > 0.65)
+        // Floor: even a year away leaves an old friend, not a stranger.
+        #expect(CompanionAffinity.recencyFactor(daysSince: 365) == 0.65)
+    }
+
+    @Test("Five stages, one curve for meter and prompt")
     func affinityLabels() {
         #expect(CompanionAffinity.label(forScore: 0.9, turns: 2) == "New")
         #expect(CompanionAffinity.label(forScore: 0.2, turns: 10) == "Acquaintances")
-        #expect(CompanionAffinity.label(forScore: 0.5, turns: 20) == "Friends")
-        #expect(CompanionAffinity.label(forScore: 0.8, turns: 50) == "Close")
+        #expect(CompanionAffinity.label(forScore: 0.4, turns: 50) == "Friends")
+        #expect(CompanionAffinity.label(forScore: 0.6, turns: 100) == "Good Friends")
+        #expect(CompanionAffinity.label(forScore: 0.8, turns: 200) == "Close")
+    }
+
+    @Test("Every stage carries distinct persona guidance")
+    func stageGuidance() {
+        let stages = ["New", "Acquaintances", "Friends", "Good Friends", "Close"]
+        let guidance = stages.map(CompanionAffinity.stageGuidance(for:))
+        #expect(Set(guidance).count == stages.count)  // all distinct
+        #expect(guidance[0].contains("reserved"))
+        #expect(guidance[4].contains("close"))
+        // Unknown labels still return usable guidance.
+        #expect(!CompanionAffinity.stageGuidance(for: "???").isEmpty)
     }
 
     // MARK: - TRAIT parsing

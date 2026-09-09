@@ -153,8 +153,11 @@ private struct InfoToggleLabel: View {
                 Text(info)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+                    // Claim the full wrapped height — without this the popover
+                    // hands the text a ~2-line box and truncates it.
+                    .fixedSize(horizontal: false, vertical: true)
                     .padding(12)
-                    .frame(maxWidth: 280)
+                    .frame(width: 280)
                     .presentationCompactAdaptation(.popover)
             }
             .accessibilityLabel("About \(title)")

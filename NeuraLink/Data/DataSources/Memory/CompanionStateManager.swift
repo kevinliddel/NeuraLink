@@ -26,22 +26,24 @@ final class CompanionStateManager {
 
         let preferenceLines = Self.preferenceSummary(from: facts)
         // Same curve as the UI meter (CompanionAffinity) — Phase 2 unification.
+        // The stage actively shapes personality: reserved when new, warm as
+        // friends, at ease when close (v2 relationship model).
         let affinity = CompanionAffinity.compute(store: store)
-        let familiarity = affinity.userTurns > 0
-            ? "\(affinity.label) (≈\(affinity.userTurns) turns)" : nil
+        let relationship = affinity.userTurns > 0
+            ? "\(affinity.label). \(CompanionAffinity.stageGuidance(for: affinity.label))" : nil
         let tone = Self.recentTone(from: events)
         let traits = store.traits(character: characterName, limit: compact ? 2 : 3)
         let carryOver = carryOverLine(characterName: characterName)
 
         // If nothing meaningful is known, don't inject noise.
-        if preferenceLines.isEmpty && familiarity == nil && tone == nil
+        if preferenceLines.isEmpty && relationship == nil && tone == nil
             && traits.isEmpty && carryOver == nil {
             return ""
         }
 
         var out = "\n[Companion State]\n"
         out += "- Character: \(characterName)\n"
-        if let familiarity { out += "- Familiarity: \(familiarity)\n" }
+        if let relationship { out += "- Relationship: \(relationship)\n" }
         if let tone { out += "- Recent tone: \(tone)\n" }
         if !preferenceLines.isEmpty {
             out += "- Known preferences:\n"
