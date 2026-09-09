@@ -16,34 +16,92 @@ final class CompanionStateManager {
 
     private init() {}
 
-    func promptContext(characterName: String) -> String {
+    /// The single prompt hook shared by both engines (local buildSystemContent
+    /// + OpenAI session instructions). `compact` trims the block for the
+    /// 1B-model tier, where every system token eats attention budget.
+    func promptContext(characterName: String, compact: Bool = false) -> String {
         // Facts can exist even if memory is disabled; dialogue-derived familiarity needs memory.
         let facts = store.fetchAllFacts()
         let events = memorySettings.isEnabled ? store.fetchRecentMessagesAcrossAll(limit: 120) : []
 
         let preferenceLines = Self.preferenceSummary(from: facts)
-        let familiarity = Self.familiarityLabel(from: events)
+        // Same curve as the UI meter (CompanionAffinity) — Phase 2 unification.
+        // The stage actively shapes personality: reserved when new, warm as
+        // friends, at ease when close (v2 relationship model).
+        let affinity = CompanionAffinity.compute(store: store)
+        let relationship = affinity.userTurns > 0
+            ? "\(affinity.label). \(CompanionAffinity.stageGuidance(for: affinity.label))" : nil
         let tone = Self.recentTone(from: events)
+        let traits = store.traits(character: characterName, limit: compact ? 2 : 3)
+        let carryOver = carryOverLine(characterName: characterName)
 
         // If nothing meaningful is known, don't inject noise.
-        if preferenceLines.isEmpty && familiarity == nil && tone == nil { return "" }
+        if preferenceLines.isEmpty && relationship == nil && tone == nil
+            && traits.isEmpty && carryOver == nil {
+            return ""
+        }
 
         var out = "\n[Companion State]\n"
         out += "- Character: \(characterName)\n"
-        if let familiarity { out += "- Familiarity: \(familiarity)\n" }
+        if let relationship { out += "- Relationship: \(relationship)\n" }
         if let tone { out += "- Recent tone: \(tone)\n" }
         if !preferenceLines.isEmpty {
             out += "- Known preferences:\n"
-            for line in preferenceLines.prefix(6) {
+            for line in preferenceLines.prefix(compact ? 3 : 6) {
                 out += "  - \(line)\n"
             }
         }
+        if !traits.isEmpty {
+            out += "- Personality you've grown with this user:\n"
+            for trait in traits {
+                out += "  - \(trait.trait)\n"
+            }
+        }
+        if let carryOver { out += "- \(carryOver)\n" }
         out += """
         - Behavior guidance: Keep personality consistent across turns. Use known preferences naturally when relevant. \
+        Pick up threads from your last conversation naturally when relevant — never act like a stranger. \
         Avoid mentioning that you have a "relationship meter" or internal state.
         [End Companion State]\n
         """
         return out
+    }
+
+    // MARK: - Cross-session carry-over (Phase 6 ②)
+
+    /// What carries over from last time: the reflection diary when one exists
+    /// (< 7 days — the rich, in-voice memory), else the closing exchange of
+    /// the most recent past conversation (< 48 h) so a new session never
+    /// starts cold even with Companion Presence disabled.
+    private func carryOverLine(characterName: String) -> String? {
+        if let entry = store.latestJournalEntry(character: characterName),
+            Date().timeIntervalSince(entry.createdAt) < 7 * 86_400,
+            !entry.diary.isEmpty {
+            return Self.carryOverText(
+                diary: String(entry.diary.prefix(200)), closingRole: nil, closingContent: nil)
+        }
+
+        let active = ConversationStore.shared.activeConversationID
+        guard
+            let previous = store.fetchConversations(matching: "").first(where: { $0.id != active }),
+            Date().timeIntervalSince(previous.updatedAt) < 48 * 3600,
+            let closing = store.fetchMessages(conversationID: previous.id)
+                .last(where: { $0.kind == "message" && !$0.content.isEmpty })
+        else { return nil }
+        return Self.carryOverText(
+            diary: nil, closingRole: closing.role, closingContent: closing.content)
+    }
+
+    /// Pure formatter (unit-tested): diary wins; otherwise quote the closing
+    /// line of the previous conversation, attributed to whoever said it.
+    static func carryOverText(diary: String?, closingRole: String?, closingContent: String?) -> String? {
+        if let diary, !diary.isEmpty {
+            return "Last session, you privately noted: \(diary)"
+        }
+        guard let closingContent, !closingContent.isEmpty else { return nil }
+        let quoted = String(closingContent.prefix(140))
+        let who = closingRole == "user" ? "the user saying" : "you saying"
+        return "Your previous conversation ended with \(who): \"\(quoted)\""
     }
 
     private static func preferenceSummary(from facts: [FactItem]) -> [String] {
@@ -63,16 +121,6 @@ final class CompanionStateManager {
         // De-dupe while preserving order.
         var seen = Set<String>()
         return lines.filter { seen.insert($0.lowercased()).inserted }
-    }
-
-    private static func familiarityLabel(from events: [ConversationMessage]) -> String? {
-        let userTurns = events.filter { $0.role == "user" && $0.kind == "message" }.count
-        guard userTurns > 0 else { return nil }
-
-        // Very lightweight curve: first 5 turns -> new, 5–25 -> friendly, 25+ -> close.
-        if userTurns < 5 { return "New (≈\(userTurns) turns)" }
-        if userTurns < 25 { return "Friendly (≈\(userTurns) turns)" }
-        return "Close (≈\(userTurns) turns)"
     }
 
     private static func recentTone(from events: [ConversationMessage]) -> String? {

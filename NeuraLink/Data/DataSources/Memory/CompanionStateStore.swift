@@ -22,27 +22,11 @@ final class CompanionStateStore {
     }
 
     func refresh() {
-        // Familiarity is cross-session: total user turns across all chats.
-        let userTurns = store.countMessages(role: "user", kind: "message")
-        let facts = store.fetchAllFacts()
-
-        // Simple bounded model:
-        // - userTurns increases familiarity quickly at first, then saturates
-        // - facts add a small bonus
-        let turnsComponent = min(1.0, Double(userTurns) / 40.0)
-        let factsComponent = min(1.0, Double(facts.count) / 25.0) * 0.25
-
-        let raw = turnsComponent * 0.7 + factsComponent
-        score = min(max(raw, 0.0), 1.0)
-        label = Self.labelForScore(score, turns: userTurns)
-    }
-
-    private static func labelForScore(_ score: Double, turns: Int) -> String {
-        if turns < 3 { return "New" }
-        switch score {
-        case ..<0.33: return "Acquaintances"
-        case ..<0.66: return "Friends"
-        default: return "Close"
-        }
+        // Single source of truth for the curve — shared with the prompt
+        // block (CompanionStateManager) so the meter and the model never
+        // disagree about the relationship stage.
+        let state = CompanionAffinity.compute(store: store)
+        score = state.score
+        label = state.label
     }
 }

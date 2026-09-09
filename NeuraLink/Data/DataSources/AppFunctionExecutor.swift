@@ -33,7 +33,8 @@ final class AppFunctionExecutor {
             CameraSkill(),
             RememberFactSkill(),
             PhotoshootSkill(),
-            IdentifySongSkill()
+            IdentifySongSkill(),
+            PlayGameSkill()
         ]
         self.skills = Dictionary(uniqueKeysWithValues: list.map { (type(of: $0).toolName, $0) })
     }
@@ -56,8 +57,23 @@ final class AppFunctionExecutor {
 
         let result = await skill.execute(arguments: arguments)
 
-        // Capture any deferred UI action (e.g., opening an app)
-        self.pendingUIAction = skill.pendingUIAction
+        // Capture any deferred UI action (e.g., opening an app). Tools with
+        // a phone card don't auto-open anymore: after the AI finishes
+        // speaking, the companion's phone widget slides in and the ACTUAL
+        // open happens when the user taps it (GTA-style, no app-yanking).
+        if let action = skill.pendingUIAction {
+            if let card = PhoneWidgetManager.card(for: name, arguments: arguments) {
+                self.pendingUIAction = {
+                    Task { @MainActor in
+                        PhoneWidgetManager.shared.present(card: card, action: action)
+                    }
+                }
+            } else {
+                self.pendingUIAction = action
+            }
+        } else {
+            self.pendingUIAction = nil
+        }
 
         let resultPreview = result.count > 200 ? String(result.prefix(200)) + "…" : result
         nlLog(

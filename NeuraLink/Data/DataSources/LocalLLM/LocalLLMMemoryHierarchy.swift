@@ -86,7 +86,8 @@ final class LocalLLMMemoryHierarchy {
         let systemContent = buildSystemContent(
             base: baseSystemPrompt,
             characterName: characterName,
-            isLLMjp: isJP
+            isLLMjp: isJP,
+            compactCompanionState: config == .llama1b
         )
 
         // Tier 3 (facts) is appended AFTER history as its own system
@@ -115,6 +116,13 @@ final class LocalLLMMemoryHierarchy {
         if !factsBlock.isEmpty {
             messages.append(.init(role: "system", content: factsBlock))
         }
+        // Mid-game reminder (rules + turn count + the 20Q secret) rides with
+        // the per-turn block — same KV-cache story as facts: appended after
+        // history so the stable prefix is untouched. Empty when no game runs.
+        let gameBlock = isJP ? "" : GameSessionManager.shared.promptReminder()
+        if !gameBlock.isEmpty {
+            messages.append(.init(role: "system", content: gameBlock))
+        }
         messages.append(.init(role: "user", content: userMessage))
 
         return Self.fitToBudget(messages, nCtx: Self.nCtx(for: config))
@@ -136,7 +144,8 @@ final class LocalLLMMemoryHierarchy {
         let systemContent = buildSystemContent(
             base: baseSystemPrompt,
             characterName: characterName,
-            isLLMjp: isJP
+            isLLMjp: isJP,
+            compactCompanionState: config == .llama1b
         )
         var messages: [LLMChatMessage] = [
             .init(role: "system", content: systemContent)
@@ -234,7 +243,8 @@ final class LocalLLMMemoryHierarchy {
     private func buildSystemContent(
         base: String,
         characterName: String,
-        isLLMjp: Bool
+        isLLMjp: Bool,
+        compactCompanionState: Bool = false
     ) -> String {
         if isLLMjp {
             // 1B model attends most to the first ~30 tokens. Order: (1)
@@ -258,7 +268,8 @@ final class LocalLLMMemoryHierarchy {
         return Self.buildEnglishRoleClarification(characterName: characterName)
             + base
             + UserSettings.shared.systemPromptContext
-            + CompanionStateManager.shared.promptContext(characterName: characterName)
+            + CompanionStateManager.shared.promptContext(
+                characterName: characterName, compact: compactCompanionState)
     }
 
     /// Returns a single-line JP user context block (`ユーザーの名前は{name}、{age}歳。\n`)

@@ -26,6 +26,7 @@ enum AppFunctionTool {
     static let rememberFact = "remember_fact"
     static let poseForPhoto = "pose_for_photo"
     static let identifySong = "identify_song"
+    static let playGame = "play_game"
 
     // MARK: - OpenAI tool schema array
 
@@ -33,7 +34,8 @@ enum AppFunctionTool {
     static var all: [[String: Any]] {
         [
             emotionTool, weatherTool, searchTool, musicTool, reminderTool,
-            noteTool, openAppTool, cameraTool, factTool, photoTool, identifySongTool
+            noteTool, openAppTool, cameraTool, factTool, photoTool, identifySongTool,
+            playGameTool
         ]
     }
 
@@ -46,10 +48,47 @@ enum AppFunctionTool {
             "description": "Listen through the microphone and identify the song currently "
                 + "playing nearby (like Shazam). Use this whenever the user asks what song "
                 + "is playing, who sings this, or to name the music they can hear. "
-                + "Listening takes several seconds; the result appears on screen with links.",
+                + "Listening takes several seconds; the result appears on screen with links. "
+                + "Pass mode \"session\" when the user wants to listen to music TOGETHER — "
+                + "you'll follow along and react as tracks change (up to 30 minutes).",
             "parameters": [
                 "type": "object",
-                "properties": [String: Any](),
+                "properties": [
+                    "mode": [
+                        "type": "string",
+                        "enum": ["once", "session"],
+                        "description": "\"once\" (default) identifies the current song; "
+                            + "\"session\" starts a listening-together session."
+                    ]
+                ],
+                "required": [String]()
+            ]
+        ]
+    }
+
+    private static var playGameTool: [String: Any] {
+        [
+            "type": "function",
+            "name": playGame,
+            "description": "Play a quick spoken game together. Use this when the user wants to "
+                + "play something: 20 Questions (you host and keep a secret), Trivia (you quiz "
+                + "them, 5 questions), or Word Chain (alternate words, each starting with the "
+                + "last letter of the previous). Call with action \"stop\" when the user wants "
+                + "to end the game. The result tells you the rules — follow them exactly.",
+            "parameters": [
+                "type": "object",
+                "properties": [
+                    "game": [
+                        "type": "string",
+                        "enum": ["twenty_questions", "trivia", "word_chain"],
+                        "description": "Which game to start (required unless action is \"stop\")"
+                    ],
+                    "action": [
+                        "type": "string",
+                        "enum": ["start", "stop"],
+                        "description": "\"start\" (default) begins the game; \"stop\" ends it"
+                    ]
+                ],
                 "required": [String]()
             ]
         ]

@@ -4,6 +4,20 @@
 The song itself is identified by **ShazamKit** (the LLM is text-only and cannot hear);
 the LLM's job is the *interaction*: reacting to the match in character.
 
+## Co-listening sessions
+
+Long-press the Identify Song FAB — or ask the persona to "listen together"
+(`identify_song` with `"mode": "session"`) — and recognition becomes a loop
+(`SongRecognitionManager+Session.swift`): re-arm every ~75 s after a hit / ~20 s
+after a miss, keep the current track on the capsule (cyan waveform badge; closing
+it ends the session), and inject ONE persona comment per track change (≥ 60 s
+apart, dedupe by punctuation-stripped `trackKey`). Each cycle reuses the one-shot
+`beginCaptureWindow → listenOnce → endCaptureWindow` audio suspension and waits
+for the persona to finish speaking before opening a window. Auto-stops: 30-minute
+cap, backgrounding, headphone (un)plug (`.oldDeviceUnavailable`/`.newDeviceAvailable`
+only — our own capture churn is ignored), battery < 20% unplugged, or 3 consecutive
+hard failures.
+
 ## Flow
 
 ```mermaid

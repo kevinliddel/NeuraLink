@@ -28,14 +28,14 @@ final class NotesSkill: Skill {
             string: "bear://x-callback-url/create?title=\(title.urlEncoded)&text=\(body.urlEncoded)"
         ), UIApplication.shared.canOpenURL(bearURL) {
             pendingUIAction = { UIApplication.shared.open(bearURL) }
-            return "Created a new note titled \"\(title)\" in Bear."
+            return "A new Bear note titled \"\(title)\" is ready on my phone — tap it to open."
         }
 
         UIPasteboard.general.string = combined
         if let notesURL = URL(string: "mobilenotes://"),
             UIApplication.shared.canOpenURL(notesURL) {
             pendingUIAction = { UIApplication.shared.open(notesURL) }
-            return "Opened Notes. I've copied your note to the clipboard — paste it in a new note!"
+            return "Notes is ready on my phone with your note on the clipboard — tap it, then paste!"
         }
 
         return "I've copied the note content to your clipboard. Open Notes and paste to create it."

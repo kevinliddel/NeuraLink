@@ -9,11 +9,10 @@ import SwiftUI
 struct AISettingsView: View {
     @Bindable var settings = OpenAISettings.shared
     @Bindable var appearance = AppearanceSettings.shared
+    @Bindable var presence = PresenceSettings.shared
     private var downloader = LocalModelDownloadManager.shared
     private var personaStore = PersonaStore.shared
     @State private var showModelLibrary = false
-    @State private var showVADInfo = false
-    @State private var showProactiveVisionInfo = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -153,72 +152,49 @@ struct AISettingsView: View {
         }
     }
 
+    /// Compact entry row (persona-row pattern) — the toggles themselves live
+    /// in AutonomySettingsView, one titled section per feature.
     private var interactionSection: some View {
         Section("Autonomy") {
-            Toggle(isOn: $settings.isVADEnabled) {
-                HStack(spacing: 8) {
-                    Text("Auto-Turn Detection (VAD)")
-                    Button {
-                        showVADInfo = true
-                    } label: {
-                        Image(systemName: "info.circle.fill")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .popover(isPresented: $showVADInfo) {
-                        Text("VAD lets OpenAI respond automatically when you stop speaking.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .padding(12)
-                            .presentationCompactAdaptation(.popover)
-                    }
-                }
-            }
-            .disabled(!settings.isEnabled)
-
-            Toggle(isOn: $settings.isProactiveVisionEnabled) {
-                HStack(spacing: 8) {
-                    Text("Proactive Vision")
-                    Button {
-                        showProactiveVisionInfo = true
-                    } label: {
-                        Image(systemName: "info.circle.fill")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .popover(isPresented: $showProactiveVisionInfo) {
-                        Text(
-                            "The character periodically looks through the camera and comments on what they see without being asked."
+            NavigationLink {
+                AutonomySettingsView()
+            } label: {
+                HStack(spacing: 12) {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [.cyan.opacity(0.85), .blue.opacity(0.7)],
+                                startPoint: .topLeading, endPoint: .bottomTrailing)
                         )
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .padding(12)
-                        .presentationCompactAdaptation(.popover)
-                    }
-                }
-            }
-            .disabled(!settings.isEnabled)
-            .listRowSeparator(settings.isEnabled && settings.isProactiveVisionEnabled ? .hidden : .automatic)
+                        .frame(width: 44, height: 44)
+                        .overlay(
+                            Image(systemName: "wand.and.stars")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(.white)
+                        )
+                        .overlay(Circle().stroke(Color.primary.opacity(0.15), lineWidth: 1))
+                        .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
 
-            if settings.isEnabled && settings.isProactiveVisionEnabled {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Interval")
-                    DropDownSelector(items: [10.0, 20.0, 30.0, 60.0], selection: $settings.proactiveVisionIntervalSec) { seconds in
-                        "\(Int(seconds))s"
-                    }
-                }
-                .listRowSeparator(.hidden)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Cooldown after speech")
-                    DropDownSelector(items: [0.0, 8.0, 12.0, 20.0], selection: $settings.proactiveVisionCooldownAfterSpeechSec) { seconds in
-                        "\(Int(seconds))s"
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Autonomy")
+                            .font(.headline)
+                        Text(autonomySummary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
         }
+    }
+
+    /// One-line status of the autonomous features, shown under the row title.
+    private var autonomySummary: String {
+        var active: [String] = []
+        if settings.isEnabled && settings.isVADEnabled { active.append("VAD") }
+        if settings.isEnabled && settings.isProactiveVisionEnabled { active.append("Vision") }
+        if presence.isPresenceEnabled { active.append("Presence") }
+        if presence.isProactiveEngagementEnabled { active.append("Engagement") }
+        return active.isEmpty ? "Everything off — tap to configure" : active.joined(separator: " · ")
     }
 
     // MARK: - Sub-views

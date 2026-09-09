@@ -33,6 +33,6 @@ final class WebSearchSkill: Skill {
             return "Could not open Safari for: \(query)"
         }
         pendingUIAction = { UIApplication.shared.open(url) }
-        return "Opened Safari to search for \"\(query)\"."
+        return "I've got a Safari search for \"\(query)\" ready on my phone — tap it to open."
     }
 }

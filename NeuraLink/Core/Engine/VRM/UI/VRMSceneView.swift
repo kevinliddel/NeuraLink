@@ -189,6 +189,10 @@ public struct VRMSceneView: View {
         }
         state.clear()
 
+        // Session boundary BEFORE the new name lands in RealtimeChatState —
+        // the reflection must be attributed to the OUTGOING character.
+        SessionLifecycle.shared.sessionEnded(reason: "characterSwitch")
+
         let characterName = url.deletingPathExtension().lastPathComponent
         RealtimeChatState.shared.selectedCharacterName = characterName
 

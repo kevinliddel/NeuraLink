@@ -257,6 +257,27 @@ final class MemoryStore {
             updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         CREATE UNIQUE INDEX IF NOT EXISTS idx_imported_characters_sha ON imported_characters(sha256);
+        CREATE TABLE IF NOT EXISTS companion_journal (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            character TEXT NOT NULL,
+            conversation_id INTEGER NOT NULL,
+            diary TEXT NOT NULL,
+            opener TEXT NOT NULL DEFAULT '',
+            notification_line TEXT NOT NULL DEFAULT '',
+            notified INTEGER NOT NULL DEFAULT 0,
+            opener_used INTEGER NOT NULL DEFAULT 0,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_journal_character ON companion_journal(character, id);
+        CREATE TABLE IF NOT EXISTS persona_traits (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            character TEXT NOT NULL,
+            trait TEXT NOT NULL,
+            weight REAL NOT NULL DEFAULT 1.0,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_traits_character ON persona_traits(character, weight);
         """
 
         // Enforce ON DELETE CASCADE for messages when a conversation is

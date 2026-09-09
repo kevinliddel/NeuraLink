@@ -17,6 +17,11 @@ final class IdentifySongSkill: Skill {
     var pendingUIAction: (() -> Void)?
 
     func execute(arguments: [String: Any]) async -> String {
-        await SongRecognitionManager.shared.recognizeForSkill()
+        if (arguments["mode"] as? String) == "session" {
+            SongRecognitionManager.shared.startSession()
+            return "Music session started! I'm listening along and will chime in when tracks change. "
+                + "It runs for up to 30 minutes; the user can end it from the now-playing capsule."
+        }
+        return await SongRecognitionManager.shared.recognizeForSkill()
     }
 }

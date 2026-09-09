@@ -8,6 +8,7 @@ import SwiftUI
 struct RelationshipMeterBarOverlay: View {
     @Bindable var aiState = RealtimeChatState.shared
     @State private var companion = CompanionStateStore.shared
+    @State private var showJournal = false
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -30,6 +31,10 @@ struct RelationshipMeterBarOverlay: View {
             .padding(.vertical, 12)
             .background(.black.opacity(0.36), in: Capsule())
             .overlay(Capsule().strokeBorder(.white.opacity(0.18), lineWidth: 1))
+            .contentShape(Capsule())
+            .onTapGesture { showJournal = true }
+            .accessibilityAddTraits(.isButton)
+            .accessibilityHint("Opens the companion's journal")
 
             Button {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
@@ -44,5 +49,8 @@ struct RelationshipMeterBarOverlay: View {
             .offset(x: 8, y: -8)
         }
         .onAppear { companion.refresh() }
+        .sheet(isPresented: $showJournal) {
+            CompanionJournalView(character: aiState.selectedCharacterName)
+        }
     }
 }

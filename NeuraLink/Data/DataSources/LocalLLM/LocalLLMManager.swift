@@ -273,10 +273,14 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         }
 
         ProactiveVisionManager.shared.notifyUserSpoke()
+        InteractionClock.shared.noteUserSpoke()
         // `logUserMessage` already drops empty/whitespace turns; the flag
         // additionally excludes physical-interaction actions.
         if logToTimeline {
             ChatTimelineStore.logUserMessage(text)
+            // Real spoken turns advance an active mini-game (injected events
+            // don't count as game moves).
+            GameSessionManager.shared.noteTurn()
         }
 
         Task {
@@ -307,7 +311,11 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             // iPhone 11, 60 tokens ≈ 15 s of speech — the realistic upper bound
             // for a single spoken reply. The system prompt asks for 1–2
             // sentences anyway. Applies to both Llama-1B and the JP path.
-            let maxTokens = 60
+            // Game turns get double the room (a trivia question + options
+            // doesn't fit in 60, and a cut-off reveal ruins the game).
+            let maxTokens = GameSessionManager.shared.isGameActive
+                ? GameSessionManager.gameTurnMaxTokens
+                : 60
 
             await llmEngine.generate(prompt: prompt, maxTokens: maxTokens)
         }

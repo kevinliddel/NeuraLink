@@ -16,6 +16,7 @@ struct ExpandableFABMenu: View {
     let onModelSelection: () -> Void
     let onCameraToggle: () -> Void
     let onIdentifySong: () -> Void
+    let onIdentifySongLongPress: () -> Void
     let onPiP: () -> Void
 
     var body: some View {
@@ -55,8 +56,10 @@ struct ExpandableFABMenu: View {
                     FABButton(
                         icon: Image(systemName: "music.note"),
                         label: "Identify Song",
-                        showLabel: true
-                    ) { collapse(); onIdentifySong() }
+                        showLabel: true,
+                        longPress: { collapse(); onIdentifySongLongPress() },
+                        action: { collapse(); onIdentifySong() }
+                    )
                     .transition(childTransition(delay: 0.08))
 
                     FABButton(
@@ -113,6 +116,9 @@ private struct FABButton: View {
     let icon: Image
     let label: String
     let showLabel: Bool
+    /// Optional secondary gesture (e.g. Identify Song's long-press starts a
+    /// co-listening session). Runs alongside the tap without stealing it.
+    var longPress: (() -> Void)?
     let action: () -> Void
 
     @State private var textVisible = false
@@ -138,6 +144,12 @@ private struct FABButton: View {
                     .clipShape(Circle())
             }
             .buttonStyle(.plain)
+            .simultaneousGesture(
+                LongPressGesture(minimumDuration: 0.45).onEnded { _ in
+                    longPress?()
+                },
+                including: longPress == nil ? .subviews : .all
+            )
         }
         // Trigger on first appear (handles secondary buttons whose showLabel is already true)
         .onAppear {

@@ -35,12 +35,21 @@ final class SongRecognitionManager {
 
     private(set) var phase: Phase = .idle
 
+    /// One capture attempt's outcome — shared by the one-shot flow and the
+    /// co-listening session loop (+Session extension).
+    enum ListenOutcome: Equatable {
+        case matched(RecognizedSong)
+        case noMatch
+        case failed(String)
+    }
+
     /// Where the request came from. A skill-initiated recognition returns its
     /// summary through the tool-call result (the AI speaks it), so only
     /// HUD-initiated ones inject a separate reaction event into the chat.
     private enum Source { case hudButton, skill }
 
-    private var managedSession: SHManagedSession?
+    /// Internal (not private) so the +Session extension can cancel it.
+    @ObservationIgnored var managedSession: SHManagedSession?
 
     /// Set by the watchdog before it cancels the session, so the resulting
     /// `.error` is reported as a plain no-match instead of a failure.
@@ -48,7 +57,21 @@ final class SongRecognitionManager {
 
     /// Max listen window before giving up. Shazam usually matches within
     /// ~4–10 s of clean audio; anything longer means it won't match at all.
-    private static let listenTimeout: TimeInterval = 18
+    static let listenTimeout: TimeInterval = 18
+
+    // MARK: - Co-listening session state (driven by the +Session extension;
+    // treat as read-only everywhere else)
+
+    /// True while a "listening together" session runs (Phase 4a). Observable —
+    /// the overlay renders session-flavored text and the close button ends
+    /// the whole session.
+    var isSessionActive = false
+    @ObservationIgnored var sessionTask: Task<Void, Never>?
+    @ObservationIgnored var sessionStartedAt: Date?
+    @ObservationIgnored var lastTrackKey = ""
+    @ObservationIgnored var lastCommentAt = Date.distantPast
+    @ObservationIgnored var sessionFailureStreak = 0
+    @ObservationIgnored var sessionObservers: [NSObjectProtocol] = []
 
     private init() {}
 
@@ -57,13 +80,16 @@ final class SongRecognitionManager {
     /// Fire-and-forget recognition from the HUD button. On a match the
     /// persona reacts in character via an injected interaction event.
     func startFromUI() {
-        guard managedSession == nil else { return }
+        guard managedSession == nil, !isSessionActive else { return }
         Task { await run(source: .hudButton) }
     }
 
     /// Runs one recognition on behalf of the `identify_song` tool call and
     /// returns a plain-text summary the AI speaks back to the user.
     func recognizeForSkill() async -> String {
+        guard !isSessionActive else {
+            return "We're already in a listening session — I'm following the music."
+        }
         guard managedSession == nil else {
             return "I'm already listening for the song — give me a moment."
         }
@@ -82,14 +108,23 @@ final class SongRecognitionManager {
         }
     }
 
-    /// User dismissed the card mid-listen.
+    /// User dismissed the card mid-listen. During a co-listening session
+    /// this ends the whole session.
     func cancel() {
+        if isSessionActive {
+            stopSession(reason: "user")
+            return
+        }
         managedSession?.cancel()
         phase = .idle
     }
 
     /// User dismissed a finished (matched / no-match / failed) card.
     func dismiss() {
+        if isSessionActive {
+            stopSession(reason: "user")
+            return
+        }
         phase = .idle
     }
 
@@ -105,6 +140,34 @@ final class SongRecognitionManager {
         phase = .listening
         nlLog("[SongID] Listening for a match (source: \(source))…", level: .info)
 
+        let suspendedLocalCapture = beginCaptureWindow()
+        let outcome = await listenOnce()
+        endCaptureWindow(suspendedLocalCapture: suspendedLocalCapture)
+
+        // If the user cancelled while we were listening, phase is already
+        // .idle — don't overwrite it with a stale result.
+        guard phase == .listening else { return phase }
+
+        switch outcome {
+        case .matched(let song):
+            presentMatch(song)
+            if source == .hudButton {
+                announceTitle(for: song)
+            }
+        case .noMatch:
+            phase = .noMatch
+        case .failed(let message):
+            phase = .failed(message)
+        }
+        return phase
+    }
+
+    // MARK: - Capture window (shared with the +Session co-listening loop)
+
+    /// Prepares both voice pipelines for a clean music capture. Returns
+    /// whether the local capture path was suspended (pass it back to
+    /// `endCaptureWindow`).
+    func beginCaptureWindow() -> Bool {
         // The model must never speak back to the music: gate the local
         // pipeline's VAD AND the realtime session's outgoing mic while we
         // listen, so neither engine treats the song as user speech.
@@ -119,17 +182,38 @@ final class SongRecognitionManager {
         // path runs voice processing (AEC + noise suppression) tuned to
         // erase exactly the non-speech content Shazam fingerprints — match
         // attempts fail with SHErrorCode 202. Suspend both pipelines' audio
-        // I/O for the listen window; restored below on every exit path.
+        // I/O for the listen window; restored in `endCaptureWindow` on every
+        // exit path.
         let suspendedLocalCapture = LocalLLMManager.shared.pauseCaptureForMusicRecognition()
         OpenAIRealtimeManager.shared.suspendAudioUnit()
+        return suspendedLocalCapture
+    }
 
+    /// Restores both voice pipelines after a capture window.
+    func endCaptureWindow(suspendedLocalCapture: Bool) {
+        // Release the mic gate back to the normal post-speech cool-down.
+        LocalLLMManager.shared.gateMicCapture(forSeconds: 0.8)
+        OpenAIRealtimeManager.shared.resumeAudioUnit()
+        if suspendedLocalCapture {
+            LocalLLMManager.shared.resumeCaptureAfterMusicRecognition()
+        }
+        OpenAIRealtimeManager.shared.setMicGated(false, reason: .songRecognition)
+        // The capture window's mode churn can silently re-route output to
+        // the receiver — put it back on the speaker so the announcement
+        // plays at normal volume.
+        try? AVAudioSession.sharedInstance().overrideOutputAudioPort(.speaker)
+    }
+
+    /// One ShazamKit capture attempt (≤ `listenTimeout`). Must run inside an
+    /// open capture window.
+    func listenOnce() async -> ListenOutcome {
         let session = SHManagedSession()
         managedSession = session
         timedOut = false
 
         // Pre-allocates the recording resources; a failure here (audio-session
         // contention with the always-running LocalLLM engine) surfaces in
-        // result() below rather than as a silent stall.
+        // the results below rather than as a silent stall.
         await session.prepare()
 
         // Give up after the timeout window — cancel() ends the result stream.
@@ -156,45 +240,30 @@ final class SongRecognitionManager {
         }
         timeout.cancel()
         managedSession = nil
-        // Release the mic gate back to the normal post-speech cool-down.
-        LocalLLMManager.shared.gateMicCapture(forSeconds: 0.8)
-        OpenAIRealtimeManager.shared.resumeAudioUnit()
-        if suspendedLocalCapture {
-            LocalLLMManager.shared.resumeCaptureAfterMusicRecognition()
-        }
-        OpenAIRealtimeManager.shared.setMicGated(false, reason: .songRecognition)
-        // The capture window's mode churn can silently re-route output to
-        // the receiver — put it back on the speaker so the announcement
-        // plays at normal volume.
-        try? AVAudioSession.sharedInstance().overrideOutputAudioPort(.speaker)
-
-        // If the user cancelled while we were listening, phase is already
-        // .idle — don't overwrite it with a stale result.
-        guard phase == .listening else { return phase }
 
         switch result {
         case .match(let match):
-            handleMatch(match, source: source)
+            guard let song = Self.song(from: match) else { return .noMatch }
+            nlLog("[SongID] Matched \"\(song.title)\" by \(song.artist)", level: .info)
+            return .matched(song)
         case .noMatch, nil:
             nlLog(timedOut ? "[SongID] Timed out without a match." : "[SongID] No match found.", level: .info)
-            phase = .noMatch
+            return .noMatch
         case .error(let error, _):
             // A timeout-triggered cancel() also surfaces here — report it as
             // a plain no-match rather than a scary error.
             if timedOut || error is CancellationError {
                 nlLog("[SongID] Timed out without a match.", level: .info)
-                phase = .noMatch
-            } else {
-                let nsError = error as NSError
-                let underlying = nsError.userInfo[NSUnderlyingErrorKey].map { " underlying=\($0)" } ?? ""
-                nlLog(
-                    "[SongID] Recognition failed: domain=\(nsError.domain) code=\(nsError.code) "
-                        + "desc=\(nsError.localizedDescription)\(underlying)",
-                    level: .error)
-                phase = .failed(Self.friendlyMessage(for: nsError))
+                return .noMatch
             }
+            let nsError = error as NSError
+            let underlying = nsError.userInfo[NSUnderlyingErrorKey].map { " underlying=\($0)" } ?? ""
+            nlLog(
+                "[SongID] Recognition failed: domain=\(nsError.domain) code=\(nsError.code) "
+                    + "desc=\(nsError.localizedDescription)\(underlying)",
+                level: .error)
+            return .failed(Self.friendlyMessage(for: nsError))
         }
-        return phase
     }
 
     /// Maps ShazamKit failures to actionable text. The raw domain/code is
@@ -221,29 +290,30 @@ final class SongRecognitionManager {
         }
     }
 
-    private func handleMatch(_ match: SHMatch, source: Source) {
+    static func song(from match: SHMatch) -> RecognizedSong? {
         guard let item = match.mediaItems.first,
             let title = item.title,
             let artist = item.artist
-        else {
-            phase = .noMatch
-            return
-        }
-        let song = RecognizedSong(
+        else { return nil }
+        return RecognizedSong(
             title: title,
             artist: artist,
             artworkURL: item.artworkURL,
             appleMusicURL: item.appleMusicURL
         )
-        nlLog("[SongID] Matched \"\(title)\" by \(artist)", level: .info)
+    }
+
+    /// Shows a match on the capsule with the instant avatar delight (the
+    /// slower LLM reaction/announcement streams in after).
+    func presentMatch(_ song: RecognizedSong, emotion: String = "surprised") {
         phase = .matched(song)
+        RealtimeChatState.shared.triggerEmotion(emotion, duration: 2.5)
+    }
 
-        // Instant avatar delight while the (much slower) LLM reaction streams in.
-        RealtimeChatState.shared.triggerEmotion("surprised", duration: 2.5)
-
-        if source == .hudButton {
-            announceTitle(for: song)
-        }
+    /// Setter seam for the +Session extension (`phase` stays `private(set)`
+    /// so views can't mutate it).
+    func setPhase(_ newPhase: Phase) {
+        phase = newPhase
     }
 
     // MARK: - Title announcement
