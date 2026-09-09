@@ -31,11 +31,11 @@ final class CompanionStateManager {
             ? "\(affinity.label) (≈\(affinity.userTurns) turns)" : nil
         let tone = Self.recentTone(from: events)
         let traits = store.traits(character: characterName, limit: compact ? 2 : 3)
-        let lastDiary = Self.recentDiaryLine(characterName: characterName)
+        let carryOver = carryOverLine(characterName: characterName)
 
         // If nothing meaningful is known, don't inject noise.
         if preferenceLines.isEmpty && familiarity == nil && tone == nil
-            && traits.isEmpty && lastDiary == nil {
+            && traits.isEmpty && carryOver == nil {
             return ""
         }
 
@@ -55,23 +55,51 @@ final class CompanionStateManager {
                 out += "  - \(trait.trait)\n"
             }
         }
-        if let lastDiary { out += "- Last session, you privately noted: \(lastDiary)\n" }
+        if let carryOver { out += "- \(carryOver)\n" }
         out += """
         - Behavior guidance: Keep personality consistent across turns. Use known preferences naturally when relevant. \
+        Pick up threads from your last conversation naturally when relevant — never act like a stranger. \
         Avoid mentioning that you have a "relationship meter" or internal state.
         [End Companion State]\n
         """
         return out
     }
 
-    /// This character's newest diary entry, when fresh enough to still color
-    /// the conversation (< 7 days).
-    private static func recentDiaryLine(characterName: String) -> String? {
-        guard let entry = MemoryStore.shared.latestJournalEntry(character: characterName),
+    // MARK: - Cross-session carry-over (Phase 6 ②)
+
+    /// What carries over from last time: the reflection diary when one exists
+    /// (< 7 days — the rich, in-voice memory), else the closing exchange of
+    /// the most recent past conversation (< 48 h) so a new session never
+    /// starts cold even with Companion Presence disabled.
+    private func carryOverLine(characterName: String) -> String? {
+        if let entry = store.latestJournalEntry(character: characterName),
             Date().timeIntervalSince(entry.createdAt) < 7 * 86_400,
-            !entry.diary.isEmpty
+            !entry.diary.isEmpty {
+            return Self.carryOverText(
+                diary: String(entry.diary.prefix(200)), closingRole: nil, closingContent: nil)
+        }
+
+        let active = ConversationStore.shared.activeConversationID
+        guard
+            let previous = store.fetchConversations(matching: "").first(where: { $0.id != active }),
+            Date().timeIntervalSince(previous.updatedAt) < 48 * 3600,
+            let closing = store.fetchMessages(conversationID: previous.id)
+                .last(where: { $0.kind == "message" && !$0.content.isEmpty })
         else { return nil }
-        return String(entry.diary.prefix(200))
+        return Self.carryOverText(
+            diary: nil, closingRole: closing.role, closingContent: closing.content)
+    }
+
+    /// Pure formatter (unit-tested): diary wins; otherwise quote the closing
+    /// line of the previous conversation, attributed to whoever said it.
+    static func carryOverText(diary: String?, closingRole: String?, closingContent: String?) -> String? {
+        if let diary, !diary.isEmpty {
+            return "Last session, you privately noted: \(diary)"
+        }
+        guard let closingContent, !closingContent.isEmpty else { return nil }
+        let quoted = String(closingContent.prefix(140))
+        let who = closingRole == "user" ? "the user saying" : "you saying"
+        return "Your previous conversation ended with \(who): \"\(quoted)\""
     }
 
     private static func preferenceSummary(from facts: [FactItem]) -> [String] {

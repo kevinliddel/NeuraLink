@@ -237,7 +237,11 @@ PiP + `VisionAnalyzer` on a cadence, reusing ProactiveVision's PiP guards. OpenA
 
 ---
 
-## Phase 5 — ③ Speech-synced gesture layer
+## Phase 5 — ③ Speech-synced gesture layer ⏸ ON HOLD (needs authored VRMA)
+
+> A procedural implementation (additive bone beats, look-back-style) was
+> built and reverted 2026-09-09 — quality wasn't there without real clips.
+> Revisit only once 6–10 authored upper-body VRMA gesture clips exist.
 
 **Behavior**: the avatar gestures *while speaking* — today motion is idle clips only.
 
@@ -257,7 +261,13 @@ PiP + `VisionAnalyzer` on a cadence, reusing ProactiveVision's PiP guards. OpenA
 
 ---
 
-## Phase 6 — ② Cross-session context carry-over
+## Phase 6 — ② Cross-session context carry-over ✅ DONE 2026-09-09
+
+> Shipped inside `CompanionStateManager.carryOverLine` (single shared prompt
+> hook, both engines): the reflection diary when one exists (< 7 days), else
+> the closing exchange of the last conversation (< 48 h) — so sessions never
+> start cold even with Companion Presence disabled. Guidance line added:
+> "pick up threads… never act like a stranger."
 
 Cheap once Phase 1 exists: at session start, fetch the newest `companion_journal.diary`
 (< 7 days old) and inject a `[Previously]` one-liner into

@@ -123,6 +123,40 @@ struct PersonalityEvolutionTests {
         #expect(abs(traits[0].weight - 1.0) < 0.001)
     }
 
+    // MARK: - Carry-over formatter (Phase 6 ②)
+
+    @Test("Diary wins the carry-over; closing exchange is the fallback")
+    @MainActor
+    func carryOverPriority() {
+        let diaryLine = CompanionStateManager.carryOverText(
+            diary: "We argued about pineapple pizza.",
+            closingRole: "user", closingContent: "ignored")
+        #expect(diaryLine == "Last session, you privately noted: We argued about pineapple pizza.")
+
+        let userClose = CompanionStateManager.carryOverText(
+            diary: nil, closingRole: "user", closingContent: "see you tomorrow!")
+        #expect(userClose == "Your previous conversation ended with the user saying: \"see you tomorrow!\"")
+
+        let aiClose = CompanionStateManager.carryOverText(
+            diary: nil, closingRole: "assistant", closingContent: "sleep well!")
+        #expect(aiClose?.contains("with you saying") == true)
+
+        #expect(CompanionStateManager.carryOverText(
+            diary: nil, closingRole: nil, closingContent: nil) == nil)
+        #expect(CompanionStateManager.carryOverText(
+            diary: "", closingRole: nil, closingContent: "") == nil)
+    }
+
+    @Test("Carry-over quotes are capped")
+    @MainActor
+    func carryOverCap() {
+        let long = String(repeating: "b", count: 500)
+        let line = CompanionStateManager.carryOverText(
+            diary: nil, closingRole: "user", closingContent: long)
+        #expect(line != nil)
+        #expect(line!.count < 200)
+    }
+
     // MARK: - Prompt block
 
     @Test("promptContext carries traits and the latest diary line")
