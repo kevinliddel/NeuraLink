@@ -48,6 +48,7 @@ extension OpenAIRealtimeManager {
                     state.userTranscript = trimmed
                     ProactiveVisionManager.shared.notifyUserSpoke()
                     InteractionClock.shared.noteUserSpoke()
+                    GameSessionManager.shared.noteTurn()
                     // RAG: Store user input in long-term memory
                     RAGManager.shared.store(text: trimmed, source: "user")
                     ChatTimelineStore.logUserMessage(trimmed)

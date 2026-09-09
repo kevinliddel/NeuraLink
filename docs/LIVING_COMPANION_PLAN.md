@@ -222,7 +222,7 @@ short per-track persona comment (rate-limited). Auto-stop: 30 min, backgrounding
 route change, battery < 20%. Entry: long-press the Identify Song FAB or an
 `identify_song` argument (`"mode": "session"`).
 
-### 4b Mini-games
+### 4b Mini-games ✅ DONE 2026-09-09
 `Domain/Entities/Skills/PlayGameSkill.swift` (`play_game`, enum: `twenty_questions`,
 `trivia`, `word_chain`) + a `GameSessionManager` state machine so rules live in code,
 not in the model. ⚠️ The local reply cap is `maxTokens = 60`

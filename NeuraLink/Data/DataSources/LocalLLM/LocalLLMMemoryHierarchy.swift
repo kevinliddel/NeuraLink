@@ -116,6 +116,13 @@ final class LocalLLMMemoryHierarchy {
         if !factsBlock.isEmpty {
             messages.append(.init(role: "system", content: factsBlock))
         }
+        // Mid-game reminder (rules + turn count + the 20Q secret) rides with
+        // the per-turn block — same KV-cache story as facts: appended after
+        // history so the stable prefix is untouched. Empty when no game runs.
+        let gameBlock = isJP ? "" : GameSessionManager.shared.promptReminder()
+        if !gameBlock.isEmpty {
+            messages.append(.init(role: "system", content: gameBlock))
+        }
         messages.append(.init(role: "user", content: userMessage))
 
         return Self.fitToBudget(messages, nCtx: Self.nCtx(for: config))
