@@ -47,7 +47,7 @@ struct SongRecognitionOverlay: View {
         bar {
             PulsingMusicNote(size: 26)
 
-            Text("Listening…")
+            Text(manager.isSessionActive ? "Listening together…" : "Listening…")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.white)
 
@@ -59,6 +59,16 @@ struct SongRecognitionOverlay: View {
 
     private func matchedBar(_ song: RecognizedSong) -> some View {
         bar {
+            // Session badge: the capsule is a live "now playing" during a
+            // co-listening session; closing it ends the whole session.
+            if manager.isSessionActive {
+                Image(systemName: "waveform")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.cyan)
+                    .symbolEffect(.variableColor.iterative, options: .repeating)
+                    .accessibilityLabel("Listening session active")
+            }
+
             artwork(song.artworkURL)
 
             VStack(alignment: .leading, spacing: 1) {

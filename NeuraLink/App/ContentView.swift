@@ -81,6 +81,9 @@ struct ContentView: View {
                         onIdentifySong: {
                             songRecognition.startFromUI()
                         },
+                        onIdentifySongLongPress: {
+                            songRecognition.startSession()
+                        },
                         onPiP: {
                             PiPManager.shared.startPiP()
                         }

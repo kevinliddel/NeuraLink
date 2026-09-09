@@ -214,7 +214,7 @@ opener consumption (mark-used exactly once).
 
 ## Phase 4 — ④ Shared activities
 
-### 4a Co-listening (cheapest — rides the song-recognition work)
+### 4a Co-listening (cheapest — rides the song-recognition work) ✅ DONE 2026-09-09
 Continuous mode on `SongRecognitionManager`: after a match, instead of stopping,
 re-arm recognition every ~90 s; on **track change** (normalize + dedupe on
 title/artist) update the capsule, keep `startListeningDance()` running, inject one

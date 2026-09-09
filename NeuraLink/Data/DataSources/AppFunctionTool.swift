@@ -46,10 +46,19 @@ enum AppFunctionTool {
             "description": "Listen through the microphone and identify the song currently "
                 + "playing nearby (like Shazam). Use this whenever the user asks what song "
                 + "is playing, who sings this, or to name the music they can hear. "
-                + "Listening takes several seconds; the result appears on screen with links.",
+                + "Listening takes several seconds; the result appears on screen with links. "
+                + "Pass mode \"session\" when the user wants to listen to music TOGETHER — "
+                + "you'll follow along and react as tracks change (up to 30 minutes).",
             "parameters": [
                 "type": "object",
-                "properties": [String: Any](),
+                "properties": [
+                    "mode": [
+                        "type": "string",
+                        "enum": ["once", "session"],
+                        "description": "\"once\" (default) identifies the current song; "
+                            + "\"session\" starts a listening-together session."
+                    ]
+                ],
                 "required": [String]()
             ]
         ]
