@@ -29,12 +29,12 @@ final class MusicSkill: Skill {
         for scheme in schemes {
             if let url = URL(string: scheme), UIApplication.shared.canOpenURL(url) {
                 pendingUIAction = { UIApplication.shared.open(url) }
-                return "Searching Apple Music for \"\(query)\"."
+                return "An Apple Music search for \"\(query)\" is ready on my phone — tap it to open."
             }
         }
         if let url = URL(string: "music://"), UIApplication.shared.canOpenURL(url) {
             pendingUIAction = { UIApplication.shared.open(url) }
-            return "Opened Apple Music. You can search for \"\(query)\" there."
+            return "Apple Music is ready on my phone — tap it, then search for \"\(query)\"."
         }
         return "Apple Music doesn't appear to be available on this device."
     }

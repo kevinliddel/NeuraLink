@@ -15,6 +15,7 @@ struct ContentView: View {
     private var camera = CameraManager.shared
     private var registry = VRMModelRegistry.shared
     private var songRecognition = SongRecognitionManager.shared
+    private var phoneWidget = PhoneWidgetManager.shared
     @State private var showModelSelection = false
     @State private var showImportPicker = false
     @State private var pendingDelete: VRMModelRegistry.Entry?
@@ -98,6 +99,19 @@ struct ContentView: View {
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
+            // The companion's phone (GTA-style): slides in when a tool call
+            // has something ready; tapping it performs the actual app-open.
+            .overlay(alignment: .bottomLeading) {
+                if !aiState.isUIHidden, let card = phoneWidget.card {
+                    PhoneWidgetView(card: card)
+                        .padding(.leading, 14)
+                        .padding(.bottom, 150)
+                        .transition(.move(edge: .leading).combined(with: .opacity))
+                }
+            }
+            .animation(
+                .spring(response: 0.42, dampingFraction: 0.72),
+                value: phoneWidget.card)
             .toolbar {
                 if !aiState.isUIHidden && envLoad.isReady {
                     chatHistoryToggleButton

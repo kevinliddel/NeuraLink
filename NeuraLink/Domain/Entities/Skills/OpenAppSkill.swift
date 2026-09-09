@@ -23,7 +23,7 @@ final class OpenAppSkill: Skill {
     private func openApp(named app: String) -> String {
         if app == "Settings" {
             pendingUIAction = { UIApplication.shared.open(URL(string: UIApplication.openSettingsURLString)!) }
-            return "Opening Settings for you."
+            return "Settings is ready on my phone — tap it to open."
         }
 
         let schemeMap: [String: String] = [
@@ -42,6 +42,6 @@ final class OpenAppSkill: Skill {
             return "I wasn't able to open \(app) directly. Please launch it from your home screen."
         }
         pendingUIAction = { UIApplication.shared.open(url) }
-        return "Opening \(app) for you."
+        return "\(app) is ready on my phone — tap it to open."
     }
 }
