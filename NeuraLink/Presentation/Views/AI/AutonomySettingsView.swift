@@ -3,10 +3,9 @@
 //  NeuraLink
 //
 //  Dedicated screen for the character's autonomous behaviors, pushed from
-//  AISettingsView (same pattern as PersonaSettingsView). Extracted once the
-//  Living Companion toggles outgrew a single inline section: each feature
-//  gets its own titled section with a footer explanation instead of the
-//  cramped info-popover buttons.
+//  AISettingsView (same pattern as PersonaSettingsView). One section per
+//  feature groups its toggle with its tuning dropdowns; each toggle carries
+//  an ⓘ button that pops a short explanation.
 //
 //  Created by Dedicatus on 09/09/2026.
 //
@@ -33,12 +32,13 @@ struct AutonomySettingsView: View {
 
     private var conversationSection: some View {
         Section {
-            Toggle("Auto-Turn Detection (VAD)", isOn: $settings.isVADEnabled)
-                .disabled(!settings.isEnabled)
-        } header: {
-            Text("Conversation")
-        } footer: {
-            Text("The character replies automatically when you stop speaking. Requires OpenAI voice mode.")
+            Toggle(isOn: $settings.isVADEnabled) {
+                InfoToggleLabel(
+                    title: "Auto-Turn Detection (VAD)",
+                    info: "The character replies automatically when you stop speaking. Requires OpenAI voice mode."
+                )
+            }
+            .disabled(!settings.isEnabled)
         }
     }
 
@@ -46,8 +46,14 @@ struct AutonomySettingsView: View {
 
     private var visionSection: some View {
         Section {
-            Toggle("Proactive Vision", isOn: $settings.isProactiveVisionEnabled)
-                .disabled(!settings.isEnabled)
+            Toggle(isOn: $settings.isProactiveVisionEnabled) {
+                InfoToggleLabel(
+                    title: "Proactive Vision",
+                    info: "The character periodically looks through the camera and comments on what it sees, without being asked. Requires OpenAI voice mode and the camera."
+                )
+            }
+            .disabled(!settings.isEnabled)
+            .listRowSeparator(settings.isEnabled && settings.isProactiveVisionEnabled ? .hidden : .automatic)
 
             if settings.isEnabled && settings.isProactiveVisionEnabled {
                 VStack(alignment: .leading, spacing: 4) {
@@ -65,10 +71,6 @@ struct AutonomySettingsView: View {
                     }
                 }
             }
-        } header: {
-            Text("Proactive Vision")
-        } footer: {
-            Text("Periodically looks through the camera and comments on what it sees, without being asked. Requires OpenAI voice mode and the camera.")
         }
     }
 
@@ -76,17 +78,21 @@ struct AutonomySettingsView: View {
 
     private var presenceSection: some View {
         Section {
-            Toggle("Companion Presence", isOn: $presence.isPresenceEnabled)
+            Toggle(isOn: $presence.isPresenceEnabled) {
+                InfoToggleLabel(
+                    title: "Companion Presence",
+                    info: "After each conversation the character reflects on it — keeping a diary, learning personality notes, and preparing a greeting for next time. Everything stays on this device; review or erase it anytime by tapping the relationship meter."
+                )
+            }
 
             if presence.isPresenceEnabled {
-                Toggle("\"Thinking of you\" notifications", isOn: $presence.isNotificationsEnabled)
+                Toggle(isOn: $presence.isNotificationsEnabled) {
+                    InfoToggleLabel(
+                        title: "\"Thinking of you\" notifications",
+                        info: "Hours after a conversation ends, a single gentle notification arrives with what the character has been thinking about. Never during quiet hours (22:00–09:00)."
+                    )
+                }
             }
-        } header: {
-            Text("Companion Presence")
-        } footer: {
-            Text(
-                "After each conversation the character reflects on it — keeping a diary, learning personality notes, and preparing a greeting for next time. Everything stays on this device; review or erase it anytime by tapping the relationship meter."
-            )
         }
     }
 
@@ -94,7 +100,13 @@ struct AutonomySettingsView: View {
 
     private var engagementSection: some View {
         Section {
-            Toggle("Proactive Engagement", isOn: $presence.isProactiveEngagementEnabled)
+            Toggle(isOn: $presence.isProactiveEngagementEnabled) {
+                InfoToggleLabel(
+                    title: "Proactive Engagement",
+                    info: "The character speaks first — greeting you when you return after time away, and breaking long silences with a short line of its own. Works with both OpenAI and the local model."
+                )
+            }
+            .listRowSeparator(presence.isProactiveEngagementEnabled ? .hidden : .automatic)
 
             if presence.isProactiveEngagementEnabled {
                 VStack(alignment: .leading, spacing: 4) {
@@ -112,10 +124,40 @@ struct AutonomySettingsView: View {
                     }
                 }
             }
-        } header: {
-            Text("Proactive Engagement")
-        } footer: {
-            Text("The character speaks first — greeting you when you return after time away, and breaking long silences with a short line of its own. Works with both OpenAI and the local model.")
+        }
+    }
+}
+
+// MARK: - Toggle label with ⓘ popover
+
+/// A toggle label with an ⓘ button that pops a short explanation — the house
+/// info idiom, self-contained so every feature row can reuse it.
+private struct InfoToggleLabel: View {
+    let title: String
+    let info: String
+
+    @State private var showInfo = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(title)
+            Button {
+                showInfo = true
+            } label: {
+                Image(systemName: "info.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .popover(isPresented: $showInfo) {
+                Text(info)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .padding(12)
+                    .frame(maxWidth: 280)
+                    .presentationCompactAdaptation(.popover)
+            }
+            .accessibilityLabel("About \(title)")
         }
     }
 }
