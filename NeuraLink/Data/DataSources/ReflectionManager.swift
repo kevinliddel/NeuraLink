@@ -73,12 +73,15 @@ final class ReflectionManager: @unchecked Sendable {
         }
 
         // The pending "come back" notification is stale the moment the user
-        // is back — on foreground return AND on cold launch (below).
+        // is back — on foreground return AND on cold launch (below). Log the
+        // state BEFORE cancelling so "was one pending?" is answerable.
         NotificationCenter.default.addObserver(
             forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main
         ) { _ in
+            CompanionNotificationScheduler.logDiagnostics(context: "foreground")
             CompanionNotificationScheduler.cancelPending()
         }
+        CompanionNotificationScheduler.logDiagnostics(context: "launch")
         CompanionNotificationScheduler.cancelPending()
 
         catchUpAfterLaunch()
@@ -168,10 +171,18 @@ final class ReflectionManager: @unchecked Sendable {
 
         recordTrait(character: character, trait: reflection.trait)
 
-        if PresenceSettings.shared.isNotificationsEnabled, !reflection.notificationLine.isEmpty {
+        if PresenceSettings.shared.isNotificationsEnabled {
+            // Small local models sometimes omit the NOTIFY line — a generic
+            // invite beats silently skipping the notification.
+            let body = reflection.notificationLine.isEmpty
+                ? "I've been thinking about our last conversation…"
+                : reflection.notificationLine
             let scheduled = await CompanionNotificationScheduler.schedule(
-                characterName: character, body: reflection.notificationLine)
-            if scheduled { MemoryStore.shared.markJournalNotified(id: journalID) }
+                characterName: character, body: body)
+            if scheduled {
+                MemoryStore.shared.markJournalNotified(id: journalID)
+                CompanionNotificationScheduler.logDiagnostics(context: "scheduled")
+            }
         }
     }
 

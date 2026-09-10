@@ -39,16 +39,34 @@ enum CompanionNotificationScheduler {
 
     // MARK: - Scheduling
 
+    /// Debug override (Xcode scheme launch argument
+    /// `-nl.debug.presenceNotifDelaySec 60`): delivery in N seconds with the
+    /// quiet-hours clamp bypassed, so the pipeline is testable without
+    /// staying away from the app for six real hours.
+    static let debugDelayKey = "nl.debug.presenceNotifDelaySec"
+
+    /// (delay, whether quiet hours apply) — the debug override skips the clamp.
+    static func effectiveDelay(defaults: UserDefaults = .standard) -> (delay: TimeInterval, clampQuietHours: Bool) {
+        let override = defaults.double(forKey: debugDelayKey)
+        guard override > 0 else { return (defaultDelay, true) }
+        return (override, false)
+    }
+
     /// Schedules (replacing any pending) the reflection notification.
     /// Returns false when not authorized or the add fails.
-    static func schedule(
-        characterName: String,
-        body: String,
-        after delay: TimeInterval = defaultDelay
-    ) async -> Bool {
+    static func schedule(characterName: String, body: String) async -> Bool {
         let center = UNUserNotificationCenter.current()
         let status = await center.notificationSettings().authorizationStatus
-        guard status == .authorized || status == .provisional else { return false }
+        guard status == .authorized || status == .provisional else {
+            // The single most common "why did nothing arrive" answer — make
+            // it loud: the toggle is on but iOS permission was never granted
+            // (or was revoked in Settings → Notifications).
+            nlLog(
+                "[Presence] NOT scheduling — notification permission missing (status=\(status.rawValue)). "
+                    + "Check Settings → Notifications → NeuraLink.",
+                level: .warning)
+            return false
+        }
 
         center.removePendingNotificationRequests(withIdentifiers: [identifier])
 
@@ -60,18 +78,38 @@ enum CompanionNotificationScheduler {
         content.body = body
         content.sound = .default
 
-        let fireDate = clampedFireDate(now: Date(), delay: delay)
+        let (delay, clamp) = effectiveDelay()
+        let fireDate = clamp
+            ? clampedFireDate(now: Date(), delay: delay)
+            : Date().addingTimeInterval(delay)
         let trigger = UNTimeIntervalNotificationTrigger(
-            timeInterval: max(60, fireDate.timeIntervalSinceNow), repeats: false)
+            timeInterval: max(clamp ? 60 : 10, fireDate.timeIntervalSinceNow), repeats: false)
         let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
 
         do {
             try await center.add(request)
-            nlLog("[Presence] Notification scheduled for \(fireDate)", level: .info)
+            nlLog("[Presence] Notification scheduled for \(fireDate)\(clamp ? "" : " (DEBUG delay)")", level: .info)
             return true
         } catch {
             nlLog("[Presence] Failed to schedule notification: \(error)", level: .warning)
             return false
+        }
+    }
+
+    /// One log line answering "what's the notification state right now":
+    /// permission status + the pending fire date, if any. Called at launch
+    /// (before the stale-cancel) and after scheduling.
+    static func logDiagnostics(context: String) {
+        Task {
+            let center = UNUserNotificationCenter.current()
+            let status = await center.notificationSettings().authorizationStatus
+            let pending = await center.pendingNotificationRequests()
+                .first { $0.identifier == identifier }
+                .flatMap { ($0.trigger as? UNTimeIntervalNotificationTrigger)?.nextTriggerDate() }
+            nlLog(
+                "[Presence] Notification state (\(context)): permission=\(status.rawValue) "
+                    + "(2=denied, 3=authorized), pending=\(pending.map { "\($0)" } ?? "none")",
+                level: .info)
         }
     }
 
