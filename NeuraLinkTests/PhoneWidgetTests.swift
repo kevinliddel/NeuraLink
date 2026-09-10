@@ -6,6 +6,7 @@
 //  and the executor wrapping that turns auto-opens into tap-to-open.
 //
 
+import CoreGraphics
 import Foundation
 import Testing
 
@@ -103,6 +104,51 @@ struct PhoneWidgetTests {
         manager.present(card: first) {}
         manager.present(card: second) {}
         #expect(manager.card == second)
+    }
+
+    // MARK: - Drag position
+
+    @Test("Clamp keeps the phone on screen in every direction")
+    func offsetClamping() {
+        let screen = CGSize(width: 393, height: 852)  // iPhone 15/16/17 class
+
+        // A sane in-range offset passes through untouched.
+        let ok = CGSize(width: 40, height: -100)
+        #expect(PhoneWidgetManager.clampedOffset(ok, screen: screen) == ok)
+
+        // Dragged far off every edge → pulled back inside.
+        let clamped = PhoneWidgetManager.clampedOffset(
+            CGSize(width: -2_000, height: 2_000), screen: screen)
+        #expect(clamped.width == -PhoneWidgetManager.homeLeadingInset + 8)
+        #expect(clamped.height == PhoneWidgetManager.homeBottomInset - 24)
+
+        let farRightUp = PhoneWidgetManager.clampedOffset(
+            CGSize(width: 2_000, height: -2_000), screen: screen)
+        // Right edge stays within the screen.
+        let rightEdge = PhoneWidgetManager.homeLeadingInset + farRightUp.width
+            + PhoneWidgetManager.phoneSize.width
+        #expect(rightEdge <= screen.width - 8)
+        // Top edge stays below the nav-bar area.
+        let topEdge = screen.height - PhoneWidgetManager.homeBottomInset
+            - PhoneWidgetManager.phoneSize.height + farRightUp.height
+        #expect(topEdge >= 70)
+
+        // Degenerate screen (previews): passthrough, no wild math.
+        let degenerate = PhoneWidgetManager.clampedOffset(
+            CGSize(width: 999, height: 999), screen: .zero)
+        #expect(degenerate == CGSize(width: 999, height: 999))
+    }
+
+    @Test("Parked position persists across appearances")
+    @MainActor
+    func offsetPersistence() {
+        let manager = PhoneWidgetManager.shared
+        let original = manager.loadOffset()
+        defer { manager.saveOffset(original) }
+
+        let parked = CGSize(width: 55, height: -120)
+        manager.saveOffset(parked)
+        #expect(manager.loadOffset() == parked)
     }
 
     // MARK: - Executor wrapping

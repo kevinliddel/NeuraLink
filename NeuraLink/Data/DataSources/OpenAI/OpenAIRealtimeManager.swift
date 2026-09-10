@@ -42,6 +42,12 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
     var pendingFunctionArgsJSON: String = ""
     var deferredFunctionCall: (id: String, name: String, args: String)?
 
+    /// True once THIS response streamed transcript text. `response.done`
+    /// logs/stores the transcript only when set — a function-call-only
+    /// response never clears `state.aiTranscript`, and logging it again
+    /// duplicated the previous reply in the chat history.
+    var hasFreshAITranscript = false
+
     // Post-audio execution: function waits until the AI's spoken audio finishes
     var audioPlaybackMonitorTask: Task<Void, Never>?
     // Set when the audio output item starts; anchors the speaking-duration estimate

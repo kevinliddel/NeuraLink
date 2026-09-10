@@ -60,6 +60,49 @@ final class PhoneWidgetManager {
         action = nil
     }
 
+    // MARK: - Position persistence (drag to park; reappears where left)
+
+    private static let offsetXKey = "com.neuralink.phonewidget.offsetX"
+    private static let offsetYKey = "com.neuralink.phonewidget.offsetY"
+
+    /// Rendered size of the phone (kept in sync with PhoneWidgetView) and its
+    /// home anchor (bottom-leading padding in ContentView) — the clamp math
+    /// needs both.
+    nonisolated static let phoneSize = CGSize(width: 148, height: 272)
+    nonisolated static let homeLeadingInset: CGFloat = 14
+    nonisolated static let homeBottomInset: CGFloat = 150
+
+    /// Where the user last parked the phone, as an offset from its home
+    /// (bottom-leading) anchor.
+    func loadOffset() -> CGSize {
+        let defaults = UserDefaults.standard
+        return CGSize(
+            width: defaults.double(forKey: Self.offsetXKey),
+            height: defaults.double(forKey: Self.offsetYKey))
+    }
+
+    func saveOffset(_ offset: CGSize) {
+        let defaults = UserDefaults.standard
+        defaults.set(offset.width, forKey: Self.offsetXKey)
+        defaults.set(offset.height, forKey: Self.offsetYKey)
+    }
+
+    /// Keeps the phone reachable: whatever the drag proposes, the device can
+    /// never be parked off-screen or under the nav bar. Pure, unit-tested.
+    nonisolated static func clampedOffset(_ proposed: CGSize, screen: CGSize) -> CGSize {
+        // Degenerate/unknown screen (previews, early layout): trust the caller.
+        guard screen.width > 200, screen.height > 400 else { return proposed }
+        let minX: CGFloat = -homeLeadingInset + 8
+        let maxX = screen.width - phoneSize.width - homeLeadingInset - 8
+        // Top edge stays below the nav-bar area (~70 pt)…
+        let minY = 70 - (screen.height - homeBottomInset - phoneSize.height)
+        // …and the bottom edge stays on screen.
+        let maxY = homeBottomInset - 24
+        return CGSize(
+            width: min(max(proposed.width, minX), maxX),
+            height: min(max(proposed.height, CGFloat(minY)), maxY))
+    }
+
     // MARK: - Card synthesis (pure, unit-tested)
 
     /// Maps a tool call to its phone card. Nil means the tool has no

@@ -30,6 +30,7 @@ extension OpenAIRealtimeManager {
                 if let delta = json["delta"] as? String {
                     nlLogSensitive("[AI Text Delta]: \(delta)", level: .info)
                     state.aiTranscript += delta
+                    hasFreshAITranscript = true
                 }
 
             case "conversation.item.input_audio_transcription.completed":
@@ -132,9 +133,17 @@ extension OpenAIRealtimeManager {
                 state.status = .ready
                 setMicGated(false, reason: .assistantSpeaking)
 
-                // RAG: Store AI response in long-term memory
-                RAGManager.shared.store(text: state.aiTranscript, source: "ai")
-                ChatTimelineStore.logAIMessage(state.aiTranscript)
+                // Log/store ONLY when this response actually streamed new
+                // transcript. Function-call-only responses (get_weather,
+                // set_emotion, …) never clear `state.aiTranscript`, so
+                // unconditional logging duplicated the previous spoken reply
+                // in the chat history.
+                if hasFreshAITranscript {
+                    hasFreshAITranscript = false
+                    // RAG: Store AI response in long-term memory
+                    RAGManager.shared.store(text: state.aiTranscript, source: "ai")
+                    ChatTimelineStore.logAIMessage(state.aiTranscript)
+                }
 
                 if let deferred = deferredFunctionCall {
                     // Execute the function immediately — for UI-opening functions

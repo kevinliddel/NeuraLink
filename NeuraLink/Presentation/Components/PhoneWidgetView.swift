@@ -17,6 +17,10 @@ struct PhoneWidgetView: View {
 
     private var manager = PhoneWidgetManager.shared
     @State private var raised = false
+    /// Where the user parked the phone (persisted offset from the home anchor).
+    @State private var parkedOffset: CGSize = .zero
+    /// Live drag translation, folded into `parkedOffset` on release.
+    @State private var dragTranslation: CGSize = .zero
 
     init(card: ToolActionCard) {
         self.card = card
@@ -51,7 +55,33 @@ struct PhoneWidgetView: View {
             .offset(x: 10, y: -10)
             .accessibilityLabel("Put the phone away")
         }
+        .offset(
+            x: parkedOffset.width + dragTranslation.width,
+            y: parkedOffset.height + dragTranslation.height
+        )
+        // Drag to park anywhere on screen; min distance keeps taps intact.
+        .gesture(
+            DragGesture(minimumDistance: 12)
+                .onChanged { value in
+                    dragTranslation = value.translation
+                }
+                .onEnded { value in
+                    let proposed = CGSize(
+                        width: parkedOffset.width + value.translation.width,
+                        height: parkedOffset.height + value.translation.height)
+                    dragTranslation = .zero
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                        parkedOffset = PhoneWidgetManager.clampedOffset(
+                            proposed, screen: UIScreen.main.bounds.size)
+                    }
+                    manager.saveOffset(parkedOffset)
+                }
+        )
         .onAppear {
+            // Reappear where it was last parked (re-clamped — the screen may
+            // have rotated since).
+            parkedOffset = PhoneWidgetManager.clampedOffset(
+                manager.loadOffset(), screen: UIScreen.main.bounds.size)
             withAnimation(.spring(response: 0.45, dampingFraction: 0.62)) {
                 raised = true
             }
