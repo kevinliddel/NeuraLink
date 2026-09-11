@@ -14,7 +14,34 @@
 //
 
 import Foundation
+import Intents
+import UIKit
 import UserNotifications
+
+/// Lets local notifications present as banners while the app is FOREGROUND
+/// (iOS suppresses them otherwise). Real presence notifications are cancelled
+/// on foreground anyway, so in practice this only surfaces the settings-screen
+/// test banner — without it the test button looks broken unless the user
+/// races to background the app.
+final class CompanionNotificationPresenter: NSObject, UNUserNotificationCenterDelegate {
+    static let shared = CompanionNotificationPresenter()
+
+    /// Installs self as the notification-center delegate. Idempotent.
+    func install() {
+        UNUserNotificationCenter.current().delegate = self
+    }
+
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        // `.list` matters: without it a foreground-presented notification
+        // vanishes after the banner instead of persisting in the
+        // Notification Center / lock screen like every other notification.
+        completionHandler([.banner, .list, .sound])
+    }
+}
 
 enum CompanionNotificationScheduler {
 
@@ -77,6 +104,7 @@ enum CompanionNotificationScheduler {
             : "\(name.capitalized) has been thinking of you"
         content.body = body
         content.sound = .default
+        let finalContent = communicationContent(base: content, characterName: name)
 
         let (delay, clamp) = effectiveDelay()
         let fireDate = clamp
@@ -84,7 +112,7 @@ enum CompanionNotificationScheduler {
             : Date().addingTimeInterval(delay)
         let trigger = UNTimeIntervalNotificationTrigger(
             timeInterval: max(clamp ? 60 : 10, fireDate.timeIntervalSinceNow), repeats: false)
-        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+        let request = UNNotificationRequest(identifier: identifier, content: finalContent, trigger: trigger)
 
         do {
             try await center.add(request)
@@ -93,6 +121,45 @@ enum CompanionNotificationScheduler {
         } catch {
             nlLog("[Presence] Failed to schedule notification: \(error)", level: .warning)
             return false
+        }
+    }
+
+    // MARK: - Test notification (settings button)
+
+    static let testIdentifier = "com.neuralink.presence.test"
+
+    /// Fires a test notification ~5 s out, bypassing quiet hours and the
+    /// stale-cancel (own identifier). Requests permission if never asked.
+    /// Returns a user-facing outcome line for the settings screen.
+    static func sendTest(characterName: String) async -> String {
+        let center = UNUserNotificationCenter.current()
+        var status = await center.notificationSettings().authorizationStatus
+        if status == .notDetermined {
+            _ = await requestAuthorization()
+            status = await center.notificationSettings().authorizationStatus
+        }
+        guard status == .authorized || status == .provisional else {
+            return "Permission denied — enable notifications for NeuraLink in the Settings app."
+        }
+
+        let name = characterName.trimmingCharacters(in: .whitespaces)
+        let content = UNMutableNotificationContent()
+        content.title = name.isEmpty
+            ? "Your companion has been thinking of you"
+            : "\(name.capitalized) has been thinking of you"
+        content.body = "Test successful — this is how presence notifications will look."
+        content.sound = .default
+        let finalContent = communicationContent(base: content, characterName: name)
+
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 5, repeats: false)
+        let request = UNNotificationRequest(
+            identifier: testIdentifier, content: finalContent, trigger: trigger)
+        do {
+            try await center.add(request)
+            nlLog("[Presence] Test notification scheduled (5 s).", level: .info)
+            return "Scheduled — banner arrives in ~5 seconds."
+        } catch {
+            return "Scheduling failed: \(error.localizedDescription)"
         }
     }
 
@@ -111,6 +178,116 @@ enum CompanionNotificationScheduler {
                     + "(2=denied, 3=authorized), pending=\(pending.map { "\($0)" } ?? "none")",
                 level: .info)
         }
+    }
+
+    // MARK: - Communication-style avatar (circular, replaces the app icon)
+
+    /// Rebuilds `base` as a COMMUNICATION notification whose sender is the
+    /// character — iOS then renders her thumbnail as a circular avatar in
+    /// place of the app icon, Messages-style (the Grok Companion / Animates
+    /// look). Requires the com.apple.developer.usernotifications.communication
+    /// entitlement (NeuraLink.entitlements); without it the system quietly
+    /// falls back to the app icon. Returns `base` untouched when the
+    /// character has no thumbnail or the intent rewrite fails.
+    static func communicationContent(
+        base: UNMutableNotificationContent, characterName: String
+    ) -> UNNotificationContent {
+        let name = characterName.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty, let imageData = avatarImageData(for: name) else { return base }
+
+        let slug = name.lowercased()
+        let sender = INPerson(
+            personHandle: INPersonHandle(value: "neuralink-companion-\(slug)", type: .unknown),
+            nameComponents: nil,
+            displayName: name.capitalized,
+            image: INImage(imageData: imageData),
+            contactIdentifier: nil,
+            customIdentifier: "neuralink-companion-\(slug)"
+        )
+        let intent = INSendMessageIntent(
+            recipients: nil,
+            outgoingMessageType: .outgoingMessageText,
+            content: base.body,
+            speakableGroupName: nil,
+            conversationIdentifier: "neuralink-companion-\(slug)",
+            serviceName: nil,
+            sender: sender,
+            attachments: nil
+        )
+        // The INPerson image alone is NOT reliably picked up for the avatar —
+        // Apple's reference flow sets it on the sender parameter explicitly.
+        intent.setImage(INImage(imageData: imageData), forParameterNamed: \.sender)
+
+        // Incoming-message donation is what unlocks the sender-avatar layout.
+        let interaction = INInteraction(intent: intent, response: nil)
+        interaction.direction = .incoming
+        interaction.donate(completion: nil)
+
+        do {
+            return try base.updating(from: intent)
+        } catch {
+            nlLog("[Presence] Communication-style rewrite failed: \(error)", level: .warning)
+            return base
+        }
+    }
+
+    /// The character's thumbnail PNG — same next-to-model convention as the
+    /// settings persona row.
+    static func characterThumbnailData(for characterName: String) -> Data? {
+        guard let entry = VRMModelRegistry.shared.all
+            .first(where: { $0.name.lowercased() == characterName.lowercased() })
+        else { return nil }
+        let png = entry.url.deletingPathExtension().appendingPathExtension("png")
+        return try? Data(contentsOf: png)
+    }
+
+    /// The thumbnail rendered onto an opaque backdrop with a light ring —
+    /// many VRM thumbnails have transparent backgrounds, which read as a
+    /// shapeless cutout inside the system's circular avatar mask. Backdrop:
+    /// the app's dark glassy gradient; ring inset enough to survive the mask.
+    static func avatarImageData(for characterName: String) -> Data? {
+        guard let raw = characterThumbnailData(for: characterName),
+            let image = UIImage(data: raw)
+        else { return nil }
+
+        let size = CGSize(width: 512, height: 512)
+        let rendered = UIGraphicsImageRenderer(size: size).image { context in
+            let rect = CGRect(origin: .zero, size: size)
+
+            // Backdrop gradient (slate → near-black).
+            let colors = [
+                UIColor(red: 0.17, green: 0.22, blue: 0.32, alpha: 1).cgColor,
+                UIColor(red: 0.04, green: 0.05, blue: 0.09, alpha: 1).cgColor
+            ]
+            if let gradient = CGGradient(
+                colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                colors: colors as CFArray, locations: [0, 1]) {
+                context.cgContext.drawLinearGradient(
+                    gradient, start: .zero,
+                    end: CGPoint(x: 0, y: size.height), options: [])
+            }
+
+            // Character as big as the circle allows: aspect-fit with a slight
+            // overscan (crops a hair of the portrait, reads much larger). The
+            // upward bias keeps faces in frame when the vertical crop bites;
+            // the ring drawn after simply overlaps the image edge, framing it.
+            let zoom: CGFloat = 1.18
+            let scale = min(size.width / image.size.width, size.height / image.size.height) * zoom
+            let drawSize = CGSize(
+                width: image.size.width * scale, height: image.size.height * scale)
+            let overflowY = max(0, drawSize.height - size.height)
+            image.draw(in: CGRect(
+                x: rect.midX - drawSize.width / 2,
+                y: rect.midY - drawSize.height / 2 - overflowY * 0.30,
+                width: drawSize.width, height: drawSize.height))
+
+            // Ring border, drawn inside the future circular mask.
+            let ringWidth = size.width * 0.035
+            context.cgContext.setStrokeColor(UIColor(white: 1.0, alpha: 0.85).cgColor)
+            context.cgContext.setLineWidth(ringWidth)
+            context.cgContext.strokeEllipse(in: rect.insetBy(dx: ringWidth, dy: ringWidth))
+        }
+        return rendered.pngData()
     }
 
     /// A pending "come back" is stale the moment the user is back.

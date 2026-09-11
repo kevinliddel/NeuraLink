@@ -15,6 +15,7 @@ import SwiftUI
 struct AutonomySettingsView: View {
     @Bindable var settings = OpenAISettings.shared
     @Bindable var presence = PresenceSettings.shared
+    @State private var notificationTestStatus: String?
 
     var body: some View {
         Form {
@@ -91,6 +92,25 @@ struct AutonomySettingsView: View {
                         title: "\"Thinking of you\" notifications",
                         info: "Hours after a conversation ends, a single gentle notification arrives with what the character has been thinking about. Never during quiet hours (22:00–09:00)."
                     )
+                }
+
+                if presence.isNotificationsEnabled {
+                    Button {
+                        notificationTestStatus = "Scheduling…"
+                        Task {
+                            notificationTestStatus = await CompanionNotificationScheduler
+                                .sendTest(characterName: RealtimeChatState.shared.selectedCharacterName)
+                        }
+                    } label: {
+                        Label("Send test notification", systemImage: "bell.badge")
+                    }
+                    .listRowSeparator(notificationTestStatus == nil ? .automatic : .hidden)
+
+                    if let status = notificationTestStatus {
+                        Text(status)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
         }

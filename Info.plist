@@ -41,6 +41,10 @@
 			</dict>
 		</dict>
 	</array>
+	<key>NSUserActivityTypes</key>
+	<array>
+		<string>INSendMessageIntent</string>
+	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>NeuraLink uses the camera so the AI avatar can see and describe what you show it.</string>
 	<key>NSMicrophoneUsageDescription</key>

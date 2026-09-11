@@ -83,6 +83,8 @@ final class ReflectionManager: @unchecked Sendable {
         }
         CompanionNotificationScheduler.logDiagnostics(context: "launch")
         CompanionNotificationScheduler.cancelPending()
+        // Foreground banner presentation (needed for the settings test button).
+        CompanionNotificationPresenter.shared.install()
 
         catchUpAfterLaunch()
     }
