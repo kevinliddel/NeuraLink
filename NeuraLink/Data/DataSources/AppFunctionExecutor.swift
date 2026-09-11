@@ -61,8 +61,9 @@ final class AppFunctionExecutor {
         // a phone card don't auto-open anymore: after the AI finishes
         // speaking, the companion's phone widget slides in and the ACTUAL
         // open happens when the user taps it (GTA-style, no app-yanking).
+        let card = PhoneWidgetManager.card(for: name, arguments: arguments, result: result)
         if let action = skill.pendingUIAction {
-            if let card = PhoneWidgetManager.card(for: name, arguments: arguments) {
+            if let card {
                 self.pendingUIAction = {
                     Task { @MainActor in
                         PhoneWidgetManager.shared.present(card: card, action: action)
@@ -70,6 +71,14 @@ final class AppFunctionExecutor {
                 }
             } else {
                 self.pendingUIAction = action
+            }
+        } else if let card {
+            // Display-only phone (weather): the screen IS the payload —
+            // nothing opens on tap, it just rides the same after-speech timing.
+            self.pendingUIAction = {
+                Task { @MainActor in
+                    PhoneWidgetManager.shared.present(card: card, action: nil)
+                }
             }
         } else {
             self.pendingUIAction = nil

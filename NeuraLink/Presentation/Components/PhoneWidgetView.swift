@@ -17,6 +17,10 @@ struct PhoneWidgetView: View {
 
     private var manager = PhoneWidgetManager.shared
     @State private var raised = false
+    /// Where the user parked the phone (persisted offset from the home anchor).
+    @State private var parkedOffset: CGSize = .zero
+    /// Live drag translation, folded into `parkedOffset` on release.
+    @State private var dragTranslation: CGSize = .zero
 
     init(card: ToolActionCard) {
         self.card = card
@@ -28,6 +32,7 @@ struct PhoneWidgetView: View {
         case .music: return .pink
         case .app: return .cyan
         case .note: return .yellow
+        case .weather: return .teal
         }
     }
 
@@ -36,7 +41,10 @@ struct PhoneWidgetView: View {
             phoneBody
                 .rotationEffect(.degrees(raised ? -2 : 10), anchor: .bottomLeading)
                 .onTapGesture { manager.openAndDismiss() }
-                .accessibilityLabel("\(card.title): \(card.detail). Tap to open \(card.appName).")
+                .accessibilityLabel(
+                    manager.canOpen
+                        ? "\(card.title): \(card.detail). Tap to open \(card.appName)."
+                        : "\(card.title): \(card.detail). Tap to dismiss.")
                 .accessibilityAddTraits(.isButton)
 
             Button {
@@ -51,7 +59,33 @@ struct PhoneWidgetView: View {
             .offset(x: 10, y: -10)
             .accessibilityLabel("Put the phone away")
         }
+        .offset(
+            x: parkedOffset.width + dragTranslation.width,
+            y: parkedOffset.height + dragTranslation.height
+        )
+        // Drag to park anywhere on screen; min distance keeps taps intact.
+        .gesture(
+            DragGesture(minimumDistance: 12)
+                .onChanged { value in
+                    dragTranslation = value.translation
+                }
+                .onEnded { value in
+                    let proposed = CGSize(
+                        width: parkedOffset.width + value.translation.width,
+                        height: parkedOffset.height + value.translation.height)
+                    dragTranslation = .zero
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                        parkedOffset = PhoneWidgetManager.clampedOffset(
+                            proposed, screen: UIScreen.main.bounds.size)
+                    }
+                    manager.saveOffset(parkedOffset)
+                }
+        )
         .onAppear {
+            // Reappear where it was last parked (re-clamped — the screen may
+            // have rotated since).
+            parkedOffset = PhoneWidgetManager.clampedOffset(
+                manager.loadOffset(), screen: UIScreen.main.bounds.size)
             withAnimation(.spring(response: 0.45, dampingFraction: 0.62)) {
                 raised = true
             }
@@ -128,28 +162,31 @@ struct PhoneWidgetView: View {
 
             Spacer(minLength: 6)
 
-            // The query / detail "message bubble"
+            // The query / detail "message bubble". Display-only cards
+            // (weather) carry the whole answer — give them more lines.
             Text(card.detail.isEmpty ? card.title : card.detail)
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(.white.opacity(0.92))
                 .multilineTextAlignment(.center)
-                .lineLimit(3)
+                .lineLimit(manager.canOpen ? 3 : 7)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
                 .background(.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
 
             Spacer(minLength: 8)
 
-            // Call to action
-            HStack(spacing: 4) {
-                Image(systemName: "arrow.up.forward.app.fill")
-                Text("Tap to open")
+            // Call to action — only when tapping actually opens something.
+            if manager.canOpen {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.up.forward.app.fill")
+                    Text("Tap to open")
+                }
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.black.opacity(0.85))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(tint.opacity(0.9), in: Capsule())
             }
-            .font(.system(size: 10, weight: .semibold))
-            .foregroundStyle(.black.opacity(0.85))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(tint.opacity(0.9), in: Capsule())
 
             // Home indicator
             Capsule()

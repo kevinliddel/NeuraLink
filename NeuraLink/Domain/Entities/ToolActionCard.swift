@@ -18,6 +18,9 @@ struct ToolActionCard: Equatable {
         case music
         case app
         case note
+        /// Display-only: the phone screen shows the forecast itself — there
+        /// is no app to open on tap.
+        case weather
     }
 
     let kind: Kind

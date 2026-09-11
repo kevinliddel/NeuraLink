@@ -112,6 +112,24 @@ struct ReflectionTests {
         #expect(calendar.component(.day, from: fire) == 8)
     }
 
+    // MARK: - Debug delay override
+
+    @Test("Debug launch argument shortens delivery and skips quiet hours")
+    func debugDelayOverride() {
+        let defaults = UserDefaults.standard
+        defaults.removeObject(forKey: CompanionNotificationScheduler.debugDelayKey)
+        defer { defaults.removeObject(forKey: CompanionNotificationScheduler.debugDelayKey) }
+
+        let normal = CompanionNotificationScheduler.effectiveDelay(defaults: defaults)
+        #expect(normal.delay == CompanionNotificationScheduler.defaultDelay)
+        #expect(normal.clampQuietHours)
+
+        defaults.set(60.0, forKey: CompanionNotificationScheduler.debugDelayKey)
+        let debug = CompanionNotificationScheduler.effectiveDelay(defaults: defaults)
+        #expect(debug.delay == 60)
+        #expect(!debug.clampQuietHours)
+    }
+
     // MARK: - Transcript shaping
 
     @Test("Transcript keeps the LAST turns and drops tool calls")
