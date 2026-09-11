@@ -19,10 +19,10 @@ import UIKit
 import UserNotifications
 
 /// Lets local notifications present as banners while the app is FOREGROUND
-/// (iOS suppresses them otherwise). Real presence notifications are cancelled
-/// on foreground anyway, so in practice this only surfaces the settings-screen
-/// test banner — without it the test button looks broken unless the user
-/// races to background the app.
+/// (iOS suppresses them otherwise) — `.list` also makes them persist in the
+/// Notification Center / lock screen. Real presence notifications are
+/// cancelled on foreground anyway; this matters for debug-delay test runs
+/// (`-nl.debug.presenceNotifDelaySec`) where one can fire with the app open.
 final class CompanionNotificationPresenter: NSObject, UNUserNotificationCenterDelegate {
     static let shared = CompanionNotificationPresenter()
 
@@ -124,44 +124,10 @@ enum CompanionNotificationScheduler {
         }
     }
 
-    // MARK: - Test notification (settings button)
-
-    static let testIdentifier = "com.neuralink.presence.test"
-
-    /// Fires a test notification ~5 s out, bypassing quiet hours and the
-    /// stale-cancel (own identifier). Requests permission if never asked.
-    /// Returns a user-facing outcome line for the settings screen.
-    static func sendTest(characterName: String) async -> String {
-        let center = UNUserNotificationCenter.current()
-        var status = await center.notificationSettings().authorizationStatus
-        if status == .notDetermined {
-            _ = await requestAuthorization()
-            status = await center.notificationSettings().authorizationStatus
-        }
-        guard status == .authorized || status == .provisional else {
-            return "Permission denied — enable notifications for NeuraLink in the Settings app."
-        }
-
-        let name = characterName.trimmingCharacters(in: .whitespaces)
-        let content = UNMutableNotificationContent()
-        content.title = name.isEmpty
-            ? "Your companion has been thinking of you"
-            : "\(name.capitalized) has been thinking of you"
-        content.body = "Test successful — this is how presence notifications will look."
-        content.sound = .default
-        let finalContent = communicationContent(base: content, characterName: name)
-
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 5, repeats: false)
-        let request = UNNotificationRequest(
-            identifier: testIdentifier, content: finalContent, trigger: trigger)
-        do {
-            try await center.add(request)
-            nlLog("[Presence] Test notification scheduled (5 s).", level: .info)
-            return "Scheduled — banner arrives in ~5 seconds."
-        } catch {
-            return "Scheduling failed: \(error.localizedDescription)"
-        }
-    }
+    // NOTE: the settings-screen "Send test notification" button was removed
+    // 2026-09-11 once delivery/avatar were verified on device. For future
+    // pipeline testing, use the `-nl.debug.presenceNotifDelaySec 60` launch
+    // argument (see `effectiveDelay`) and end a ≥4-turn session.
 
     /// One log line answering "what's the notification state right now":
     /// permission status + the pending fire date, if any. Called at launch
