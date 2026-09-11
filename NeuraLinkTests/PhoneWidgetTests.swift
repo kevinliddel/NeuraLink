@@ -17,35 +17,72 @@ struct PhoneWidgetTests {
 
     // MARK: - Card synthesis
 
-    @Test("Web search, music, app, and note map to cards")
+    @Test("Web search, music, app, note, and weather map to cards")
     func cardMapping() {
         let search = PhoneWidgetManager.card(
-            for: AppFunctionTool.searchWeb, arguments: ["query": "best ramen"])
+            for: AppFunctionTool.searchWeb, arguments: ["query": "best ramen"], result: "")
         #expect(search?.kind == .webSearch)
         #expect(search?.appName == "Safari")
         #expect(search?.detail == "best ramen")
 
         let music = PhoneWidgetManager.card(
-            for: AppFunctionTool.playMusic, arguments: ["query": "JVKE"])
+            for: AppFunctionTool.playMusic, arguments: ["query": "JVKE"], result: "")
         #expect(music?.kind == .music)
         #expect(music?.appName == "Apple Music")
 
         let app = PhoneWidgetManager.card(
-            for: AppFunctionTool.openApp, arguments: ["app": "Maps"])
+            for: AppFunctionTool.openApp, arguments: ["app": "Maps"], result: "")
         #expect(app?.kind == .app)
         #expect(app?.appName == "Maps")
 
         let note = PhoneWidgetManager.card(
-            for: AppFunctionTool.createNote, arguments: ["title": "Groceries", "body": "milk"])
+            for: AppFunctionTool.createNote,
+            arguments: ["title": "Groceries", "body": "milk"], result: "")
         #expect(note?.kind == .note)
         #expect(note?.detail == "Groceries")
+
+        // Weather is display-only: the RESULT is the payload.
+        let weather = PhoneWidgetManager.card(
+            for: AppFunctionTool.getWeather,
+            arguments: ["location": "tokyo"],
+            result: "Current weather in Tokyo: partly cloudy. Temperature 22°C.")
+        #expect(weather?.kind == .weather)
+        #expect(weather?.appName == "Tokyo")
+        #expect(weather?.detail.contains("22°C") == true)
     }
 
     @Test("Tools without a phone moment map to nil")
     func noCardForOtherTools() {
-        #expect(PhoneWidgetManager.card(for: AppFunctionTool.getWeather, arguments: [:]) == nil)
-        #expect(PhoneWidgetManager.card(for: AppFunctionTool.setEmotion, arguments: [:]) == nil)
-        #expect(PhoneWidgetManager.card(for: AppFunctionTool.createReminder, arguments: [:]) == nil)
+        #expect(PhoneWidgetManager.card(for: AppFunctionTool.setEmotion, arguments: [:], result: "") == nil)
+        #expect(PhoneWidgetManager.card(for: AppFunctionTool.createReminder, arguments: [:], result: "") == nil)
+        #expect(PhoneWidgetManager.card(for: AppFunctionTool.rememberFact, arguments: [:], result: "") == nil)
+    }
+
+    @Test("Display-only cards hide the open affordance and tap just dismisses")
+    @MainActor
+    func displayOnlyCard() {
+        let manager = PhoneWidgetManager.shared
+        manager.dismiss()
+        defer { manager.dismiss() }
+
+        let weather = ToolActionCard(
+            kind: .weather, appName: "Tokyo", systemImage: "cloud.sun.fill",
+            title: "Weather", detail: "22°C, partly cloudy")
+        manager.present(card: weather, action: nil)
+        #expect(manager.card == weather)
+        #expect(!manager.canOpen)
+
+        // Tap: nothing to fire, phone goes away cleanly.
+        manager.openAndDismiss()
+        #expect(manager.card == nil)
+
+        // A tappable card restores the affordance.
+        manager.present(
+            card: ToolActionCard(
+                kind: .webSearch, appName: "Safari", systemImage: "safari.fill",
+                title: "Web Search", detail: "q")
+        ) {}
+        #expect(manager.canOpen)
     }
 
     // MARK: - Manager lifecycle

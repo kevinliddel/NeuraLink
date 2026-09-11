@@ -23,6 +23,8 @@ final class PhoneWidgetManager {
 
     /// Non-nil while the phone is on screen.
     private(set) var card: ToolActionCard?
+    /// False for display-only cards (weather) — the view hides "Tap to open".
+    private(set) var canOpen = true
 
     @ObservationIgnored private var action: (() -> Void)?
     @ObservationIgnored private var dismissTask: Task<Void, Never>?
@@ -31,11 +33,13 @@ final class PhoneWidgetManager {
 
     // MARK: - Lifecycle
 
-    /// Shows the phone with `card`; `action` runs when the user taps it.
-    /// A newer card replaces the current one (last tool wins).
-    func present(card: ToolActionCard, action: @escaping () -> Void) {
+    /// Shows the phone with `card`; `action` runs when the user taps it —
+    /// nil means display-only (the screen itself is the payload; tap just
+    /// puts the phone away). A newer card replaces the current one.
+    func present(card: ToolActionCard, action: (() -> Void)?) {
         self.card = card
         self.action = action
+        self.canOpen = action != nil
         dismissTask?.cancel()
         dismissTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(Self.autoDismissAfter))
@@ -107,8 +111,20 @@ final class PhoneWidgetManager {
 
     /// Maps a tool call to its phone card. Nil means the tool has no
     /// phone moment (its deferred action, if any, fires directly as before).
-    nonisolated static func card(for toolName: String, arguments: [String: Any]) -> ToolActionCard? {
+    /// `result` feeds display-only cards, whose payload is the tool's answer
+    /// rather than its arguments.
+    nonisolated static func card(
+        for toolName: String, arguments: [String: Any], result: String
+    ) -> ToolActionCard? {
         switch toolName {
+        case AppFunctionTool.getWeather:
+            let location = (arguments["location"] as? String ?? "").capitalized
+            return ToolActionCard(
+                kind: .weather,
+                appName: location.isEmpty ? "Weather" : location,
+                systemImage: "cloud.sun.fill",
+                title: "Weather",
+                detail: String(result.prefix(180)))
         case AppFunctionTool.searchWeb:
             let query = arguments["query"] as? String ?? ""
             return ToolActionCard(
