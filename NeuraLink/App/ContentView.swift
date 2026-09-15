@@ -20,7 +20,10 @@ struct ContentView: View {
     @State private var showImportPicker = false
     @State private var pendingDelete: VRMModelRegistry.Entry?
     @State private var isMenuExpanded = false
+    /// Second FAB row — owned here so the onboarding tour can unfold it.
+    @State private var isSecondaryExpanded = false
     @State private var envLoad = EnvironmentLoadState.shared
+    @State private var tutorial = TutorialCoordinator.shared
 
     var body: some View {
         NavigationStack {
@@ -65,6 +68,7 @@ struct ContentView: View {
                 if !aiState.isUIHidden {
                     ExpandableFABMenu(
                         isExpanded: $isMenuExpanded,
+                        isSecondaryExpanded: $isSecondaryExpanded,
                         onSettings: { aiState.showSettings = true },
                         onRelationship: {
                             withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
@@ -223,7 +227,18 @@ struct ContentView: View {
                     EnvironmentLoadState.shared.forceReady()
                 }
             }
+            // First-launch tour — held until the loading screen is gone so it
+            // never spotlights controls that aren't visible yet.
+            .onChange(of: envLoad.isReady) { _, ready in
+                if ready { tutorial.startIfNeeded() }
+            }
+            .onAppear {
+                if envLoad.isReady { tutorial.startIfNeeded() }
+            }
         }
+        .tutorialLayer(
+            isMenuExpanded: $isMenuExpanded,
+            isSecondaryExpanded: $isSecondaryExpanded)
     }
 
     // MARK: - Toolbar
@@ -239,6 +254,7 @@ struct ContentView: View {
                 Image(systemName: isMenuExpanded ? "xmark" : "square.grid.2x2")
                     .contentTransition(.symbolEffect(.replace))
             }
+            .tutorialAnchor(.menuToggle)
             .accessibilityLabel("Menu")
         }
     }
@@ -267,6 +283,7 @@ struct ContentView: View {
             } label: {
                 Image(systemName: "clock.arrow.trianglehead.counterclockwise.rotate.90")
             }
+            .tutorialAnchor(.chatHistory)
             .accessibilityLabel("Chat history")
         }
     }

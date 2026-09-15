@@ -47,6 +47,7 @@ struct RealtimeChatOverlay: View {
     private var idleHint: some View {
         let content = hintContent
         hint(content.text, icon: content.icon, progress: content.progress)
+            .tutorialAnchor(.statusHint)
             .onTapGesture { content.action?() }
     }
 

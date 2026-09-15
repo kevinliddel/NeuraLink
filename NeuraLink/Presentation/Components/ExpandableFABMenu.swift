@@ -9,7 +9,9 @@ import SwiftUI
 
 struct ExpandableFABMenu: View {
     @Binding var isExpanded: Bool
-    @State private var isSecondaryExpanded = false
+    /// Hoisted to the host so the onboarding tour can unfold the second row
+    /// on its own while explaining those buttons.
+    @Binding var isSecondaryExpanded: Bool
 
     let onSettings: () -> Void
     let onRelationship: () -> Void
@@ -28,6 +30,7 @@ struct ExpandableFABMenu: View {
                     label: "Settings",
                     showLabel: isSecondaryExpanded
                 ) { collapse(); onSettings() }
+                .tutorialAnchor(.fabSettings)
                 .transition(childTransition(delay: 0.00))
 
                 FABButton(
@@ -35,6 +38,7 @@ struct ExpandableFABMenu: View {
                     label: "Acquaintances",
                     showLabel: isSecondaryExpanded
                 ) { collapse(); onRelationship() }
+                .tutorialAnchor(.fabRelationship)
                 .transition(childTransition(delay: 0.04))
 
                 // Secondary 3 — appear above chevron with same animation; text always visible
@@ -44,6 +48,7 @@ struct ExpandableFABMenu: View {
                         label: "Models",
                         showLabel: true
                     ) { collapse(); onModelSelection() }
+                    .tutorialAnchor(.fabModels)
                     .transition(childTransition(delay: 0.00))
 
                     FABButton(
@@ -51,6 +56,7 @@ struct ExpandableFABMenu: View {
                         label: "Camera",
                         showLabel: true
                     ) { collapse(); onCameraToggle() }
+                    .tutorialAnchor(.fabCamera)
                     .transition(childTransition(delay: 0.04))
 
                     FABButton(
@@ -60,6 +66,7 @@ struct ExpandableFABMenu: View {
                         longPress: { collapse(); onIdentifySongLongPress() },
                         action: { collapse(); onIdentifySong() }
                     )
+                    .tutorialAnchor(.fabSong)
                     .transition(childTransition(delay: 0.08))
 
                     FABButton(
@@ -67,6 +74,7 @@ struct ExpandableFABMenu: View {
                         label: "PiP",
                         showLabel: true
                     ) { collapse(); onPiP() }
+                    .tutorialAnchor(.fabPiP)
                     .transition(childTransition(delay: 0.12))
                 }
 
@@ -84,6 +92,7 @@ struct ExpandableFABMenu: View {
                         .clipShape(Circle())
                 }
                 .buttonStyle(.plain)
+                .tutorialAnchor(.fabChevron)
                 .transition(childTransition(delay: 0.16))
             }
         }

@@ -22,6 +22,7 @@ struct AISettingsView: View {
                 interactionSection
                 personaSection
                 localSLMSection
+                helpSection
             }
             .scrollIndicators(.hidden)
             .navigationTitle("AI Settings")
@@ -49,6 +50,25 @@ struct AISettingsView: View {
                 .disabled(!settings.isEnabled)
         }
     }
+    /// Replays the onboarding tour. The sheet has to go first — the tour
+    /// draws over the scene, so it would sit behind this sheet otherwise;
+    /// `replay()` waits out the dismiss animation before starting.
+    private var helpSection: some View {
+        Section {
+            Button {
+                dismiss()
+                TutorialCoordinator.shared.replay()
+            } label: {
+                Label("Replay Tutorial", systemImage: "graduationcap.fill")
+            }
+            .buttonStyle(.borderless)
+        } header: {
+            Text("Help")
+        } footer: {
+            Text("Walks through every button, toggle and gesture in the app.")
+        }
+    }
+
     private var localSLMSection: some View {
         Section {
             NavigationLink {
