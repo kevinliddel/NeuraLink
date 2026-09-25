@@ -13,6 +13,13 @@ import WebRTC
 
 extension OpenAIRealtimeManager {
 
+    /// Recall query used to ground a fresh session before the user has said
+    /// anything. A stable "about the user" query beats the persona text,
+    /// whose vocabulary would steer keyword/semantic recall toward the
+    /// character rather than the person.
+    static let sessionGroundingQuery =
+        "important facts about the user: their name, life, family, friends, pets, work, preferences and plans"
+
     func sendInitialSessionUpdate() {
         Task {
             let persona = CharacterPersona.forCharacter(named: state.selectedCharacterName)
@@ -22,8 +29,14 @@ extension OpenAIRealtimeManager {
             // or just the persona-related memories. For now, we'll fetch context
             // based on the character's core identity to ground the session.
             let userContext = UserSettings.shared.systemPromptContext
+            // Agentic memory: mental models are a zero-LLM DB read that
+            // summarise the user + relationship; the recall block grounds
+            // the session with the most relevant observations/facts. Mid-
+            // session lookups go through the `search_memory` tool.
+            let mentalModels = MemoryMentalModels.shared.promptBlock(
+                character: state.selectedCharacterName)
             let memoryContext = await RAGManager.shared.fetchContext(
-                for: persona.instructions, limit: 5)
+                for: Self.sessionGroundingQuery, limit: 5, tokenBudget: 500)
             let kgFacts = KnowledgeGraphManager.shared.getFormattedFacts()
             let companion = CompanionStateManager.shared.promptContext(
                 characterName: state.selectedCharacterName)
@@ -45,11 +58,18 @@ extension OpenAIRealtimeManager {
                     predicate = the relationship (e.g. "has_sister", "likes", "lives_in")
                     object   = the value (e.g. "Manohy", "sushi", "Tokyo")
                   Do not announce the call in speech; just emit it silently.
+
+                TOOL USAGE — search_memory:
+                  Before answering anything that depends on past conversations \
+                  (a person, place, plan or preference you may have heard before, \
+                  "remember when…", "what did I tell you about…"), call \
+                  `search_memory` with a short natural-language query and answer \
+                  from the results. If it returns nothing, say you don't recall.
                 """
 
             let finalInstructions =
                 persona.instructions + "\n"
-                + userContext + memoryContext + kgFacts + companion
+                + userContext + mentalModels + memoryContext + kgFacts + companion
                 + factsTriggerInstruction
 
             // GA session shape. Key differences from the beta body:

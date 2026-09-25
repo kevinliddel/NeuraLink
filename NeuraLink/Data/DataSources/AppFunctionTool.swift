@@ -27,6 +27,7 @@ enum AppFunctionTool {
     static let poseForPhoto = "pose_for_photo"
     static let identifySong = "identify_song"
     static let playGame = "play_game"
+    static let searchMemory = "search_memory"
 
     // MARK: - OpenAI tool schema array
 
@@ -35,11 +36,33 @@ enum AppFunctionTool {
         [
             emotionTool, weatherTool, searchTool, musicTool, reminderTool,
             noteTool, openAppTool, cameraTool, factTool, photoTool, identifySongTool,
-            playGameTool
+            playGameTool, searchMemoryTool
         ]
     }
 
     // MARK: - Individual schemas
+
+    private static var searchMemoryTool: [String: Any] {
+        [
+            "type": "function",
+            "name": searchMemory,
+            "description": "Search your long-term memory of past conversations with the user. "
+                + "Use this BEFORE answering whenever the user refers to something from the past "
+                + "(\"remember when\", \"what did I say about\", a person, place or plan you may have "
+                + "heard before, or a question about their life). The result lists dated memories; "
+                + "answer from it and say so honestly when nothing was found.",
+            "parameters": [
+                "type": "object",
+                "properties": [
+                    "query": [
+                        "type": "string",
+                        "description": "What to look for, in natural language (e.g. 'the user's sister', 'trip last month')."
+                    ]
+                ],
+                "required": ["query"]
+            ]
+        ]
+    }
 
     private static var identifySongTool: [String: Any] {
         [

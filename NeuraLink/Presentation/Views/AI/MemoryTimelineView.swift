@@ -71,6 +71,8 @@ struct MemoryTimelineView: View {
                     Text("Memory is stored locally on-device (SQLite). Pinned items are not auto-deleted.")
                 }
 
+                MemoryInsightsSection()
+
                 Section {
                     factsPager
                 } header: {

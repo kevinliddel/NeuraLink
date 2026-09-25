@@ -25,6 +25,9 @@ struct NeuraLinkApp: App {
         // Reflection pipeline: listens for boundaries, clears stale pending
         // notifications, runs launch catch-up. Idempotent.
         ReflectionManager.shared.start()
+        // Agentic memory: flush un-retained turns at session boundaries and
+        // seed the standing mental models. Idempotent.
+        MemoryRetain.shared.start()
         // Proactive engagement loop (absence greeting + silence small talk),
         // only when the user opted in.
         ProactivePresenceManager.shared.startIfEnabled()
