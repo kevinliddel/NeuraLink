@@ -28,5 +28,6 @@ final class CompanionStateStore {
         let state = CompanionAffinity.compute(store: store)
         score = state.score
         label = state.label
+        CompanionSnapshotWriter.shared.scheduleRefresh()
     }
 }

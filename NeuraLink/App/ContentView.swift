@@ -23,6 +23,7 @@ struct ContentView: View {
     /// Second FAB row — owned here so the onboarding tour can unfold it.
     @State private var isSecondaryExpanded = false
     @State private var envLoad = EnvironmentLoadState.shared
+    @State private var intentRequests = AppIntentRequests.shared
     @State private var tutorial = TutorialCoordinator.shared
 
     var body: some View {
@@ -177,6 +178,12 @@ struct ContentView: View {
                 }
             }
             .animation(.easeInOut(duration: 0.8), value: envLoad.isReady)
+            // Siri "Talk to <character>" while the app is running (P4).
+            .onChange(of: intentRequests.pendingCharacter) { _, name in
+                guard let name, let entry = registry.entry(named: name) else { return }
+                intentRequests.pendingCharacter = nil
+                if selectedModelURL != entry.url { selectedModelURL = entry.url }
+            }
             // Persist the choice so relaunches restore it (initialSelection).
             .onChange(of: selectedModelURL) { _, newValue in
                 guard let url = newValue else { return }

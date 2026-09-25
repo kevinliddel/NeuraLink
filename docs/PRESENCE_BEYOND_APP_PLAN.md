@@ -13,10 +13,10 @@ before finishing any of them.
 
 | # | Item | Effort | Value | Needs new target? |
 |---|---|---|---|---|
-| P1 | Background audio (keep the session alive with the screen off) | M | High | no |
-| P2 | Live Activity + Dynamic Island for the active session | M | Med | yes (widget extension) |
-| P3 | Home / lock-screen widgets (opener, relationship, come-back nudge) | M | High | yes (same extension as P2) |
-| P4 | Siri + App Shortcuts | S | Med | no |
+| P1 | Background audio (keep the session alive with the screen off) ✅ 2026-09-27 (device check pending) | M | High | no |
+| P2 | Live Activity + Dynamic Island for the active session ✅ 2026-09-27 (device check pending) | M | Med | yes (widget extension) |
+| P3 | Home / lock-screen widgets (opener, relationship, come-back nudge) ✅ 2026-09-27 (device check pending) | M | High | yes (same extension as P2) |
+| P4 | Siri + App Shortcuts ✅ 2026-09-27 | S | Med | no |
 
 Order: **P1 → P4 → P3 → P2**. P1 is pure app-target work and unlocks the
 others' value; P4 needs no extension; P3 and P2 share one extension target
@@ -34,7 +34,18 @@ graph LR
 
 ---
 
-## P1. Background audio — `M`
+## P1. Background audio — `M` — ✅ CODE DONE 2026-09-27, device check pending
+
+`UIBackgroundModes = audio`; `PresenceSettings.keepTalkingInBackground`
+(default off) + `backgroundIdleMinutes` (5/10/20/30, default 10) in Autonomy →
+"Keep talking in background"; `BackgroundSessionPolicy` (pure, tested) +
+`BackgroundSessionKeeper` (idle watchdog every 30 s from
+`InteractionClock.secondsSinceUserSpoke`, Low Power / thermal serious /
+memory-warning guards, "still listening" notification, auto-reconnect on
+foreground after an idle disconnect); `SessionLifecycle` defers
+`sessionDidEnd` while kept alive; local audio session adds
+`.allowBluetoothHFP` and `suspendForBackground()` pauses capture without
+unloading models. Tests: `BackgroundSessionTests`.
 
 **Problem.** Locking the phone or switching apps ends the conversation. The
 WebRTC session (`OpenAIRealtimeManager.setupAudioSession`,
@@ -101,7 +112,16 @@ policy should treat `didReceiveMemoryWarning` as a disconnect trigger.
 
 ---
 
-## P2. Live Activity + Dynamic Island — `M`
+## P2. Live Activity + Dynamic Island — `M` — ✅ CODE DONE 2026-09-27, device check pending
+
+`NeuraLinkShared/CompanionActivityAttributes.swift` (phase + last line),
+`NeuraLinkWidgets/CompanionLiveActivity.swift` (lock-screen banner, Dynamic
+Island compact/expanded/minimal), `CompanionActivityController` in the app
+(polls `RealtimeChatState` every 250 ms, starts when a live status appears
+and "Keep talking in background" is on, 500 ms debounced updates, ends on
+disconnect/error), `NSSupportsLiveActivities` in Info.plist. Started from
+`NeuraLinkApp.autoConnectAI`. No push updates, no deep link yet (tapping
+opens the app).
 
 **Problem.** With P1, a session can run while the app is hidden, but nothing
 shows its state (listening / speaking / reconnecting) or offers a way back.
@@ -141,7 +161,20 @@ no activity is started when P1's toggle is off.
 
 ---
 
-## P3. Home and lock-screen widgets — `M`
+## P3. Home and lock-screen widgets — `M` — ✅ CODE DONE 2026-09-27, device check pending
+
+New `NeuraLinkWidgets` extension target (`com.dedicatus.NeuraLink.Widgets`,
+embedded via "Embed Foundation Extensions", Info.plist excluded from the
+synchronized folder) sharing `NeuraLinkShared/` with the app; App Group
+`group.com.dedicatus.NeuraLink` in both entitlements files;
+`CompanionSnapshot` + `CompanionSnapshotStore` (JSON + thumbnails in the
+group container, ISO dates); `CompanionSnapshotWriter` in the app (5 s
+debounce, write points: `CompanionStateStore.refresh`, reflection insert,
+the "Companion widgets" toggle in Autonomy → Presence which clears the file
+when off); widgets: *Companion* (small/medium: thumbnail, relationship bar,
+opener or memory-of-the-day, last chat) and *Come back* (accessory circular
+gauge / rectangular). Tests: `CompanionSnapshotTests`. Device: add the
+widgets, end a session, confirm the opener updates.
 
 **Problem.** The reflection pipeline already writes an opener, a
 notification line and a diary per session (`companion_journal`,
@@ -190,7 +223,15 @@ the opener/labels only and say so in the ⓘ.
 
 ---
 
-## P4. Siri and App Shortcuts — `S`
+## P4. Siri and App Shortcuts — `S` — ✅ DONE 2026-09-27
+
+`App/AppIntents/CompanionIntents.swift`: `CharacterEntity` (registry-backed
+string query), `TalkToCompanionIntent` (sets `UserSettings.selectedCharacter`
+for cold launch and `AppIntentRequests.pendingCharacter` for a running app,
+consumed by ContentView), `AskMemoryIntent` (`MemoryReflect.reflect` behind
+an 8 s `IntentTimeout`), `RememberIntent` (first→third person
+normalisation, `MemoryRetain.retainFact`, instruction refresh), and
+`NeuraLinkShortcuts` phrases. Tests: `AppIntentTests`.
 
 **Problem.** Starting a conversation means opening the app and waiting for
 the scene; asking a memory question means being in a session.

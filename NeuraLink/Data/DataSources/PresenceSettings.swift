@@ -24,12 +24,18 @@ final class PresenceSettings {
     private static let proactiveKey = "com.neuralink.presence.proactiveEnabled"
     private static let absenceHoursKey = "com.neuralink.presence.absenceGreetingHours"
     private static let silenceSecKey = "com.neuralink.presence.silenceSmallTalkSec"
+    private static let keepTalkingKey = "com.neuralink.presence.keepTalkingInBackground"
+    private static let backgroundIdleKey = "com.neuralink.presence.backgroundIdleMinutes"
+    private static let showWidgetsKey = "com.neuralink.presence.showWidgets"
 
     @ObservationIgnored private var _isPresenceEnabled: Bool = false
     @ObservationIgnored private var _isNotificationsEnabled: Bool = false
     @ObservationIgnored private var _isProactiveEngagementEnabled: Bool = false
     @ObservationIgnored private var _absenceGreetingHours: Double = 6
     @ObservationIgnored private var _silenceSmallTalkSec: Double = 90
+    @ObservationIgnored private var _keepTalkingInBackground: Bool = false
+    @ObservationIgnored private var _backgroundIdleMinutes: Double = 10
+    @ObservationIgnored private var _showWidgets: Bool = true
 
     private init() {
         let defaults = UserDefaults.standard
@@ -38,6 +44,54 @@ final class PresenceSettings {
         _isProactiveEngagementEnabled = defaults.bool(forKey: Self.proactiveKey)
         _absenceGreetingHours = defaults.object(forKey: Self.absenceHoursKey) as? Double ?? 6
         _silenceSmallTalkSec = defaults.object(forKey: Self.silenceSecKey) as? Double ?? 90
+        _keepTalkingInBackground = defaults.bool(forKey: Self.keepTalkingKey)
+        _backgroundIdleMinutes = defaults.object(forKey: Self.backgroundIdleKey) as? Double ?? 10
+        _showWidgets = defaults.object(forKey: Self.showWidgetsKey) as? Bool ?? true
+    }
+
+    /// Home / lock-screen widgets read a small snapshot (opener, relationship
+    /// label, one remembered line) from the App Group. Off deletes it.
+    var showWidgets: Bool {
+        get {
+            access(keyPath: \.showWidgets)
+            return _showWidgets
+        }
+        set {
+            withMutation(keyPath: \.showWidgets) {
+                _showWidgets = newValue
+                UserDefaults.standard.set(newValue, forKey: Self.showWidgetsKey)
+            }
+            CompanionSnapshotWriter.shared.scheduleRefresh()
+        }
+    }
+
+    /// Keep an active voice session running with the screen off / in other
+    /// apps (docs/PRESENCE_BEYOND_APP_PLAN.md §P1). Opt-in: the mic stays on.
+    var keepTalkingInBackground: Bool {
+        get {
+            access(keyPath: \.keepTalkingInBackground)
+            return _keepTalkingInBackground
+        }
+        set {
+            withMutation(keyPath: \.keepTalkingInBackground) {
+                _keepTalkingInBackground = newValue
+                UserDefaults.standard.set(newValue, forKey: Self.keepTalkingKey)
+            }
+        }
+    }
+
+    /// Minutes without user speech after which a background session ends.
+    var backgroundIdleMinutes: Double {
+        get {
+            access(keyPath: \.backgroundIdleMinutes)
+            return _backgroundIdleMinutes
+        }
+        set {
+            withMutation(keyPath: \.backgroundIdleMinutes) {
+                _backgroundIdleMinutes = newValue
+                UserDefaults.standard.set(newValue, forKey: Self.backgroundIdleKey)
+            }
+        }
     }
 
     /// Master switch: end-of-session reflection (diary + opener). Opt-in.

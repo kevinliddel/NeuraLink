@@ -28,14 +28,19 @@ struct NeuraLinkApp: App {
         // Agentic memory: flush un-retained turns at session boundaries and
         // seed the standing mental models. Idempotent.
         MemoryRetain.shared.start()
+        // Session Live Activity (P2): mirrors the voice-session status on the
+        // lock screen / Dynamic Island while background talking is on.
+        CompanionActivityController.shared.start()
         #if DEBUG
         // `-nl.debug.memoryEval YES`: run the memory evaluation harness with
         // real device embeddings and print the report to the persistent log.
         if UserDefaults.standard.bool(forKey: "nl.debug.memoryEval") {
             Task.detached(priority: .utility) {
                 guard let report = try? await MemoryEvalRunner().run() else { return }
-                for line in report.summaryLines { nlLog("\(line)", level: .info) }
-                for miss in report.failures { nlLog("[MemoryEval] miss: \(miss)", level: .info) }
+                await MainActor.run {
+                    for line in report.summaryLines { nlLog("\(line)", level: .info) }
+                    for miss in report.failures { nlLog("[MemoryEval] miss: \(miss)", level: .info) }
+                }
             }
         }
         #endif

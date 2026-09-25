@@ -15,8 +15,10 @@ extension LocalLLMManager {
     func setupAudioEngine() {
         do {
             let session = AVAudioSession.sharedInstance()
+            // HFP so AirPods' microphone works for background listening (A2DP is output-only).
             try session.setCategory(
-                .playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothA2DP, .mixWithOthers])
+                .playAndRecord, mode: .default,
+                options: [.defaultToSpeaker, .allowBluetoothA2DP, .allowBluetoothHFP, .mixWithOthers])
             try session.setActive(true)
 
             if let builtInMic = session.availableInputs?.first(where: { $0.portType == .builtInMic }) {
@@ -104,6 +106,16 @@ extension LocalLLMManager {
         } catch {
             nlLog("[LocalLLM] Failed to resume audio engine after music recognition: \(error)", level: .error)
         }
+    }
+
+    /// Battery guard for background sessions: stops capture, VAD and
+    /// playback without unloading the models, so `startListening()` on
+    /// foreground return is fast.
+    func suspendForBackground() {
+        stop()
+        audioEngine.pause()
+        Task { @MainActor in state.status = .disconnected }
+        nlLog("[LocalLLM] Audio suspended for background", level: .info)
     }
 
     func gateMicCapture(forSeconds seconds: TimeInterval) {

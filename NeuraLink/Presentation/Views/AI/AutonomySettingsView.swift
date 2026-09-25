@@ -19,6 +19,7 @@ struct AutonomySettingsView: View {
     var body: some View {
         Form {
             conversationSection
+            backgroundSection
             visionSection
             presenceSection
             engagementSection
@@ -47,6 +48,31 @@ struct AutonomySettingsView: View {
                 )
             }
             .disabled(!settings.isLocalLLMEnabled)
+        }
+    }
+
+    // MARK: - Background audio (docs/PRESENCE_BEYOND_APP_PLAN.md §P1)
+
+    private var backgroundSection: some View {
+        Section {
+            Toggle(isOn: $presence.keepTalkingInBackground) {
+                InfoToggleLabel(
+                    title: "Keep talking in background",
+                    info: "The conversation keeps going with the screen off or while you use other apps, with AirPods or the speaker. The microphone stays on (iOS shows the orange indicator) until you stop talking for the idle time below, Low Power Mode turns on, or the phone gets hot."
+                )
+            }
+            .listRowSeparator(presence.keepTalkingInBackground ? .hidden : .automatic)
+
+            if presence.keepTalkingInBackground {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("End after silence")
+                    DropDownSelector(
+                        items: [5.0, 10.0, 20.0, 30.0], selection: $presence.backgroundIdleMinutes
+                    ) { minutes in
+                        "\(Int(minutes)) minutes"
+                    }
+                }
+            }
         }
     }
 
@@ -100,6 +126,13 @@ struct AutonomySettingsView: View {
                         info: "Hours after a conversation ends, a single gentle notification arrives with what the character has been thinking about. Never during quiet hours (22:00–09:00)."
                     )
                 }
+            }
+
+            Toggle(isOn: $presence.showWidgets) {
+                InfoToggleLabel(
+                    title: "Companion widgets",
+                    info: "Home and lock-screen widgets show the character's greeting, how close you are and how long since you talked. They read a small summary stored outside the encrypted memory database — never your conversations or facts. Off removes it."
+                )
             }
         }
     }
