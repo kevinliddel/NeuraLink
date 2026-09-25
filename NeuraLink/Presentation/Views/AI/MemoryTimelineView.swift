@@ -20,6 +20,8 @@ struct MemoryTimelineView: View {
     @State private var isRefreshing = false
     @State private var editFact: FactItem?
     @State private var confirmClearAll = false
+    @State private var showExport = false
+    @State private var recap: MentalModel?
 
     private let collapsedLimit = 5
 
@@ -31,7 +33,9 @@ struct MemoryTimelineView: View {
     var body: some View {
         NavigationStack {
             List {
+                recapSection
                 heroSection
+                MemoryTimelineSection()
                 controlsSection
                 observationsSection
                 factsSection
@@ -48,6 +52,7 @@ struct MemoryTimelineView: View {
             }
             .onAppear(perform: reload)
             .onChange(of: memorySettings.autoForgetDays) { applyAutoForgetNow() }
+            .sheet(isPresented: $showExport) { MemoryExportSheet() }
             .sheet(item: $editFact) { fact in
                 FactEditSheet(fact: fact) { updated in
                     MemoryStore.shared.updateFact(
@@ -67,6 +72,26 @@ struct MemoryTimelineView: View {
     }
 
     // MARK: - Sections
+
+    @ViewBuilder private var recapSection: some View {
+        if let recap, !recap.content.isEmpty, !MemoryRecapCard.Dismissal.isDismissed() {
+            Section {
+                MemoryRecapCard(
+                    characterName: characterName, content: recap.content,
+                    onAsk: {
+                        MemoryMentalModels.shared.askAboutRecap(character: RealtimeChatState.shared.selectedCharacterName)
+                        dismiss()
+                    },
+                    onDismiss: {
+                        MemoryRecapCard.Dismissal.dismiss()
+                        self.recap = nil
+                    })
+                .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            }
+        }
+    }
 
     private var heroSection: some View {
         Section {
@@ -216,6 +241,17 @@ struct MemoryTimelineView: View {
             }
             .disabled(!memorySettings.isEnabled)
 
+            Button { showExport = true } label: {
+                Label {
+                    InfoToggleLabel(
+                        title: "Export memory…",
+                        info: "Saves everything the companion remembers as a JSON file you can keep, share or inspect. Nothing leaves the device unless you share it.")
+                } icon: {
+                    settingIcon("square.and.arrow.up", color: .blue)
+                }
+            }
+            .disabled(!memorySettings.isEnabled)
+
             Button(role: .destructive) { confirmClearAll = true } label: {
                 Label {
                     InfoToggleLabel(
@@ -327,9 +363,11 @@ struct MemoryTimelineView: View {
         Task {
             let loaded = MemoryPageSnapshot.load(character: character)
             let loadedFacts = MemoryStore.shared.fetchAllFacts()
+            let loadedRecap = MemoryStore.shared.fetchMentalModel(character: character, slug: MemoryMentalModels.weeklyRecapSlug)
             withAnimation(.snappy) {
                 snapshot = loaded
                 facts = loadedFacts
+                recap = loadedRecap
             }
         }
     }
@@ -414,61 +452,6 @@ struct SettingLabelStyle: LabelStyle {
                 .frame(width: 28, height: 28)
                 .background(color, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
             configuration.title
-        }
-    }
-}
-
-// MARK: - Fact editor
-
-private struct FactEditSheet: View {
-    @Environment(\.dismiss) private var dismiss
-
-    @State private var subject: String
-    @State private var predicate: String
-    @State private var object: String
-
-    let id: Int64
-    let onSave: (FactItem) -> Void
-
-    init(fact: FactItem, onSave: @escaping (FactItem) -> Void) {
-        self.id = fact.id
-        self.onSave = onSave
-        _subject = State(initialValue: fact.subject)
-        _predicate = State(initialValue: fact.predicate)
-        _object = State(initialValue: fact.object)
-    }
-
-    private var isValid: Bool {
-        ![subject, predicate, object].contains { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-    }
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    TextField("Who or what (e.g. User)", text: $subject)
-                    TextField("Relationship (e.g. likes)", text: $predicate)
-                    TextField("Value (e.g. sushi)", text: $object)
-                } header: {
-                    Text("Fact")
-                } footer: {
-                    Text("Reads as: \(subject) \(predicate.replacingOccurrences(of: "_", with: " ")) \(object)")
-                }
-            }
-            .navigationTitle("Edit Fact")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        onSave(FactItem(id: id, subject: subject, predicate: predicate, object: object, timestamp: Date()))
-                        dismiss()
-                    }
-                    .disabled(!isValid)
-                }
-            }
         }
     }
 }

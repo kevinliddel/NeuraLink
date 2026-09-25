@@ -362,7 +362,7 @@ extension MemoryStore {
     """
 
     /// Caller must hold `lock`.
-    private func runUnitQuery(_ query: String, bind: (OpaquePointer?) -> Void) -> [MemoryUnit] {
+    func runUnitQuery(_ query: String, bind: (OpaquePointer?) -> Void) -> [MemoryUnit] {
         var statement: OpaquePointer?
         var rows: [MemoryUnit] = []
         guard sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK else {

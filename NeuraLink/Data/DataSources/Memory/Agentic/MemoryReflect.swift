@@ -42,7 +42,12 @@ final class MemoryReflect: @unchecked Sendable {
         // Rung 1: fresh mental models (a DB read).
         for model in store.fetchMentalModels(character: character)
         where !model.isStale && !model.content.isEmpty {
-            let label = model.slug == MemoryMentalModels.userProfileSlug ? "About the user" : "Relationship"
+            let label: String
+            switch model.slug {
+            case MemoryMentalModels.userProfileSlug: label = "About the user"
+            case MemoryMentalModels.weeklyRecapSlug: label = "This week"
+            default: label = "Relationship"
+            }
             lines.append("- \(label): \(model.content)")
         }
 

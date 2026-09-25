@@ -24,6 +24,7 @@ extension VRMRenderer: MTKViewDelegate {
         }
 
         draw(in: view, commandBuffer: commandBuffer, renderPassDescriptor: descriptor)
+        encodeCaptureIfRequested(view: view, commandBuffer: commandBuffer)
 
         if let drawable = view.currentDrawable {
             commandBuffer.present(drawable)

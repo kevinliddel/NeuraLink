@@ -213,6 +213,17 @@ Rules in the prompt are Hindsight's: prefer update over create, one observation 
 
 Two standing questions: a global **user profile** and a per-character **relationship** note (`MemoryMentalModels.ensureDefaults`). Refresh is delta-mode: only when stale *and* `MAX(memories.id)` moved since the last refresh; evidence comes from recall (observations preferred, ≤ 900 tokens) and one LLM call answers in ≤ 80 words or `UNKNOWN`. Reading is a DB read: `promptBlock(character:)` goes into the **stable** system prefix on both engines (local: KV-cache-safe because it only changes after background consolidation; OpenAI: session instructions).
 
+### Weekly recap, export and timeline
+
+Three user-facing surfaces on top of the memory layer
+(docs/MEMORY_OWNERSHIP_PLAN.md): a **weekly recap** standing question
+(`weekly_recap`, refreshed when the ISO week changes, shown as a card with
+an "Ask about it" follow-up and injected as "This week" in the prompt block),
+a **JSON export** of everything remembered (`MemoryExporter`, vectors
+excluded, shared from Memory → Privacy) plus a transcript share, and a
+**timeline** of dated facts with an "On this day" row
+(`MemoryStore+Timeline`, `MemoryTimelineSection`).
+
 ## Reflect and the `search_memory` tool
 
 `MemoryReflect.evidence(for:character:)` is Hindsight's retrieval ladder without an LLM: fresh mental models → observations → raw facts/dialogue, descending only while evidence is thin. The `search_memory` tool returns that evidence to the Realtime model, which is told to call it before answering anything that depends on the past. `reflect(question:)` adds one synthesis call (with the character's disposition) for callers that need a finished answer. Local tool calling stays limited to `remember_fact`; the local path gets the same recall per turn in Tier 3 instead.

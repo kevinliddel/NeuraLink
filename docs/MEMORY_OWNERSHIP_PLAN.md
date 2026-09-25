@@ -7,25 +7,64 @@ gives memory three visible payoffs and one guarantee of ownership.
 
 | # | Item | Effort | Value |
 |---|---|---|---|
-| M1 | Weekly recap card | M | High |
-| M2 | Memory export (and share sheet for transcripts / photos) | S | High |
-| M3 | Dated facts on a timeline | M | Med |
+| M1 | Weekly recap card ✅ 2026-09-27 | M | High |
+| M2 | Memory export, transcript share, photoshoot save/share ✅ 2026-09-27 | S | High |
+| M3 | Dated facts on a timeline ✅ 2026-09-27 | M | Med |
 
 Order: **M2 → M1 → M3**. M2 is small and builds trust; M1 reuses the
 mental-model refresh path; M3 is UI over data that already exists.
 
 ```mermaid
 graph LR
-    OBS["observations + journal"] --> M1["M1 Weekly recap<br/>standing question + card"]
-    ALL["memories, facts, journal"] --> M2["M2 Export JSON<br/>ShareLink"]
-    DATED["occurred_start / _end"] --> M3["M3 Month timeline"]
+    %% =======================
+    %% Inputs
+    %% =======================
+    OBS["observations + journal"]
+    ALL["memories · facts · journal"]
+    DATED["occurred_start / occurred_end"]
+
+    %% =======================
+    %% Features
+    %% =======================
+    subgraph Features
+        M1["M1 Weekly recap<br/>standing question + card"]
+        M2["M2 Export JSON<br/>ShareLink"]
+        M3["M3 Month timeline"]
+    end
+
+    %% =======================
+    %% Flows
+    %% =======================
+    OBS --> D1["weekly aggregation"] --> M1
+    ALL --> D2["export payload"] --> M2
+    DATED --> D3["temporal grouping"] --> M3
+
+    %% =======================
+    %% Styles
+    %% =======================
+    classDef feature fill:#0f172a,stroke:#7c3aed,color:#a78bfa
+    classDef data fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
+
+    class M1,M2,M3 feature
+    class D1,D2,D3 data
 ```
 
 Seams cited as file:line on 2026-09-26. Follow [SKILL.md](../SKILL.md).
 
 ---
 
-## M1. Weekly recap card — `M`
+## M1. Weekly recap card — `M` — ✅ DONE 2026-09-27
+
+`MemoryMentalModels+WeeklyRecap.swift`: third standing question
+`weekly_recap` per character (2–3 sentences + an `ASK:` follow-up line),
+`weeklyEvidence` (units dated/mentioned in the last 7 days with observations
+preferred, plus the week's diaries), `isRecapDue` (ISO-week change or the
+usual stale-and-new-memories rule), a "wrote up your week" notification on
+the first refresh of a new week when notifications are on, and
+`askAboutRecap` (live session → `ProactivePresenceManager.engage`, else stored
+as the next opener). `MemoryRecapCard` sits above the hero card with a
+per-week dismiss; the recap also joins the prompt block as "This week" and the
+reflect ladder. Tests: `MemoryOwnershipTests.recap`.
 
 **Problem.** Consolidation produces observations and mental models in the
 background; the user never sees "what changed" and has no reason to open
@@ -86,7 +125,22 @@ when the LLM tier is `.none`.
 
 ---
 
-## M2. Memory export and share sheet — `S`
+## M2. Memory export and share sheet — `S` — ✅ DONE 2026-09-27
+
+`MemoryExporter` + `MemoryExport` (facts, memories, observations, mental
+models, journal, optional conversations capped at 500 messages unless
+"Every message"; no vectors; ISO dates; pretty JSON in a temp file),
+`MemoryExportSheet` from Memory → Privacy → "Export memory…" with a
+`ShareLink`, and a Share button on the transcript screen
+(`ConversationTranscriptView.transcriptText`). Photoshoot: `pose_for_photo`
+now captures the scene two seconds into the pose (`VRMRenderer+Capture`
+blits the drawable into a shared texture for one frame with
+`framebufferOnly = false`, `VRMMetalState+Capture` composites it over the
+background image) and, once the UI returns, shows a capsule with Save to
+Photos (`NSPhotoLibraryAddUsageDescription`, add-only authorization) and a
+`ShareLink` (`PhotoshootShareController`, `PhotoshootShareCapsule`). Tests:
+`MemoryOwnershipTests.export`, `PhotoshootCaptureTests`. Device check
+pending for the capture itself (Metal readback is untestable on CI).
 
 **Problem.** Every memory is on-device (a selling point), but there is no
 way to take it out, and the app has no `ShareLink` anywhere — not for a
@@ -140,7 +194,15 @@ spinner; cap conversations to the last 500 messages per chat unless
 
 ---
 
-## M3. Dated facts on a timeline — `M`
+## M3. Dated facts on a timeline — `M` — ✅ DONE 2026-09-27
+
+`MemoryStore+Timeline.swift` (`fetchUnits(occurringBetween:and:includeUndated:)`,
+`countDatedUnits`, pure `MemoryTimelineModel` with ISO-calendar month
+buckets, day grouping and `onThisDay`) and `MemoryTimelineSection` in the
+Memory page: "On this day" rows, a collapsed "Timeline" disclosure with a
+7-month strip and per-day list, swipe-to-forget, and an include-undated
+toggle; hidden below 5 dated units. Tests: `MemoryOwnershipTests.timeline`
+and `.rangeQuery`.
 
 **Problem.** Facts carry `occurred_start / occurred_end` since the Hindsight
 port, and the temporal arm answers "what happened in May", but the Memory

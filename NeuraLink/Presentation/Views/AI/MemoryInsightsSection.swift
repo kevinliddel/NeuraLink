@@ -28,7 +28,8 @@ struct MemoryPageSnapshot {
         snapshot.facts = store.countFacts() + store.countUnits(factType: .world) + store.countUnits(factType: .experience)
         snapshot.observations = store.countUnits(factType: .observation)
         snapshot.moments = store.countUnits(factType: .raw)
-        snapshot.models = store.fetchMentalModels(character: character).filter { !$0.content.isEmpty }
+        snapshot.models = store.fetchMentalModels(character: character)
+            .filter { !$0.content.isEmpty && $0.slug != MemoryMentalModels.weeklyRecapSlug }
         snapshot.observationUnits = store.fetchUnits(factTypes: [.observation])
         return snapshot
     }

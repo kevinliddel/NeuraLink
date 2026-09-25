@@ -161,7 +161,7 @@ final class MemoryRetain: @unchecked Sendable {
 
         Task.detached(priority: .background) { [weak self] in
             guard let self else { return }
-            defer { self.lock.lock(); self.inFlight = false; self.lock.unlock() }
+            defer { self.lock.withLock { self.inFlight = false } }
             let stored = await self.retain(turns: pending.map(\.turn))
             self.advanceWatermark(to: pending.map(\.id).max() ?? 0)
             nlLog("[MemoryRetain] Retained \(pending.count) turns → \(stored) facts (\(self.llm.tier))", level: .info)

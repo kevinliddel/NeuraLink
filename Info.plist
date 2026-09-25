@@ -19,6 +19,8 @@
 	<string>NeuraLink uses the camera so the AI avatar can see and describe what you show it.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>NeuraLink requires microphone access to communicate with the AI avatar in real-time.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>NeuraLink saves the photos you take with your character to your library when you ask.</string>
 	<key>NSRemindersUsageDescription</key>
 	<string>NeuraLink can create reminders for you when you ask the AI assistant.</string>
 	<key>NSSupportsLiveActivities</key>

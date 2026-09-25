@@ -8,6 +8,7 @@
 import Foundation
 @preconcurrency import Metal
 import MetalKit
+import UIKit
 import QuartzCore
 import simd
 
@@ -238,6 +239,10 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
 
     // Frame counter for debug logging
     var frameCounter = 0
+
+    // Frame capture (VRMRenderer+Capture.swift)
+    let captureLock = NSLock()
+    var pendingCapture: (@Sendable (UIImage?) -> Void)?
 
     // PERFORMANCE OPTIMIZATION: Cached render items to avoid rebuilding every frame
     var cachedRenderItems: [RenderItem]?

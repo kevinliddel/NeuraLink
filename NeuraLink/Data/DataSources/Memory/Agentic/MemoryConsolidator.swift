@@ -58,11 +58,13 @@ final class MemoryConsolidator: @unchecked Sendable {
     func consolidatePending() async {
         let tier = llm.tier
         guard tier != .none else { return }
-        lock.lock()
-        guard !inFlight else { lock.unlock(); return }
-        inFlight = true
-        lock.unlock()
-        defer { lock.lock(); inFlight = false; lock.unlock() }
+        let acquired = lock.withLock { () -> Bool in
+            if inFlight { return false }
+            inFlight = true
+            return true
+        }
+        guard acquired else { return }
+        defer { lock.withLock { inFlight = false } }
 
         var changed = false
         for _ in 0..<Self.maxBatchesPerRun {

@@ -49,6 +49,8 @@ final class MemoryMentalModels: @unchecked Sendable {
         guard !character.isEmpty else { return }
         store.ensureMentalModel(
             character: character, slug: Self.relationshipSlug, question: Self.relationshipQuestion(character: character))
+        store.ensureMentalModel(
+            character: character, slug: Self.weeklyRecapSlug, question: Self.weeklyRecapQuestion(character: character))
     }
 
     // MARK: - Read (zero-LLM)
@@ -60,6 +62,11 @@ final class MemoryMentalModels: @unchecked Sendable {
         guard !models.isEmpty else { return "" }
         var out = "\n[What \(character.isEmpty ? "the assistant" : character.capitalized) knows]\n"
         for model in models {
+            if model.slug == Self.weeklyRecapSlug {
+                let line = Self.recapPromptLine(model.content)
+                if !line.isEmpty { out += "- This week: \(line)\n" }
+                continue
+            }
             let label = model.slug == Self.userProfileSlug ? "About the user" : "Relationship"
             let content = compact ? String(model.content.prefix(240)) : model.content
             out += "- \(label): \(content)\n"
@@ -73,21 +80,32 @@ final class MemoryMentalModels: @unchecked Sendable {
         guard llm.tier != .none else { return }
         ensureDefaults(character: character)
         let latest = store.latestUnitID()
-        for model in store.fetchMentalModels(character: character)
-        where model.isStale && latest > model.lastMemoryID {
-            await refresh(model, latestMemoryID: latest, character: character)
+        for model in store.fetchMentalModels(character: character) {
+            let due = model.slug == Self.weeklyRecapSlug
+                ? Self.isRecapDue(model, latestMemoryID: latest)
+                : model.isStale && latest > model.lastMemoryID
+            if due { await refresh(model, latestMemoryID: latest, character: character) }
         }
     }
 
     /// Recall evidence for the standing question → one LLM answer.
     @discardableResult
     func refresh(_ model: MentalModel, latestMemoryID: Int64, character: String) async -> Bool {
-        let hits = evidence(for: model.question)
-        guard !hits.isEmpty else {
-            store.updateMentalModel(id: model.id, content: "", lastMemoryID: latestMemoryID)
-            return false
+        let evidence: String
+        if model.slug == Self.weeklyRecapSlug {
+            guard let weekly = weeklyEvidence(character: character) else {
+                store.updateMentalModel(id: model.id, content: "", lastMemoryID: latestMemoryID)
+                return false
+            }
+            evidence = weekly
+        } else {
+            let hits = self.evidence(for: model.question)
+            guard !hits.isEmpty else {
+                store.updateMentalModel(id: model.id, content: "", lastMemoryID: latestMemoryID)
+                return false
+            }
+            evidence = MemoryRecall.bulletLines(hits).joined(separator: "\n")
         }
-        let evidence = MemoryRecall.bulletLines(hits).joined(separator: "\n")
         let raw = await llm.complete(
             system: Self.systemPrompt(character: character, disposition: MemoryDisposition.forCharacter(character)),
             user: "QUESTION: \(model.question)\n\nEVIDENCE:\n\(evidence)\n\nANSWER:",
@@ -97,6 +115,11 @@ final class MemoryMentalModels: @unchecked Sendable {
         nlLogSensitive("[MentalModel] \(model.slug): \(answer)", level: .info)
         if answer != model.content {
             OpenAIRealtimeManager.postInstructionsChanged(reason: "mental model \(model.slug)")
+            if model.slug == Self.weeklyRecapSlug, !answer.isEmpty, PresenceSettings.shared.isNotificationsEnabled,
+               model.lastRefreshed.map({ Self.weekKey(for: $0) != Self.weekKey(for: Date()) }) ?? true {
+                let name = character.isEmpty ? "Your companion" : character.capitalized
+                _ = await CompanionNotificationScheduler.schedule(characterName: character, body: "\(name) wrote up your week.")
+            }
         }
         return !answer.isEmpty
     }
@@ -129,8 +152,8 @@ final class MemoryMentalModels: @unchecked Sendable {
     static func systemPrompt(character: String, disposition: MemoryDisposition) -> String {
         let name = character.isEmpty ? "the user's AI companion" : character.capitalized
         var text = """
-        You are \(name), privately updating what you know. Answer the QUESTION in at most 80 words, \
-        third person, using ONLY the EVIDENCE. Prefer newer evidence when facts conflict. Never invent details. \
+        You are \(name), privately updating what you know. Answer the QUESTION in at most 90 words, \
+        using ONLY the EVIDENCE. Prefer newer evidence when facts conflict. Never invent details. \
         If the evidence does not answer the question, reply with the single word UNKNOWN.
         """
         let traits = disposition.promptDescription

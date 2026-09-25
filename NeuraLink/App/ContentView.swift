@@ -34,6 +34,7 @@ struct ContentView: View {
                 if !aiState.isUIHidden {
                     RealtimeChatOverlay()
                     CameraOverlayView()
+                    PhotoshootShareCapsule()
                 }
 
                 if showModelSelection {

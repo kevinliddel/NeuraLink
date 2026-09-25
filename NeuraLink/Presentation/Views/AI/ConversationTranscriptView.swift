@@ -46,7 +46,11 @@ struct ConversationTranscriptView: View {
                     }
                     .accessibilityLabel("Close")
                 }
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    ShareLink(item: Self.transcriptText(title: title, messages: messages)) {
+                        Label("Share", systemImage: "square.and.arrow.up")
+                    }
+                    .disabled(messages.isEmpty)
                     Button {
                         onNewChat()
                     } label: {
@@ -57,6 +61,22 @@ struct ConversationTranscriptView: View {
         }
         .onAppear(perform: load)
         .onDisappear { speech.stop() }
+    }
+
+    /// Plain-text rendering for the share sheet ("You:" / character name,
+    /// dated; tool calls excluded).
+    static func transcriptText(title: String, messages: [ConversationMessage]) -> String {
+        let name = RealtimeChatState.shared.selectedCharacterName
+        let speaker = name.isEmpty ? "AI" : name.capitalized
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        var lines = [title, ""]
+        for message in messages where message.kind == "message" {
+            let who = message.isUser ? "You" : speaker
+            lines.append("[\(formatter.string(from: message.timestamp))] \(who): \(message.content)")
+        }
+        return lines.joined(separator: "\n")
     }
 
     @ViewBuilder private func bubble(_ message: ConversationMessage) -> some View {
