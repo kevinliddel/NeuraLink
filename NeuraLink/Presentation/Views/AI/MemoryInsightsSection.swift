@@ -21,6 +21,7 @@ struct MemoryPageSnapshot {
     var moments = 0
     var models: [MentalModel] = []
     var observationUnits: [MemoryUnit] = []
+    var upcoming: [FollowUp] = []
 
     static func load(character: String) -> MemoryPageSnapshot {
         let store = MemoryStore.shared
@@ -31,6 +32,7 @@ struct MemoryPageSnapshot {
         snapshot.models = store.fetchMentalModels(character: character)
             .filter { !$0.content.isEmpty && $0.slug != MemoryMentalModels.weeklyRecapSlug }
         snapshot.observationUnits = store.fetchUnits(factTypes: [.observation])
+        snapshot.upcoming = Array(FollowUpCoordinator.shared.upcoming().prefix(3))
         return snapshot
     }
 }
@@ -77,6 +79,23 @@ struct MemoryHeroCard: View {
                 MemoryStatTile(value: snapshot.facts, label: "Facts", symbol: "checkmark.seal.fill")
                 MemoryStatTile(value: snapshot.observations, label: "Insights", symbol: "sparkles")
                 MemoryStatTile(value: snapshot.moments, label: "Moments", symbol: "bubble.left.and.bubble.right.fill")
+            }
+
+            if !snapshot.upcoming.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("COMING UP")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.6))
+                    ForEach(snapshot.upcoming) { item in
+                        HStack(spacing: 6) {
+                            Image(systemName: "calendar.badge.clock").font(.caption2)
+                            Text(item.factText).font(.caption).lineLimit(1)
+                            Spacer(minLength: 0)
+                            Text(item.date, format: .dateTime.day().month(.abbreviated)).font(.caption2)
+                        }
+                        .foregroundStyle(.white.opacity(0.9))
+                    }
+                }
             }
 
             Divider().overlay(.white.opacity(0.25))

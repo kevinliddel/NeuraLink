@@ -128,6 +128,13 @@ struct AutonomySettingsView: View {
                 }
             }
 
+            Toggle(isOn: $presence.followUpsEnabled) {
+                InfoToggleLabel(
+                    title: "Follow up on plans",
+                    info: "When you mention something with a date — a trip, an appointment, a birthday — the character brings it up the day before and asks how it went afterwards. Notifications need the toggle above; \"Not this\" on a notification silences that plan."
+                )
+            }
+
             Toggle(isOn: $presence.showWidgets) {
                 InfoToggleLabel(
                     title: "Companion widgets",

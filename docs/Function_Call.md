@@ -297,3 +297,10 @@ call is dispatched through the shared `AppFunctionExecutor`; the result is
 spoken directly (no second generation on a 1B). Prompt-lookup decoding is
 bypassed while a grammar is active.
 
+## show_photo (2026-09-27)
+
+Opens the photo picker so the user can show the companion a picture. The
+image is described once by the configured text model (vision-capable), the
+companion reacts, and the moment is remembered as a dated experience with a
+small on-device thumbnail (docs/COMPANION_DEPTH_PLAN.md §D2).
+

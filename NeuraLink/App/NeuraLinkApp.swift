@@ -5,10 +5,33 @@
 //  Created by Dedicatus on 14/04/2026.
 //
 
+import BackgroundTasks
 import SwiftUI
 
 @main
 struct NeuraLinkApp: App {
+    static let followUpTaskID = "com.dedicatus.NeuraLink.followups"
+
+    init() {
+        // Daily background refresh so a "tomorrow" follow-up is scheduled even
+        // when the app was not opened that day (docs/COMPANION_DEPTH_PLAN.md §D1).
+        BGTaskScheduler.shared.register(forTaskWithIdentifier: Self.followUpTaskID, using: nil) { task in
+            Self.scheduleFollowUpRefresh()
+            let work = Task { @MainActor in
+                await FollowUpCoordinator.shared.planAndDeliver()
+                task.setTaskCompleted(success: true)
+            }
+            task.expirationHandler = { work.cancel() }
+        }
+        Self.scheduleFollowUpRefresh()
+    }
+
+    static func scheduleFollowUpRefresh() {
+        let request = BGAppRefreshTaskRequest(identifier: followUpTaskID)
+        request.earliestBeginDate = Date().addingTimeInterval(12 * 3_600)
+        try? BGTaskScheduler.shared.submit(request)
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()

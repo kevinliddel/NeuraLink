@@ -386,3 +386,8 @@ background"); while active the microphone stays open and iOS shows the
 system indicator. The session ends automatically after the configured idle
 time, on Low Power Mode, a serious thermal state or a memory warning.
 
+Photo memories keep only a 256 px JPEG thumbnail and a text description under
+the protected App Support directory (`photo-memories/`, Data Protection
+applied); the original photo is sent to OpenAI once for description when the
+cloud model is enabled and is never stored by the app.
+

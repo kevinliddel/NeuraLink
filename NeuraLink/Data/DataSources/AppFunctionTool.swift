@@ -28,6 +28,7 @@ enum AppFunctionTool {
     static let identifySong = "identify_song"
     static let playGame = "play_game"
     static let searchMemory = "search_memory"
+    static let showPhoto = "show_photo"
 
     // MARK: - OpenAI tool schema array
 
@@ -36,11 +37,27 @@ enum AppFunctionTool {
         [
             emotionTool, weatherTool, searchTool, musicTool, reminderTool,
             noteTool, openAppTool, cameraTool, factTool, photoTool, identifySongTool,
-            playGameTool, searchMemoryTool
+            playGameTool, searchMemoryTool, showPhotoTool
         ]
     }
 
     // MARK: - Individual schemas
+
+    private static var showPhotoTool: [String: Any] {
+        [
+            "type": "function",
+            "name": showPhoto,
+            "description": "Open the user's photo picker so they can show you a picture. Use this when the "
+                + "user says they want to show you a photo, a picture of someone or somewhere, or asks you "
+                + "to look at an image from their library. You will receive a description afterwards and "
+                + "remember the photo.",
+            "parameters": [
+                "type": "object",
+                "properties": [String: Any](),
+                "required": [String]()
+            ]
+        ]
+    }
 
     private static var searchMemoryTool: [String: Any] {
         [

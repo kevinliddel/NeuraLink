@@ -83,6 +83,20 @@ extension MemoryStore {
         }
 
         if addedAny { backfillLegacyUnits() }
+        migrateFollowUpsIfNeeded()
+    }
+
+    /// Sets a unit's context (e.g. a photo thumbnail reference).
+    func updateContext(id: Int64, context: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        var statement: OpaquePointer?
+        if sqlite3_prepare_v2(db, "UPDATE memories SET context = ? WHERE id = ?;", -1, &statement, nil) == SQLITE_OK {
+            sqlite3_bind_text(statement, 1, (context as NSString).utf8String, -1, nil)
+            sqlite3_bind_int64(statement, 2, id)
+            _ = sqlite3_step(statement)
+        }
+        sqlite3_finalize(statement)
     }
 
     /// One-shot back-fill after the columns were added: legacy `source =

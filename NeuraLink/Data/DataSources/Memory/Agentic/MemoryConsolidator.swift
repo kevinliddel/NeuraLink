@@ -76,6 +76,7 @@ final class MemoryConsolidator: @unchecked Sendable {
             store.markMentalModelsStale()
             await MemoryMentalModels.shared.refreshStale(character: RealtimeChatState.shared.selectedCharacterName)
         }
+        await FollowUpCoordinator.shared.planAndDeliver()
     }
 
     /// One batch → one LLM call → applied actions. Facts are marked

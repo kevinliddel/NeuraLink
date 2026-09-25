@@ -346,6 +346,7 @@ final class MemoryRecall {
             if unit.factType == .observation, unit.proofCount > 1 {
                 prefix += "[×\(unit.proofCount)] "
             }
+            if PhotoMemoryService.isPhoto(unit) { prefix += "(photo) " }
             return "- \(prefix)\(unit.text)"
         }
     }

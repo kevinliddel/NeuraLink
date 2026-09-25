@@ -72,6 +72,7 @@ extension OpenAIRealtimeManager {
 
         return persona.instructions + "\n"
             + userContext + mentalModels + memoryContext + kgFacts + companion
+            + FollowUpCoordinator.shared.mentionBlock()
             + factsTriggerInstruction
     }
 

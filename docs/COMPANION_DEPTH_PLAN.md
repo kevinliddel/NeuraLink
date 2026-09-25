@@ -7,23 +7,62 @@ VRMA clips exist).
 
 | # | Item | Effort | Value |
 |---|---|---|---|
-| D1 | Character-initiated follow-ups from future-dated facts | M | High |
-| D2 | Photo memories | M | Med |
+| D1 | Character-initiated follow-ups from future-dated facts ✅ 2026-09-27 (device check pending) | M | High |
+| D2 | Photo memories ✅ 2026-09-27 (device check pending) | M | Med |
 
 Order: **D1 → D2**. D1 is the more visible "she remembers" moment and needs
 no new permissions; D2 adds a Photos permission and a vision call.
 
 ```mermaid
 graph LR
-    F["world facts with<br/>occurred_start in the future"] --> D1["D1 Follow-ups<br/>FollowUpPlanner → notification / opener"]
-    P["PhotosPicker → VisionAnalyzer"] --> D2["D2 Photo memories<br/>experience unit + thumbnail"]
+    %% =======================
+    %% Inputs
+    %% =======================
+    F["world facts<br/>future occurred_start"]
+    P["PhotosPicker → VisionAnalyzer"]
+
+    %% =======================
+    %% Features
+    %% =======================
+    subgraph Features
+        D1F["D1 Follow-ups<br/>planner → notification / opener"]
+        D2F["D2 Photo memories<br/>experience + thumbnail"]
+    end
+
+    %% =======================
+    %% Flows
+    %% =======================
+    F --> D1["future trigger"] --> D1F
+    P --> D2["image analysis"] --> D2F
+
+    %% =======================
+    %% Styles
+    %% =======================
+    classDef feature fill:#0f172a,stroke:#7c3aed,color:#a78bfa
+    classDef data fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
+
+    class D1F,D2F feature
+    class D1,D2 data
 ```
 
 Seams cited as file:line on 2026-09-26. Follow [SKILL.md](../SKILL.md).
 
 ---
 
-## D1. Character-initiated follow-ups — `M`
+## D1. Character-initiated follow-ups — `M` — ✅ CODE DONE 2026-09-27, device check pending
+
+`MemoryStore+FollowUps` (`follow_ups`, `follow_up_mutes`), pure
+`FollowUpPlanner` (today / upcoming 1–3 d / afterwards 1–2 d, spans ≤ 3 days,
+user-entity facts only, fired + muted filters, imminent-first) and
+`FollowUpWording` (LLM one-liner with a deterministic fallback);
+`FollowUpCoordinator` runs after consolidation, at launch and from a daily
+`BGAppRefreshTask` (`com.dedicatus.NeuraLink.followups`, `fetch` background
+mode), schedules at most one notification per day (18:00 day-before /
+19:00 day-after, communication style, "Not this" action → mute) and queues
+≤ 2 in-conversation mentions injected as "Things to bring up" into the
+Realtime instructions and the local Tier 3 (cleared at session end). Toggle:
+Autonomy → Presence → "Follow up on plans". Hero card shows a "Coming up"
+row. Tests: `CompanionDepthTests.planner/wording`.
 
 **Problem.** Retain already extracts dated facts about the future — "User
 signed up for the Berlin marathon in September", "User's mother turns 60
@@ -108,14 +147,26 @@ fact says so; a `yearly` flag from the extractor is a follow-up feature.
 
 ---
 
-## D2. Photo memories — `M`
+## D2. Photo memories — `M` — ✅ CODE DONE 2026-09-27, device check pending
+
+`show_photo` tool (+ "Show a Photo" FAB button) opens a `PhotosPicker`
+(no library permission needed); `PhotoMemoryService` downscales to 1024 px,
+describes the image with the vision-capable **text model** (`VisionAnalyzer`
+now uses `OpenAISettings.textModel` — gpt-5.6-luna — instead of gpt-4o, with
+`max_completion_tokens`), reacts through `ProactivePresenceManager.engage`
+on either engine, and stores an `experience` unit dated from EXIF
+`DateTimeOriginal` with a protected 256 px thumbnail
+(`App Support/photo-memories/`, referenced as `context = "photo:<file>"`).
+Recall bullets carry "(photo)"; the timeline shows the thumbnail. Local
+tier: the user's words stand in for the description. Tests:
+`CompanionDepthTests.photoFact/visionBody`.
 
 **Problem.** The companion can see through the camera (`CameraSkill`,
 `ProactiveVisionManager`) but cannot look at a photo the user already has,
 and what it sees is never remembered.
 
 **Seams.**
-- Vision: `VisionAnalyzer.analyze(image:prompt:apiKey:)` with `gpt-4o`
+- Vision: `VisionAnalyzer.analyze(image:prompt:apiKey:)` with `gpt-5.6-luna`
   (`VisionAnalyzer.swift:15-19`); callers `CameraSkill.swift:32`,
   `ProactiveVisionManager.swift:112`; the camera frame path
   `CameraManager.captureCurrentFrame()` (`CameraManager.swift:75`).
@@ -171,7 +222,7 @@ and deleted with the unit (`deleteUnit` hook). Device: show a photo of a
 named person, ask about them next session, confirm recall and the
 thumbnail in the Memory page; confirm nothing is stored when Memory is off.
 
-**Risks.** Vision cost per photo on gpt-4o — one call per photo, no
+**Risks.** Vision cost per photo on gpt-5.6-luna — one call per photo, no
 retries. HEIC/Live Photos: use `PhotosPicker` with `.images` and load via
 `loadTransferable(type: Data.self)`; orientation must be normalised before
 downscaling.

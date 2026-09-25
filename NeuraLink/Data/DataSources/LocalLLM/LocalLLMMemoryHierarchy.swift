@@ -347,9 +347,10 @@ final class LocalLLMMemoryHierarchy {
         let facts = RAGManager.shared.fetchFacts(
             relevantTo: input, limit: Self.factsLimit, tokenBudget: Self.factsTokenBudget
         )
-        guard !facts.isEmpty else { return "" }
+        let mentions = FollowUpCoordinator.shared.mentionBlock()
+        guard !facts.isEmpty || !mentions.isEmpty else { return "" }
         let bulleted = facts.map { "- \($0)" }.joined(separator: "\n")
-        return "[Relevant memories]\n\(bulleted)\n[End memories]"
+        return (facts.isEmpty ? "" : "[Relevant memories]\n\(bulleted)\n[End memories]") + mentions
     }
 
     private func buildHistory(

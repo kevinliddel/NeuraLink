@@ -91,10 +91,18 @@ struct MemoryTimelineSection: View {
 
     private func row(_ unit: MemoryUnit, prefix: String?) -> some View {
         HStack(alignment: .top, spacing: 8) {
-            Image(systemName: symbol(for: unit.factType))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .frame(width: 16)
+            if let url = PhotoMemoryService.thumbnailURL(for: unit), let image = UIImage(contentsOfFile: url.path) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 36, height: 36)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            } else {
+                Image(systemName: symbol(for: unit.factType))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 16)
+            }
             VStack(alignment: .leading, spacing: 2) {
                 if let prefix {
                     Text(prefix).font(.caption2.weight(.semibold)).foregroundStyle(.secondary)

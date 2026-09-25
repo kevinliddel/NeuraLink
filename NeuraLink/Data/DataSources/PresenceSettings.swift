@@ -27,6 +27,7 @@ final class PresenceSettings {
     private static let keepTalkingKey = "com.neuralink.presence.keepTalkingInBackground"
     private static let backgroundIdleKey = "com.neuralink.presence.backgroundIdleMinutes"
     private static let showWidgetsKey = "com.neuralink.presence.showWidgets"
+    private static let followUpsKey = "com.neuralink.presence.followUps"
 
     @ObservationIgnored private var _isPresenceEnabled: Bool = false
     @ObservationIgnored private var _isNotificationsEnabled: Bool = false
@@ -36,6 +37,7 @@ final class PresenceSettings {
     @ObservationIgnored private var _keepTalkingInBackground: Bool = false
     @ObservationIgnored private var _backgroundIdleMinutes: Double = 10
     @ObservationIgnored private var _showWidgets: Bool = true
+    @ObservationIgnored private var _followUpsEnabled: Bool = true
 
     private init() {
         let defaults = UserDefaults.standard
@@ -47,6 +49,21 @@ final class PresenceSettings {
         _keepTalkingInBackground = defaults.bool(forKey: Self.keepTalkingKey)
         _backgroundIdleMinutes = defaults.object(forKey: Self.backgroundIdleKey) as? Double ?? 10
         _showWidgets = defaults.object(forKey: Self.showWidgetsKey) as? Bool ?? true
+        _followUpsEnabled = defaults.object(forKey: Self.followUpsKey) as? Bool ?? true
+    }
+
+    /// Character-initiated follow-ups on dated plans (docs/COMPANION_DEPTH_PLAN.md §D1).
+    var followUpsEnabled: Bool {
+        get {
+            access(keyPath: \.followUpsEnabled)
+            return _followUpsEnabled
+        }
+        set {
+            withMutation(keyPath: \.followUpsEnabled) {
+                _followUpsEnabled = newValue
+                UserDefaults.standard.set(newValue, forKey: Self.followUpsKey)
+            }
+        }
     }
 
     /// Home / lock-screen widgets read a small snapshot (opener, relationship

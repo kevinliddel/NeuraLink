@@ -18,7 +18,7 @@ struct AppFunctionTests {
     @Test("All tools are correctly defined in schemas")
     func testToolSchemas() {
         let tools = AppFunctionTool.all
-        #expect(tools.count == 13)
+        #expect(tools.count == 14)
 
         let names = tools.compactMap { $0["name"] as? String }
         #expect(names.contains(AppFunctionTool.setEmotion))

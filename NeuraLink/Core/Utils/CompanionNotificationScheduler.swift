@@ -29,6 +29,21 @@ final class CompanionNotificationPresenter: NSObject, UNUserNotificationCenterDe
     /// Installs self as the notification-center delegate. Idempotent.
     func install() {
         UNUserNotificationCenter.current().delegate = self
+        CompanionNotificationScheduler.registerCategories()
+    }
+
+    /// "Not this" on a follow-up mutes that fact for good.
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        let info = response.notification.request.content.userInfo
+        if response.actionIdentifier == CompanionNotificationScheduler.followUpMuteAction,
+           let unitID = info[CompanionNotificationScheduler.followUpUnitKey] as? Int64 {
+            Task { @MainActor in MemoryStore.shared.muteFollowUps(unitID: unitID) }
+        }
+        completionHandler()
     }
 
     nonisolated func userNotificationCenter(
@@ -46,6 +61,44 @@ final class CompanionNotificationPresenter: NSObject, UNUserNotificationCenterDe
 enum CompanionNotificationScheduler {
 
     static let identifier = "com.neuralink.presence.reflection"
+    static let followUpIdentifier = "com.neuralink.presence.followup"
+    static let followUpCategory = "NL_FOLLOWUP"
+    static let followUpMuteAction = "NL_FOLLOWUP_MUTE"
+    static let followUpUnitKey = "unitID"
+
+    /// Registers the follow-up category ("Not this" action). Idempotent.
+    static func registerCategories() {
+        let mute = UNNotificationAction(identifier: followUpMuteAction, title: "Not this", options: [])
+        let category = UNNotificationCategory(identifier: followUpCategory, actions: [mute], intentIdentifiers: [])
+        UNUserNotificationCenter.current().setNotificationCategories([category])
+    }
+
+    /// Schedules one follow-up notification at `fireAt` (replacing any
+    /// pending one). Returns false when not authorized or the add fails.
+    static func scheduleFollowUp(characterName: String, body: String, unitID: Int64, fireAt: Date) async -> Bool {
+        let center = UNUserNotificationCenter.current()
+        let status = await center.notificationSettings().authorizationStatus
+        guard status == .authorized || status == .provisional else { return false }
+        center.removePendingNotificationRequests(withIdentifiers: [followUpIdentifier])
+
+        let name = characterName.trimmingCharacters(in: .whitespaces)
+        let content = UNMutableNotificationContent()
+        content.title = name.isEmpty ? "Your companion" : name.capitalized
+        content.body = body
+        content.sound = .default
+        content.categoryIdentifier = followUpCategory
+        content.userInfo = [followUpUnitKey: unitID]
+        let finalContent = communicationContent(base: content, characterName: name)
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(60, fireAt.timeIntervalSinceNow), repeats: false)
+        do {
+            try await center.add(UNNotificationRequest(identifier: followUpIdentifier, content: finalContent, trigger: trigger))
+            nlLog("[FollowUp] notification scheduled for \(fireAt)", level: .info)
+            return true
+        } catch {
+            nlLog("[FollowUp] failed to schedule: \(error)", level: .warning)
+            return false
+        }
+    }
 
     /// Default delivery delay after a session ends.
     static let defaultDelay: TimeInterval = 6 * 3600

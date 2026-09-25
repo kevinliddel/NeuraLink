@@ -35,7 +35,8 @@ final class AppFunctionExecutor {
             PhotoshootSkill(),
             IdentifySongSkill(),
             PlayGameSkill(),
-            SearchMemorySkill()
+            SearchMemorySkill(),
+            ShowPhotoSkill()
         ]
         self.skills = Dictionary(uniqueKeysWithValues: list.map { (type(of: $0).toolName, $0) })
     }

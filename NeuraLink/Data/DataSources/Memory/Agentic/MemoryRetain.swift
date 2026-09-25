@@ -69,11 +69,13 @@ final class MemoryRetain: @unchecked Sendable {
             forName: SessionLifecycle.sessionDidEnd, object: nil, queue: .main
         ) { _ in
             MemoryRetain.shared.maybeRetain(force: true)
+            FollowUpCoordinator.shared.consumeMentions()
         }
         let character = RealtimeChatState.shared.selectedCharacterName
         Task.detached(priority: .background) {
             await EmbeddingService.shared.restorePreferredBackend()
             MemoryMentalModels.shared.ensureDefaults(character: character)
+            await FollowUpCoordinator.shared.planAndDeliver()
         }
     }
 
