@@ -24,18 +24,21 @@ struct DispositionSection: View {
             traitSlider("Skepticism", value: $disposition.skepticism, low: "Trusting", high: "Skeptical")
             traitSlider("Literalism", value: $disposition.literalism, low: "Reads between lines", high: "Literal")
             traitSlider("Empathy", value: $disposition.empathy, low: "Just the facts", high: "Emotion-aware")
-            let preview = disposition.promptDescription
-            Text(preview.isEmpty ? "Neutral: no special instruction is added." : preview)
-                .font(.caption)
-                .foregroundStyle(.secondary)
             Button("Reset to neutral") { update(.neutral) }
                 .font(.footnote)
                 .disabled(disposition == .neutral)
         } header: {
-            Text("Memory Personality")
-        } footer: {
-            Text("How \(character.capitalized) weighs what it hears when it turns conversations into memories. Affects summaries and beliefs, not what is recalled.")
+            InfoToggleLabel(title: "Memory Personality", info: headerInfo)
+                .textCase(nil)
         }
+    }
+
+    /// Explains the section and shows the exact instruction the current
+    /// sliders produce, so the popover doubles as the live preview.
+    private var headerInfo: String {
+        let base = "How \(character.capitalized) weighs what it hears when it turns conversations into memories. Affects summaries and beliefs, not what is recalled."
+        let preview = disposition.promptDescription
+        return base + "\n\nCurrent instruction: " + (preview.isEmpty ? "none (neutral)." : preview)
     }
 
     private func traitSlider(_ title: String, value: Binding<Int>, low: String, high: String) -> some View {

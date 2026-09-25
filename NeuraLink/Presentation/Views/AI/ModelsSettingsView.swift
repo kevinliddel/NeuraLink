@@ -18,9 +18,9 @@ struct ModelsSettingsView: View {
 
     var body: some View {
         Form {
-            roleSection(.realtime, footer: "Used for the live voice conversation. A change applies when the session reconnects (tap Done in AI Settings).")
-            roleSection(.transcription, footer: "Turns your speech into text for the voice model and the chat history.")
-            roleSection(.text, footer: "Background work that never speaks: memory extraction, summaries, chat titles and end-of-session reflections.")
+            roleSection(.realtime, info: "Used for the live voice conversation. A change applies when the session reconnects (tap Done in AI Settings).")
+            roleSection(.transcription, info: "Turns your speech into text for the voice model and the chat history.")
+            roleSection(.text, info: "Background work that never speaks: memory extraction, summaries, chat titles and end-of-session reflections.")
             usageSection
         }
         .scrollIndicators(.hidden)
@@ -29,13 +29,12 @@ struct ModelsSettingsView: View {
         .disabled(!settings.isEnabled)
     }
 
-    private func roleSection(_ role: OpenAIModelCatalog.Role, footer: String) -> some View {
+    private func roleSection(_ role: OpenAIModelCatalog.Role, info: String) -> some View {
         Section {
             ModelPickerRow(role: role, settings: settings)
         } header: {
-            Text(role.title)
-        } footer: {
-            Text(footer)
+            InfoToggleLabel(title: role.title, info: info)
+                .textCase(nil)
         }
     }
 
@@ -44,9 +43,10 @@ struct ModelsSettingsView: View {
             usageRow("This session", meter: aiState.sessionUsage)
             usageRow("Last session", meter: aiState.lastSessionUsage)
         } header: {
-            Text("Usage")
-        } footer: {
-            Text("Token counts reported by OpenAI for the voice sessions; text calls are logged under [Cost].")
+            InfoToggleLabel(
+                title: "Usage",
+                info: "Token counts reported by OpenAI for the voice sessions. Background text calls are logged under [Cost] in the diagnostics log.")
+            .textCase(nil)
         }
     }
 

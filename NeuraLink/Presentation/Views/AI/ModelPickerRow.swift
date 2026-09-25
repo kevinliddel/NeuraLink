@@ -34,7 +34,6 @@ struct ModelPickerRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(role.title)
             DropDownSelector(
                 items: OpenAIModelCatalog.pickerItems(for: role),
                 selection: Binding(

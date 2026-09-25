@@ -83,12 +83,9 @@ struct MemoryTimelineView: View {
         Section {
             Toggle(isOn: Bindable(memorySettings).isEnabled) {
                 Label {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Remember conversations")
-                        Text("Facts, insights and moments are kept on this device only.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                    InfoToggleLabel(
+                        title: "Remember conversations",
+                        info: "Facts, insights and moments from your chats are kept on this device only, so \(characterName) can bring them up later.")
                 } icon: {
                     settingIcon("brain", color: .purple)
                 }
@@ -108,12 +105,9 @@ struct MemoryTimelineView: View {
 
                 Toggle(isOn: Bindable(memorySettings).charactersShareMemories) {
                     Label {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Characters share memories")
-                            Text("Off: each character only recalls what it experienced itself, plus facts about you.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
+                        InfoToggleLabel(
+                            title: "Characters share memories",
+                            info: "On: every character can recall everything. Off: each character only recalls what it experienced itself, plus the facts about you, which are always shared.")
                     } icon: {
                         settingIcon("person.2", color: .indigo)
                     }
@@ -121,8 +115,13 @@ struct MemoryTimelineView: View {
 
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
-                        Label("Recall precision", systemImage: "scope")
-                            .labelStyle(SettingLabelStyle(color: .blue))
+                        Label {
+                            InfoToggleLabel(
+                                title: "Recall precision",
+                                info: "How closely a memory must match what you're talking about before it is brought up. Only affects meaning-based matching; names, places and dates are always matched exactly.")
+                        } icon: {
+                            settingIcon("scope", color: .blue)
+                        }
                         Spacer()
                         Text(precisionLabel)
                             .font(.caption.weight(.semibold))
@@ -139,10 +138,6 @@ struct MemoryTimelineView: View {
             }
         } header: {
             Text("Controls")
-        } footer: {
-            if memorySettings.isEnabled {
-                Text("Precision only affects meaning-based recall; names, places and dates are always matched exactly.")
-            }
         }
     }
 
@@ -166,7 +161,9 @@ struct MemoryTimelineView: View {
                 }
             }
         } header: {
-            sectionHeader("Insights", count: snapshot.observationUnits.count, symbol: "sparkles")
+            sectionHeader(
+                "Insights", count: snapshot.observationUnits.count, symbol: "sparkles",
+                info: "Beliefs \(characterName) distilled from facts that came up more than once. Swipe one to forget it; the summary above is rebuilt from these.")
         }
     }
 
@@ -195,15 +192,15 @@ struct MemoryTimelineView: View {
             }
         } header: {
             HStack {
-                sectionHeader("Facts", count: facts.count, symbol: "checkmark.seal")
+                sectionHeader(
+                    "Facts", count: facts.count, symbol: "checkmark.seal",
+                    info: "Details you told \(characterName) about yourself. Tap a fact to edit it, swipe to delete.")
                 Spacer()
                 if !facts.isEmpty {
                     Button("Delete all", role: .destructive) { deleteAllFacts() }
                         .font(.caption)
                 }
             }
-        } footer: {
-            Text("Swipe a fact to edit or delete it.")
         }
     }
 
@@ -220,13 +217,18 @@ struct MemoryTimelineView: View {
             .disabled(!memorySettings.isEnabled)
 
             Button(role: .destructive) { confirmClearAll = true } label: {
-                Label("Clear all memories", systemImage: "trash")
-                    .labelStyle(SettingLabelStyle(color: .red))
+                Label {
+                    InfoToggleLabel(
+                        title: "Clear all memories",
+                        info: "Removes conversations, facts and insights from this device. Pinned items stay. Nothing is ever uploaded for storage; only what's relevant to a conversation is shared with the AI you're talking to.")
+                } icon: {
+                    settingIcon("trash", color: .red)
+                }
             }
         } header: {
             Text("Privacy")
         } footer: {
-            Text("Everything here lives in an encrypted-at-rest database on your device. Nothing is uploaded for storage; only what's relevant to a conversation is shared with the AI you're talking to.")
+            Text("Stored on this device only.")
         }
     }
 
@@ -253,10 +255,10 @@ struct MemoryTimelineView: View {
         .onTapGesture { editFact = fact }
     }
 
-    private func sectionHeader(_ title: String, count: Int, symbol: String) -> some View {
+    private func sectionHeader(_ title: String, count: Int, symbol: String, info: String) -> some View {
         HStack(spacing: 6) {
             Image(systemName: symbol)
-            Text(title)
+            InfoToggleLabel(title: title, info: info)
             if count > 0 {
                 Text("\(count)")
                     .font(.caption2.weight(.bold))

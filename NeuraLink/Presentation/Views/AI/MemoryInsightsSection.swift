@@ -243,10 +243,14 @@ struct MemoryEmbeddingModelRow: View {
             Toggle(isOn: Binding(get: { isActive }, set: { enabled in enabled ? enable() : disable() })) {
                 Label {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Multilingual recall")
-                        Text(subtitle)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        InfoToggleLabel(
+                            title: "Multilingual recall",
+                            info: "Downloads a 334 MB on-device model (EmbeddingGemma) that matches memories by meaning in any language. Off, Apple's built-in English embeddings are used. The file stays on your device if you turn it off again.")
+                        if let status = statusLine {
+                            Text(status)
+                                .font(.caption)
+                                .foregroundStyle(errorText == nil ? Color.secondary : Color.red)
+                        }
                     }
                 } icon: {
                     Image(systemName: "globe")
@@ -264,12 +268,11 @@ struct MemoryEmbeddingModelRow: View {
         }
     }
 
-    private var subtitle: String {
+    /// Only transient states get a line under the title.
+    private var statusLine: String? {
         if let errorText { return errorText }
         if isDownloading { return "Downloading model (\(Int(progress * 100))%)…" }
-        return isActive
-            ? "On-device EmbeddingGemma (334 MB): better matching in any language."
-            : "Uses Apple's built-in English embeddings. Turn on to download a 334 MB multilingual model."
+        return nil
     }
 
     private func enable() {
