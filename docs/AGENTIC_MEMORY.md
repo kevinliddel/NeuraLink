@@ -51,11 +51,34 @@ Temporal semantics follow Hindsight: `occurred_*` = when it happened (extracted,
 
 ```mermaid
 graph LR
-    T["dialogue turn"] --> R1["retainRaw<br/>embed + tokens + entities<br/>temporal/semantic links"] --> DB[("memories<br/>fact_type=raw")]
-    T --> W["messages watermark"] --> B{"≥ 4 (cloud) / 8 (local)<br/>un-retained turns,<br/>or session end?"}
-    B -->|yes| C["chunk ≤ 1500 chars"] --> X["fact extraction<br/>(one LLM call per chunk)"]
-    X --> F["world / experience units<br/>occurred dates, entities,<br/>caused_by links"] --> DB
-    F --> K["MemoryConsolidator"]
+    T["dialogue turn"]
+
+    T --> D1["raw signal"] --> R1["retainRaw<br/>embed + tokens + entities<br/>temporal / semantic links"]
+    R1 --> DB[("memories<br/>fact_type = raw")]
+
+    T --> D2["turn tracking"] --> W["messages watermark"]
+    W --> D3["threshold check"] --> B{"≥ 4 (cloud) / 8 (local)<br/>un-retained turns<br/>or session end?"}
+
+    B --> D4["yes"] --> C["chunk ≤ 1500 chars"]
+    C --> D5["chunked text"] --> X["fact extraction<br/>1 LLM call / chunk"]
+
+    X --> D6["structured facts"] --> F["world / experience units<br/>dates · entities · causality"]
+    F --> DB
+
+    F --> D7["consolidation trigger"] --> K["MemoryConsolidator"]
+
+    %% Styles
+    classDef core fill:#0f172a,stroke:#7c3aed,color:#a78bfa
+    classDef storage fill:#1e293b,stroke:#334155,color:#94a3b8
+    classDef decision fill:#1e293b,stroke:#94a3b8,color:#e2e8f0
+
+    class R1,W,X,F,K core
+    class DB storage
+    class B decision
+
+    %% Data nodes (consistent with your system)
+    classDef data fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
+    class D1,D2,D3,D4,D5,D6,D7 data
 ```
 
 * **Raw path** (`MemoryRetain.retainRaw`): what the old `store()` did, plus links. Temporal links join same-type units within 24 h with weight `max(0.3, 1 − Δh/24)` (cap 20); semantic links join the nearest units with cosine ≥ 0.7 (cap 10).
@@ -66,13 +89,47 @@ graph LR
 
 ```mermaid
 graph TD
-    Q["query"] --> S["semantic<br/>cosine > Memory Quality floor"]
-    Q --> K["keyword<br/>BM25 over tokens"]
-    S --> G["graph<br/>1-hop from top-20 seeds:<br/>tanh(shared entities × 0.5)<br/>+ semantic link weight<br/>+ causal weight + 1"]
-    Q --> TP["temporal<br/>window from query →<br/>units inside, spread over 5 buckets"]
-    S & K & G & TP --> RRF["RRF: Σ 1/(60 + rank)"]
-    RRF --> RR["rerank: 1/(1+rank) ×<br/>recency × temporal × evidence × pin"]
-    RR --> PO["prefer observations<br/>(drop covered facts)"] --> BUD["token budget<br/>(skip, don't truncate)"] --> OUT["hits"]
+    Q["query"]
+
+    %% =======================
+    %% Retrieval Stage
+    %% =======================
+    subgraph Retrieval["Retrieval Signals"]
+        Q --> D1["semantic query"] --> S["semantic<br/>cosine > quality floor"]
+        Q --> D2["keyword query"] --> K["keyword<br/>BM25 over tokens"]
+        Q --> D3["temporal query"] --> TP["temporal window<br/>5 buckets"]
+
+        S --> D4["top-20 seeds"] --> G["graph expansion<br/>entities · links · causal"]
+    end
+
+    %% =======================
+    %% Fusion Stage
+    %% =======================
+    subgraph Fusion["Fusion + Ranking"]
+        S --> D5["ranked lists"]
+        K --> D5
+        G --> D5
+        TP --> D5
+
+        D5 --> RRF["RRF fusion<br/>Σ 1 / (60 + rank)"]
+        RRF --> D6["fused ranking"] --> RR["rerank<br/>recency · temporal · evidence · pin"]
+    end
+
+    %% =======================
+    %% Serving Stage
+    %% =======================
+    subgraph Serving["Serving + Budgeting"]
+        RR --> D7["ranked hits"] --> PO["prefer observations<br/>(drop covered facts)"]
+        PO --> D8["filtered hits"] --> BUD["token budget<br/>(skip, don't truncate)"]
+        BUD --> OUT["final hits"]
+    end
+
+    %% Styles
+    classDef core fill:#0f172a,stroke:#7c3aed,color:#a78bfa
+    classDef data fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
+
+    class S,K,G,TP,RRF,RR,PO,BUD core
+    class D1,D2,D3,D4,D5,D6,D7,D8 data
 ```
 
 Rerank boosts, mirroring Hindsight's multiplicative form: `(1 + 0.8·w·(recency − 0.5)) × (1 + 0.2·(temporal − 0.5)) × (1 + 0.1·(proof − 0.5)) × (pinned ? 1.15 : 1)`, where `recency = exp(−ageDays / halfLife)`, `temporal` is proximity to the window midpoint (0.5 when the query has no window) and `proof` is `log(1 + proof_count)/log(11)` for observations (0.5 otherwise). `w`, `halfLife` and the semantic floor are the existing `MemorySettings` tunables; the "Memory Quality" slider now only gates the semantic arm, so keyword/entity/temporal hits can still surface a memory whose embedding is weak (or zero, on the simulator).
