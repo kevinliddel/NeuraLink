@@ -44,24 +44,47 @@ struct AISettingsView: View {
 
     // MARK: - Sections
 
+    /// Row into the dedicated Models screen — same shape as the Autonomy row.
     private var modelsSection: some View {
-        Section {
-            ForEach(OpenAIModelCatalog.Role.allCases, id: \.self) { role in
-                ModelPickerRow(role: role, settings: settings)
-            }
-        } header: {
-            Text("Models")
-        } footer: {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("A voice-model change applies when the session reconnects (tap Done).")
-                if aiState.sessionUsage.responses > 0 {
-                    Text("This session: \(aiState.sessionUsage.summary)")
-                } else if aiState.lastSessionUsage.responses > 0 {
-                    Text("Last session: \(aiState.lastSessionUsage.summary)")
+        Section("Models") {
+            NavigationLink {
+                ModelsSettingsView()
+            } label: {
+                HStack(spacing: 12) {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [.purple.opacity(0.85), .indigo.opacity(0.7)],
+                                startPoint: .topLeading, endPoint: .bottomTrailing)
+                        )
+                        .frame(width: 44, height: 44)
+                        .overlay(
+                            Image(systemName: "cpu")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(.white)
+                        )
+                        .overlay(Circle().stroke(Color.primary.opacity(0.15), lineWidth: 1))
+                        .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Models")
+                            .font(.headline)
+                        Text(modelsSummary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
+            .disabled(!settings.isEnabled)
         }
-        .disabled(!settings.isEnabled)
+    }
+
+    /// One-line status of the chosen models, shown under the row title.
+    private var modelsSummary: String {
+        guard settings.isEnabled else { return "Enable OpenAI to choose models" }
+        let usage = aiState.sessionUsage.responses > 0
+            ? " · \(aiState.sessionUsage.summary)" : ""
+        return "\(settings.realtimeModel) · \(settings.textModel)\(usage)"
     }
 
     private var openAISection: some View {
