@@ -2,7 +2,7 @@
 
 NeuraLink's long-term memory was a single-signal RAG: every turn was embedded, and retrieval was `cosine × recency` over one flat table. This document describes the replacement, an on-device port of the architecture behind [Hindsight](https://hindsight.vectorize.io/) (Vectorize; paper *"Hindsight is 20/20: Building Agent Memory that Retains, Recalls, and Reflects"*, arXiv 2512.12818). The old entry points (`RAGManager.store / fetchContext / storeFact / fetchFacts`) still exist as a facade so callers did not change.
 
-Everything runs on the phone: SQLite (optionally SQLCipher), Apple `NLEmbedding` vectors, `NLTagger` entities, and one small LLM call per background step (OpenAI `gpt-4o-mini` via `OpenAIChatClient`, or the local model via `runSilentGeneration`). Recall itself never calls an LLM.
+Everything runs on the phone: SQLite (optionally SQLCipher), Apple `NLEmbedding` vectors, `NLTagger` entities, and one small LLM call per background step (OpenAI `gpt-5.6-luna` via `OpenAIChatClient`, or the local model via `runSilentGeneration`). Recall itself never calls an LLM.
 
 ## What changed, in one table
 

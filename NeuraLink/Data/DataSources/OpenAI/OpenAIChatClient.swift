@@ -17,13 +17,23 @@ enum OpenAIChatClient {
 
     private static let endpoint = "https://api.openai.com/v1/chat/completions"
 
+    /// Default text model for every background call (titling, reflection,
+    /// memory retain / consolidation / mental models).
+    nonisolated static let defaultModel = "gpt-5.6-luna"
+
+    /// GPT-5-family models reject a non-default `temperature`; older models
+    /// accept it. Everything current accepts `max_completion_tokens`.
+    nonisolated static func supportsTemperature(_ model: String) -> Bool {
+        !model.lowercased().hasPrefix("gpt-5")
+    }
+
     /// Sends one system+user exchange and returns the assistant's text, or
     /// nil on any failure (missing key, transport, non-2xx, parse). Callers
     /// treat nil as "skip silently" — these are background nice-to-haves.
     static func complete(
         system: String,
         user: String,
-        model: String = "gpt-4o-mini",
+        model: String = defaultModel,
         maxTokens: Int,
         temperature: Double = 0.3
     ) async -> String? {
@@ -34,22 +44,25 @@ enum OpenAIChatClient {
         request.httpMethod = "POST"
         request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "model": model,
             "messages": [
                 ["role": "system", "content": system],
                 ["role": "user", "content": user]
             ],
-            "max_tokens": maxTokens,
-            "temperature": temperature
+            "max_completion_tokens": maxTokens
         ]
+        if supportsTemperature(model) { body["temperature"] = temperature }
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
         guard let (data, response) = try? await URLSession.shared.data(for: request),
             let http = response as? HTTPURLResponse
         else { return nil }
         guard (200..<300).contains(http.statusCode) else {
-            nlLog("[OpenAIChatClient] \(model) call failed: HTTP \(http.statusCode)", level: .warning)
+            // The error body names the offending parameter — worth having
+            // when a model rejects a request shape.
+            let detail = String(data: data, encoding: .utf8)?.prefix(300) ?? ""
+            nlLog("[OpenAIChatClient] \(model) call failed: HTTP \(http.statusCode) \(detail)", level: .warning)
             return nil
         }
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],

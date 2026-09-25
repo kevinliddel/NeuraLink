@@ -110,7 +110,7 @@ Next launch, the persona greets with the opener (delivered via Phase 3's manager
 - `Data/DataSources/ReflectionManager.swift`, modeled **directly on
   `ConversationTitler`** (the proven shape: `NSLock` in-flight dedupe,
   `Task.detached(.background)`, dual-engine routing):
-  - OpenAI enabled + key → `OpenAIChatClient` (`gpt-4o-mini`, `max_tokens ~160`).
+  - OpenAI enabled + key → `OpenAIChatClient` (`gpt-5.6-luna`, `max_completion_tokens ~160`).
   - Else local → `LocalLLMManager.runSilentGeneration(prompt:maxTokens:)`
     (`+Compaction.swift:65` — no UI/TTS side effects, serialized behind the engine lock).
 - Transcript source: `ConversationStore.messages(conversationID:)`, last ~16 turns.
