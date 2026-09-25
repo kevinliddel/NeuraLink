@@ -95,6 +95,9 @@ final class MemoryMentalModels: @unchecked Sendable {
         let answer = Self.cleanAnswer(raw ?? "")
         store.updateMentalModel(id: model.id, content: answer, lastMemoryID: latestMemoryID)
         nlLogSensitive("[MentalModel] \(model.slug): \(answer)", level: .info)
+        if answer != model.content {
+            OpenAIRealtimeManager.postInstructionsChanged(reason: "mental model \(model.slug)")
+        }
         return !answer.isEmpty
     }
 

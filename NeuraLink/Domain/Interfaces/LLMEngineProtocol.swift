@@ -80,9 +80,14 @@ protocol LLMEngineProtocol: AnyObject {
     /// number of tokens restored, or 0 on failure. Safe to call after
     /// loadModel and before any prefill/generate.
     func loadKVCache(from path: String) async -> Int
+
+    /// Constrain tool-call output with a lazy GBNF grammar. Engines that do
+    /// not support grammars default to a no-op returning false.
+    func setToolGrammar(gbnf: String, root: String, triggerPatterns: [String]) -> Bool
 }
 
 extension LLMEngineProtocol {
+    func setToolGrammar(gbnf: String, root: String, triggerPatterns: [String]) -> Bool { false }
     func prefill(messages: [LLMChatMessage]) async { /* no-op */ }
     func saveKVCache(to path: String) async -> Bool { false }
     func loadKVCache(from path: String) async -> Int { 0 }

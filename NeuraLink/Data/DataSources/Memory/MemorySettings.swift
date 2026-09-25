@@ -18,6 +18,8 @@ final class MemorySettings {
         static let similarityFloor = "com.neuralink.memory.similarity_floor"
         static let recencyHalfLifeDays = "com.neuralink.memory.recency_halflife_days"
         static let recencyWeight = "com.neuralink.memory.recency_weight"
+        static let embeddingBackend = "com.neuralink.memory.embedding_backend"
+        static let shareBetweenCharacters = "com.neuralink.memory.share_between_characters"
     }
 
     /// Defaults for the RAG scoring tunables — these reproduce the values
@@ -58,6 +60,17 @@ final class MemorySettings {
         didSet { UserDefaults.standard.set(recencyWeight, forKey: Key.recencyWeight) }
     }
 
+    /// Id of the embedding backend the user chose ("nl" or the GGUF id).
+    var embeddingBackendID: String {
+        didSet { UserDefaults.standard.set(embeddingBackendID, forKey: Key.embeddingBackend) }
+    }
+
+    /// When false, recall is limited to the shared bank plus the active
+    /// character's own bank (docs/CHAT_LLM_IMPROVEMENT_PLAN.md §C4).
+    var charactersShareMemories: Bool {
+        didSet { UserDefaults.standard.set(charactersShareMemories, forKey: Key.shareBetweenCharacters) }
+    }
+
     private init() {
         if UserDefaults.standard.object(forKey: Key.isEnabled) == nil {
             isEnabled = true
@@ -84,5 +97,7 @@ final class MemorySettings {
         } else {
             recencyWeight = UserDefaults.standard.double(forKey: Key.recencyWeight)
         }
+        embeddingBackendID = UserDefaults.standard.string(forKey: Key.embeddingBackend) ?? "nl"
+        charactersShareMemories = UserDefaults.standard.object(forKey: Key.shareBetweenCharacters) as? Bool ?? true
     }
 }

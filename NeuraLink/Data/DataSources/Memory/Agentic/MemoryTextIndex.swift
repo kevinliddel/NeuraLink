@@ -32,6 +32,23 @@ enum MemoryTextIndex {
         "user", "assistant"
     ]
 
+    /// Family and everyday synonyms folded onto one key before stemming, so
+    /// "mum" finds "mother" and "kids" finds "children". Companion memory is
+    /// mostly about people, which makes this tiny table unusually valuable.
+    private static let synonyms: [String: String] = [
+        "mum": "mother", "mom": "mother", "mommy": "mother", "mama": "mother", "mummy": "mother",
+        "dad": "father", "daddy": "father", "papa": "father",
+        "grandma": "grandmother", "granny": "grandmother", "nana": "grandmother",
+        "grandpa": "grandfather", "granddad": "grandfather",
+        "kid": "child", "kids": "child", "children": "child",
+        "bf": "boyfriend", "gf": "girlfriend", "hubby": "husband",
+        "doggy": "dog", "puppy": "dog", "kitten": "cat", "kitty": "cat",
+        "phone": "iphone", "mobile": "iphone", "smartphone": "iphone",
+        "job": "work", "career": "work", "workplace": "work",
+        "flat": "apartment", "house": "home",
+        "bday": "birthday", "film": "movie", "films": "movie"
+    ]
+
     /// Lower-cased, diacritic-folded word tokens with stop words removed.
     /// Uses NLTokenizer so CJK text is segmented sensibly.
     static func tokens(for text: String) -> [String] {
@@ -44,7 +61,7 @@ enum MemoryTextIndex {
             // Possessives ("cat's", "user’s") index as the bare noun.
             for suffix in ["'s", "\u{2019}s"] where token.hasSuffix(suffix) { token.removeLast(2) }
             if token.count >= 2, !stopWords.contains(token), token.rangeOfCharacter(from: .alphanumerics) != nil {
-                out.append(stem(token))
+                out.append(stem(synonyms[token] ?? token))
             }
             return true
         }
@@ -64,7 +81,7 @@ enum MemoryTextIndex {
         guard token.allSatisfy(\.isLetter) else { return token }
         var stem = token
         if stem.count > 4, stem.hasSuffix("ies") {
-            stem = String(stem.dropLast(3)) + "y"
+            stem = String(stem.dropLast(3)) + "i"
         } else if stem.count > 5, stem.hasSuffix("ing") {
             stem = String(stem.dropLast(3))
         } else if stem.count > 4, stem.hasSuffix("ed") {
@@ -73,6 +90,11 @@ enum MemoryTextIndex {
             stem = String(stem.dropLast(2))
         } else if stem.count > 3, stem.hasSuffix("s"), !stem.hasSuffix("ss") {
             stem = String(stem.dropLast())
+        }
+        // Porter 1c: trailing y after a consonant → i ("city" → "citi" meets
+        // "cities" → "citi"; "movie"/"movies" → "movi").
+        if stem.count > 3, stem.hasSuffix("y"), let before = stem.dropLast().last, !"aeiou".contains(before) {
+            stem = String(stem.dropLast()) + "i"
         }
         // Final silent-e drop (Porter step 5a, simplified): "name" → "nam"
         // so it meets "named" → "nam"; "like" → "lik" meets "likes" → "lik".

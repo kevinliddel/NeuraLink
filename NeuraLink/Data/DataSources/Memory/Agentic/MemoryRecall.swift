@@ -27,6 +27,35 @@ struct MemoryRecallQuery {
     /// Drop facts already covered by a returned observation.
     var preferObservations: Bool = true
     var now: Date = Date()
+    /// Character whose bank is searched alongside the shared bank; nil =
+    /// the active character (see `MemoryBanks`).
+    var bank: String?
+}
+
+/// Bank policy (docs/CHAT_LLM_IMPROVEMENT_PLAN.md §C4): facts about the user
+/// are shared (""), while what a character did, believes or said lives in
+/// that character's bank.
+enum MemoryBanks {
+    static let shared = ""
+
+    static func activeCharacter() -> String {
+        RealtimeChatState.shared.selectedCharacterName.lowercased()
+    }
+
+    /// Bank for a new unit of `factType` produced while `character` is active.
+    static func bank(for factType: MemoryFactType, source: String, character: String) -> String {
+        switch factType {
+        case .world: return shared
+        case .raw: return source == "ai" ? character : shared
+        case .experience, .observation: return character
+        }
+    }
+
+    /// Banks recall may read for `character`; nil = every bank.
+    static func readable(for character: String?, settings: MemorySettings = .shared) -> Set<String>? {
+        guard !settings.charactersShareMemories else { return nil }
+        return [shared, (character ?? activeCharacter()).lowercased()]
+    }
 }
 
 struct MemoryRecallHit: Identifiable {
@@ -46,12 +75,26 @@ final class MemoryRecall {
     static let graphSeedLimit = 20
     /// Per-arm cap before fusion.
     static let armLimit = 50
-    /// Minimum similarity for a unit to count inside a temporal window.
-    static let temporalSimilarityFloor = 0.1
+    /// Rank-space weight of the temporal arm when the query names a time
+    /// (Hindsight's per-strategy recall boost). An explicit "last weekend"
+    /// is stronger evidence than a loose semantic neighbour.
+    static let temporalArmWeight = 2.0
 
     private let store: MemoryStore
     private let embedder: EmbeddingService
     private let settings: MemorySettings
+
+    #if DEBUG
+    /// Last run's internals, for the evaluation harness and tests.
+    struct Diagnostics {
+        var candidateCount = 0
+        var window: MemoryTimeWindow?
+        var inWindowIDs: [Int64] = []
+        var arms: [MemoryRecallArm: [Int64]] = [:]
+        var similarity: [Int64: Double] = [:]
+    }
+    private(set) var lastDiagnostics = Diagnostics()
+    #endif
 
     init(store: MemoryStore = .shared, embedder: EmbeddingService = .shared, settings: MemorySettings = .shared) {
         self.store = store
@@ -64,16 +107,20 @@ final class MemoryRecall {
     func recall(_ query: MemoryRecallQuery) -> [MemoryRecallHit] {
         let trimmed = query.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
-        let candidates = store.fetchUnits(factTypes: query.factTypes)
+        let candidates = store.fetchUnits(factTypes: query.factTypes, banks: MemoryBanks.readable(for: query.bank))
         guard !candidates.isEmpty else { return [] }
-        let queryVector = embedder.generateVector(for: trimmed) ?? []
-        return recall(query, candidates: candidates, queryVector: queryVector)
+        let queryVector = embedder.generateVector(for: trimmed, purpose: .query) ?? []
+        return recall(query, candidates: candidates, queryVector: queryVector, vectorModel: embedder.activeModelID)
     }
 
     /// Pure core, exposed for tests: runs the arms over an explicit pool.
-    func recall(_ query: MemoryRecallQuery, candidates: [MemoryUnit], queryVector: [Double]) -> [MemoryRecallHit] {
+    /// Only candidates embedded by `vectorModel` take part in the semantic
+    /// arm (nil = any model with a matching dimension).
+    func recall(
+        _ query: MemoryRecallQuery, candidates: [MemoryUnit], queryVector: [Double], vectorModel: String? = nil
+    ) -> [MemoryRecallHit] {
         let byID = Dictionary(uniqueKeysWithValues: candidates.map { ($0.id, $0) })
-        let similarity = similarities(queryVector: queryVector, candidates: candidates)
+        let similarity = similarities(queryVector: queryVector, candidates: candidates, vectorModel: vectorModel)
         let window = MemoryTemporalParser.window(in: query.text, now: query.now)
 
         var arms: [MemoryRecallArm: [Int64]] = [:]
@@ -84,7 +131,14 @@ final class MemoryRecall {
             arms[.temporal] = temporalArm(window: window, candidates: candidates, similarity: similarity)
         }
 
-        let fused = Self.fuse(arms)
+        #if DEBUG
+        lastDiagnostics = Diagnostics(
+            candidateCount: candidates.count, window: window,
+            inWindowIDs: window.map { w in candidates.filter { Self.overlaps($0, w) }.map(\.id) } ?? [],
+            arms: arms, similarity: similarity)
+        #endif
+
+        let fused = Self.fuse(arms, weights: window == nil ? [:] : [.temporal: Self.temporalArmWeight])
         guard !fused.isEmpty else { return [] }
 
         let reranked = rerank(fused, byID: byID, arms: arms, window: window, now: query.now)
@@ -94,17 +148,18 @@ final class MemoryRecall {
 
     // MARK: - Arms
 
-    private func similarities(queryVector: [Double], candidates: [MemoryUnit]) -> [Int64: Double] {
+    private func similarities(queryVector: [Double], candidates: [MemoryUnit], vectorModel: String?) -> [Int64: Double] {
         guard !queryVector.isEmpty else { return [:] }
         var result: [Int64: Double] = [:]
-        for unit in candidates where unit.vector.count == queryVector.count {
+        for unit in candidates
+        where unit.vector.count == queryVector.count && (vectorModel == nil || unit.vectorModel == vectorModel) {
             result[unit.id] = EmbeddingService.cosineSimilarity(queryVector, unit.vector)
         }
         return result
     }
 
     private func semanticArm(similarity: [Int64: Double]) -> [Int64] {
-        let floor = settings.similarityFloor
+        let floor = embedder.calibration.queryFloor(nominal: settings.similarityFloor)
         return similarity
             .filter { $0.value > floor }
             .sorted { $0.value > $1.value }
@@ -145,25 +200,38 @@ final class MemoryRecall {
         return scores.sorted { $0.value > $1.value }.prefix(Self.armLimit).map(\.key)
     }
 
-    /// Units inside the query's time window, ranked by similarity and then
-    /// spread across time buckets so entry points cover the whole window.
+    /// Units inside the query's time window, ranked by how specifically
+    /// their own span fits the window (a two-day event inside a weekend
+    /// window beats a whole-year fact that overlaps every window), then by
+    /// similarity, then recency; finally spread across time buckets so entry
+    /// points cover the whole window. No similarity floor: an explicit time
+    /// reference must surface what happened then even when the embedding
+    /// is weak — sentence embeddings rate "what did I do last weekend?"
+    /// against a hike lower than against "signed up for a marathon".
     private func temporalArm(window: MemoryTimeWindow, candidates: [MemoryUnit], similarity: [Int64: Double]) -> [Int64] {
-        let inWindow = candidates.filter { unit in
-            if let start = unit.occurredStart {
-                let end = unit.occurredEnd ?? start
-                return start <= window.end && end >= window.start
-            }
-            return window.contains(unit.mentionedAt)
-        }
+        let inWindow = candidates.filter { Self.overlaps($0, window) }
         guard !inWindow.isEmpty else { return [] }
-        let hasVectors = !similarity.isEmpty
-        let ranked = inWindow
-            .filter { !hasVectors || (similarity[$0.id] ?? 0) >= Self.temporalSimilarityFloor }
-            .sorted {
-                let a = similarity[$0.id] ?? 0, b = similarity[$1.id] ?? 0
-                return a == b ? $0.mentionedAt > $1.mentionedAt : a > b
-            }
+        let windowSpan = max(1, window.end.timeIntervalSince(window.start))
+        func specificity(_ unit: MemoryUnit) -> Double {
+            guard let start = unit.occurredStart else { return 1 }
+            let span = max(1, (unit.occurredEnd ?? start).timeIntervalSince(start))
+            return min(1, windowSpan / span)
+        }
+        let ranked = inWindow.sorted {
+            let sa = specificity($0), sb = specificity($1)
+            if abs(sa - sb) > 0.01 { return sa > sb }
+            let a = similarity[$0.id] ?? 0, b = similarity[$1.id] ?? 0
+            return a == b ? $0.mentionedAt > $1.mentionedAt : a > b
+        }
         return Self.spreadAcrossBuckets(ranked, window: window, buckets: 5).prefix(Self.armLimit).map(\.id)
+    }
+
+    static func overlaps(_ unit: MemoryUnit, _ window: MemoryTimeWindow) -> Bool {
+        if let start = unit.occurredStart {
+            let end = unit.occurredEnd ?? start
+            return start <= window.end && end >= window.start
+        }
+        return window.contains(unit.mentionedAt)
     }
 
     static func spreadAcrossBuckets(_ ranked: [MemoryUnit], window: MemoryTimeWindow, buckets: Int) -> [MemoryUnit] {
@@ -185,12 +253,16 @@ final class MemoryRecall {
 
     // MARK: - Fusion
 
-    /// Reciprocal rank fusion: `score(d) = Σ 1 / (k + rank_i)`. Best first.
-    static func fuse(_ arms: [MemoryRecallArm: [Int64]], k: Double = rrfK) -> [(id: Int64, score: Double)] {
+    /// Reciprocal rank fusion: `score(d) = Σ w_i / (k + rank_i)`. Best first.
+    /// `weights` defaults every arm to 1.
+    static func fuse(
+        _ arms: [MemoryRecallArm: [Int64]], weights: [MemoryRecallArm: Double] = [:], k: Double = rrfK
+    ) -> [(id: Int64, score: Double)] {
         var scores: [Int64: Double] = [:]
-        for (_, ranking) in arms {
+        for (arm, ranking) in arms {
+            let weight = weights[arm] ?? 1
             for (rank, id) in ranking.enumerated() {
-                scores[id, default: 0] += 1 / (k + Double(rank + 1))
+                scores[id, default: 0] += weight / (k + Double(rank + 1))
             }
         }
         return scores.map { (id: $0.key, score: $0.value) }.sorted { $0.score > $1.score }

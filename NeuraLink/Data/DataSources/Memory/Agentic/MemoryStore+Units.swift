@@ -30,7 +30,9 @@ extension MemoryStore {
             ("occurred_end", "DATETIME"),
             ("proof_count", "INTEGER NOT NULL DEFAULT 1"),
             ("source_ids", "TEXT NOT NULL DEFAULT ''"),
-            ("consolidated_at", "DATETIME")
+            ("consolidated_at", "DATETIME"),
+            ("vector_model", "TEXT NOT NULL DEFAULT 'nl'"),
+            ("bank", "TEXT NOT NULL DEFAULT ''")
         ]
         var addedAny = false
         for (name, decl) in columns where !columnExists(table: "memories", column: name) {
@@ -73,6 +75,7 @@ extension MemoryStore {
             UNIQUE (character, slug)
         );
         CREATE INDEX IF NOT EXISTS idx_memories_fact_type ON memories(fact_type);
+        CREATE INDEX IF NOT EXISTS idx_memories_bank ON memories(bank);
         """
         if sqlite3_exec(db, schema, nil, nil, nil) != SQLITE_OK {
             let errmsg = String(cString: sqlite3_errmsg(db)!)
@@ -132,15 +135,17 @@ extension MemoryStore {
         occurredStart: Date? = nil,
         occurredEnd: Date? = nil,
         proofCount: Int = 1,
-        sourceIDs: [Int64] = []
+        sourceIDs: [Int64] = [],
+        vectorModel: String = EmbeddingService.shared.activeModelID,
+        bank: String = ""
     ) -> Int64 {
         lock.lock()
         defer { lock.unlock() }
         let query = """
         INSERT INTO memories
             (text, vector, source, pinned, fact_type, context, tokens, mentioned_at,
-             occurred_start, occurred_end, proof_count, source_ids, consolidated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+             occurred_start, occurred_end, proof_count, source_ids, consolidated_at, vector_model, bank)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
         """
         var statement: OpaquePointer?
         var newID: Int64 = -1
@@ -167,6 +172,8 @@ extension MemoryStore {
         } else {
             sqlite3_bind_null(statement, 13)
         }
+        sqlite3_bind_text(statement, 14, (vectorModel as NSString).utf8String, -1, nil)
+        sqlite3_bind_text(statement, 15, (bank as NSString).utf8String, -1, nil)
         if sqlite3_step(statement) == SQLITE_DONE {
             newID = sqlite3_last_insert_rowid(db)
         } else {
@@ -179,18 +186,28 @@ extension MemoryStore {
 
     // MARK: - Read
 
-    /// Every unit of the given fact types (all types when nil), newest first.
-    /// Entities are attached in a second query keyed by unit id.
-    func fetchUnits(factTypes: Set<MemoryFactType>? = nil) -> [MemoryUnit] {
+    /// Every unit of the given fact types (all types when nil) and banks
+    /// (all banks when nil), newest first. Entities are attached in a
+    /// second query keyed by unit id.
+    func fetchUnits(factTypes: Set<MemoryFactType>? = nil, banks: Set<String>? = nil) -> [MemoryUnit] {
         lock.lock()
         defer { lock.unlock() }
-        var query = "SELECT \(Self.unitColumns) FROM memories"
+        var clauses: [String] = []
         if let types = factTypes, !types.isEmpty {
-            let list = types.map { "'\($0.rawValue)'" }.joined(separator: ",")
-            query += " WHERE fact_type IN (\(list))"
+            clauses.append("fact_type IN (" + types.map { "'\($0.rawValue)'" }.joined(separator: ",") + ")")
         }
+        let bankList = banks.map { Array($0) } ?? []
+        if !bankList.isEmpty {
+            clauses.append("bank IN (" + bankList.map { _ in "?" }.joined(separator: ",") + ")")
+        }
+        var query = "SELECT \(Self.unitColumns) FROM memories"
+        if !clauses.isEmpty { query += " WHERE " + clauses.joined(separator: " AND ") }
         query += " ORDER BY id DESC;"
-        return runUnitQuery(query) { _ in }
+        return runUnitQuery(query) { statement in
+            for (index, bank) in bankList.enumerated() {
+                sqlite3_bind_text(statement, Int32(index + 1), (bank as NSString).utf8String, -1, nil)
+            }
+        }
     }
 
     func fetchUnit(id: Int64) -> MemoryUnit? {
@@ -286,6 +303,46 @@ extension MemoryStore {
         sqlite3_finalize(statement)
     }
 
+    /// Replaces a unit's vector after re-embedding with another backend.
+    func updateVector(id: Int64, vector: [Double], model: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "UPDATE memories SET vector = ?, vector_model = ? WHERE id = ?;", -1, &statement, nil) == SQLITE_OK
+        else { return }
+        let data = Data(bytes: vector, count: vector.count * MemoryLayout<Double>.size)
+        data.withUnsafeBytes { ptr in
+            _ = sqlite3_bind_blob(statement, 1, ptr.baseAddress, Int32(data.count), nil)
+        }
+        sqlite3_bind_text(statement, 2, (model as NSString).utf8String, -1, nil)
+        sqlite3_bind_int64(statement, 3, id)
+        _ = sqlite3_step(statement)
+        sqlite3_finalize(statement)
+    }
+
+    /// Units whose vector came from a backend other than `model`, oldest first.
+    func fetchUnits(notEmbeddedWith model: String, limit: Int) -> [MemoryUnit] {
+        lock.lock()
+        defer { lock.unlock() }
+        return runUnitQuery("SELECT \(Self.unitColumns) FROM memories WHERE vector_model != ? ORDER BY id ASC LIMIT ?;") { statement in
+            sqlite3_bind_text(statement, 1, (model as NSString).utf8String, -1, nil)
+            sqlite3_bind_int(statement, 2, Int32(limit))
+        }
+    }
+
+    func countUnits(notEmbeddedWith model: String) -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        var statement: OpaquePointer?
+        var count = 0
+        if sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM memories WHERE vector_model != ?;", -1, &statement, nil) == SQLITE_OK {
+            sqlite3_bind_text(statement, 1, (model as NSString).utf8String, -1, nil)
+            if sqlite3_step(statement) == SQLITE_ROW { count = Int(sqlite3_column_int(statement, 0)) }
+        }
+        sqlite3_finalize(statement)
+        return count
+    }
+
     func deleteUnit(id: Int64) {
         lock.lock()
         defer { lock.unlock() }
@@ -301,7 +358,7 @@ extension MemoryStore {
 
     static let unitColumns = """
     id, text, vector, timestamp, source, pinned, fact_type, context, tokens, mentioned_at,
-    occurred_start, occurred_end, proof_count, source_ids, consolidated_at
+    occurred_start, occurred_end, proof_count, source_ids, consolidated_at, vector_model, bank
     """
 
     /// Caller must hold `lock`.
@@ -338,6 +395,8 @@ extension MemoryStore {
             text: Self.text(statement, 1),
             context: Self.text(statement, 7),
             vector: vector,
+            vectorModel: Self.text(statement, 15),
+            bank: Self.text(statement, 16),
             factType: MemoryFactType(rawValue: Self.text(statement, 6)) ?? .raw,
             source: Self.text(statement, 4),
             pinned: sqlite3_column_int(statement, 5) != 0,
@@ -379,7 +438,7 @@ extension MemoryStore {
 extension MemoryUnit {
     func withEntities(_ names: [String]) -> MemoryUnit {
         MemoryUnit(
-            id: id, text: text, context: context, vector: vector, factType: factType,
+            id: id, text: text, context: context, vector: vector, vectorModel: vectorModel, bank: bank, factType: factType,
             source: source, pinned: pinned, createdAt: createdAt, mentionedAt: mentionedAt,
             occurredStart: occurredStart, occurredEnd: occurredEnd, proofCount: proofCount,
             sourceIDs: sourceIDs, consolidatedAt: consolidatedAt, tokens: tokens, entities: names)

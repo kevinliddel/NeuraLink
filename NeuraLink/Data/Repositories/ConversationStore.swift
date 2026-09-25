@@ -81,6 +81,11 @@ final class ConversationStore: @unchecked Sendable {
         MemoryStore.shared.fetchLastMessage(conversationID: conversationID)
     }
 
+    /// First message in the conversation that matches `query` (search previews).
+    func firstMessage(conversationID: Int64, matching query: String) -> ConversationMessage? {
+        MemoryStore.shared.firstMessage(conversationID: conversationID, matching: query)
+    }
+
     func deleteConversation(id: Int64) {
         MemoryStore.shared.deleteConversation(id: id)
         lock.lock()

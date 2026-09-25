@@ -100,6 +100,7 @@ final class GGUFLlamaEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
                 self.bridge   = loaded
                 self.isLoaded = true
                 nlLog("[GGUFEngine] Ready. llama.cpp \(loaded.version)", level: .info)
+                self.installLocalToolGrammar()
             }
             self.loadTask = t
             return t

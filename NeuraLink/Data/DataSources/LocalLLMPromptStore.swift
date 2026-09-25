@@ -51,6 +51,7 @@ final class LocalLLMPromptStore {
     ) {
         MemoryStore.shared.setPersonaPrompt(
             character: characterName, engine: engineKey(for: config), prompt: prompt)
+        OpenAIRealtimeManager.postInstructionsChanged(reason: "persona prompt")
     }
 
     /// Clears the override so `effectivePrompt` reverts to the built-in default.
@@ -82,8 +83,9 @@ final class LocalLLMPromptStore {
             "Use [emotion:seconds] tags (e.g. [happy:2], [sad:1]) in your reply. Never say the emotion name aloud.\n"
 
         if config == .llama1b {
-            let tool =
-                "To save a user fact output only: <tool name=\"\(AppFunctionTool.rememberFact)\">{\"subject\":\"User\",\"predicate\":\"likes\",\"object\":\"X\"}</tool>\n"
+            // Same source of truth as the sampling grammar (A1).
+            let tool = ToolGrammarBuilder.promptBlock(
+                for: ToolGrammarBuilder.tools(named: ToolGrammarBuilder.localToolNames, from: AppFunctionTool.all))
             switch characterName.lowercased() {
             case "ekaterina":
                 return emotionTag + tool

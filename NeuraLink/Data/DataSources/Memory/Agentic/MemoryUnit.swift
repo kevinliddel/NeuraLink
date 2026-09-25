@@ -35,6 +35,11 @@ struct MemoryUnit: Identifiable, Sendable {
     /// Short surrounding context (e.g. "said during a chat about dinner").
     let context: String
     let vector: [Double]
+    /// Id of the embedding backend that produced `vector`.
+    let vectorModel: String
+    /// Memory bank: "" = shared by every character, otherwise a character
+    /// slug (experiences, observations and assistant turns are per character).
+    let bank: String
     let factType: MemoryFactType
     let source: String
     let pinned: Bool

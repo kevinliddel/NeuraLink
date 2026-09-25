@@ -25,6 +25,8 @@ struct ChatHistorySidebar: View {
     @State private var conversations: [Conversation] = []
     @State private var renaming: Conversation?
     @State private var renameText: String = ""
+    @State private var searchText: String = ""
+    @State private var searchTask: Task<Void, Never>?
 
     private let panelWidth: CGFloat = 325
 
@@ -71,6 +73,7 @@ struct ChatHistorySidebar: View {
             Divider()
             newChatButton
             Divider()
+            searchBar
             listContent
         }
     }
@@ -126,15 +129,46 @@ struct ChatHistorySidebar: View {
         .buttonStyle(.plain)
     }
 
+    /// Search across titles and message text (docs/CHAT_LLM_IMPROVEMENT_PLAN.md §C1).
+    private var searchBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            TextField("Search chats", text: $searchText)
+                .textFieldStyle(.plain)
+                .autocorrectionDisabled()
+                .submitLabel(.search)
+            if !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .padding(.horizontal, 12)
+        .padding(.bottom, 6)
+        .onChange(of: searchText) { _, _ in scheduleSearch() }
+    }
+
+    private var isSearching: Bool { !searchText.trimmingCharacters(in: .whitespaces).isEmpty }
+
     @ViewBuilder private var listContent: some View {
         if conversations.isEmpty {
             VStack(spacing: 8) {
-                Image(systemName: "bubble.left.and.bubble.right")
+                Image(systemName: isSearching ? "magnifyingglass" : "bubble.left.and.bubble.right")
                     .font(.largeTitle)
                     .foregroundStyle(.secondary)
-                Text("No chats yet")
+                Text(isSearching ? "No chats mention “\(searchText.trimmingCharacters(in: .whitespaces))”" : "No chats yet")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
@@ -200,7 +234,17 @@ struct ChatHistorySidebar: View {
     // MARK: - Data
 
     private func reload() {
-        conversations = ConversationStore.shared.conversations()
+        conversations = ConversationStore.shared.conversations(matching: searchText)
+    }
+
+    /// Debounced so each keystroke does not hit SQLite.
+    private func scheduleSearch() {
+        searchTask?.cancel()
+        searchTask = Task {
+            try? await Task.sleep(for: .milliseconds(150))
+            guard !Task.isCancelled else { return }
+            reload()
+        }
     }
 
     private func delete(_ convo: Conversation) {
@@ -224,6 +268,10 @@ struct ChatHistorySidebar: View {
     }
 
     private func preview(_ convo: Conversation) -> String {
+        if isSearching, let hit = ConversationStore.shared.firstMessage(conversationID: convo.id, matching: searchText) {
+            let prefix = hit.isUser ? "You: " : ""
+            return prefix + MemoryStore.snippet(hit.content, around: searchText)
+        }
         guard let last = ConversationStore.shared.lastMessage(conversationID: convo.id) else {
             return "No messages yet"
         }

@@ -17,12 +17,15 @@ enum AIConnectionStatus: Equatable {
     case listening
     case thinking
     case speaking
+    /// Realtime session dropped; automatic reconnect attempt N in progress.
+    case reconnecting(attempt: Int)
     case error(String)
 
     var label: String {
         switch self {
         case .disconnected: return "Disconnected"
         case .connecting: return "Connecting..."
+        case .reconnecting(let attempt): return "Reconnecting… (\(attempt))"
         case .preparing: return "Preparing local LLMs..."
         case .ready: return "Ready"
         case .listening: return "Listening"
@@ -43,6 +46,9 @@ final class RealtimeChatState {
     var aiTranscript: String = ""
     var audioLevel: Float = 0.0  // 0.0 to 1.0
     var selectedCharacterName: String = ""
+    /// Token usage of the live Realtime session and of the last one that ended.
+    var sessionUsage = RealtimeUsageMeter()
+    var lastSessionUsage = RealtimeUsageMeter()
     var currentEmotion: String = "neutral"
     var emotionDuration: Float = 0
     private var lastParsedIndex: Int = 0

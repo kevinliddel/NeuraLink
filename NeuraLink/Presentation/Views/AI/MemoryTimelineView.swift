@@ -104,6 +104,21 @@ struct MemoryTimelineView: View {
                     }
                 }
 
+                MemoryEmbeddingModelRow()
+
+                Toggle(isOn: Bindable(memorySettings).charactersShareMemories) {
+                    Label {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Characters share memories")
+                            Text("Off: each character only recalls what it experienced itself, plus facts about you.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    } icon: {
+                        settingIcon("person.2", color: .indigo)
+                    }
+                }
+
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
                         Label("Recall precision", systemImage: "scope")

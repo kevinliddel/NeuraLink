@@ -39,6 +39,14 @@ struct AutonomySettingsView: View {
                 )
             }
             .disabled(!settings.isEnabled)
+
+            Toggle(isOn: $settings.isLocalBargeInEnabled) {
+                InfoToggleLabel(
+                    title: "Interrupt while speaking (local)",
+                    info: "Start talking over the local assistant to cut its reply short. Uses echo-aware detection; turn off if it triggers on its own voice."
+                )
+            }
+            .disabled(!settings.isLocalLLMEnabled)
         }
     }
 

@@ -100,6 +100,25 @@ final class LlamaBridge {
         llama_bridge_free(handle)
     }
 
+    // MARK: - Tool grammar
+
+    /// Installs a lazy GBNF grammar (see `ToolGrammarBuilder`). Returns false
+    /// when llama.cpp rejects the grammar; the default chain then stays.
+    func setToolGrammar(gbnf: String, root: String, triggerPatterns: [String]) -> Bool {
+        guard let handle else { return false }
+        var cStrings = triggerPatterns.map { strdup($0) }
+        defer { cStrings.forEach { free($0) } }
+        return cStrings.withUnsafeMutableBufferPointer { buffer -> Bool in
+            buffer.withMemoryRebound(to: UnsafePointer<CChar>?.self) { rebound in
+                llama_bridge_set_tool_grammar(handle, gbnf, root, rebound.baseAddress, Int32(triggerPatterns.count))
+            }
+        }
+    }
+
+    func clearToolGrammar() {
+        llama_bridge_clear_tool_grammar(handle)
+    }
+
     // MARK: - Inference
 
     /// Generates tokens for `prompt`. Blocks the calling thread — run inside a detached Task.

@@ -28,8 +28,8 @@ final class MemoryRetain: @unchecked Sendable {
     static func batchThreshold(for tier: MemoryLLMTier) -> Int { tier == .cloud ? 4 : 8 }
     /// Max characters per extraction chunk (Hindsight uses 3000 server-side).
     static let chunkCharacters = 1500
-    /// Semantic links: cosine floor and per-unit cap.
-    static let semanticLinkFloor = 0.7
+    /// Semantic links: per-unit cap (the cosine floor is per backend, see
+    /// `EmbeddingCalibration`).
     static let semanticLinkCap = 10
     /// Temporal links: same fact type within 24 h, cap per unit.
     static let temporalLinkCap = 20
@@ -72,6 +72,7 @@ final class MemoryRetain: @unchecked Sendable {
         }
         let character = RealtimeChatState.shared.selectedCharacterName
         Task.detached(priority: .background) {
+            await EmbeddingService.shared.restorePreferredBackend()
             MemoryMentalModels.shared.ensureDefaults(character: character)
         }
     }
@@ -84,7 +85,9 @@ final class MemoryRetain: @unchecked Sendable {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard settings.isEnabled, !trimmed.isEmpty else { return -1 }
         guard let vector = embedder.generateVector(for: trimmed) else { return -1 }
-        let id = store.insertUnit(text: trimmed, vector: vector, factType: .raw, source: source, mentionedAt: mentionedAt)
+        let id = store.insertUnit(
+            text: trimmed, vector: vector, factType: .raw, source: source, mentionedAt: mentionedAt,
+            bank: MemoryBanks.bank(for: .raw, source: source, character: MemoryBanks.activeCharacter()))
         guard id > 0 else { return -1 }
         store.linkEntities(unitID: id, names: MemoryEntityExtractor.entities(in: trimmed, includeUser: source == "user"))
         link(unitID: id, vector: vector, factType: .raw, mentionedAt: mentionedAt)
@@ -100,7 +103,8 @@ final class MemoryRetain: @unchecked Sendable {
         guard let vector = embedder.generateVector(for: text) else { return -1 }
         let id = store.insertUnit(
             text: text, vector: vector, factType: fact.factType, source: source,
-            mentionedAt: mentionedAt, occurredStart: fact.occurredStart, occurredEnd: fact.occurredEnd)
+            mentionedAt: mentionedAt, occurredStart: fact.occurredStart, occurredEnd: fact.occurredEnd,
+            bank: MemoryBanks.bank(for: fact.factType, source: source, character: MemoryBanks.activeCharacter()))
         guard id > 0 else { return -1 }
         let names = fact.entities.isEmpty
             ? MemoryEntityExtractor.entities(in: text, includeUser: MemoryEntityExtractor.isAboutUser(text))
@@ -126,10 +130,12 @@ final class MemoryRetain: @unchecked Sendable {
             links.append(MemoryLink(fromID: unitID, toID: unit.id, kind: .temporal, weight: max(0.3, 1 - hours / 24)))
         }
 
+        let linkFloor = embedder.calibration.semanticLinkFloor
+        let model = embedder.activeModelID
         let semantic = units
-            .filter { $0.vector.count == vector.count }
+            .filter { $0.vector.count == vector.count && $0.vectorModel == model }
             .map { ($0, EmbeddingService.cosineSimilarity(vector, $0.vector)) }
-            .filter { $0.1 >= Self.semanticLinkFloor && $0.1 < 0.9999 }
+            .filter { $0.1 >= linkFloor && $0.1 < 0.9999 }
             .sorted { $0.1 > $1.1 }
             .prefix(Self.semanticLinkCap)
         for (unit, sim) in semantic {
@@ -171,7 +177,7 @@ final class MemoryRetain: @unchecked Sendable {
         for chunk in Self.chunk(turns, maxCharacters: Self.chunkCharacters) {
             let facts = await extract(from: chunk)
             let reference = chunk.last?.timestamp ?? Date()
-            stored += persist(facts, mentionedAt: reference)
+            stored += persist(facts, mentionedAt: reference).count
         }
         return stored
     }
@@ -198,9 +204,10 @@ final class MemoryRetain: @unchecked Sendable {
         }
     }
 
-    /// Persists facts and their causal links. Returns the number stored.
+    /// Persists facts and their causal links. Returns the stored unit ids in
+    /// input order (facts that failed the gates are simply absent).
     @discardableResult
-    func persist(_ facts: [ExtractedFact], mentionedAt: Date) -> Int {
+    func persist(_ facts: [ExtractedFact], mentionedAt: Date) -> [Int64] {
         var ids: [Int64?] = []
         for fact in facts {
             let id = retainFact(fact, source: "retain", mentionedAt: mentionedAt)
@@ -214,7 +221,7 @@ final class MemoryRetain: @unchecked Sendable {
             causal.append(MemoryLink(fromID: from, toID: to, kind: .causedBy, weight: 1.0))
         }
         store.insertLinks(causal)
-        return ids.compactMap { $0 }.count
+        return ids.compactMap { $0 }
     }
 
     /// Splits turns into consecutive chunks of at most `maxCharacters`.

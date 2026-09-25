@@ -31,9 +31,11 @@
 
 /// Build the default sampler chain: penalties → top_k → top_p → temp → dist.
 /// Tuned for conversational quality without runaway randomness.
-static llama_sampler* build_default_sampler() {
+static llama_sampler* build_default_sampler(llama_sampler* grammar = nullptr) {
     auto sparams         = llama_sampler_chain_default_params();
     llama_sampler* chain = llama_sampler_chain_init(sparams);
+    // A (lazy) grammar constrains logits before any stochastic step.
+    if (grammar) { llama_sampler_chain_add(chain, grammar); }
     if (!chain) { return nullptr; }
 
     llama_sampler_chain_add(chain, llama_sampler_init_penalties(
@@ -111,6 +113,36 @@ void llama_bridge_free(LlamaBridgeHandle* handle) {
 
 const char* llama_bridge_version(void) {
     return llama_print_system_info();
+}
+
+bool llama_bridge_set_tool_grammar(LlamaBridgeHandle* handle, const char* gbnf, const char* root,
+                                   const char* const* trigger_patterns, int32_t n_trigger_patterns) {
+    if (!handle || !handle->model || !gbnf || !root) { return false; }
+    const llama_vocab* vocab = llama_model_get_vocab(handle->model);
+    // llama.cpp takes `const char**`; our API is `const char* const*` so Swift
+    // can pass an immutable array. The callee never writes through it.
+    llama_sampler* grammar = llama_sampler_init_grammar_lazy_patterns(
+        vocab, gbnf, root, const_cast<const char**>(trigger_patterns),
+        static_cast<size_t>(n_trigger_patterns > 0 ? n_trigger_patterns : 0), nullptr, 0);
+    if (!grammar) { return false; }
+    llama_sampler* chain = build_default_sampler(grammar);
+    if (!chain) {
+        llama_sampler_free(grammar);
+        return false;
+    }
+    if (handle->sampler) { llama_sampler_free(handle->sampler); }
+    handle->sampler        = chain;
+    handle->grammar_active = true;
+    return true;
+}
+
+void llama_bridge_clear_tool_grammar(LlamaBridgeHandle* handle) {
+    if (!handle || !handle->grammar_active) { return; }
+    llama_sampler* chain = build_default_sampler();
+    if (!chain) { return; }
+    if (handle->sampler) { llama_sampler_free(handle->sampler); }
+    handle->sampler        = chain;
+    handle->grammar_active = false;
 }
 
 void llama_bridge_set_prompt_lookup(LlamaBridgeHandle* handle, bool enabled, int32_t n, int32_t n_draft) {
@@ -476,7 +508,7 @@ void llama_bridge_generate(LlamaBridgeHandle* handle, const char* prompt, int32_
         return;
     }
 
-    if (handle->pld_enabled) {
+    if (handle->pld_enabled && !handle->grammar_active) {
         generate_pld(handle, new_tokens, max_new_tokens, on_token, on_finish, user_ctx);
     } else {
         generate_standard(handle, new_tokens, max_new_tokens, on_token, on_finish, user_ctx);

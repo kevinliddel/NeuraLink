@@ -46,6 +46,12 @@ nonisolated enum RemoteAssetRegistry: Hashable, Sendable {
     // hosted under `stt/whisper/` in the shared dataset.
     case whisperModel
 
+    // Memory embedding model — EmbeddingGemma-300M Q8_0 (~334 MB, official
+    // ggml-org GGUF), fetched from its own public model repo (see
+    // `remoteURL`); cached under `embeddings/`. Enables the multilingual
+    // semantic recall arm.
+    case embeddingModel
+
     /// On-disk filename — the basename only. Used for `Bundle.main`
     /// lookup and as the local cache filename. Folder prefix comes
     /// from `pathInRepo`.
@@ -58,6 +64,7 @@ nonisolated enum RemoteAssetRegistry: Hashable, Sendable {
         case .openVoiceConverter: return "voice_conversion.onnx"
         case .openVoiceBert: return "bert_en.onnx"
         case .whisperModel: return "ggml-base.bin"
+        case .embeddingModel: return "embeddinggemma-300M-Q8_0.gguf"
         }
     }
 
@@ -77,6 +84,20 @@ nonisolated enum RemoteAssetRegistry: Hashable, Sendable {
             return "tts/open_voice/\(filename)"
         case .whisperModel:
             return "stt/whisper/\(filename)"
+        case .embeddingModel:
+            return "embeddings/\(filename)"
+        }
+    }
+
+    /// Where to download from. Everything lives in the shared dataset except
+    /// assets that are re-used verbatim from a public model repo, which are
+    /// still pinned by size + SHA-256 like the rest.
+    var remoteURL: URL? {
+        switch self {
+        case .embeddingModel:
+            return URL(string: "https://huggingface.co/ggml-org/embeddinggemma-300M-GGUF/resolve/main/\(filename)")
+        default:
+            return URL(string: "https://huggingface.co/datasets/\(Self.repoID)/resolve/main/\(pathInRepo)")
         }
     }
 
@@ -92,7 +113,7 @@ nonisolated enum RemoteAssetRegistry: Hashable, Sendable {
             return "open_jtalk_dic_utf_8-1.11"
         case .voicevoxSpeaker,
             .openVoiceMelo, .openVoiceConverter, .openVoiceBert,
-            .whisperModel:
+            .whisperModel, .embeddingModel:
             return nil
         }
     }
@@ -146,6 +167,12 @@ nonisolated enum RemoteAssetRegistry: Hashable, Sendable {
             return .init(
                 size: 147_951_465,
                 sha256: "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe")
+        case .embeddingModel:
+            // ggml-org/embeddinggemma-300M-GGUF, LFS oid captured 2026-09-26
+            // (Gemma Terms of Use).
+            return .init(
+                size: 333_590_944,
+                sha256: "b5ce9d77a3fc4b3b39ccb5643c36777911cc4eb46a66962eadfa3f5f60490d63")
         }
     }
 

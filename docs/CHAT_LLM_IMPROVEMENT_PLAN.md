@@ -11,15 +11,15 @@ bridge change, build, and the whole test scheme before finishing.
 
 | # | Item | Track | Effort | Value |
 |---|---|---|---|---|
-| A1 | Grammar-constrained local tool calls | Local | M | High |
-| A2 | Barge-in on the local path | Local | M | High |
-| B1 | Realtime auto-reconnect + context resume | Cloud | M | High |
-| B2 | Mid-session instruction refresh | Cloud | S | Med |
-| B3 | Model choice + cost logging in settings | Cloud | S | Med |
-| C1 | Chat history search | Chat | S | Med |
-| C2 | On-device GGUF embedding model | Memory | M | High |
-| C3 | Memory evaluation harness | Memory | M | High |
-| C4 | Disposition UI + per-character memory banks | Memory | M | Med |
+| A1 | Grammar-constrained local tool calls ✅ 2026-09-26 (device sweep pending) | Local | M | High |
+| A2 | Barge-in on the local path ✅ 2026-09-26 (device sweep pending) | Local | M | High |
+| B1 | Realtime auto-reconnect + context resume ✅ 2026-09-26 | Cloud | M | High |
+| B2 | Mid-session instruction refresh ✅ 2026-09-26 | Cloud | S | Med |
+| B3 | Model choice + cost logging in settings ✅ 2026-09-26 | Cloud | S | Med |
+| C1 | Chat history search ✅ 2026-09-26 | Chat | S | Med |
+| C2 | On-device GGUF embedding model ✅ 2026-09-26 | Memory | M | High |
+| C3 | Memory evaluation harness ✅ 2026-09-26 | Memory | M | High |
+| C4 | Disposition UI + per-character memory banks ✅ 2026-09-26 | Memory | M | Med |
 
 Recommended order: **C3 → C2** (measure first, then swap embeddings against the
 numbers), **B1 → B3 → B2** (one Realtime PR family), **A2 → A1** (barge-in is
@@ -27,31 +27,79 @@ independent; grammar needs a bridge change and a device sweep), **C1**, **C4**.
 
 ```mermaid
 graph LR
+    %% =======================
+    %% Local
+    %% =======================
     subgraph Local
         A1["A1 GBNF tool grammar<br/>llama_bridge + ToolGrammarBuilder"]
-        A2["A2 Barge-in<br/>BargeInArbiter + TTS cancel"]
+        A2["A2 Barge-in<br/>Arbiter + TTS cancel"]
     end
+
+    %% =======================
+    %% Cloud
+    %% =======================
     subgraph Cloud
-        B1["B1 Reconnect<br/>backoff + context resume"]
-        B2["B2 Instruction refresh<br/>session.update on change"]
-        B3["B3 Model picker<br/>OpenAISettings + [Cost]"]
+        B1["B1 Reconnect<br/>backoff + resume"]
+        B2["B2 Instruction refresh<br/>session.update"]
+        B3["B3 Model picker<br/>settings + cost"]
     end
+
+    %% =======================
+    %% Memory
+    %% =======================
     subgraph Memory
+        C1["C1 History search"]
         C2["C2 GGUF embeddings<br/>EmbeddingBackend"]
-        C3["C3 Eval harness<br/>recall@k / MRR in CI"]
+        C3["C3 Eval harness<br/>recall@k / MRR"]
         C4["C4 Disposition UI<br/>+ memory banks"]
     end
-    C1["C1 History search"]
-    C3 --> C2
-    B1 --> B3 --> B2
-    A2 --> A1
+
+    %% =======================
+    %% Flows
+    %% =======================
+    A2 --> D1["interrupt signal"] --> A1
+
+    B1 --> D2["reconnect state"] --> B3
+    B3 --> D3["model config"] --> B2
+
+    C3 --> D4["evaluation metrics"] --> C2
+    C1 --> D5["query vectors"] --> C2
+    C2 --> D6["embeddings"] --> C4
+
+    %% =======================
+    %% Styles
+    %% =======================
+    classDef local fill:#0f172a,stroke:#6366f1,color:#a5b4fc
+    classDef cloud fill:#0f172a,stroke:#0ea5e9,color:#7dd3fc
+    classDef memory fill:#0f172a,stroke:#10b981,color:#6ee7b7
+
+    class A1,A2 local
+    class B1,B2,B3 cloud
+    class C1,C2,C3,C4 memory
+
+    %% Data nodes (consistent with your system)
+    classDef data fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
+    class D1,D2,D3,D4,D5,D6 data
 ```
 
 ---
 
 ## Track A — Local LLM
 
-### A1. Grammar-constrained tool calls — `M`
+### A1. Grammar-constrained tool calls — `M` — ✅ CODE DONE 2026-09-26, device sweep pending
+
+Bridge: `llama_bridge_set_tool_grammar` / `clear_tool_grammar` rebuild the
+sampler chain as lazy-grammar → penalties → top_k → top_p → temp → dist and
+bypass PLD while a grammar is installed (validated natively against the
+macOS framework slice: grammar parses, trigger `[\s\S]*?(<tool)` accepted).
+Swift: `ToolGrammarBuilder` (schema → GBNF + prompt block, single source of
+truth; curated set `remember_fact, search_memory, get_weather,
+create_reminder, play_music`), `LLMEngineProtocol.setToolGrammar` (no-op
+default, JP engine untouched), `GGUFLlamaEngine+ToolGrammar` installs it once
+per load, the engine stops generation after `</tool>`, `LocalLLMManager+Engine`
+dispatches any curated tool through `AppFunctionExecutor`, and the 1B prompt
+uses the generated block. Tests: `ToolGrammarBuilderTests`. Pending on device:
+`[Bench]` prefill delta and the 20-utterance hit-rate sweep.
 
 **Problem.** Local tool calling is limited to `remember_fact` because 1–2B models
 emit unreliable JSON (`LocalLLMManager+Engine.swift:172-194`). The parser only
@@ -138,7 +186,20 @@ enum/number/bool cases, unsupported schema skipped; parser round trip. Device:
 few-hundred-rule grammar; confirm with `[Bench]`). PLD off during tool-enabled
 turns costs decode speed; revisit once the spec bridge supports the grammar.
 
-### A2. Barge-in on the local path — `M`
+### A2. Barge-in on the local path — `M` — ✅ CODE DONE 2026-09-26, device sweep pending
+
+`LocalLLMManager+BargeIn.swift`: `BargeInArbiter` (0.4 s TTS onset guard,
+0.25 s confirmation window, mic RMS > 1.5 × playback RMS with a 0.01 silence
+floor), `BargeInEchoGuard` (≥ 80 % token overlap with the assistant's last 12
+words → rejected, ratio +0.5 for the session), `observeBargeInFrame` (frames
+reach Silero while `.speaking`, pre-roll kept), `interruptForBargeIn` (stops
+LLM, player node and the active TTS engine, keeps the partial transcript with
+an em dash, moves to `.listening`), and `consumeBargeInEcho` in the Whisper
+delegate. `.thinking` keeps the plain gate (nothing is playing). Setting
+`OpenAISettings.isLocalBargeInEnabled` (Autonomy → "Interrupt while speaking
+(local)") defaults on for ≥ 5 GB devices and off on the 4 GB tier. Tests:
+`BargeInTests`. The energy ratio and onset guard are the values to tune in the
+iPhone 11 / 6 GB sweep; the `[BargeIn]` log lines carry mic vs playback RMS.
 
 **Problem.** The local path has no interruption: frames are dropped before the
 VAD while `.thinking`/`.speaking` plus an 800 ms tail
@@ -197,7 +258,17 @@ to TTS silence (target ≤ 400 ms) via `[BargeIn]` logs.
 
 ## Track B — OpenAI Realtime
 
-### B1. Auto-reconnect with context resume — `M`
+### B1. Auto-reconnect with context resume — `M` — ✅ DONE 2026-09-26
+
+`OpenAIRealtimeManager+Reconnect.swift`: `ReconnectPolicy` (1/2/4/8/16 s, 5
+attempts, 3 s ICE grace, 30 s network wait), `send(_:)` helper replacing the
+five duplicated data-channel writes, failure hooks from the ICE / peer /
+data-channel delegates and a foreground watch, `AIConnectionStatus.reconnecting`
+("Reconnecting… (n)" in the overlay), `disconnect()` vs `teardown()` split so a
+user disconnect suppresses auto-reconnect, and `contextReplayItems` replaying
+the last 6 spoken turns as `conversation.item.create` after the channel
+reopens. Tests: `RealtimeReconnectTests`. Device checks (airplane toggle,
+10-minute background, key expiry) pending.
 
 **Problem.** `didChange RTCIceConnectionState` and `didChange
 RTCPeerConnectionState` only log (`+Handlers.swift:313-317, 343-347`); a dropped
@@ -242,7 +313,14 @@ event helper queues when closed. Device: Airplane-mode toggle mid-conversation
 pre-drop topic); background/foreground after 10 min; deliberate ephemeral-key
 expiry (should mint a fresh key on reconnect, `+Handshake.swift:54-112`).
 
-### B2. Mid-session instruction refresh — `S`
+### B2. Mid-session instruction refresh — `S` — ✅ DONE 2026-09-26
+
+`buildSessionInstructions()` extracted from the initial update;
+`+SessionRefresh.swift` adds `SessionRefreshScheduler` (5 s debounce,
+deferred while speaking/thinking, flushed on `response.done`) and the
+`.realtimeInstructionsDidChange` notification posted by mental-model
+refresh, persona prompt save, `remember_fact` and the User Settings Done
+button. The refresh sends instructions + tools only. Tests: `SessionRefreshTests`.
 
 **Problem.** Instructions are assembled once in `sendInitialSessionUpdate()`
 (`+SessionConfig.swift:23-150`). Mental models refreshed by consolidation,
@@ -267,7 +345,15 @@ defer-while-speaking, flush). Device: change the persona prompt mid-session
 and confirm the next reply reflects it; watch the log for exactly one
 `session.update` per burst of edits.
 
-### B3. Model choice and cost logging — `S`
+### B3. Model choice and cost logging — `S` — ✅ DONE 2026-09-26
+
+`OpenAIModelCatalog` (+ `RealtimeUsageMeter`), `OpenAISettings.realtimeModel /
+transcriptionModel / textModel` (UserDefaults, blank → catalog default),
+`ModelPickerRow` in a new AI Settings → Models section (catalog + "Custom…"),
+handshake / session update / `OpenAIChatClient` read the settings, a voice-model
+change reconnects on Done, `[Cost]` lines per text call and per Realtime
+session (usage from `response.done`), session totals in the settings footer.
+Tests: `OpenAIModelSettingsTests`.
 
 **Problem.** Three hard-coded ids: realtime `"gpt-realtime-2.1-mini"`
 (`+Handshake.swift:67`), transcription `"gpt-4o-transcribe"`
@@ -302,7 +388,13 @@ mint request body and `[Cost]` lines.
 
 ## Track C — Chat experience and memory
 
-### C1. Chat history search — `S`
+### C1. Chat history search — `S` — ✅ DONE 2026-09-26
+
+Search field at the top of `ChatHistorySidebar` (150 ms debounce) over the
+existing `ConversationStore.conversations(matching:)` LIKE query; result rows
+preview the first matching message as a centred snippet
+(`MemoryStore.firstMessage(conversationID:matching:)` + `MemoryStore.snippet`),
+with a "No chats mention …" empty state. Tests: `ChatSearchTests`.
 
 **Seams.** `ChatHistorySidebar.swift` has no filter state; `reload()` calls
 `ConversationStore.shared.conversations()` (`:202-204`). The SQL already exists:
@@ -321,7 +413,19 @@ units, not messages, and `LIKE` on a few thousand rows is instant.
 **Verification.** Unit: `firstMessage(matching:)` snippet centring; store test
 with a marker string. Device: search with the sidebar open while a chat runs.
 
-### C2. On-device GGUF embedding model — `M`
+### C2. On-device GGUF embedding model — `M` — ✅ DONE 2026-09-26
+
+Shipped with **EmbeddingGemma-300M Q8_0** (ggml-org) instead of e5-small: the
+public e5 GGUFs either fail to load on the vendored llama.cpp ("bert model
+needs to define token type count") or separate related/unrelated facts by
+only 0.10 cosine (Gemma: 0.26). Pieces: `Core/Bridge/llama_embed_bridge.*`,
+`GGUF/LlamaEmbedBridge.swift`, `Agentic/EmbeddingBackend.swift`,
+`EmbeddingService` router, `EmbeddingMigrator`, `memories.vector_model`,
+`RemoteAssetRegistry.embeddingModel` (+ per-asset `remoteURL`),
+`MemoryEmbeddingModelRow` in the Memory page, and the opt-in harness run.
+Harness with Gemma on the simulator: recall@5 1.00, MRR 0.86. Device latency
+and jetsam checks still pending (see docs/AGENTIC_MEMORY.md §Embedding
+backends).
 
 **Problem.** `EmbeddingService` uses Apple `NLEmbedding.sentenceEmbedding`
 (`EmbeddingService.swift:14`): English-strong, weak for JP/mixed text, no
@@ -368,7 +472,16 @@ routing, `vector_model` filtering, migrator resumability. Device: embed latency
 per turn (`[Embed]` log, target ≤ 30 ms warm on iPhone 11), resident memory
 delta with Instruments, no jetsam in a 10-minute session.
 
-### C3. Memory evaluation harness — `M`
+### C3. Memory evaluation harness — `M` — ✅ DONE 2026-09-26
+
+Shipped as `Agentic/Eval/MemoryEvalFixture.swift` + `MemoryEvalRunner.swift`
+(DEBUG, app target) and `NeuraLinkTests/MemoryEvalTests.swift`; the report is
+a Swift Testing attachment. First runs found and fixed: the temporal arm's
+similarity floor dropping correct answers, Sunday-first weekend windows, the
+"tonight" false trigger, stemmer collisions (movies/movie), and — the big one
+— the semantic arm being dead at the 0.5 floor with NLEmbedding cosines
+(now `EmbeddingCalibration`). Simulator baseline: recall@5 1.00, MRR 0.82,
+avoid precision 0.88 (details in `docs/AGENTIC_MEMORY.md` §Testing).
 
 **Problem.** Nothing measures whether recall got better. Tuning happens by
 feel.
@@ -399,7 +512,18 @@ feel.
 **Verification.** The harness is its own verification; add it to the existing
 `AgenticMemoryTests` file family and keep the suite `.serialized`.
 
-### C4. Disposition UI and per-character memory banks — `M`
+### C4. Disposition UI and per-character memory banks — `M` — ✅ DONE 2026-09-26
+
+`DispositionSection` (three 1–5 sliders with a live `promptDescription`
+preview and reset) in Persona settings, saved per character and posting the
+B2 refresh. Banks: `memories.bank` (+ index, back-filled ""), `MemoryBanks`
+policy — world facts and user turns are shared (""), assistant turns,
+experiences and observations carry the active character — applied in
+`MemoryRetain`, `MemoryConsolidator` and `MemoryRecall` (`MemoryRecallQuery.bank`,
+`MemoryBanks.readable`); "Characters share memories" toggle
+(`MemorySettings.charactersShareMemories`, default on) in the Memory page
+narrows recall to the shared bank plus the active character's when off.
+Tests: `MemoryBankTests`.
 
 **Seams.** `MemoryDisposition` (`MemoryDisposition.swift:16-70`, UserDefaults
 per character, prompt-only). `PersonaSettingsView` is the per-character

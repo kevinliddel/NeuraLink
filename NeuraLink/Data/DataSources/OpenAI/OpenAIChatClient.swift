@@ -18,8 +18,9 @@ enum OpenAIChatClient {
     private static let endpoint = "https://api.openai.com/v1/chat/completions"
 
     /// Default text model for every background call (titling, reflection,
-    /// memory retain / consolidation / mental models).
-    nonisolated static let defaultModel = "gpt-5.6-luna"
+    /// memory retain / consolidation / mental models). User-selectable in
+    /// AI Settings → Models; this is the catalog default.
+    nonisolated static let defaultModel = OpenAIModelCatalog.defaultID(for: .text)
 
     /// GPT-5-family models reject a non-default `temperature`; older models
     /// accept it. Everything current accepts `max_completion_tokens`.
@@ -33,11 +34,12 @@ enum OpenAIChatClient {
     static func complete(
         system: String,
         user: String,
-        model: String = defaultModel,
+        model explicitModel: String? = nil,
         maxTokens: Int,
         temperature: Double = 0.3
     ) async -> String? {
         let key = OpenAISettings.shared.apiKey
+        let model = explicitModel ?? OpenAISettings.shared.textModel
         guard !key.isEmpty, let url = URL(string: endpoint) else { return nil }
 
         var request = URLRequest(url: url)
@@ -70,6 +72,11 @@ enum OpenAIChatClient {
             let message = choices.first?["message"] as? [String: Any],
             let content = message["content"] as? String
         else { return nil }
+        if let usage = json["usage"] as? [String: Any] {
+            let prompt = usage["prompt_tokens"] as? Int ?? 0
+            let completion = usage["completion_tokens"] as? Int ?? 0
+            nlLog("[Cost] text model=\(model) in=\(prompt) out=\(completion)", level: .info)
+        }
         return content
     }
 }

@@ -224,3 +224,75 @@ struct MemoryEmptyRow: View {
         .padding(.vertical, 6)
     }
 }
+
+// MARK: - Embedding model control
+
+/// Controls the optional multilingual recall model: download it on demand
+/// (size + SHA-256 verified by RemoteAssetCache), switch the embedding
+/// backend, and show progress / state. Switching back keeps the file.
+struct MemoryEmbeddingModelRow: View {
+    @State private var settings = MemorySettings.shared
+    @State private var isDownloading = false
+    @State private var progress: Double = 0
+    @State private var errorText: String?
+
+    private var isActive: Bool { settings.embeddingBackendID == GGUFEmbeddingBackend.backendID }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle(isOn: Binding(get: { isActive }, set: { enabled in enabled ? enable() : disable() })) {
+                Label {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Multilingual recall")
+                        Text(subtitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } icon: {
+                    Image(systemName: "globe")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 28, height: 28)
+                        .background(Color.teal, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                }
+            }
+            .disabled(isDownloading)
+            if isDownloading {
+                ProgressView(value: progress)
+                    .tint(.teal)
+            }
+        }
+    }
+
+    private var subtitle: String {
+        if let errorText { return errorText }
+        if isDownloading { return "Downloading model (\(Int(progress * 100))%)…" }
+        return isActive
+            ? "On-device EmbeddingGemma (334 MB): better matching in any language."
+            : "Uses Apple's built-in English embeddings. Turn on to download a 334 MB multilingual model."
+    }
+
+    private func enable() {
+        guard !isDownloading else { return }
+        isDownloading = true
+        errorText = nil
+        progress = 0
+        Task {
+            do {
+                let url = try await RemoteAssetCache.shared.url(for: .embeddingModel) { written, expected in
+                    guard expected > 0 else { return }
+                    Task { @MainActor in progress = Double(written) / Double(expected) }
+                }
+                EmbeddingService.shared.useGGUFModel(at: url.path)
+            } catch {
+                errorText = "Download failed. Check your connection and try again."
+                nlLog("[MemoryEmbeddingModelRow] embedding model download failed: \(error)", level: .warning)
+            }
+            isDownloading = false
+        }
+    }
+
+    private func disable() {
+        EmbeddingService.shared.useGGUFModel(at: nil)
+    }
+}

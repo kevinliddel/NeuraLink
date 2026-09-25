@@ -10,6 +10,9 @@ struct AISettingsView: View {
     @Bindable var settings = OpenAISettings.shared
     @Bindable var appearance = AppearanceSettings.shared
     @Bindable var presence = PresenceSettings.shared
+    @State private var aiState = RealtimeChatState.shared
+    /// Voice model at open time; a change reconnects on Done.
+    @State private var realtimeModelAtOpen = OpenAISettings.shared.realtimeModel
     private var downloader = LocalModelDownloadManager.shared
     private var personaStore = PersonaStore.shared
     @State private var showModelLibrary = false
@@ -19,6 +22,7 @@ struct AISettingsView: View {
         NavigationStack {
             Form {
                 openAISection
+                modelsSection
                 interactionSection
                 personaSection
                 localSLMSection
@@ -39,6 +43,26 @@ struct AISettingsView: View {
     }
 
     // MARK: - Sections
+
+    private var modelsSection: some View {
+        Section {
+            ForEach(OpenAIModelCatalog.Role.allCases, id: \.self) { role in
+                ModelPickerRow(role: role, settings: settings)
+            }
+        } header: {
+            Text("Models")
+        } footer: {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("A voice-model change applies when the session reconnects (tap Done).")
+                if aiState.sessionUsage.responses > 0 {
+                    Text("This session: \(aiState.sessionUsage.summary)")
+                } else if aiState.lastSessionUsage.responses > 0 {
+                    Text("Last session: \(aiState.lastSessionUsage.summary)")
+                }
+            }
+        }
+        .disabled(!settings.isEnabled)
+    }
 
     private var openAISection: some View {
         Section("OpenAI") {
@@ -294,6 +318,9 @@ struct AISettingsView: View {
 
     private func triggerConnectionIfNeeded() {
         if settings.isEnabled && settings.hasValidKey {
+            if settings.realtimeModel != realtimeModelAtOpen {
+                OpenAIRealtimeManager.shared.disconnect()
+            }
             OpenAIRealtimeManager.shared.connect()
         } else if settings.isLocalLLMEnabled && LocalModelDownloadManager.shared.isAvailable {
             LocalLLMManager.shared.startListening()

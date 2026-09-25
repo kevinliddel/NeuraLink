@@ -113,6 +113,46 @@ extension MemoryStore {
         return items
     }
 
+    /// First message of `conversationID` whose content contains `query`
+    /// (case-insensitive), or nil. Used for search-result previews.
+    func firstMessage(conversationID: Int64, matching query: String) -> ConversationMessage? {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        lock.lock()
+        defer { lock.unlock() }
+        let sql = """
+        SELECT id, conversation_id, role, kind, content, timestamp
+        FROM messages WHERE conversation_id = ? AND kind = 'message' AND content LIKE ?
+        ORDER BY id ASC LIMIT 1;
+        """
+        var statement: OpaquePointer?
+        var found: ConversationMessage?
+        if sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK {
+            sqlite3_bind_int64(statement, 1, conversationID)
+            sqlite3_bind_text(statement, 2, ("%\(trimmed)%" as NSString).utf8String, -1, nil)
+            if sqlite3_step(statement) == SQLITE_ROW { found = conversationMessageRow(from: statement) }
+        }
+        sqlite3_finalize(statement)
+        return found
+    }
+
+    /// `text` reduced to a window of about `width` characters centred on the
+    /// first occurrence of `query`, with ellipses where it was cut.
+    nonisolated static func snippet(_ text: String, around query: String, width: Int = 90) -> String {
+        let flat = text.replacingOccurrences(of: "\n", with: " ")
+        guard flat.count > width,
+              let range = flat.range(of: query.trimmingCharacters(in: .whitespaces), options: .caseInsensitive)
+        else { return String(flat.prefix(width)) + (flat.count > width ? "…" : "") }
+        let matchStart = flat.distance(from: flat.startIndex, to: range.lowerBound)
+        let matchLength = flat.distance(from: range.lowerBound, to: range.upperBound)
+        var start = max(0, matchStart - (width - matchLength) / 2)
+        let end = min(flat.count, start + width)
+        start = max(0, end - width)
+        let lower = flat.index(flat.startIndex, offsetBy: start)
+        let upper = flat.index(flat.startIndex, offsetBy: end)
+        return (start > 0 ? "…" : "") + flat[lower..<upper] + (end < flat.count ? "…" : "")
+    }
+
     /// Number of messages in a conversation. Used by auto-titling.
     func messageCount(conversationID: Int64) -> Int {
         lock.lock()

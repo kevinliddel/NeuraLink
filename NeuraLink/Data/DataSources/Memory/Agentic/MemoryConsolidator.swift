@@ -21,8 +21,6 @@ final class MemoryConsolidator: @unchecked Sendable {
     static func batchSize(for tier: MemoryLLMTier) -> Int { tier == .cloud ? 8 : 3 }
     /// Max batches per run so a backlog never monopolises the engine.
     static let maxBatchesPerRun = 4
-    /// Cosine at/above which two observations are the same belief.
-    static let dedupThreshold = 0.97
     /// Cosine at/above which a batch fact counts as evidence for an observation.
     static let evidenceFloor = 0.3
     static let cloudMaxTokens = 400
@@ -214,13 +212,13 @@ final class MemoryConsolidator: @unchecked Sendable {
     private func create(_ text: String, batch: [MemoryUnit]) -> Bool {
         guard let vector = embedder.generateVector(for: text) else { return false }
         // Dedup guard: an existing near-identical belief is updated instead.
-        if let twin = nearestObservation(to: vector), twin.1 >= Self.dedupThreshold {
+        if let twin = nearestObservation(to: vector), twin.1 >= embedder.calibration.dedupThreshold {
             return rewrite(twin.0, text: text, batch: batch)
         }
         let evidence = Self.evidence(in: batch, for: vector)
         let id = store.insertUnit(
             text: text, vector: vector, factType: .observation, source: "consolidation",
-            proofCount: max(1, evidence.count), sourceIDs: evidence.map(\.id))
+            proofCount: max(1, evidence.count), sourceIDs: evidence.map(\.id), bank: MemoryBanks.activeCharacter())
         guard id > 0 else { return false }
         store.linkEntities(unitID: id, names: Array(Set(evidence.flatMap(\.entities))))
         return true
@@ -238,8 +236,9 @@ final class MemoryConsolidator: @unchecked Sendable {
     }
 
     private func nearestObservation(to vector: [Double]) -> (MemoryUnit, Double)? {
-        store.fetchUnits(factTypes: [.observation])
-            .filter { $0.vector.count == vector.count }
+        let model = embedder.activeModelID
+        return store.fetchUnits(factTypes: [.observation])
+            .filter { $0.vector.count == vector.count && $0.vectorModel == model }
             .map { ($0, EmbeddingService.cosineSimilarity(vector, $0.vector)) }
             .max { $0.1 < $1.1 }
     }

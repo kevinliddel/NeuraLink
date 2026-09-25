@@ -69,6 +69,22 @@ int32_t llama_bridge_apply_chat_template(LlamaBridgeHandle* handle, const char* 
 /// Pass `n <= 0` or `n_draft <= 0` to use defaults (n=3, n_draft=5).
 void llama_bridge_set_prompt_lookup(LlamaBridgeHandle* handle, bool enabled, int32_t n, int32_t n_draft);
 
+// MARK: - Tool grammar
+
+/// Install a lazy GBNF grammar that constrains sampling once one of
+/// `trigger_patterns` (ECMAScript regex, matched from the start of the
+/// output, first capture group = where the grammar begins) appears. The
+/// sampler chain is rebuilt as grammar → penalties → top_k → top_p → temp →
+/// dist. While a grammar is installed, prompt-lookup decoding is bypassed so
+/// the grammar's accept bookkeeping only ever runs in the standard loop.
+/// Returns false (leaving the previous chain intact) if the grammar fails to
+/// parse.
+bool llama_bridge_set_tool_grammar(LlamaBridgeHandle* handle, const char* gbnf, const char* root,
+                                   const char* const* trigger_patterns, int32_t n_trigger_patterns);
+
+/// Remove the tool grammar and restore the default sampler chain.
+void llama_bridge_clear_tool_grammar(LlamaBridgeHandle* handle);
+
 // MARK: - Inference
 
 /// Generate tokens for `prompt`. Blocks the calling thread until done or

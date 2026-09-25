@@ -130,8 +130,13 @@ extension OpenAIRealtimeManager {
             // Response lifecycle
             case "response.done":
                 nlLogSensitive("[OpenAI] Full response: \(state.aiTranscript)", level: .info)
+                if let response = json["response"] as? [String: Any], let usage = response["usage"] as? [String: Any] {
+                    usageMeter.add(usage: usage)
+                    state.sessionUsage = usageMeter
+                }
                 state.status = .ready
                 setMicGated(false, reason: .assistantSpeaking)
+                noteResponseFinished()
 
                 // Log/store ONLY when this response actually streamed new
                 // transcript. Function-call-only responses (get_weather,
@@ -250,13 +255,8 @@ extension OpenAIRealtimeManager {
                 "output": result
             ]
         ]
-        let trigger: [String: Any] = ["type": "response.create"]
-
-        for payload in [output, trigger] {
-            guard let data = try? JSONSerialization.data(withJSONObject: payload) else { continue }
-            let buffer = RTCDataBuffer(data: data, isBinary: false)
-            remoteDataChannel?.sendData(buffer)
-        }
+        send(output)
+        send(["type": "response.create"])
         nlLog("[AI Tools]: sent function_call_output for call_id=\(callId)", level: .info)
     }
     /// Sends a proactive vision update as a system message to the AI.
@@ -272,13 +272,8 @@ extension OpenAIRealtimeManager {
                 ]
             ]
         ]
-        let trigger: [String: Any] = ["type": "response.create"]
-
-        for payload in [item, trigger] {
-            guard let data = try? JSONSerialization.data(withJSONObject: payload) else { continue }
-            let buffer = RTCDataBuffer(data: data, isBinary: false)
-            remoteDataChannel?.sendData(buffer)
-        }
+        send(item)
+        send(["type": "response.create"])
         nlLog("[AI Vision]: sent proactive update: \(description.prefix(50))...", level: .info)
     }
 
@@ -314,6 +309,7 @@ extension OpenAIRealtimeManager: RTCPeerConnectionDelegate {
         _ peerConnection: RTCPeerConnection, didChange newState: RTCIceConnectionState
     ) {
         nlLog("[AI]: ICE connection state changed: \(newState.rawValue)", level: .info)
+        Task { @MainActor in self.handleICEStateChange(newState) }
     }
 
     func peerConnection(
@@ -344,6 +340,7 @@ extension OpenAIRealtimeManager: RTCPeerConnectionDelegate {
         _ peerConnection: RTCPeerConnection, didChange newState: RTCPeerConnectionState
     ) {
         nlLog("[AI]: PeerConnection state changed: \(newState.rawValue)", level: .info)
+        Task { @MainActor in self.handlePeerStateChange(newState) }
     }
 
     func peerConnection(
@@ -372,7 +369,10 @@ extension OpenAIRealtimeManager: RTCDataChannelDelegate {
         if dataChannel.readyState == .open {
             nlLog("[AI]: Data channel is officially OPEN", level: .info)
             sendInitialSessionUpdate()
+            didOpenDataChannel()
             ProactiveVisionManager.shared.start()
+        } else if dataChannel.readyState == .closed {
+            Task { @MainActor in self.handleDataChannelClosed() }
         }
     }
 

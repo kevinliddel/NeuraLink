@@ -31,6 +31,10 @@ struct LlamaBridgeHandle {
     /// re-prefill the suffix that actually changed.
     std::vector<llama_token> kv_tokens;
 
+    /// True while a lazy tool grammar is installed in `sampler`; PLD is
+    /// bypassed for the duration (see `llama_bridge_set_tool_grammar`).
+    bool grammar_active = false;
+
     /// Prompt-Lookup Decoding config. See `llama_bridge_set_prompt_lookup`.
     bool pld_enabled    = false;
     int32_t pld_n       = 3;

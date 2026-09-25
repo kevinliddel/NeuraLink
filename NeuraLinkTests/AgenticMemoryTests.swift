@@ -28,7 +28,7 @@ private func makeUnit(
     occurredStart: Date? = nil, proofCount: Int = 1, sourceIDs: [Int64] = [], pinned: Bool = false
 ) -> MemoryUnit {
     MemoryUnit(
-        id: id, text: text, context: "", vector: [], factType: factType, source: "test", pinned: pinned,
+        id: id, text: text, context: "", vector: [], vectorModel: "nl", bank: "", factType: factType, source: "test", pinned: pinned,
         createdAt: mentionedAt, mentionedAt: mentionedAt, occurredStart: occurredStart, occurredEnd: occurredStart,
         proofCount: proofCount, sourceIDs: sourceIDs, consolidatedAt: nil,
         tokens: MemoryTextIndex.tokenString(for: text), entities: [])
@@ -45,13 +45,16 @@ struct MemoryTextIndexTests {
         let tokens = MemoryTextIndex.tokens(for: "The User LIKES spicy Cats and dogs")
         #expect(!tokens.contains("the"))
         #expect(!tokens.contains("user"))
-        #expect(tokens.contains("spicy"))
+        #expect(tokens.contains("spici"))
         #expect(tokens.contains("cat"))
         #expect(tokens.contains("dog"))
         #expect(MemoryTextIndex.tokens(for: "likes") == MemoryTextIndex.tokens(for: "like"))
         #expect(MemoryTextIndex.tokens(for: "named") == MemoryTextIndex.tokens(for: "name"))
         #expect(MemoryTextIndex.tokens(for: "cat's") == MemoryTextIndex.tokens(for: "cat"))
         #expect(MemoryTextIndex.tokens(for: "adopted") == MemoryTextIndex.tokens(for: "adopt"))
+        #expect(MemoryTextIndex.tokens(for: "movies") == MemoryTextIndex.tokens(for: "movie"))
+        #expect(MemoryTextIndex.tokens(for: "cities") == MemoryTextIndex.tokens(for: "city"))
+        #expect(MemoryTextIndex.tokens(for: "my mum") == MemoryTextIndex.tokens(for: "mother"))
     }
 
     @Test("BM25 ranks the document sharing more query terms first")
@@ -364,6 +367,22 @@ struct AgenticMemoryStoreTests {
         MemoryStore.shared.deleteUnit(id: observation.id)
     }
 
+    @Test("A dated fact is found by a relative time reference without embeddings")
+    func temporalRetention() throws {
+        let now = ISO8601DateFormatter().date(from: "2026-09-25T12:00:00Z")!
+        let stamp = ISO8601DateFormatter().date(from: "2026-08-14T12:00:00Z")!
+        let retain = MemoryRetain(llm: StubMemoryLLM(tier: .none, reply: nil))
+        var fact = ExtractedFact(text: "User started guitar lessons with a teacher named \(marker)Paulo.")
+        let span = try #require(MemoryTemporalParser.span(from: "2026-08-14", reference: stamp))
+        fact.occurredStart = span.0
+        fact.occurredEnd = span.1
+        let id = retain.retainFact(fact, source: "test", mentionedAt: stamp)
+        defer { MemoryStore.shared.deleteUnit(id: id) }
+        let hits = MemoryRecall.shared.recall(MemoryRecallQuery(
+            text: "what new hobby did I pick up last month?", maxResults: 50, tokenBudget: 5_000, now: now))
+        #expect(hits.contains { $0.id == id && $0.arms.contains(.temporal) })
+    }
+
     @Test("Mental models are a DB read and refresh from evidence")
     func mentalModels() async {
         let character = "testchar\(marker)"
@@ -382,5 +401,60 @@ struct AgenticMemoryStoreTests {
             .evidence(for: "what pet does the user have \(marker)", character: character)
         #expect(evidence.contains("\(marker) bird"))
         MemoryStore.shared.deleteUnit(id: id)
+    }
+}
+
+// MARK: - Embedding backends
+
+@MainActor
+@Suite("Agentic memory – embedding backends", .serialized)
+struct EmbeddingBackendTests {
+
+    @Test("Calibration maps the nominal slider onto each backend's cosine scale")
+    func calibration() {
+        #expect(abs(EmbeddingCalibration.appleNL.queryFloor(nominal: 0.5) - 0.20) < 0.001)
+        #expect(abs(EmbeddingCalibration.embeddingGemma.queryFloor(nominal: 0.5) - 0.40) < 0.001)
+        #expect(EmbeddingCalibration.embeddingGemma.queryFloor(nominal: 0.3)
+                < EmbeddingCalibration.embeddingGemma.queryFloor(nominal: 0.7))
+        #expect(EmbeddingCalibration.appleNL.queryFloor(nominal: 5) == 1)
+    }
+
+    @Test("Semantic arm ignores vectors from another backend")
+    func vectorModelFilter() {
+        let recall = MemoryRecall()
+        let same = MemoryUnit(
+            id: 1, text: "User loves hiking in the Alps.", context: "", vector: [1, 0, 0], vectorModel: "nl", bank: "",
+            factType: .world, source: "t", pinned: false, createdAt: Date(), mentionedAt: Date(), occurredStart: nil,
+            occurredEnd: nil, proofCount: 1, sourceIDs: [], consolidatedAt: nil, tokens: "", entities: [])
+        let other = MemoryUnit(
+            id: 2, text: "User loves hiking in the Alps.", context: "", vector: [1, 0, 0], vectorModel: "other-model", bank: "",
+            factType: .world, source: "t", pinned: false, createdAt: Date(), mentionedAt: Date(), occurredStart: nil,
+            occurredEnd: nil, proofCount: 1, sourceIDs: [], consolidatedAt: nil, tokens: "", entities: [])
+        let hits = recall.recall(
+            MemoryRecallQuery(text: "zzz"), candidates: [same, other], queryVector: [1, 0, 0], vectorModel: "nl")
+        #expect(hits.map(\.id) == [1])
+        #expect(hits.first?.arms == [.semantic])
+    }
+
+    @Test("Migrator re-embeds rows stored by another backend")
+    func migrator() async {
+        let id = MemoryStore.shared.insertUnit(
+            text: "User keeps a migration marker Zyqxmig.", vector: [0.5, 0.5], factType: .world, source: "test",
+            vectorModel: "legacy-model")
+        defer { MemoryStore.shared.deleteUnit(id: id) }
+        #expect(MemoryStore.shared.countUnits(notEmbeddedWith: EmbeddingService.shared.activeModelID) >= 1)
+        let migrated = await EmbeddingMigrator().migrateAll(to: EmbeddingService.shared.activeModelID)
+        #expect(migrated >= 1)
+        let unit = MemoryStore.shared.fetchUnit(id: id)
+        #expect(unit?.vectorModel == EmbeddingService.shared.activeModelID)
+        #expect(unit?.vector.count == EmbeddingService.shared.generateVector(for: "probe")?.count)
+    }
+
+    @Test("Embedding asset is pinned and fetched from its model repo")
+    func assetPin() {
+        let asset = RemoteAssetRegistry.embeddingModel
+        #expect(asset.integrity?.size == 333_590_944)
+        #expect(asset.remoteURL?.absoluteString.contains("ggml-org/embeddinggemma-300M-GGUF") == true)
+        #expect(RemoteAssetRegistry.whisperModel.remoteURL?.absoluteString.contains("datasets/Dedicatus/NeuraLink") == true)
     }
 }

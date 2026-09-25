@@ -197,3 +197,21 @@ For the local LLM path the equivalent log starts at `֎ [FunctionCall] LocalLLM 
 - **Voice picker + preview**: [`PersonaSettingsView.swift`](../NeuraLink/Presentation/Views/AI/PersonaSettingsView.swift).
 - **OpenAI handshake**: [`OpenAIRealtimeManager.swift`](../NeuraLink/Data/DataSources/OpenAI/OpenAIRealtimeManager.swift) (mint + SDP exchange), [`OpenAIRealtimeManager+Handlers.swift`](../NeuraLink/Data/DataSources/OpenAI/OpenAIRealtimeManager+Handlers.swift) (`sendInitialSessionUpdate`, data-channel event dispatch).
 - **Shared tool dispatch**: [`AppFunctionExecutor.swift`](../NeuraLink/Data/DataSources/AppFunctionExecutor.swift).
+
+## Barge-in on the local path (2026-09-26)
+
+While the local assistant is speaking, mic frames now reach the Silero VAD
+instead of being dropped (`LocalLLMManager+Audio.swift` → `observeBargeInFrame`).
+A voice start opens a candidate only when playback has run ≥ 0.4 s (TTS onset
+guard); over the next 0.25 s the mic RMS must exceed 1.5 × the playback RMS
+measured on the main-mixer tap (our own speaker echo) before the interruption
+commits. On commit `interruptForBargeIn` cancels the LLM (`cancel_flag`), stops
+the player node and the active TTS engine, keeps what was already spoken in the
+transcript (suffixed " —"), and switches to `.listening` with the 0.5 s pre-roll
+intact so the user's first syllable is transcribed. If Whisper's transcript is
+mostly the assistant's own last words, `BargeInEchoGuard` discards it and raises
+the energy ratio for the rest of the session. Nothing plays during `.thinking`,
+so that state keeps the original mic gate. Toggle: Autonomy → "Interrupt while
+speaking (local)" (`OpenAISettings.isLocalBargeInEnabled`, default on for
+≥ 5 GB devices).
+

@@ -31,8 +31,10 @@ struct MemoryTimeWindow: Equatable {
 
 enum MemoryTemporalParser {
 
+    /// ISO 8601 = Monday-first weeks, so "last week" is Mon–Sun and a
+    /// weekend (Sat–Sun) never straddles two weeks.
     private static let calendar: Calendar = {
-        var cal = Calendar(identifier: .gregorian)
+        var cal = Calendar(identifier: .iso8601)
         cal.locale = Locale(identifier: "en_US_POSIX")
         return cal
     }()
@@ -59,8 +61,12 @@ enum MemoryTemporalParser {
         let words = lower.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
         let joined = words.joined(separator: " ")
 
-        if joined.contains("today") || joined.contains("tonight") || joined.contains("this morning") {
+        // "tonight"/"later" are plans, not recall — deliberately not temporal.
+        if joined.contains("today") || joined.contains("this morning") || joined.contains("this afternoon") {
             return day(containing: now)
+        }
+        if joined.contains("this weekend") || joined.contains("last weekend") {
+            return weekendWindow(now: now, previous: joined.contains("last weekend"))
         }
         if joined.contains("yesterday") { return day(containing: shift(now, .day, -1)) }
         if joined.contains("tomorrow") { return day(containing: shift(now, .day, 1)) }
@@ -71,9 +77,6 @@ enum MemoryTemporalParser {
         if joined.contains("last month") { return period(.month, containing: shift(now, .month, -1)) }
         if joined.contains("this year") { return period(.year, containing: now) }
         if joined.contains("last year") { return period(.year, containing: shift(now, .year, -1)) }
-        if joined.contains("this weekend") || joined.contains("last weekend") {
-            return weekendWindow(now: now, previous: joined.contains("last weekend"))
-        }
         if joined.contains("recently") || joined.contains("lately") || joined.contains("these days") {
             return MemoryTimeWindow(start: shift(now, .day, -14), end: now)
         }
@@ -170,9 +173,11 @@ enum MemoryTemporalParser {
         return MemoryTimeWindow(start: interval.start, end: interval.end.addingTimeInterval(-1))
     }
 
+    /// Sat–Sun of the current ISO week, or of the previous one. On a Monday
+    /// "last weekend" is therefore the weekend that just ended.
     private static func weekendWindow(now: Date, previous: Bool) -> MemoryTimeWindow {
         let week = period(.weekOfYear, containing: previous ? shift(now, .weekOfYear, -1) : now)
-        let saturday = shift(week.start, .day, 5)
+        let saturday = calendar.startOfDay(for: shift(week.start, .day, 5))
         return MemoryTimeWindow(start: saturday, end: week.end)
     }
 

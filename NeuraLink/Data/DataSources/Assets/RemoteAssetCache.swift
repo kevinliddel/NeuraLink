@@ -96,6 +96,19 @@ actor RemoteAssetCache {
         return url
     }
 
+    /// The on-disk URL when `asset` is bundled or already downloaded and
+    /// size-verified; nil otherwise. Never touches the network — used at
+    /// launch to restore optional models without forcing a download.
+    func localURLIfAvailable(for asset: RemoteAssetRegistry) -> URL? {
+        if let cached = resolved[asset] { return cached }
+        if let bundled = bundledURL(for: asset) { return bundled }
+        guard let onDisk = Self.cachedURL(for: asset), FileManager.default.fileExists(atPath: onDisk.path) else {
+            return nil
+        }
+        if let expected = asset.integrity?.size, Self.fileSize(at: onDisk) != expected { return nil }
+        return onDisk
+    }
+
     /// Drops any cached/in-flight resolution for `asset` so the next `url(for:)`
     /// re-downloads from scratch. Cancels a hung in-flight download — used by
     /// the loading-screen "Retry" affordance when a first-launch fetch stalls.
@@ -170,9 +183,7 @@ actor RemoteAssetCache {
                 at: parent, withIntermediateDirectories: true)
         }
 
-        let urlString =
-            "https://huggingface.co/datasets/\(RemoteAssetRegistry.repoID)/resolve/main/\(asset.pathInRepo)"
-        guard let remoteURL = URL(string: urlString) else {
+        guard let remoteURL = asset.remoteURL else {
             throw CacheError.assetNotFound
         }
 
