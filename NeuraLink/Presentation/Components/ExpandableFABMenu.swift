@@ -65,6 +65,7 @@ struct ExpandableFABMenu: View {
                         label: "Show a Photo",
                         showLabel: true
                     ) { collapse(); onShowPhoto() }
+                    .tutorialAnchor(.fabPhoto)
                     .transition(childTransition(delay: 0.06))
 
                     FABButton(

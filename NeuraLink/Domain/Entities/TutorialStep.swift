@@ -28,6 +28,7 @@ enum TutorialAnchor: String, CaseIterable, Sendable {
     /// FAB, secondary row.
     case fabModels
     case fabCamera
+    case fabPhoto
     case fabSong
     case fabPiP
     /// The bottom status capsule ("Start talking", "Listening", …).
@@ -47,7 +48,7 @@ enum TutorialAnchor: String, CaseIterable, Sendable {
         switch self {
         case .fabSettings, .fabRelationship, .fabChevron:
             return .primary
-        case .fabModels, .fabCamera, .fabSong, .fabPiP:
+        case .fabModels, .fabCamera, .fabPhoto, .fabSong, .fabPiP:
             return .secondary
         case .chatHistory, .menuToggle, .statusHint:
             return .collapsed
