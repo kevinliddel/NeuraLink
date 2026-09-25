@@ -48,7 +48,7 @@ struct MemoryHeroCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .center, spacing: 12) {
-                Image(systemName: "brain.head.profile")
+                Image(systemName: "brain")
                     .font(.system(size: 26, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(width: 52, height: 52)
