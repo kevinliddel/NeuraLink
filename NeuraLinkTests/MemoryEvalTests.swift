@@ -17,12 +17,26 @@ import Testing
 @Suite("Memory evaluation harness", .serialized)
 struct MemoryEvalTests {
 
-    /// Simulator baseline (2026-09-26, fixture v1): recall@5 1.00, MRR 0.82,
-    /// avoid precision 0.88. Floors sit one miss below: a second missed
-    /// question (0.92) or a second superseded-fact violation fails CI.
-    static let overallRecallFloor = 0.93
+    /// Baselines (fixture v1, 2026-09-26). With Apple's English sentence
+    /// embedding available (a developer simulator that has the asset):
+    /// recall@5 1.00, MRR 0.82, avoid 0.88 — the floor allows one miss.
+    /// Without it (a freshly erased simulator, as on CI, where `NLEmbedding`
+    /// returns zero vectors and only the keyword, graph and temporal arms
+    /// run): 22/24 = 0.917, the two pure-semantic questions miss — the floor
+    /// allows those two and nothing else.
+    static let overallRecallFloorWithEmbeddings = 0.93
+    static let overallRecallFloorWithoutEmbeddings = 0.90
     static let perTypeRecallFloor = 0.70
     static let avoidPrecisionFloor = 0.80
+
+    /// True when the active embedding backend produces non-zero vectors.
+    static var semanticArmAvailable: Bool {
+        EmbeddingService.shared.generateVector(for: "calibration probe", purpose: .query)?.contains { $0 != 0 } == true
+    }
+
+    static var overallRecallFloor: Double {
+        semanticArmAvailable ? overallRecallFloorWithEmbeddings : overallRecallFloorWithoutEmbeddings
+    }
 
     @Test("Fixture parses and covers every question type")
     func fixtureShape() throws {
@@ -39,7 +53,9 @@ struct MemoryEvalTests {
     func recallQuality() async throws {
         let report = try await MemoryEvalRunner().run()
         let overall = report.overall
-        let detail = (report.summaryLines + report.failures.map { "miss: \($0)" }).joined(separator: "\n")
+        let mode = Self.semanticArmAvailable ? "with embeddings" : "WITHOUT embeddings (zero vectors)"
+        let detail = (["[MemoryEval] mode: \(mode), floor \(Self.overallRecallFloor)"] + report.summaryLines
+            + report.failures.map { "miss: \($0)" }).joined(separator: "\n")
         // Readable from the xcresult on every run, pass or fail:
         //   xcrun xcresulttool export attachments --path <xcresult> --output-path <dir>
         Attachment.record(Data(detail.utf8), named: "memory_eval_\(MemoryEvalFixture.version).txt")
