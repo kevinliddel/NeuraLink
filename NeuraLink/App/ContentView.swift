@@ -5,6 +5,7 @@
 //  Created by Dedicatus on 14/04/2026.
 //
 
+import PhotosUI
 import SwiftUI
 
 /// Root view that hosts the VRM Viewer.
@@ -23,6 +24,9 @@ struct ContentView: View {
     /// Second FAB row — owned here so the onboarding tour can unfold it.
     @State private var isSecondaryExpanded = false
     @State private var envLoad = EnvironmentLoadState.shared
+    @State private var intentRequests = AppIntentRequests.shared
+    @State private var showPhotoPicker = false
+    @State private var pickedPhoto: PhotosPickerItem?
     @State private var tutorial = TutorialCoordinator.shared
 
     var body: some View {
@@ -33,6 +37,7 @@ struct ContentView: View {
                 if !aiState.isUIHidden {
                     RealtimeChatOverlay()
                     CameraOverlayView()
+                    PhotoshootShareCapsule()
                 }
 
                 if showModelSelection {
@@ -83,6 +88,7 @@ struct ContentView: View {
                                 Task { await camera.requestPermissionAndStart() }
                             }
                         },
+                        onShowPhoto: { showPhotoPicker = true },
                         onIdentifySong: {
                             songRecognition.startFromUI()
                         },
@@ -177,6 +183,26 @@ struct ContentView: View {
                 }
             }
             .animation(.easeInOut(duration: 0.8), value: envLoad.isReady)
+            // Photo memories (docs/COMPANION_DEPTH_PLAN.md §D2): the picker
+            // opens from the FAB or the `show_photo` tool.
+            .photosPicker(isPresented: $showPhotoPicker, selection: $pickedPhoto, matching: .images)
+            .onChange(of: pickedPhoto) { _, item in
+                guard let item else { return }
+                pickedPhoto = nil
+                Task {
+                    guard let data = try? await item.loadTransferable(type: Data.self) else { return }
+                    await PhotoMemoryService.shared.handlePicked(data: data, userWords: aiState.userTranscript)
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .photoMemoryPickerRequested)) { _ in
+                showPhotoPicker = true
+            }
+            // Siri "Talk to <character>" while the app is running (P4).
+            .onChange(of: intentRequests.pendingCharacter) { _, name in
+                guard let name, let entry = registry.entry(named: name) else { return }
+                intentRequests.pendingCharacter = nil
+                if selectedModelURL != entry.url { selectedModelURL = entry.url }
+            }
             // Persist the choice so relaunches restore it (initialSelection).
             .onChange(of: selectedModelURL) { _, newValue in
                 guard let url = newValue else { return }

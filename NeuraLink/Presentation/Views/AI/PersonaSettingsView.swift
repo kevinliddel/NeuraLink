@@ -118,6 +118,7 @@ struct PersonaSettingsView: View {
 
                 voicePreviewSection
             }
+            DispositionSection(character: modelID)
 
             Section {
                 VStack(spacing: 8) {

@@ -16,6 +16,10 @@ extension LocalLLMManager: SileroVADDelegate {
         // This prevents the VAD from treating speaker output as user speech while the
         // AI is speaking (.speaking / .thinking), which would cause a self-reply loop.
         Task { @MainActor in
+            if state.status == .speaking, isBargeInEnabled {
+                noteVoiceStartDuringSpeech()
+                return
+            }
             guard state.status == .ready else { return }
             state.status = .listening
             recordingLock.lock()
@@ -156,8 +160,12 @@ extension LocalLLMManager: LocalWhisperManagerDelegate {
     }
 
     func whisperManager(didTranscribeText text: String) {
-        // Feed the localized transcription directly to the Local LLM
-        handleUserInput(text)
+        Task { @MainActor in
+            // After a barge-in, drop transcripts that merely echo our own speech.
+            if consumeBargeInEcho(transcript: text) { return }
+            // Feed the localized transcription directly to the Local LLM
+            handleUserInput(text)
+        }
     }
 
     func whisperManager(didFailWithError error: Error) {

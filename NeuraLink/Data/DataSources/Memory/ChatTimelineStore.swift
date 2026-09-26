@@ -31,6 +31,8 @@ enum ChatTimelineStore {
         if let id = ConversationStore.shared.activeConversationID {
             ConversationTitler.shared.maybeAutoTitle(conversationID: id)
         }
+        // Agentic memory: extract facts once enough new turns accumulated.
+        MemoryRetain.shared.maybeRetain()
         pruneIfNeeded()
         CompanionStateStore.shared.refresh()
     }

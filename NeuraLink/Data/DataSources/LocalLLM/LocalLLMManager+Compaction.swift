@@ -2,11 +2,11 @@
 //  LocalLLMManager+Compaction.swift
 //  NeuraLink
 //
-//  Background compaction trigger: after a user-facing turn finishes, kick
-//  off a detached Task that asks the local LLM to summarise aged-out chat
-//  events into atomic facts via `LocalLLMFactExtractor`. Results are stored
-//  in `RAGManager` (source = "fact") and surfaced into Tier 3 of the next
-//  prompt by `LocalLLMMemoryHierarchy`.
+//  Background compaction trigger: after a user-facing turn finishes, hand
+//  un-retained chat turns to the agentic-memory retain step
+//  (`MemoryRetain`), which runs fact extraction on the local model via
+//  `runSilentGeneration` below. Extracted facts surface in Tier 3 of the
+//  next prompt through `LocalLLMMemoryHierarchy` → hybrid recall.
 //
 //  Created by Dedicatus on 19/05/2026.
 //
@@ -15,44 +15,14 @@ import Foundation
 
 extension LocalLLMManager {
 
-    /// Fires a background task that extracts facts from any chat events
-    /// that have aged out of the verbatim window since the last
-    /// compaction. No-ops when:
-    ///   - the active engine isn't loaded,
-    ///   - the active model is `.llama1b` (too small to summarise reliably —
-    ///     mostly hallucinates) or `.llmJp3` (the JP tier doesn't
-    ///     inject Tier 3 facts into prompts anyway, so the output would be
-    ///     pure waste),
-    ///   - there are no new candidates beyond the verbatim window, or
-    ///   - a previous compaction is still running.
+    /// Kicks the agentic-memory retain step (docs/AGENTIC_MEMORY.md
+    /// §Retain). Extraction, chunking and the un-retained-turn watermark
+    /// live in `MemoryRetain`; this keeps the historical call site in
+    /// `handleFinishedGeneration`. The JP tier is excluded inside
+    /// `LiveMemoryLLM.tier` (its prompts never inject Tier 3 anyway).
     func maybeRunCompaction() {
         guard llmEngine.isLoaded else { return }
-        let config = LocalModelDownloadManager.shared.selectedConfig
-        if config == .llama1b || config == .llmJp3 { return }
-
-        let hierarchy = LocalLLMMemoryHierarchy.shared
-        let candidates = hierarchy.compactionCandidates()
-        guard !candidates.isEmpty else { return }
-        guard hierarchy.tryBeginCompaction() else { return }
-
-        Task.detached(priority: .background) { [weak self] in
-            defer { hierarchy.endCompaction() }
-            guard let self else { return }
-
-            let generator: LocalLLMSilentGenerator = { [weak self] prompt, maxTokens in
-                guard let self else { return "" }
-                return await self.runSilentGeneration(
-                    prompt: prompt, maxTokens: maxTokens)
-            }
-
-            let facts = await LocalLLMFactExtractor.shared.extractAndStore(
-                from: candidates, using: generator)
-            hierarchy.markCompacted(candidates)
-
-            if !facts.isEmpty {
-                nlLog("[LocalLLM] Compacted \(candidates.count) chat events → \(facts.count) facts", level: .info)
-            }
-        }
+        MemoryRetain.shared.maybeRetain()
     }
 
     /// One-shot generation that bypasses the manager's delegate methods.

@@ -64,7 +64,7 @@ extension OpenAIRealtimeManager {
         let body: [String: Any] = [
             "session": [
                 "type": "realtime",
-                "model": "gpt-realtime-2.1-mini",
+                "model": settings.realtimeModel,
                 "instructions": persona.instructions,
                 "audio": [
                     "output": ["voice": persona.voice]

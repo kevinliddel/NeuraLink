@@ -301,6 +301,14 @@ extension VRMMetalState {
     // MARK: - Pose Handling
 
     func setupPoseObserver() {
+        NotificationCenter.default.addObserver(forName: .photoshootCaptureRequested, object: nil, queue: .main) { [weak self] note in
+            guard let box = note.userInfo?["completion"] as? CaptureBox else { return }
+            guard let self else {
+                box.completion(nil)
+                return
+            }
+            Task { @MainActor in self.captureFrame(completion: box.completion) }
+        }
         NotificationCenter.default.addObserver(forName: Notification.Name("VRMPlayPoseAnimation"), object: nil, queue: .main) { [weak self] note in
             guard let self, let pose = note.userInfo?["pose"] as? String else { return }
             self.playPose(named: pose)

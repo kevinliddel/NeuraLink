@@ -29,6 +29,7 @@ final class PhotoshootSkill: Skill {
         )
 
         RealtimeChatState.shared.isUIHidden = true
+        PhotoshootShareController.shared.schedulePhoto()
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
             RealtimeChatState.shared.isUIHidden = false

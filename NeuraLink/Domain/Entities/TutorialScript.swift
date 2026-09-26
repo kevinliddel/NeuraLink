@@ -126,6 +126,16 @@ enum TutorialScript {
             menu: .secondary),
 
         TutorialStep(
+            id: "photo",
+            icon: "photo.on.rectangle",
+            title: "Show a Photo",
+            body:
+                "Pick a picture from your library to show your companion. They'll react to it — and remember it, with the date it was taken.",
+            tip: "Say who or where it is while you pick (\"this is my sister at the lake\") and that goes into the memory too.",
+            anchor: .fabPhoto,
+            menu: .secondary),
+
+        TutorialStep(
             id: "song",
             icon: "music.note",
             title: "Identify Song",

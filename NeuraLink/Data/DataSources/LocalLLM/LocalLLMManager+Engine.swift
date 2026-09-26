@@ -169,14 +169,13 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
         // tags before LocalToolCallParser / drainTagBuffer strip them out).
         nlLog("[LocalLLM] Full AI response: \(fullText)", level: .debug)
 
-        // Local tool-calling is intentionally limited to `remember_fact` only.
-        // All other iOS-action tools were dropped for local SLMs (shorter
-        // prompt = faster cold-start prefill, and 1–2B models emit unreliable
-        // tool JSON). Any stray non-emotion tool the model still produces is
-        // ignored here and stripped from the transcript by `strippedText`
-        // below. Emotion stays separate ([emotion:n] tags via tagBuffer).
+        // Local tool calls are grammar-constrained to the curated set in
+        // `ToolGrammarBuilder.localToolNames` (docs/CHAT_LLM_IMPROVEMENT_PLAN.md
+        // §A1), so the JSON parses; anything outside that set is ignored and
+        // stripped from the transcript by `strippedText` below. Emotion stays
+        // separate ([emotion:n] tags via tagBuffer).
         if let tool = LocalToolCallParser.firstToolCall(in: fullText),
-            tool.name == AppFunctionTool.rememberFact {
+            ToolGrammarBuilder.localToolNames.contains(tool.name) {
             nlLog(
                 "֎ [FunctionCall] LocalLLM emitted <tool name=\"\(tool.name)\"> with args \(tool.arguments)",
                 level: .info
@@ -235,7 +234,10 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
             ttsBuffer = ""
         }
         Task { @MainActor in
+            // A barge-in already moved the state to .listening; the user owns the turn.
+            if state.status == .listening, bargeInInterrupted { return }
             if pendingTTSBuffers == 0 {
+                speakingStartedUptime = nil
                 state.status = .ready
             } else {
                 ttsGenerationDone = true

@@ -17,6 +17,7 @@ struct ExpandableFABMenu: View {
     let onRelationship: () -> Void
     let onModelSelection: () -> Void
     let onCameraToggle: () -> Void
+    let onShowPhoto: () -> Void
     let onIdentifySong: () -> Void
     let onIdentifySongLongPress: () -> Void
     let onPiP: () -> Void
@@ -58,6 +59,14 @@ struct ExpandableFABMenu: View {
                     ) { collapse(); onCameraToggle() }
                     .tutorialAnchor(.fabCamera)
                     .transition(childTransition(delay: 0.04))
+
+                    FABButton(
+                        icon: Image(systemName: "photo.on.rectangle"),
+                        label: "Show a Photo",
+                        showLabel: true
+                    ) { collapse(); onShowPhoto() }
+                    .tutorialAnchor(.fabPhoto)
+                    .transition(childTransition(delay: 0.06))
 
                     FABButton(
                         icon: Image(systemName: "music.note"),

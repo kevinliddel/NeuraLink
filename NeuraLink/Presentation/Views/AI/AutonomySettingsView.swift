@@ -19,6 +19,7 @@ struct AutonomySettingsView: View {
     var body: some View {
         Form {
             conversationSection
+            backgroundSection
             visionSection
             presenceSection
             engagementSection
@@ -39,6 +40,39 @@ struct AutonomySettingsView: View {
                 )
             }
             .disabled(!settings.isEnabled)
+
+            Toggle(isOn: $settings.isLocalBargeInEnabled) {
+                InfoToggleLabel(
+                    title: "Interrupt while speaking (local)",
+                    info: "Start talking over the local assistant to cut its reply short. Uses echo-aware detection; turn off if it triggers on its own voice."
+                )
+            }
+            .disabled(!settings.isLocalLLMEnabled)
+        }
+    }
+
+    // MARK: - Background audio (docs/PRESENCE_BEYOND_APP_PLAN.md §P1)
+
+    private var backgroundSection: some View {
+        Section {
+            Toggle(isOn: $presence.keepTalkingInBackground) {
+                InfoToggleLabel(
+                    title: "Keep talking in background",
+                    info: "The conversation keeps going with the screen off or while you use other apps, with AirPods or the speaker. The microphone stays on (iOS shows the orange indicator) until you stop talking for the idle time below, Low Power Mode turns on, or the phone gets hot."
+                )
+            }
+            .listRowSeparator(presence.keepTalkingInBackground ? .hidden : .automatic)
+
+            if presence.keepTalkingInBackground {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("End after silence")
+                    DropDownSelector(
+                        items: [5.0, 10.0, 20.0, 30.0], selection: $presence.backgroundIdleMinutes
+                    ) { minutes in
+                        "\(Int(minutes)) minutes"
+                    }
+                }
+            }
         }
     }
 
@@ -93,6 +127,20 @@ struct AutonomySettingsView: View {
                     )
                 }
             }
+
+            Toggle(isOn: $presence.followUpsEnabled) {
+                InfoToggleLabel(
+                    title: "Follow up on plans",
+                    info: "When you mention something with a date — a trip, an appointment, a birthday — the character brings it up the day before and asks how it went afterwards. Notifications need the toggle above; \"Not this\" on a notification silences that plan."
+                )
+            }
+
+            Toggle(isOn: $presence.showWidgets) {
+                InfoToggleLabel(
+                    title: "Companion widgets",
+                    info: "Home and lock-screen widgets show the character's greeting, how close you are and how long since you talked. They read a small summary stored outside the encrypted memory database — never your conversations or facts. Off removes it."
+                )
+            }
         }
     }
 
@@ -132,39 +180,6 @@ struct AutonomySettingsView: View {
 
 /// A toggle label with an ⓘ button that pops a short explanation — the house
 /// info idiom, self-contained so every feature row can reuse it.
-private struct InfoToggleLabel: View {
-    let title: String
-    let info: String
-
-    @State private var showInfo = false
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Text(title)
-            Button {
-                showInfo = true
-            } label: {
-                Image(systemName: "info.circle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-            .popover(isPresented: $showInfo) {
-                Text(info)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    // Claim the full wrapped height — without this the popover
-                    // hands the text a ~2-line box and truncates it.
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(12)
-                    .frame(width: 280)
-                    .presentationCompactAdaptation(.popover)
-            }
-            .accessibilityLabel("About \(title)")
-        }
-    }
-}
-
 #Preview {
     NavigationStack {
         AutonomySettingsView()

@@ -27,6 +27,8 @@ enum AppFunctionTool {
     static let poseForPhoto = "pose_for_photo"
     static let identifySong = "identify_song"
     static let playGame = "play_game"
+    static let searchMemory = "search_memory"
+    static let showPhoto = "show_photo"
 
     // MARK: - OpenAI tool schema array
 
@@ -35,11 +37,49 @@ enum AppFunctionTool {
         [
             emotionTool, weatherTool, searchTool, musicTool, reminderTool,
             noteTool, openAppTool, cameraTool, factTool, photoTool, identifySongTool,
-            playGameTool
+            playGameTool, searchMemoryTool, showPhotoTool
         ]
     }
 
     // MARK: - Individual schemas
+
+    private static var showPhotoTool: [String: Any] {
+        [
+            "type": "function",
+            "name": showPhoto,
+            "description": "Open the user's photo picker so they can show you a picture. Use this when the "
+                + "user says they want to show you a photo, a picture of someone or somewhere, or asks you "
+                + "to look at an image from their library. You will receive a description afterwards and "
+                + "remember the photo.",
+            "parameters": [
+                "type": "object",
+                "properties": [String: Any](),
+                "required": [String]()
+            ]
+        ]
+    }
+
+    private static var searchMemoryTool: [String: Any] {
+        [
+            "type": "function",
+            "name": searchMemory,
+            "description": "Search your long-term memory of past conversations with the user. "
+                + "Use this BEFORE answering whenever the user refers to something from the past "
+                + "(\"remember when\", \"what did I say about\", a person, place or plan you may have "
+                + "heard before, or a question about their life). The result lists dated memories; "
+                + "answer from it and say so honestly when nothing was found.",
+            "parameters": [
+                "type": "object",
+                "properties": [
+                    "query": [
+                        "type": "string",
+                        "description": "What to look for, in natural language (e.g. 'the user's sister', 'trip last month')."
+                    ]
+                ],
+                "required": ["query"]
+            ]
+        ]
+    }
 
     private static var identifySongTool: [String: Any] {
         [

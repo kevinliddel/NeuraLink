@@ -32,6 +32,21 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
     var iceGatheringTimeout: Task<Void, Never>?
     let sileroVAD = SileroVADProcessor()
 
+    // Reconnect state (see +Reconnect.swift)
+    var reconnectAttempt = 0
+    var reconnectTask: Task<Void, Never>?
+    var iceGraceTask: Task<Void, Never>?
+    var isReconnecting = false
+    /// Set by `disconnect()`; suppresses auto-reconnect until the next `connect()`.
+    var userRequestedDisconnect = false
+    var foregroundObserver: NSObjectProtocol?
+    /// Token usage for the current session (see `[Cost]` log at teardown).
+    var usageMeter = RealtimeUsageMeter()
+    // Mid-session instruction refresh (see +SessionRefresh.swift)
+    var refreshScheduler = SessionRefreshScheduler()
+    var refreshTask: Task<Void, Never>?
+    var instructionsObserver: NSObjectProtocol?
+
     // Dependencies
     let settings = OpenAISettings.shared
     let state = RealtimeChatState.shared
@@ -93,12 +108,19 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
         }
     }
 
-    /// Starts the Realtime session
-    func connect() {
+    /// Starts the Realtime session. `isReconnect` is set by the auto-reconnect
+    /// path so a user-facing call resets the reconnect bookkeeping.
+    func connect(isReconnect: Bool = false) {
         guard settings.hasValidKey else {
             state.setError("Invalid API Key")
             return
         }
+        if !isReconnect {
+            userRequestedDisconnect = false
+            cancelReconnect()
+        }
+        installForegroundWatch()
+        installInstructionRefreshObserver()
 
         // Prevent redundant connection attempts if already active or connecting.
         guard
@@ -118,8 +140,27 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
         }
     }
 
-    /// Stops the Realtime session
+    /// Stops the Realtime session on the user's behalf; no auto-reconnect
+    /// until the next `connect()`.
     func disconnect() {
+        userRequestedDisconnect = true
+        cancelReconnect()
+        teardown()
+    }
+
+    /// Releases the transport without touching reconnect bookkeeping.
+    func teardown() {
+        if usageMeter.responses > 0 {
+            nlLog(usageMeter.logLine, level: .info)
+            state.lastSessionUsage = usageMeter
+            usageMeter = RealtimeUsageMeter()
+        }
+        iceGatheringTimeout?.cancel()
+        iceGatheringTimeout = nil
+        pendingOffer = nil
+        refreshTask?.cancel()
+        refreshTask = nil
+        refreshScheduler.reset()
         audioPlaybackMonitorTask?.cancel()
         audioPlaybackMonitorTask = nil
         speakingStartTime = nil

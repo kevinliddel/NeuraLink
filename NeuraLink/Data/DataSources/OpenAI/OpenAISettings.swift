@@ -41,6 +41,10 @@ final class OpenAISettings {
     private static let proactiveVisionPrivateModeKey = "com.neuralink.openai.proactiveVisionPrivateMode"
     private static let proactiveVisionAllowPiPKey = "com.neuralink.openai.proactiveVisionAllowPiP"
     private static let migrationV2Key = "com.neuralink.migration.onDemandLLM.v1"
+    private static let realtimeModelKey = "com.neuralink.openai.model.realtime"
+    private static let localBargeInKey = "com.neuralink.localllm.bargeIn"
+    private static let transcriptionModelKey = "com.neuralink.openai.model.transcription"
+    private static let textModelKey = "com.neuralink.openai.model.text"
 
     // MARK: - Backing Storage
 
@@ -55,6 +59,10 @@ final class OpenAISettings {
     @ObservationIgnored private var _proactiveVisionOnlyInForeground: Bool = true
     @ObservationIgnored private var _isProactiveVisionPrivateModeEnabled: Bool = false
     @ObservationIgnored private var _proactiveVisionAllowInPiP: Bool = false
+    @ObservationIgnored private var _realtimeModel: String = OpenAIModelCatalog.defaultID(for: .realtime)
+    @ObservationIgnored private var _isLocalBargeInEnabled: Bool = false
+    @ObservationIgnored private var _transcriptionModel: String = OpenAIModelCatalog.defaultID(for: .transcription)
+    @ObservationIgnored private var _textModel: String = OpenAIModelCatalog.defaultID(for: .text)
 
     // MARK: - Init
 
@@ -87,6 +95,66 @@ final class OpenAISettings {
         _proactiveVisionOnlyInForeground = defaults.object(forKey: Self.proactiveVisionOnlyForegroundKey) as? Bool ?? true
         _isProactiveVisionPrivateModeEnabled = defaults.object(forKey: Self.proactiveVisionPrivateModeKey) as? Bool ?? false
         _proactiveVisionAllowInPiP = defaults.object(forKey: Self.proactiveVisionAllowPiPKey) as? Bool ?? false
+        _realtimeModel = Self.storedModel(forKey: Self.realtimeModelKey, role: .realtime)
+        // Default on for ≥ 5 GB devices; the 4 GB tier waits for the iPhone 11 sweep.
+        _isLocalBargeInEnabled = defaults.object(forKey: Self.localBargeInKey) as? Bool
+            ?? (ProcessInfo.processInfo.physicalMemory >= 5 * 1024 * 1024 * 1024)
+        _transcriptionModel = Self.storedModel(forKey: Self.transcriptionModelKey, role: .transcription)
+        _textModel = Self.storedModel(forKey: Self.textModelKey, role: .text)
+    }
+
+    /// Unset or blank → the catalog default (an empty id would 400 at OpenAI).
+    private static func storedModel(forKey key: String, role: OpenAIModelCatalog.Role) -> String {
+        let stored = UserDefaults.standard.string(forKey: key)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return stored.isEmpty ? OpenAIModelCatalog.defaultID(for: role) : stored
+    }
+
+    /// Local path: let the user interrupt the assistant mid-reply
+    /// (docs/CHAT_LLM_IMPROVEMENT_PLAN.md §A2).
+    var isLocalBargeInEnabled: Bool {
+        get { access(keyPath: \.isLocalBargeInEnabled); return _isLocalBargeInEnabled }
+        set {
+            withMutation(keyPath: \.isLocalBargeInEnabled) {
+                _isLocalBargeInEnabled = newValue
+                UserDefaults.standard.set(newValue, forKey: Self.localBargeInKey)
+            }
+        }
+    }
+
+    // MARK: - Model selection (docs/CHAT_LLM_IMPROVEMENT_PLAN.md §B3)
+
+    /// Realtime (voice) model minted into the session; a change applies on
+    /// the next connect.
+    var realtimeModel: String {
+        get { access(keyPath: \.realtimeModel); return _realtimeModel }
+        set { setModel(newValue, keyPath: \.realtimeModel, storage: \._realtimeModel, key: Self.realtimeModelKey, role: .realtime) }
+    }
+
+    /// Input transcription model sent in `session.update`.
+    var transcriptionModel: String {
+        get { access(keyPath: \.transcriptionModel); return _transcriptionModel }
+        set {
+            setModel(newValue, keyPath: \.transcriptionModel, storage: \._transcriptionModel,
+                     key: Self.transcriptionModelKey, role: .transcription)
+        }
+    }
+
+    /// Chat Completions model for background text work (memory, titling, reflection).
+    var textModel: String {
+        get { access(keyPath: \.textModel); return _textModel }
+        set { setModel(newValue, keyPath: \.textModel, storage: \._textModel, key: Self.textModelKey, role: .text) }
+    }
+
+    private func setModel(
+        _ value: String, keyPath: KeyPath<OpenAISettings, String>,
+        storage: ReferenceWritableKeyPath<OpenAISettings, String>, key: String, role: OpenAIModelCatalog.Role
+    ) {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolved = trimmed.isEmpty ? OpenAIModelCatalog.defaultID(for: role) : trimmed
+        withMutation(keyPath: keyPath) {
+            self[keyPath: storage] = resolved
+            UserDefaults.standard.set(resolved, forKey: key)
+        }
     }
 
     // MARK: - Observed Properties

@@ -5,10 +5,33 @@
 //  Created by Dedicatus on 14/04/2026.
 //
 
+import BackgroundTasks
 import SwiftUI
 
 @main
 struct NeuraLinkApp: App {
+    static let followUpTaskID = "com.dedicatus.NeuraLink.followups"
+
+    init() {
+        // Daily background refresh so a "tomorrow" follow-up is scheduled even
+        // when the app was not opened that day (docs/COMPANION_DEPTH_PLAN.md §D1).
+        BGTaskScheduler.shared.register(forTaskWithIdentifier: Self.followUpTaskID, using: nil) { task in
+            Self.scheduleFollowUpRefresh()
+            let work = Task { @MainActor in
+                await FollowUpCoordinator.shared.planAndDeliver()
+                task.setTaskCompleted(success: true)
+            }
+            task.expirationHandler = { work.cancel() }
+        }
+        Self.scheduleFollowUpRefresh()
+    }
+
+    static func scheduleFollowUpRefresh() {
+        let request = BGAppRefreshTaskRequest(identifier: followUpTaskID)
+        request.earliestBeginDate = Date().addingTimeInterval(12 * 3_600)
+        try? BGTaskScheduler.shared.submit(request)
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()
@@ -25,6 +48,25 @@ struct NeuraLinkApp: App {
         // Reflection pipeline: listens for boundaries, clears stale pending
         // notifications, runs launch catch-up. Idempotent.
         ReflectionManager.shared.start()
+        // Agentic memory: flush un-retained turns at session boundaries and
+        // seed the standing mental models. Idempotent.
+        MemoryRetain.shared.start()
+        // Session Live Activity (P2): mirrors the voice-session status on the
+        // lock screen / Dynamic Island while background talking is on.
+        CompanionActivityController.shared.start()
+        #if DEBUG
+        // `-nl.debug.memoryEval YES`: run the memory evaluation harness with
+        // real device embeddings and print the report to the persistent log.
+        if UserDefaults.standard.bool(forKey: "nl.debug.memoryEval") {
+            Task.detached(priority: .utility) {
+                guard let report = try? await MemoryEvalRunner().run() else { return }
+                await MainActor.run {
+                    for line in report.summaryLines { nlLog("\(line)", level: .info) }
+                    for miss in report.failures { nlLog("[MemoryEval] miss: \(miss)", level: .info) }
+                }
+            }
+        }
+        #endif
         // Proactive engagement loop (absence greeting + silence small talk),
         // only when the user opted in.
         ProactivePresenceManager.shared.startIfEnabled()

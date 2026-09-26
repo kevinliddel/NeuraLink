@@ -14,37 +14,65 @@ priority order:
 
 ```mermaid
 flowchart TD
-    subgraph P0 [Phase 0 — Foundations]
+    %% =======================
+    %% Phase 0 — Foundations
+    %% =======================
+    subgraph P0["Phase 0 — Foundations"]
         LC["SessionLifecycle<br/>scenePhase seam + endSession()"]
-        CLK["InteractionClock<br/>last speech / last seen (persisted)"]
-        SQL["MemoryStore + JournalStore ext.<br/>companion_journal, persona_traits"]
-        HTTP["OpenAIChatClient<br/>extracted from ConversationTitler"]
+        CLK["InteractionClock<br/>last speech / last seen"]
+        SQL["MemoryStore + JournalStore<br/>journal + traits"]
+        HTTP["OpenAIChatClient<br/>extracted client"]
     end
 
-    subgraph P1a [① Presence]
-        REFL["ReflectionManager<br/>end-of-session LLM pass"]
-        NOTIF["UNUserNotificationCenter<br/>'she's been thinking about you'"]
+    %% =======================
+    %% Phase 1a — Presence
+    %% =======================
+    subgraph P1a["① Presence"]
+        REFL["ReflectionManager<br/>end-of-session pass"]
+        NOTIF["UNUserNotificationCenter<br/>presence notification"]
     end
 
-    subgraph P1b [⑤ Evolution]
-        TRAITS["trait distillation<br/>persona_traits (capped, editable)"]
-        CSM["CompanionStateManager.promptContext<br/>single shared prompt hook"]
-        JUI["Journal UI<br/>diary + traits, edit/delete"]
+    %% =======================
+    %% Phase 1b — Evolution
+    %% =======================
+    subgraph P1b["⑤ Evolution"]
+        TRAITS["trait distillation<br/>persona_traits (capped)"]
+        CSM["CompanionStateManager<br/>shared prompt context"]
+        JUI["Journal UI<br/>diary + traits"]
     end
 
-    subgraph P1c [⑥ Proactive]
-        PPM["ProactivePresenceManager<br/>absence greeting · silence small talk"]
+    %% =======================
+    %% Phase 1c — Proactive
+    %% =======================
+    subgraph P1c["⑥ Proactive"]
+        PPM["ProactivePresenceManager<br/>absence + silence logic"]
     end
 
+    %% =======================
+    %% Flow
+    %% =======================
     LC --> REFL
     HTTP --> REFL
-    REFL -->|diary + opener + traits| SQL
-    REFL --> NOTIF
-    SQL --> TRAITS --> CSM
-    CLK --> PPM
-    SQL -->|opener| PPM
-    PPM -->|handleInteractionEvent /<br/>sendInteractionEvent| ENGINES["local LLM · OpenAI realtime"]
-    CSM --> ENGINES
+
+    REFL --> D1["diary + opener + traits"] --> SQL
+    REFL --> D2["notification trigger"] --> NOTIF
+
+    SQL --> D3["stored traits"] --> TRAITS --> CSM
+    SQL --> D4["opener"] --> PPM
+
+    CLK --> D5["time signals"] --> PPM
+
+    PPM --> D6["interaction events"] --> ENGINES["local LLM · OpenAI realtime"]
+    CSM --> D7["prompt context"] --> ENGINES
+
+    %% =======================
+    %% Styles
+    %% =======================
+    classDef core fill:#0f172a,stroke:#7c3aed,color:#a78bfa
+    classDef data fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
+
+    class LC,CLK,SQL,HTTP,REFL,TRAITS,CSM,PPM core
+    class D1,D2,D3,D4,D5,D6,D7 data
 ```
 
 ---
@@ -110,7 +138,7 @@ Next launch, the persona greets with the opener (delivered via Phase 3's manager
 - `Data/DataSources/ReflectionManager.swift`, modeled **directly on
   `ConversationTitler`** (the proven shape: `NSLock` in-flight dedupe,
   `Task.detached(.background)`, dual-engine routing):
-  - OpenAI enabled + key → `OpenAIChatClient` (`gpt-4o-mini`, `max_tokens ~160`).
+  - OpenAI enabled + key → `OpenAIChatClient` (`gpt-5.6-luna`, `max_completion_tokens ~160`).
   - Else local → `LocalLLMManager.runSilentGeneration(prompt:maxTokens:)`
     (`+Compaction.swift:65` — no UI/TTS side effects, serialized behind the engine lock).
 - Transcript source: `ConversationStore.messages(conversationID:)`, last ~16 turns.

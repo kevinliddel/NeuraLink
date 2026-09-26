@@ -2,8 +2,9 @@
 //  VisionAnalyzer.swift
 //  NeuraLink
 //
-//  Sends a camera frame to GPT-4o Vision and returns a plain-text description.
-//  Used by AppFunctionExecutor when the AI calls the analyze_camera tool.
+//  Sends an image to the configured text model (which accepts images) and
+//  returns a plain-text description. Used by the analyze_camera tool,
+//  proactive vision and photo memories.
 //
 
 import Foundation
@@ -12,10 +13,13 @@ import UIKit
 enum VisionAnalyzer {
 
     private static let endpoint = "https://api.openai.com/v1/chat/completions"
-    private static let model = "gpt-4o"
     private static let maxTokens = 300
 
-    /// Encodes `image` as JPEG, sends it to GPT-4o Vision, and returns the description.
+    /// The image-capable model: same as the background text model
+    /// (AI Settings → Models), so one choice covers both.
+    static var model: String { OpenAISettings.shared.textModel }
+
+    /// Encodes `image` as JPEG, sends it to the vision-capable text model, and returns the description.
     static func analyze(image: UIImage, prompt: String, apiKey: String) async -> String {
         guard !apiKey.isEmpty else { return "No API key configured." }
 
@@ -48,7 +52,7 @@ enum VisionAnalyzer {
 
     // MARK: - Private
 
-    private static func buildBody(base64Image: String, prompt: String) -> [String: Any] {
+    static func buildBody(base64Image: String, prompt: String) -> [String: Any] {
         let content: [[String: Any]] = [
             ["type": "text", "text": prompt],
             [
@@ -59,7 +63,7 @@ enum VisionAnalyzer {
         return [
             "model": model,
             "messages": [["role": "user", "content": content]],
-            "max_tokens": maxTokens
+            "max_completion_tokens": maxTokens
         ]
     }
 

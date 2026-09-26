@@ -19,9 +19,7 @@ extension OpenAIRealtimeManager {
     /// after the capture window and talk over the flow — the only assistant
     /// output around a recognition is the title announcement afterwards.
     func cancelActiveResponse() {
-        let payload: [String: Any] = ["type": "response.cancel"]
-        guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return }
-        remoteDataChannel?.sendData(RTCDataBuffer(data: data, isBinary: false))
+        send(["type": "response.cancel"])
         nlLog("[AI]: active response cancelled (song recognition)", level: .info)
     }
 
@@ -36,13 +34,8 @@ extension OpenAIRealtimeManager {
                 ]
             ]
         ]
-        let trigger: [String: Any] = ["type": "response.create"]
-
-        for payload in [item, trigger] {
-            guard let data = try? JSONSerialization.data(withJSONObject: payload) else { continue }
-            let buffer = RTCDataBuffer(data: data, isBinary: false)
-            remoteDataChannel?.sendData(buffer)
-        }
+        send(item)
+        send(["type": "response.create"])
         nlLog("[AI Interaction]: sent event: \(action)", level: .info)
     }
 }

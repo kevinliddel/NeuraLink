@@ -86,6 +86,7 @@ struct UserSettingsView: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
+                        OpenAIRealtimeManager.postInstructionsChanged(reason: "user settings")
                         dismiss()
                     }
                 }

@@ -10,6 +10,9 @@ struct AISettingsView: View {
     @Bindable var settings = OpenAISettings.shared
     @Bindable var appearance = AppearanceSettings.shared
     @Bindable var presence = PresenceSettings.shared
+    @State private var aiState = RealtimeChatState.shared
+    /// Voice model at open time; a change reconnects on Done.
+    @State private var realtimeModelAtOpen = OpenAISettings.shared.realtimeModel
     private var downloader = LocalModelDownloadManager.shared
     private var personaStore = PersonaStore.shared
     @State private var showModelLibrary = false
@@ -19,6 +22,7 @@ struct AISettingsView: View {
         NavigationStack {
             Form {
                 openAISection
+                modelsSection
                 interactionSection
                 personaSection
                 localSLMSection
@@ -39,6 +43,49 @@ struct AISettingsView: View {
     }
 
     // MARK: - Sections
+
+    /// Row into the dedicated Models screen — same shape as the Autonomy row.
+    private var modelsSection: some View {
+        Section("Models") {
+            NavigationLink {
+                ModelsSettingsView()
+            } label: {
+                HStack(spacing: 12) {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [.purple.opacity(0.85), .indigo.opacity(0.7)],
+                                startPoint: .topLeading, endPoint: .bottomTrailing)
+                        )
+                        .frame(width: 44, height: 44)
+                        .overlay(
+                            Image(systemName: "cpu")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(.white)
+                        )
+                        .overlay(Circle().stroke(Color.primary.opacity(0.15), lineWidth: 1))
+                        .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Models")
+                            .font(.headline)
+                        Text(modelsSummary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .disabled(!settings.isEnabled)
+        }
+    }
+
+    /// One-line status of the chosen models, shown under the row title.
+    private var modelsSummary: String {
+        guard settings.isEnabled else { return "Enable OpenAI to choose models" }
+        let usage = aiState.sessionUsage.responses > 0
+            ? " · \(aiState.sessionUsage.summary)" : ""
+        return "\(settings.realtimeModel) · \(settings.textModel)\(usage)"
+    }
 
     private var openAISection: some View {
         Section("OpenAI") {
@@ -294,6 +341,9 @@ struct AISettingsView: View {
 
     private func triggerConnectionIfNeeded() {
         if settings.isEnabled && settings.hasValidKey {
+            if settings.realtimeModel != realtimeModelAtOpen {
+                OpenAIRealtimeManager.shared.disconnect()
+            }
             OpenAIRealtimeManager.shared.connect()
         } else if settings.isLocalLLMEnabled && LocalModelDownloadManager.shared.isAvailable {
             LocalLLMManager.shared.startListening()

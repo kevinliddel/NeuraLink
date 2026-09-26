@@ -368,3 +368,26 @@ Other things deferred to future work:
 | [NeuraLink/Data/DataSources/LocalLLM/LocalLLMManager.swift](../NeuraLink/Data/DataSources/LocalLLM/LocalLLMManager.swift) | KV cache load/save with integrity check |
 | [NeuraLink/Data/DataSources/OpenAI/OpenAISettings.swift](../NeuraLink/Data/DataSources/OpenAI/OpenAISettings.swift) | API key → Keychain + one-shot migration |
 | [NeuraLink/Data/DataSources/OpenAI/OpenAIRealtimeManager+Handlers.swift](../NeuraLink/Data/DataSources/OpenAI/OpenAIRealtimeManager+Handlers.swift) | Transcript log sites → `nlLogSensitive` |
+
+## Data outside the protected sandbox (2026-09-27)
+
+Widgets and the session Live Activity run in a separate extension and read a
+small JSON snapshot in the App Group container `group.com.dedicatus.NeuraLink`
+(`NeuraLinkShared/CompanionSnapshot.swift`): character name, relationship
+label and score, the prepared greeting, one short remembered line, the last
+chat time and a character thumbnail. It never contains transcripts, facts or
+observations beyond that single line, is rewritten by the app (not the
+extension), and is deleted when "Companion widgets" is switched off. The
+SQLCipher database, keychain material and all memory rows stay in the
+protected App Support directory as before.
+
+Background audio (`UIBackgroundModes = audio`) is opt-in ("Keep talking in
+background"); while active the microphone stays open and iOS shows the
+system indicator. The session ends automatically after the configured idle
+time, on Low Power Mode, a serious thermal state or a memory warning.
+
+Photo memories keep only a 256 px JPEG thumbnail and a text description under
+the protected App Support directory (`photo-memories/`, Data Protection
+applied); the original photo is sent to OpenAI once for description when the
+cloud model is enabled and is never stored by the app.
+

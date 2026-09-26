@@ -2,7 +2,9 @@
 //  MemoryTimelineView.swift
 //  NeuraLink
 //
-//  In-app timeline of recent voice turns, tool calls, and saved facts.
+//  The Memory page: what the companion knows (hero card), memory
+//  controls, consolidated insights, saved facts, and privacy actions.
+//  Data comes from the agentic memory layer (docs/AGENTIC_MEMORY.md).
 //
 
 import SwiftUI
@@ -11,78 +13,35 @@ struct MemoryTimelineView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var memorySettings = MemorySettings.shared
 
+    @State private var snapshot = MemoryPageSnapshot()
+    @State private var facts: [FactItem] = []
+    @State private var showAllFacts = false
+    @State private var showAllObservations = false
+    @State private var isRefreshing = false
     @State private var editFact: FactItem?
-    @State private var showFactsInfo = false
+    @State private var confirmClearAll = false
+    @State private var showExport = false
+    @State private var recap: MentalModel?
 
-    @State private var factsPage: Int = 0
-    private let pageSize = 5
+    private let collapsedLimit = 5
 
-    @State private var totalFacts: Int = 0
+    private var characterName: String {
+        let name = RealtimeChatState.shared.selectedCharacterName
+        return name.isEmpty ? "Your companion" : name.capitalized
+    }
 
     var body: some View {
         NavigationStack {
             List {
-                Section {
-                    Toggle("Memory Enabled", isOn: Bindable(memorySettings).isEnabled)
-                        .listRowSeparator(memorySettings.isEnabled ? .hidden : .automatic)
-
-                    if memorySettings.isEnabled {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Auto-forget")
-                            DropDownSelector(items: [0, 7, 14, 30], selection: Bindable(memorySettings).autoForgetDays) { days in
-                                days == 0 ? "Never" : "\(days) days"
-                            }
-                        }
-                        .listRowSeparator(.hidden)
-
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Text("Memory Quality")
-                                Spacer()
-                                Text(memorySettings.similarityFloor, format: .number.precision(.fractionLength(2)))
-                                    .foregroundStyle(.secondary)
-                                    .monospacedDigit()
-                            }
-                            Slider(value: Bindable(memorySettings).similarityFloor, in: 0.3...0.7, step: 0.05)
-                            Text("Higher values surface fewer, more relevant memories.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                } header: {
-                    HStack {
-                        Text("Memory Controls")
-                        Spacer()
-                        Menu {
-                            Button("Forget last 5 minutes", role: .destructive) { forgetLast(minutes: 5) }
-                            Button("Forget last 15 minutes", role: .destructive) { forgetLast(minutes: 15) }
-                            Button("Forget last 60 minutes", role: .destructive) { forgetLast(minutes: 60) }
-                            Divider()
-                            Button("Clear All (Unpinned)", role: .destructive) { forgetAllUnpinned() }
-                        } label: {
-                            Text("Forget")
-                                .foregroundStyle(.red)
-                        }
-                        .tint(.red)
-                        .disabled(!memorySettings.isEnabled)
-                    }
-                    .textCase(nil)
-                } footer: {
-                    Text("Memory is stored locally on-device (SQLite). Pinned items are not auto-deleted.")
-                }
-
-                Section {
-                    factsPager
-                } header: {
-                    sectionHeader(
-                        countLabel: factsCountLabel,
-                        title: "Facts",
-                        showInfo: $showFactsInfo,
-                        infoText: "Important facts the assistant remembers about you (preferences, details, etc).",
-                        onDeleteAll: deleteAllFacts
-                    )
-                }
+                recapSection
+                heroSection
+                MemoryTimelineSection()
+                controlsSection
+                observationsSection
+                factsSection
+                privacySection
             }
+            .listStyle(.insetGrouped)
             .scrollIndicators(.hidden)
             .navigationTitle("Memory")
             .navigationBarTitleDisplayMode(.inline)
@@ -91,166 +50,361 @@ struct MemoryTimelineView: View {
                     Button("Done") { dismiss() }
                 }
             }
-            .onAppear { refreshCountsAndClampPages() }
+            .onAppear(perform: reload)
             .onChange(of: memorySettings.autoForgetDays) { applyAutoForgetNow() }
-            .onChange(of: factsPage) { refreshCountsAndClampPages() }
+            .sheet(isPresented: $showExport) { MemoryExportSheet() }
             .sheet(item: $editFact) { fact in
                 FactEditSheet(fact: fact) { updated in
                     MemoryStore.shared.updateFact(
-                        id: updated.id,
-                        subject: updated.subject,
-                        predicate: updated.predicate,
-                        object: updated.object
-                    )
-                    refreshCountsAndClampPages()
+                        id: updated.id, subject: updated.subject,
+                        predicate: updated.predicate, object: updated.object)
+                    reload()
                 }
+            }
+            .confirmationDialog(
+                "Clear all memories?", isPresented: $confirmClearAll, titleVisibility: .visible
+            ) {
+                Button("Clear everything except pinned", role: .destructive) { forgetAllUnpinned() }
+            } message: {
+                Text("Conversations, facts and insights are removed from this device. Pinned items stay.")
             }
         }
     }
 
-    // MARK: - Pagers
+    // MARK: - Sections
 
-    private let factsRowHeight: CGFloat = 52
+    @ViewBuilder private var recapSection: some View {
+        if let recap, !recap.content.isEmpty, !MemoryRecapCard.Dismissal.isDismissed() {
+            Section {
+                MemoryRecapCard(
+                    characterName: characterName, content: recap.content,
+                    onAsk: {
+                        MemoryMentalModels.shared.askAboutRecap(character: RealtimeChatState.shared.selectedCharacterName)
+                        dismiss()
+                    },
+                    onDismiss: {
+                        MemoryRecapCard.Dismissal.dismiss()
+                        self.recap = nil
+                    })
+                .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            }
+        }
+    }
 
-    private var factsPager: some View {
-        Group {
-            if totalFacts == 0 {
-                Text("No saved facts yet.")
-                    .foregroundStyle(.secondary)
-            } else {
-                let itemCount = min(totalFacts, pageSize)
-                TabView(selection: $factsPage) {
-                    ForEach(0..<factsTotalPages, id: \.self) { page in
-                        VStack(spacing: 0) {
-                            let items = MemoryStore.shared.fetchAllFacts(
-                                limit: pageSize,
-                                offset: page * pageSize
-                            )
-                            ForEach(items) { f in
-                                factsRow(f)
-                                    .padding(.vertical, 8)
-                                Divider()
-                            }
-                            Spacer(minLength: 0)
-                        }
-                        .tag(page)
-                        .padding(.horizontal, 4)
+    private var heroSection: some View {
+        Section {
+            MemoryHeroCard(
+                characterName: characterName, snapshot: snapshot,
+                isEnabled: memorySettings.isEnabled, isRefreshing: isRefreshing, onRefresh: refreshNow)
+            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 8, trailing: 16))
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+        }
+    }
+
+    private var controlsSection: some View {
+        Section {
+            Toggle(isOn: Bindable(memorySettings).isEnabled) {
+                Label {
+                    InfoToggleLabel(
+                        title: "Remember conversations",
+                        info: "Facts, insights and moments from your chats are kept on this device only, so \(characterName) can bring them up later.")
+                } icon: {
+                    settingIcon("brain", color: .purple)
+                }
+            }
+
+            if memorySettings.isEnabled {
+                HStack {
+                    Label("Auto-forget", systemImage: "clock.arrow.circlepath")
+                        .labelStyle(SettingLabelStyle(color: .orange))
+                    Spacer()
+                    DropDownSelector(items: [0, 7, 14, 30], selection: Bindable(memorySettings).autoForgetDays) { days in
+                        days == 0 ? "Never" : "After \(days) days"
                     }
                 }
-                .tabViewStyle(.page(indexDisplayMode: factsTotalPages > 1 ? .automatic : .never))
-                .frame(height: factsRowHeight * CGFloat(itemCount) + (factsTotalPages > 1 ? 50 : 0))
+
+                MemoryEmbeddingModelRow()
+
+                Toggle(isOn: Bindable(memorySettings).charactersShareMemories) {
+                    Label {
+                        InfoToggleLabel(
+                            title: "Characters share memories",
+                            info: "On: every character can recall everything. Off: each character only recalls what it experienced itself, plus the facts about you, which are always shared.")
+                    } icon: {
+                        settingIcon("person.2", color: .indigo)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Label {
+                            InfoToggleLabel(
+                                title: "Recall precision",
+                                info: "How closely a memory must match what you're talking about before it is brought up. Only affects meaning-based matching; names, places and dates are always matched exactly.")
+                        } icon: {
+                            settingIcon("scope", color: .blue)
+                        }
+                        Spacer()
+                        Text(precisionLabel)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    Slider(value: Bindable(memorySettings).similarityFloor, in: 0.3...0.7, step: 0.05)
+                    HStack {
+                        Text("Broader").font(.caption2).foregroundStyle(.secondary)
+                        Spacer()
+                        Text("Stricter").font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+        } header: {
+            Text("Controls")
+        }
+    }
+
+    private var observationsSection: some View {
+        Section {
+            if snapshot.observationUnits.isEmpty {
+                MemoryEmptyRow(
+                    symbol: "sparkles", title: "No insights yet",
+                    detail: "\(characterName) distils repeated facts into insights in the background.")
+            } else {
+                ForEach(visibleObservations) { unit in
+                    MemoryObservationRow(unit: unit)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) { deleteObservation(unit) } label: {
+                                Label("Forget", systemImage: "trash")
+                            }
+                        }
+                }
+                if snapshot.observationUnits.count > collapsedLimit {
+                    showMoreButton(isExpanded: $showAllObservations, total: snapshot.observationUnits.count)
+                }
+            }
+        } header: {
+            sectionHeader(
+                "Insights", count: snapshot.observationUnits.count, symbol: "sparkles",
+                info: "Beliefs \(characterName) distilled from facts that came up more than once. Swipe one to forget it; the summary above is rebuilt from these.")
+        }
+    }
+
+    private var factsSection: some View {
+        Section {
+            if facts.isEmpty {
+                MemoryEmptyRow(
+                    symbol: "checkmark.seal", title: "No saved facts",
+                    detail: "Tell \(characterName) about yourself and it will note the details here.")
+            } else {
+                ForEach(visibleFacts) { fact in
+                    factRow(fact)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) { deleteFact(fact) } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                            Button { editFact = fact } label: {
+                                Label("Edit", systemImage: "pencil")
+                            }
+                            .tint(.blue)
+                        }
+                }
+                if facts.count > collapsedLimit {
+                    showMoreButton(isExpanded: $showAllFacts, total: facts.count)
+                }
+            }
+        } header: {
+            HStack {
+                sectionHeader(
+                    "Facts", count: facts.count, symbol: "checkmark.seal",
+                    info: "Details you told \(characterName) about yourself. Tap a fact to edit it, swipe to delete.")
+                Spacer()
+                if !facts.isEmpty {
+                    Button("Delete all", role: .destructive) { deleteAllFacts() }
+                        .font(.caption)
+                }
             }
         }
     }
 
-    // MARK: - Rows
+    private var privacySection: some View {
+        Section {
+            Menu {
+                Button("Last 5 minutes", role: .destructive) { forgetLast(minutes: 5) }
+                Button("Last 15 minutes", role: .destructive) { forgetLast(minutes: 15) }
+                Button("Last hour", role: .destructive) { forgetLast(minutes: 60) }
+            } label: {
+                Label("Forget recent…", systemImage: "eraser")
+                    .labelStyle(SettingLabelStyle(color: .red))
+            }
+            .disabled(!memorySettings.isEnabled)
 
-    private func factsRow(_ f: FactItem) -> some View {
-        HStack(alignment: .center, spacing: 10) {
-            VStack(alignment: .leading, spacing: 4) {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    Text(factDisplayText(f))
-                        .font(.subheadline.weight(.medium))
+            Button { showExport = true } label: {
+                Label {
+                    InfoToggleLabel(
+                        title: "Export memory…",
+                        info: "Saves everything the companion remembers as a JSON file you can keep, share or inspect. Nothing leaves the device unless you share it.")
+                } icon: {
+                    settingIcon("square.and.arrow.up", color: .blue)
                 }
-                Text(Self.timeFormatter.string(from: f.timestamp))
+            }
+            .disabled(!memorySettings.isEnabled)
+
+            Button(role: .destructive) { confirmClearAll = true } label: {
+                Label {
+                    InfoToggleLabel(
+                        title: "Clear all memories",
+                        info: "Removes conversations, facts and insights from this device. Pinned items stay. Nothing is ever uploaded for storage; only what's relevant to a conversation is shared with the AI you're talking to.")
+                } icon: {
+                    settingIcon("trash", color: .red)
+                }
+            }
+        } header: {
+            Text("Privacy")
+        } footer: {
+            Text("Stored on this device only.")
+        }
+    }
+
+    // MARK: - Rows & helpers
+
+    private func factRow(_ fact: FactItem) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "checkmark.seal.fill")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.green)
+                .frame(width: 28, height: 28)
+                .background(Color.green.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(factDisplayText(fact))
+                    .font(.subheadline)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(Self.timeFormatter.string(from: fact.timestamp))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            Button {
-                MemoryStore.shared.deleteFact(id: f.id)
-                refreshCountsAndClampPages()
-            } label: {
-                Image(systemName: "trash")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.red.opacity(0.75))
-            }
-            .buttonStyle(.borderless)
         }
+        .padding(.vertical, 4)
         .contentShape(Rectangle())
-        .contextMenu {
-            Button {
-                editFact = f
-            } label: {
-                Label("Edit", systemImage: "pencil")
-            }
-            Button(role: .destructive) {
-                MemoryStore.shared.deleteFact(id: f.id)
-                refreshCountsAndClampPages()
-            } label: {
-                Label("Delete", systemImage: "trash")
-            }
-        }
+        .onTapGesture { editFact = fact }
     }
 
-    /// Knowledge-graph entries have three fields; memory-table flat facts
-    /// only fill `subject`. Join non-empty fields with single spaces so neither
-    /// form renders extra whitespace.
-    private func factDisplayText(_ f: FactItem) -> String {
-        [f.subject, f.predicate, f.object]
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-            .joined(separator: " ")
-    }
-
-    // MARK: - Section header
-
-    private func sectionHeader(
-        countLabel: String,
-        title: String,
-        showInfo: Binding<Bool>,
-        infoText: String,
-        onDeleteAll: @escaping () -> Void
-    ) -> some View {
-        HStack {
-            Text(countLabel)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Spacer()
-
-            HStack(spacing: 6) {
-                Text(title)
-                Button { showInfo.wrappedValue = true } label: {
-                    Image(systemName: "info.circle.fill")
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .popover(isPresented: showInfo) {
-                    Text(infoText)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .padding(12)
-                        .presentationCompactAdaptation(.popover)
-                }
-            }
-
-            Spacer()
-
-            Button(role: .destructive) { onDeleteAll() } label: {
-                Text("Delete All")
+    private func sectionHeader(_ title: String, count: Int, symbol: String, info: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: symbol)
+            InfoToggleLabel(title: title, info: info)
+            if count > 0 {
+                Text("\(count)")
+                    .font(.caption2.weight(.bold))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.secondary.opacity(0.15), in: Capsule())
             }
         }
         .textCase(nil)
     }
 
-    // MARK: - Counts / paging
-
-    private func refreshCountsAndClampPages() {
-        totalFacts = MemoryStore.shared.countFacts()
-        factsPage = min(max(factsPage, 0), max(factsTotalPages - 1, 0))
+    private func showMoreButton(isExpanded: Binding<Bool>, total: Int) -> some View {
+        Button {
+            withAnimation(.snappy) { isExpanded.wrappedValue.toggle() }
+        } label: {
+            HStack {
+                Spacer()
+                Text(isExpanded.wrappedValue ? "Show fewer" : "Show all \(total)")
+                    .font(.subheadline.weight(.medium))
+                Image(systemName: isExpanded.wrappedValue ? "chevron.up" : "chevron.down")
+                    .font(.caption.weight(.semibold))
+                Spacer()
+            }
+        }
+        .buttonStyle(.borderless)
     }
 
-    private var factsTotalPages: Int {
-        max(1, Int(ceil(Double(totalFacts) / Double(pageSize))))
+    private func settingIcon(_ symbol: String, color: Color) -> some View {
+        Image(systemName: symbol)
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(.white)
+            .frame(width: 28, height: 28)
+            .background(color, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
     }
 
-    private var factsCountLabel: String {
-        if totalFacts == 0 { return "0" }
-        let shown = min((factsPage + 1) * pageSize, totalFacts)
-        return "\(shown)/\(totalFacts)"
+    private var visibleObservations: [MemoryUnit] {
+        showAllObservations ? snapshot.observationUnits : Array(snapshot.observationUnits.prefix(collapsedLimit))
+    }
+
+    private var visibleFacts: [FactItem] {
+        showAllFacts ? facts : Array(facts.prefix(collapsedLimit))
+    }
+
+    private var precisionLabel: String {
+        switch memorySettings.similarityFloor {
+        case ..<0.4: return "Broad"
+        case ..<0.55: return "Balanced"
+        default: return "Strict"
+        }
+    }
+
+    /// Knowledge-graph entries have three fields; flat facts only fill
+    /// `subject`. Join the non-empty fields with single spaces.
+    private func factDisplayText(_ f: FactItem) -> String {
+        [f.subject, f.predicate.replacingOccurrences(of: "_", with: " "), f.object]
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+    }
+
+    // MARK: - Data
+
+    private func reload() {
+        let character = RealtimeChatState.shared.selectedCharacterName
+        // Small indexed queries; the previous page ran them inline in `body`.
+        Task {
+            let loaded = MemoryPageSnapshot.load(character: character)
+            let loadedFacts = MemoryStore.shared.fetchAllFacts()
+            let loadedRecap = MemoryStore.shared.fetchMentalModel(character: character, slug: MemoryMentalModels.weeklyRecapSlug)
+            withAnimation(.snappy) {
+                snapshot = loaded
+                facts = loadedFacts
+                recap = loadedRecap
+            }
+        }
+    }
+
+    /// Flushes pending turns, consolidates, and rebuilds the summaries.
+    private func refreshNow() {
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        let character = RealtimeChatState.shared.selectedCharacterName
+        Task.detached(priority: .userInitiated) {
+            await MemoryConsolidator.shared.consolidatePending()
+            await MemoryStore.shared.markMentalModelsStale()
+            await MemoryMentalModels.shared.refreshStale(character: character)
+            await MainActor.run {
+                isRefreshing = false
+                reload()
+            }
+        }
     }
 
     // MARK: - Actions
+
+    private func deleteObservation(_ unit: MemoryUnit) {
+        MemoryStore.shared.deleteUnit(id: unit.id)
+        MemoryStore.shared.markMentalModelsStale()
+        reload()
+    }
+
+    private func deleteFact(_ fact: FactItem) {
+        MemoryStore.shared.deleteFact(id: fact.id)
+        reload()
+    }
+
+    private func deleteAllFacts() {
+        MemoryStore.shared.deleteAllFacts()
+        reload()
+    }
 
     private func applyAutoForgetNow() {
         let days = memorySettings.autoForgetDays
@@ -258,29 +412,23 @@ struct MemoryTimelineView: View {
         let cutoff = Date().addingTimeInterval(-Double(days) * 86_400.0)
         MemoryStore.shared.pruneConversations(olderThan: cutoff)
         MemoryStore.shared.pruneMemories(olderThan: cutoff)
-        refreshCountsAndClampPages()
+        reload()
     }
 
     private func forgetLast(minutes: Int) {
         let cutoff = Date().addingTimeInterval(-Double(minutes) * 60.0)
         MemoryStore.shared.deleteConversations(since: cutoff)
         MemoryStore.shared.deleteMemories(since: cutoff, includePinned: false)
-        factsPage = 0
-        refreshCountsAndClampPages()
+        MemoryStore.shared.markMentalModelsStale()
+        reload()
     }
 
     private func forgetAllUnpinned() {
         let veryOld = Date(timeIntervalSince1970: 0)
         MemoryStore.shared.deleteConversations(since: veryOld)
         MemoryStore.shared.deleteMemories(since: veryOld, includePinned: false)
-        factsPage = 0
-        refreshCountsAndClampPages()
-    }
-
-    private func deleteAllFacts() {
-        MemoryStore.shared.deleteAllFacts()
-        factsPage = 0
-        refreshCountsAndClampPages()
+        MemoryStore.shared.markMentalModelsStale()
+        reload()
     }
 
     private static let timeFormatter: DateFormatter = {
@@ -291,56 +439,19 @@ struct MemoryTimelineView: View {
     }()
 }
 
-private struct FactEditSheet: View {
-    @Environment(\.dismiss) private var dismiss
+/// Coloured rounded icon tile in front of a settings label, matching the
+/// iOS Settings look.
+struct SettingLabelStyle: LabelStyle {
+    let color: Color
 
-    @State private var subject: String
-    @State private var predicate: String
-    @State private var object: String
-
-    let id: Int64
-    let onSave: (FactItem) -> Void
-
-    init(fact: FactItem, onSave: @escaping (FactItem) -> Void) {
-        self.id = fact.id
-        self.onSave = onSave
-        _subject = State(initialValue: fact.subject)
-        _predicate = State(initialValue: fact.predicate)
-        _object = State(initialValue: fact.object)
-    }
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("Fact") {
-                    TextField("Subject", text: $subject)
-                    TextField("Predicate", text: $predicate)
-                    TextField("Object", text: $object)
-                }
-            }
-            .navigationTitle("Edit Fact")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        let updated = FactItem(
-                            id: id,
-                            subject: subject,
-                            predicate: predicate,
-                            object: object,
-                            timestamp: Date()
-                        )
-                        onSave(updated)
-                        dismiss()
-                    }
-                    .disabled(subject.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                              || predicate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                              || object.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-            }
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 12) {
+            configuration.icon
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(width: 28, height: 28)
+                .background(color, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+            configuration.title
         }
     }
 }

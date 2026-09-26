@@ -18,6 +18,13 @@ final class KnowledgeGraphManager {
     func remember(subject: String, predicate: String, object: String) {
         store.insertFact(subject: subject, predicate: predicate, object: object)
         CompanionStateStore.shared.refresh()
+        OpenAIRealtimeManager.postInstructionsChanged(reason: "remember_fact")
+        // Mirror into agentic memory so the entity graph and recall see it.
+        let sentence = "\(subject) \(predicate.replacingOccurrences(of: "_", with: " ")) \(object)."
+        Task.detached(priority: .background) {
+            MemoryRetain.shared.retainFact(
+                ExtractedFact(text: sentence, entities: [subject, object]), source: "tool")
+        }
         nlLog("֎ [KnowledgeGraph] Inserted into knowledge_graph: \(subject) — \(predicate) — \(object)", level: .info)
     }
     

@@ -1,5 +1,8 @@
 # Persistent Long-Term Memory (RAG)
 
+> **Superseded (2026-09-25).** Retrieval and ingestion now run through the agentic memory layer described in [AGENTIC_MEMORY.md](AGENTIC_MEMORY.md) (Hindsight-style fact types, entity graph, temporal + keyword arms, observations, mental models, `search_memory` tool). The `RAGManager` API below still exists as a facade, but the scoring formula and single-table model described here are historical.
+
+
 The NeuraLink RAG (Retrieval-Augmented Generation) system gives the AI a persistent "memory" of past interactions so the character remembers facts about the user, past topics, and shared context across app launches. The system supports both the OpenAI Realtime cloud path and the local LLM path; the local path additionally uses RAG as Tier 3 of its 3-tier memory hierarchy (see [local_llm_memory_plan.md](local_llm_memory_plan.md) §3.2 for the canonical spec).
 
 ## How it Works

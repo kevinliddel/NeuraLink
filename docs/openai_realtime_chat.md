@@ -219,3 +219,26 @@ Items the OpenAI docs mention. Updated 2026-05-21 — the `noise_reduction` entr
 1. **Migrate the remaining beta-named events** if/when they stop firing. Candidates are listed at the end of §4. The pattern observed in this round is `response.<x>.{delta,done}` → `response.output_<x>.{delta,done}`, so a future rename most likely follows the same shape. The `[AI Event Received]: <type>` log line in `dataChannel(_:didReceiveMessageWith:)` surfaces any unhandled name on the next test run.
 2. **`session.audio.input.format` / `session.audio.output.format`** — the GA shape exposes per-direction format config. Docs only confirm "PCM, 24 kHz" as the supported set; the exact JSON shape for the format value isn't published in the page we could reach. Currently we let OpenAI pick defaults; revisit if we ever need a specific sample rate or codec for compatibility with another sink.
 3. **Pin the model identifier.** Currently we use the unversioned alias `gpt-realtime`. A dated identifier would protect against silent behavior changes when OpenAI promotes a new build to the alias, but no dated GA version is enumerated in the docs page we can read. Worth pinning once a date appears.
+
+## Resilience and configuration (2026-09-26)
+
+- **Auto-reconnect** (`OpenAIRealtimeManager+Reconnect.swift`): ICE `.failed`,
+  ICE `.disconnected` persisting > 3 s, peer-connection `.failed`, a closed
+  data channel, or a foreground return with a non-open channel schedule a
+  reconnect with 1/2/4/8/16 s backoff (5 attempts, waits for network). The
+  overlay shows "Reconnecting… (n)". After the channel reopens, the last 6
+  spoken turns are replayed as `conversation.item.create` items so the model
+  keeps the thread. A user-initiated `disconnect()` cancels the loop;
+  `teardown()` is the transport-only release used internally.
+- **Instruction refresh** (`+SessionRefresh.swift`): persona prompt edits,
+  mental-model refreshes, `remember_fact` and User Settings changes post
+  `.realtimeInstructionsDidChange`; the manager re-sends `session.update`
+  (instructions + tools, never voice) after a 5 s debounce, deferred until the
+  current reply finishes.
+- **Models** (`OpenAIModelCatalog`, AI Settings → Models): the voice,
+  transcription and background text models are user-selectable (catalog or
+  custom id). A voice-model change applies on the next connect (Done
+  reconnects). Token usage from `response.done` is accumulated per session
+  and logged as `[Cost] realtime …` at teardown; Chat Completions calls log
+  `[Cost] text model=… in=… out=…`.
+

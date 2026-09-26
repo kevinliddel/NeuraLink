@@ -170,6 +170,7 @@ final class ReflectionManager: @unchecked Sendable {
         )
         guard journalID > 0 else { return }
         nlLogSensitive("[Reflection] \(character) diary: \(reflection.diary)", level: .info)
+        await MainActor.run { CompanionSnapshotWriter.shared.scheduleRefresh() }
 
         recordTrait(character: character, trait: reflection.trait)
 

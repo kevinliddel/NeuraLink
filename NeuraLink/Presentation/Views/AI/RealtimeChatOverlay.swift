@@ -58,7 +58,7 @@ struct RealtimeChatOverlay: View {
         case .error:
             return ("Connection error", "exclamationmark.circle", false, nil)
 
-        case .preparing, .connecting:
+        case .preparing, .connecting, .reconnecting:
             return (aiState.status.label, nil, true, nil)
 
         case .ready, .disconnected:
@@ -121,7 +121,7 @@ struct RealtimeChatOverlay: View {
             transition(to: .aiResponding)
         case .ready:
             scheduleDismissToIdle()
-        case .preparing, .connecting, .disconnected, .error:
+        case .preparing, .connecting, .reconnecting, .disconnected, .error:
             transition(to: .idle)
         }
     }

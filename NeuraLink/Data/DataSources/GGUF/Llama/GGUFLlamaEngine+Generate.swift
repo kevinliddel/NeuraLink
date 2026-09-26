@@ -69,7 +69,9 @@ extension GGUFLlamaEngine {
                         Task { @MainActor [weak self] in
                             self?.delegate?.localLLM(didGenerateToken: token)
                         }
-                        return true   // returning false would stop generation
+                        // A finished tool call is the whole reply; stop here
+                        // instead of letting the model ramble after it.
+                        return !fullText.hasSuffix("</tool>")
                     },
                     onFinish: { [weak self] in
                         Task { @MainActor [weak self] in

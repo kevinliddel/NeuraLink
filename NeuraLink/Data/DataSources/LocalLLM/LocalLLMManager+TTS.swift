@@ -103,6 +103,7 @@ extension LocalLLMManager {
 
         if !audioEngine.isRunning { try? audioEngine.start() }
         if !playerNode.isPlaying { playerNode.play() }
+        if speakingStartedUptime == nil { speakingStartedUptime = ProcessInfo.processInfo.systemUptime }
 
         pendingTTSBuffers += 1
         playerNode.scheduleBuffer(pcmBuffer, completionCallbackType: .dataConsumed) { [weak self] _ in
@@ -111,6 +112,7 @@ extension LocalLLMManager {
                 self.pendingTTSBuffers -= 1
                 if self.pendingTTSBuffers == 0 && self.ttsGenerationDone {
                     self.ttsGenerationDone = false
+                    self.speakingStartedUptime = nil
                     self.state.status = .ready
                 }
             }

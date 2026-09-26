@@ -222,6 +222,7 @@ extension MemoryStore {
         sqlite3_exec(db, "DELETE FROM memories;", nil, nil, nil)
         sqlite3_exec(db, "DELETE FROM knowledge_graph;", nil, nil, nil)
         sqlite3_exec(db, "DELETE FROM chat_events;", nil, nil, nil)
+        clearAgenticMemoryTables()
     }
 
     // MARK: - Knowledge Graph

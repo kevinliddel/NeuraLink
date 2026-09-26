@@ -95,6 +95,14 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     // playback latency and the room's audio decay.
     internal var micGatedUntilUptime: TimeInterval = 0
 
+    // Barge-in (see +BargeIn.swift). `bargeInArbiter` and `speakingStartedUptime`
+    // are touched from the audio thread under `recordingLock`.
+    internal var bargeInArbiter = BargeInArbiter()
+    internal var speakingStartedUptime: TimeInterval?
+    internal var lastPlaybackRMS: Float = 0
+    internal var bargeInInterrupted = false
+    internal var lastSpokenAssistantText = ""
+
     // KV-cache persistence: set true once per session after the first
     // successful warmup persists the prefilled state to disk. Avoids
     // hammering the flash chip with redundant writes (warmup runs on
@@ -359,6 +367,8 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         playerNode.stop()
         ttsBuffer = ""
         tagBuffer = ""
+        speakingStartedUptime = nil
+        bargeInInterrupted = false
         pendingUIActionTask?.cancel()
         pendingUIActionTask = nil
         Task { @MainActor in

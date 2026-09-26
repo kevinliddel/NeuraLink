@@ -31,6 +31,8 @@ final class LocalLLMMemoryHierarchy {
 
     /// Top-K facts retrieved from `RAGManager.fetchFacts` for Tier 3.
     static let factsLimit = 3
+    /// Approximate token cap for the Tier 3 block.
+    static let factsTokenBudget = 180
 
     /// Constant lead-in prepended to every JP user turn. It is the *shared,
     /// turn-invariant* head of the user message, so the warm-up prefill
@@ -265,11 +267,15 @@ final class LocalLLMMemoryHierarchy {
         // `systemPromptContext` so the model reads the rule first and the
         // data second. Mirrors the JP-side fix that resolved the same
         // "model treats user info as its own" pattern.
+        // Mental models are a DB read that only changes after background
+        // consolidation, so they belong in the KV-cacheable stable prefix.
         return Self.buildEnglishRoleClarification(characterName: characterName)
             + base
             + UserSettings.shared.systemPromptContext
             + CompanionStateManager.shared.promptContext(
                 characterName: characterName, compact: compactCompanionState)
+            + MemoryMentalModels.shared.promptBlock(
+                character: characterName, compact: compactCompanionState)
     }
 
     /// Returns a single-line JP user context block (`ユーザーの名前は{name}、{age}歳。\n`)
@@ -334,13 +340,17 @@ final class LocalLLMMemoryHierarchy {
         return "[Role] \(aiName) is the AI assistant; the user is \(userName). \(aiName) answers questions about the user using the [User Information] block below, and never invents details that aren't present there.\n"
     }
 
+    /// Tier 3: hybrid recall (semantic + keyword + entity graph + temporal)
+    /// over observations and facts, capped to a small token budget so the
+    /// per-turn re-prefill stays cheap on 1B-class models.
     private func buildFactsBlock(relevantTo input: String) -> String {
         let facts = RAGManager.shared.fetchFacts(
-            relevantTo: input, limit: Self.factsLimit
+            relevantTo: input, limit: Self.factsLimit, tokenBudget: Self.factsTokenBudget
         )
-        guard !facts.isEmpty else { return "" }
+        let mentions = FollowUpCoordinator.shared.mentionBlock()
+        guard !facts.isEmpty || !mentions.isEmpty else { return "" }
         let bulleted = facts.map { "- \($0)" }.joined(separator: "\n")
-        return "[Established facts about the user]\n\(bulleted)\n[End facts]"
+        return (facts.isEmpty ? "" : "[Relevant memories]\n\(bulleted)\n[End memories]") + mentions
     }
 
     private func buildHistory(

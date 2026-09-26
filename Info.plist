@@ -2,55 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.dedicatus.NeuraLink.followups</string>
+	</array>
 	<key>CFBundleDocumentTypes</key>
 	<array/>
-	<key>UTImportedTypeDeclarations</key>
-	<array>
-		<dict>
-			<key>UTTypeIdentifier</key>
-			<string>com.neuralink.vrm</string>
-			<key>UTTypeDescription</key>
-			<string>VRM 3D Avatar</string>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.data</string>
-			</array>
-			<key>UTTypeTagSpecification</key>
-			<dict>
-				<key>public.filename-extension</key>
-				<array>
-					<string>vrm</string>
-				</array>
-			</dict>
-		</dict>
-		<dict>
-			<key>UTTypeIdentifier</key>
-			<string>com.neuralink.glb</string>
-			<key>UTTypeDescription</key>
-			<string>Binary glTF Model</string>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.data</string>
-			</array>
-			<key>UTTypeTagSpecification</key>
-			<dict>
-				<key>public.filename-extension</key>
-				<array>
-					<string>glb</string>
-				</array>
-			</dict>
-		</dict>
-	</array>
-	<key>NSUserActivityTypes</key>
-	<array>
-		<string>INSendMessageIntent</string>
-	</array>
-	<key>NSCameraUsageDescription</key>
-	<string>NeuraLink uses the camera so the AI avatar can see and describe what you show it.</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>NeuraLink requires microphone access to communicate with the AI avatar in real-time.</string>
-	<key>NSRemindersUsageDescription</key>
-	<string>NeuraLink can create reminders for you when you ask the AI assistant.</string>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>music</string>
@@ -61,6 +18,62 @@
 		<string>calshow</string>
 		<string>x-apple-health</string>
 		<string>facetime</string>
+	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>NeuraLink uses the camera so the AI avatar can see and describe what you show it.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>NeuraLink requires microphone access to communicate with the AI avatar in real-time.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>NeuraLink saves the photos you take with your character to your library when you ask.</string>
+	<key>NSRemindersUsageDescription</key>
+	<string>NeuraLink can create reminders for you when you ask the AI assistant.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+	<key>NSUserActivityTypes</key>
+	<array>
+		<string>INSendMessageIntent</string>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+		<string>fetch</string>
+	</array>
+	<key>UTImportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>VRM 3D Avatar</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.neuralink.vrm</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>vrm</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Binary glTF Model</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.neuralink.glb</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>glb</string>
+				</array>
+			</dict>
+		</dict>
 	</array>
 </dict>
 </plist>

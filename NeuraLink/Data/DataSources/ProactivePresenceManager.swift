@@ -174,7 +174,7 @@ final class ProactivePresenceManager {
     // MARK: - Engine-agnostic injection
 
     @discardableResult
-    private func engage(with event: String) -> Bool {
+    func engage(with event: String) -> Bool {
         let openAI = OpenAISettings.shared
         if openAI.isEnabled && openAI.hasValidKey {
             guard OpenAIRealtimeManager.shared.remoteDataChannel?.readyState == .open

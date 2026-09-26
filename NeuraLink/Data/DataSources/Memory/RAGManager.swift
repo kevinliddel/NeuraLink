@@ -2,8 +2,11 @@
 //  RAGManager.swift
 //  NeuraLink
 //
-//  Orchestrates Retrieval-Augmented Generation.
-//  Coordinates embedding generation, memory storage, and similarity search.
+//  Facade over the agentic memory layer (docs/AGENTIC_MEMORY.md). Keeps the
+//  historical call sites — `store`, `fetchContext`, `storeFact`,
+//  `fetchFacts` — while routing them through MemoryRetain (ingest) and
+//  MemoryRecall (hybrid retrieval) instead of the old single-signal
+//  cosine × recency ranking.
 //
 //  Created by Dedicatus on 09/05/2026.
 //
@@ -12,30 +15,26 @@ import Foundation
 
 final class RAGManager {
     static let shared = RAGManager()
-    
+
     private let store = MemoryStore.shared
-    private let embedder = EmbeddingService.shared
     private let settings = MemorySettings.shared
-    
+    private let retain = MemoryRetain.shared
+    private let recall = MemoryRecall.shared
+
     private init() {}
-    
-    /// Records a new interaction in the long-term memory.
+
+    /// Records a dialogue turn verbatim in long-term memory (no LLM).
+    /// Runs off the calling thread; also applies auto-forget pruning.
     func store(text: String, source: String) {
         guard settings.isEnabled else { return }
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        
-        // We run this in a background task to avoid blocking the main/audio threads
+
         Task.detached(priority: .background) {
-            if let vector = self.embedder.generateVector(for: text) {
-                self.store.insert(text: text, vector: vector, source: source)
-                // Metadata stays public so behaviour can be diagnosed
-                // ("did we store anything?") without exposing the body.
-                nlLog(
-                    "[RAGManager] Stored new memory (source=\(source), \(text.count) chars)",
-                    level: .info)
+            let id = self.retain.retainRaw(text: text, source: source)
+            if id > 0 {
+                nlLog("[RAGManager] Stored raw memory (source=\(source), \(text.count) chars)", level: .info)
                 nlLogSensitive("[RAGManager] Memory body: \(text)", level: .info)
             }
-            
             let days = self.settings.autoForgetDays
             if days > 0 {
                 let cutoff = Date().addingTimeInterval(-Double(days) * 86_400.0)
@@ -44,81 +43,36 @@ final class RAGManager {
             }
         }
     }
-    
-    /// Fetches the most relevant past memories for a given query.
-    /// - Parameters:
-    ///   - query: The current user input.
-    ///   - limit: Max number of memories to return.
-    /// - Returns: A formatted string of memories to be injected into the prompt.
-    func fetchContext(for query: String, limit: Int = 3) async -> String {
-        let rankedMemories = rankedMemories(for: query, limit: limit, sourceFilter: nil)
-        if rankedMemories.isEmpty { return "" }
-        var context = "\n[Long-term Memory Context]\n"
-        for memory in rankedMemories {
-            context += "- \(memory.text)\n"
+
+    /// Top memories relevant to `query` (knowledge first, dialogue as
+    /// fallback) formatted as a `[Long-term Memory Context]` block.
+    func fetchContext(for query: String, limit: Int = 3, tokenBudget: Int = 400) async -> String {
+        var hits = recall.recall(MemoryRecallQuery(
+            text: query, factTypes: MemoryFactType.knowledge, maxResults: limit, tokenBudget: tokenBudget))
+        if hits.count < limit {
+            let seen = Set(hits.map(\.id))
+            let raw = recall.recall(MemoryRecallQuery(
+                text: query, factTypes: [.raw], maxResults: limit - hits.count, tokenBudget: tokenBudget / 2,
+                preferObservations: false))
+            hits.append(contentsOf: raw.filter { !seen.contains($0.id) })
         }
-        context += "[End of Context]\n"
-        return context
+        guard !hits.isEmpty else { return "" }
+        return "\n[Long-term Memory Context]\n" + MemoryRecall.bulletLines(hits).joined(separator: "\n")
+            + "\n[End of Context]\n"
     }
 
-    // MARK: - Facts (extracted by LocalLLMFactExtractor)
+    // MARK: - Facts
 
-    /// Persists `text` as a compacted-out atomic fact. Stored in the same
-    /// `memories` table as other entries but tagged with `source = "fact"`
-    /// so it can be retrieved separately by `fetchFacts(relevantTo:limit:)`.
-    /// Used by the 3-tier memory hierarchy to preserve user-stated facts
-    /// after their original conversation turns age out of the verbatim
-    /// window.
+    /// Persists `text` as a timeless world fact about the user.
     func storeFact(_ text: String) {
-        store(text: text, source: "fact")
+        retain.retainFact(ExtractedFact(text: text), source: "fact")
     }
 
-    /// Returns the top-`limit` facts most semantically relevant to `query`,
-    /// ranked by the same cosine-similarity + recency formula used for
-    /// general memory retrieval, but filtered to only `source = "fact"`
-    /// entries.
-    func fetchFacts(relevantTo query: String, limit: Int = 3) -> [String] {
-        rankedMemories(for: query, limit: limit, sourceFilter: "fact")
-            .map(\.text)
-    }
-
-    // MARK: - Shared ranking helper
-
-    /// Scores every stored memory against `query` by cosine similarity,
-    /// weighted by an exponential recency boost and a 1.15× boost for pinned
-    /// entries. Filters out vectors with the wrong dimensionality and
-    /// similarity scores at or below the floor (irrelevant garbage).
-    /// Optionally restricts the candidate pool to a single `source` tag.
-    ///
-    /// The floor, half-life, and recency weight are user-tunable via
-    /// `MemorySettings` (defaults reproduce the previously hard-coded
-    /// 0.5 / 14 days / 0.25).
-    private func rankedMemories(
-        for query: String,
-        limit: Int,
-        sourceFilter: String?
-    ) -> [MemoryItem] {
-        guard let queryVector = embedder.generateVector(for: query) else { return [] }
-        let candidates = store.fetchAll().filter { memory in
-            guard memory.vector.count == queryVector.count else { return false }
-            if let source = sourceFilter, memory.source != source { return false }
-            return true
-        }
-        let now = Date()
-        let floor = settings.similarityFloor
-        let halfLife = max(0.1, settings.recencyHalfLifeDays)
-        let recencyWeight = min(max(settings.recencyWeight, 0.0), 1.0)
-        let scored: [(MemoryItem, Double)] = candidates.compactMap { memory in
-            let sim = EmbeddingService.cosineSimilarity(queryVector, memory.vector)
-            guard sim > floor else { return nil }
-            let ageDays = max(0, now.timeIntervalSince(memory.timestamp) / 86_400.0)
-            let recency = exp(-ageDays / halfLife)
-            let pinBoost = memory.pinned ? 1.15 : 1.0
-            return (memory, sim * ((1.0 - recencyWeight) + recencyWeight * recency) * pinBoost)
-        }
-        return scored
-            .sorted { $0.1 > $1.1 }
-            .prefix(limit)
-            .map { $0.0 }
+    /// Top-`limit` knowledge units (observations preferred, then facts)
+    /// relevant to `query`, as bullet-ready lines.
+    func fetchFacts(relevantTo query: String, limit: Int = 3, tokenBudget: Int = 300) -> [String] {
+        let hits = recall.recall(MemoryRecallQuery(
+            text: query, factTypes: MemoryFactType.knowledge, maxResults: limit, tokenBudget: tokenBudget))
+        return MemoryRecall.bulletLines(hits).map { String($0.dropFirst(2)) }
     }
 }

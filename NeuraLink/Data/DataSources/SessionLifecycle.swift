@@ -39,7 +39,20 @@ final class SessionLifecycle: @unchecked Sendable {
             object: nil, queue: .main
         ) { [weak self] _ in
             InteractionClock.shared.markLastSeen()
-            self?.sessionEnded(reason: "background")
+            guard let self else { return }
+            // Background audio (P1): when the user opted in and a session is
+            // live, the session survives and the boundary fires later, when
+            // the keeper ends it (idle / battery guard) or the app is killed.
+            Task { @MainActor in
+                if BackgroundSessionKeeper.shared.beginBackgroundIfAllowed() { return }
+                self.sessionEnded(reason: "background")
+            }
+        }
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.willEnterForegroundNotification,
+            object: nil, queue: .main
+        ) { _ in
+            Task { @MainActor in BackgroundSessionKeeper.shared.didEnterForeground() }
         }
     }
 

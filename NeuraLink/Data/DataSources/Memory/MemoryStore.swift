@@ -316,9 +316,13 @@ final class MemoryStore {
         // PersonaStore / LocalLLMPromptStore / PersonaVoiceStore (JSON +
         // UserDefaults) into the `character_ai` table. See MemoryStore+Personas.swift.
         migratePersonaStoresIfNeeded()
+
+        // Agentic memory (fact types, temporal fields, entities, links,
+        // mental models). See MemoryStore+Units.swift.
+        migrateAgenticMemoryIfNeeded()
     }
 
-    private func columnExists(table: String, column: String) -> Bool {
+    func columnExists(table: String, column: String) -> Bool {
         let query = "PRAGMA table_info(\(table));"
         var statement: OpaquePointer?
         var found = false

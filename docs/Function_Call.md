@@ -282,3 +282,25 @@ case AppFunctionTool.myTool:
 
 > [!NOTE]
 > All network calls (`get_weather`) are to public, unauthenticated endpoints. No data leaves the device except through the existing OpenAI Realtime WebRTC channel.
+
+## Local model tool calls (2026-09-26)
+
+The local Llama path now calls the curated tool set `remember_fact`,
+`search_memory`, `get_weather`, `create_reminder` and `play_music`
+(`ToolGrammarBuilder.localToolNames`). Reliability comes from a **lazy GBNF
+grammar** installed on the llama.cpp sampler once per model load: sampling is
+unconstrained until the model emits `<tool`, after which only
+`<tool name="…">{valid JSON for that tool}</tool>` can be produced. The grammar
+and the prompt's one-line examples are generated from the same
+`AppFunctionTool` schemas, generation stops right after `</tool>`, and the
+call is dispatched through the shared `AppFunctionExecutor`; the result is
+spoken directly (no second generation on a 1B). Prompt-lookup decoding is
+bypassed while a grammar is active.
+
+## show_photo (2026-09-27)
+
+Opens the photo picker so the user can show the companion a picture. The
+image is described once by the configured text model (vision-capable), the
+companion reacts, and the moment is remembered as a dated experience with a
+small on-device thumbnail (docs/COMPANION_DEPTH_PLAN.md §D2).
+

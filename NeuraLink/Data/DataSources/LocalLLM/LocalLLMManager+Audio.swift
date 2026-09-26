@@ -15,8 +15,10 @@ extension LocalLLMManager {
     func setupAudioEngine() {
         do {
             let session = AVAudioSession.sharedInstance()
+            // HFP so AirPods' microphone works for background listening (A2DP is output-only).
             try session.setCategory(
-                .playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothA2DP, .mixWithOthers])
+                .playAndRecord, mode: .default,
+                options: [.defaultToSpeaker, .allowBluetoothA2DP, .allowBluetoothHFP, .mixWithOthers])
             try session.setActive(true)
 
             if let builtInMic = session.availableInputs?.first(where: { $0.portType == .builtInMic }) {
@@ -106,6 +108,16 @@ extension LocalLLMManager {
         }
     }
 
+    /// Battery guard for background sessions: stops capture, VAD and
+    /// playback without unloading the models, so `startListening()` on
+    /// foreground return is fast.
+    func suspendForBackground() {
+        stop()
+        audioEngine.pause()
+        Task { @MainActor in state.status = .disconnected }
+        nlLog("[LocalLLM] Audio suspended for background", level: .info)
+    }
+
     func gateMicCapture(forSeconds seconds: TimeInterval) {
         micGatedUntilUptime = ProcessInfo.processInfo.systemUptime + seconds
     }
@@ -120,6 +132,7 @@ extension LocalLLMManager {
             sum += channelData[0][i] * channelData[0][i]
         }
         let rms = sqrt(sum / Float(length))
+        lastPlaybackRMS = rms
 
         Task { @MainActor in
             self.state.audioLevel = min(rms * 5.0, 1.0)
@@ -140,6 +153,14 @@ extension LocalLLMManager {
         // .ready. The 0.8 s extension covers that plus room decay.
         let now = ProcessInfo.processInfo.systemUptime
         let status = state.status
+        // Barge-in (+BargeIn.swift): while SPEAKING the frames go to the VAD
+        // and the energy arbiter instead of being dropped; nothing plays
+        // while THINKING, so that state keeps the plain gate.
+        if status == .speaking, isBargeInEnabled {
+            micGatedUntilUptime = now + 0.8
+            observeBargeInFrame(buffer, now: now)
+            return
+        }
         if status == .thinking || status == .speaking {
             // Bump the gate forward so cool-down counts from the LAST
             // AI-busy sample, not the first.
