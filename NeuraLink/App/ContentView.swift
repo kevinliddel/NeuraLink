@@ -28,6 +28,7 @@ struct ContentView: View {
     @State private var showPhotoPicker = false
     @State private var pickedPhoto: PhotosPickerItem?
     @State private var tutorial = TutorialCoordinator.shared
+    @State private var customization = CharacterCustomizationCoordinator.shared
 
     var body: some View {
         NavigationStack {
@@ -55,6 +56,13 @@ struct ContentView: View {
                             },
                             onDelete: { entry in
                                 pendingDelete = entry
+                            },
+                            onCustomize: { entry in
+                                withAnimation { showModelSelection = false }
+                                if selectedModelURL != entry.url { selectedModelURL = entry.url }
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                    customization.isPresented = true
+                                }
                             }
                         )
                         .padding(.horizontal, 16)
@@ -66,6 +74,27 @@ struct ContentView: View {
                     }
                     .transition(.opacity)
                     .zIndex(100)
+                }
+
+                // Character customization panel (Tier A): edits the live
+                // model in place, so it sits over the scene like the picker.
+                if customization.isPresented, !aiState.isUIHidden, let sceneState = VRMMetalState.active {
+                    VStack {
+                        Spacer()
+                        CharacterCustomizationView(
+                            slug: aiState.selectedCharacterName.lowercased(),
+                            state: sceneState,
+                            onClose: {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                    customization.isPresented = false
+                                }
+                            }
+                        )
+                        .id(aiState.selectedCharacterName.lowercased())
+                        .padding(.horizontal, 16)
+                    }
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .zIndex(150)
                 }
 
             }

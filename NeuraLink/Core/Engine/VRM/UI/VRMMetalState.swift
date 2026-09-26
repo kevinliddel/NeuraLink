@@ -13,6 +13,11 @@ import Combine
 @Observable
 @MainActor
 final class VRMMetalState {
+    /// The scene state currently on screen. Set by VRMSceneView when it
+    /// creates its state; lets overlays that live outside the scene view
+    /// (the character customization panel) reach the live model + renderer.
+    static weak var active: VRMMetalState?
+
     let mtkView: MTKView
     var renderer: VRMRenderer?
     

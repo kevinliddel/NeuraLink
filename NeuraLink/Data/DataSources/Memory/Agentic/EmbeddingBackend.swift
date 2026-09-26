@@ -42,6 +42,11 @@ final class NLEmbeddingBackend: EmbeddingBackend {
     private let cacheQueue = DispatchQueue(label: "com.neuralink.embedding.cache", attributes: .concurrent)
     private var embeddingCache: [NLLanguage: NLEmbedding] = [:]
     private let fallbackLanguage: NLLanguage = .english
+    /// Serializes `NLEmbedding.vector(for:)`. The sentence embedding is a
+    /// shared CoreNLP/BNNS model that is not documented thread-safe, and two
+    /// concurrent calls (main thread + a background recall) reproducibly
+    /// SIGSEGV inside BNNSFilterApplyBatch under the parallel unit-test load.
+    private let vectorLock = NSLock()
 
     init() {
         if NLEmbedding.sentenceEmbedding(for: fallbackLanguage) == nil {
@@ -52,7 +57,8 @@ final class NLEmbeddingBackend: EmbeddingBackend {
     func embed(_ text: String, purpose: EmbeddingPurpose) -> [Double]? {
         let language = detectLanguage(for: text) ?? fallbackLanguage
         let embedding = embeddingForLanguage(language) ?? embeddingForLanguage(fallbackLanguage)
-        if let vector = embedding?.vector(for: text) { return vector }
+        let vector = vectorLock.withLock { embedding?.vector(for: text) }
+        if let vector { return vector }
         // Environments without the system model (CI simulators): a zero
         // vector keeps the store/recall code paths testable.
         #if DEBUG

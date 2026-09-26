@@ -61,6 +61,7 @@ extension VRMRenderer {
     func clearModel() {
         model = nil
         isModelVisible = false
+        appearanceLayer.reset()
         cacheNeedsRebuild = true
         cachedRenderItems = nil
         terrainRenderer?.scheduleShadowMapClear()
@@ -70,6 +71,7 @@ extension VRMRenderer {
     public func loadModel(_ model: VRMModel) {
         self.model = model
         isModelVisible = false
+        appearanceLayer.reset()
 
         // PERFORMANCE: Invalidate cached render items when model changes
         cacheNeedsRebuild = true

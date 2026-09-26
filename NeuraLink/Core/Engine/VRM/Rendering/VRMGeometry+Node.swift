@@ -53,6 +53,24 @@ public class VRMNode {
     public var mesh: Int?
     public var skin: Int?
 
+    /// Runtime node (part grafts): TRS given directly, becomes the bind pose.
+    public init(
+        index: Int, name: String?, translation: SIMD3<Float>, rotation: simd_quatf,
+        scale: SIMD3<Float>, mesh: Int? = nil, skin: Int? = nil
+    ) {
+        self.index = index
+        self.name = name
+        self.mesh = mesh
+        self.skin = skin
+        self.translation = translation
+        self.rotation = rotation
+        self.scale = scale
+        self.initialTranslation = translation
+        self.initialRotation = rotation
+        self.initialScale = scale
+        updateLocalMatrix()
+    }
+
     public init(index: Int, gltfNode: GLTFNode) {
         self.index = index
         self.name = gltfNode.name

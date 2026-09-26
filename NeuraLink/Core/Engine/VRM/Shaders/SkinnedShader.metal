@@ -29,7 +29,7 @@ struct Uniforms {
  float _padding7;
 };
 
-// Use packed floats to match Swift struct layout (192 bytes total)
+// Use packed floats to match Swift struct layout (224 bytes total)
 // Note: Metal's float3 has 16-byte alignment which causes padding
 struct MToonMaterial {
  // Block 0: 16 bytes - Base material properties
@@ -106,6 +106,13 @@ struct MToonMaterial {
  float _padding3;                           // 4 bytes
  float _padding4;                           // 4 bytes
  float _padding5;                           // 4 bytes
+
+ // Block 13: 16 bytes - appearance recolour (fragment-only; mirrored so the
+ // vertex-side struct keeps the same 224-byte layout as MToonShader.swift)
+ float recolorHueShift;                     // 4 bytes
+ float recolorSaturation;                   // 4 bytes
+ float recolorBrightness;                   // 4 bytes
+ int recolorEnabled;                        // 4 bytes
 };
 
 struct VertexIn {

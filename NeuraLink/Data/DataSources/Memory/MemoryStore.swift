@@ -257,6 +257,11 @@ final class MemoryStore {
             updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         CREATE UNIQUE INDEX IF NOT EXISTS idx_imported_characters_sha ON imported_characters(sha256);
+        CREATE TABLE IF NOT EXISTS character_appearance (
+            character  TEXT PRIMARY KEY,
+            spec       TEXT NOT NULL,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
         CREATE TABLE IF NOT EXISTS companion_journal (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             character TEXT NOT NULL,

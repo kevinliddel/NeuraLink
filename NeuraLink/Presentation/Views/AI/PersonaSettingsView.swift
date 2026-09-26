@@ -57,16 +57,14 @@ struct PersonaSettingsView: View {
         let initialOpenVoice = OpenVoiceVoicePreset.preset(for: modelID).rawValue
         _openVoiceVoiceID = State(initialValue: initialOpenVoice)
 
-        // Diagnostic: this fires on every NavigationLink push of the persona
-        // sheet. If the printed values don't match what you just saved, the
-        // bug is in the corresponding store; if they DO match but the UI
-        // still shows defaults, the bug is in @State / SwiftUI binding.
+        // Diagnostic: fires on every NavigationLink push of the persona sheet.
+        // Printed values ≠ what you just saved → bug in the corresponding store;
+        // values match but the UI shows defaults → bug in @State / SwiftUI binding.
         nlLog(
             "[PersonaSettings.init] modelID='\(modelID)' config=\(config) "
             + "→ persona.voice=\(current.voice), instructions.len=\(current.instructions.count); "
             + "localPrompt.len=\(prompt.count); voicevoxSpeaker=\(initialSpeaker); openVoice=\(initialOpenVoice)",
-            level: .info
-        )
+            level: .info)
     }
 
     var body: some View {
@@ -119,6 +117,8 @@ struct PersonaSettingsView: View {
                 voicePreviewSection
             }
             DispositionSection(character: modelID)
+
+            AppearanceSettingsSection(modelID: modelID)
 
             Section {
                 VStack(spacing: 8) {

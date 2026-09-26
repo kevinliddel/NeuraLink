@@ -198,6 +198,13 @@ public class VRMSkin {
     public var bufferByteOffset: Int = 0
     public var matrixOffset: Int = 0
 
+    /// Runtime skin (part grafts): joints already resolved to host nodes.
+    public init(name: String?, joints: [VRMNode], inverseBindMatrices: [float4x4]) {
+        self.name = name
+        self.joints = joints
+        self.inverseBindMatrices = inverseBindMatrices
+    }
+
     public init(
         from gltfSkin: GLTFSkin, nodes: [VRMNode], document: GLTFDocument,
         bufferLoader: BufferLoader

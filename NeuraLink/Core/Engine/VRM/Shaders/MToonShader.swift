@@ -89,6 +89,14 @@ public struct MToonMaterialUniforms {
     public var uvOffsetY: Float = 0.0  // UV offset for texture remapping
     public var uvScale: Float = 1.0  // UV scale for texture remapping
 
+    // Block 13: 16 bytes - Appearance recolour (character customization).
+    // HSV adjustment applied in the fragment shader right after the base
+    // colour sample (and to the shade colour, so the shadow side follows).
+    public var recolorHueShift: Float = 0.0  // turns (-0.5…0.5), not degrees
+    public var recolorSaturation: Float = 1.0  // multiplier
+    public var recolorBrightness: Float = 1.0  // multiplier
+    public var recolorEnabled: Int32 = 0
+
     public init() {}
 
     // Computed properties for convenient SIMD3 access

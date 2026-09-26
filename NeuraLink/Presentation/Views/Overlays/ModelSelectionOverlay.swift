@@ -15,6 +15,8 @@ struct ModelSelectionOverlay: View {
     var onImport: (() -> Void)?
     /// Long-press delete for imported entries. Nil disables the context menu.
     var onDelete: ((VRMModelRegistry.Entry) -> Void)?
+    /// Long-press "Customize Appearance" (any entry). Nil hides the item.
+    var onCustomize: ((VRMModelRegistry.Entry) -> Void)?
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -31,6 +33,13 @@ struct ModelSelectionOverlay: View {
                         onSelection()
                     }
                     .contextMenu {
+                        if let onCustomize {
+                            Button {
+                                onCustomize(entry)
+                            } label: {
+                                Label("Customize Appearance", systemImage: "paintpalette")
+                            }
+                        }
                         if entry.isImported, let onDelete {
                             Button(role: .destructive) {
                                 onDelete(entry)

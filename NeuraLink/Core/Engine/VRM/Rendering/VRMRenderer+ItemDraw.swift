@@ -367,6 +367,14 @@ extension VRMRenderer {
             // Bind textures in MToon order
             // Index 0: Base color texture
             // (Texture binding is done inline in drawCore since it requires the encoder)
+
+            // Character customization: per-material HSV recolour (Tier A).
+            if let recolor = appearanceLayer.recolor(forMaterial: materialIndex) {
+                mtoonUniforms.recolorHueShift = recolor.hueShift / 360.0
+                mtoonUniforms.recolorSaturation = recolor.saturation
+                mtoonUniforms.recolorBrightness = recolor.brightness
+                mtoonUniforms.recolorEnabled = 1
+            }
         }
 
         return mtoonUniforms

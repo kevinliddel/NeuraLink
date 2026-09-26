@@ -75,7 +75,40 @@ struct MToonMaterial {
     float uvOffsetX;
     float uvOffsetY;
     float uvScale;
+    // Block 13: appearance recolour (see MToonShader.swift)
+    float recolorHueShift;
+    float recolorSaturation;
+    float recolorBrightness;
+    int recolorEnabled;
 };
+
+// ── Appearance recolour (character customization) ────────────────
+// HSV shift of the sampled base/shade colour. Runs in linear space (the
+// textures are sRGB-decoded on sample) — a hue rotation is hue-preserving
+// either way, and saturation/brightness scale is what the sliders promise.
+static inline float3 nl_rgb2hsv(float3 c) {
+    float4 K = float4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+    float4 p = c.g < c.b ? float4(c.bg, K.wz) : float4(c.gb, K.xy);
+    float4 q = c.r < p.x ? float4(p.xyw, c.r) : float4(c.r, p.yzx);
+    float d = q.x - min(q.w, q.y);
+    float e = 1.0e-10;
+    return float3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
+}
+
+static inline float3 nl_hsv2rgb(float3 c) {
+    float4 K = float4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+    float3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+}
+
+static inline float3 nl_applyRecolor(float3 rgb, constant MToonMaterial& m) {
+    if (m.recolorEnabled == 0) { return rgb; }
+    float3 hsv = nl_rgb2hsv(rgb);
+    hsv.x = fract(hsv.x + m.recolorHueShift);
+    hsv.y = clamp(hsv.y * m.recolorSaturation, 0.0, 1.0);
+    hsv.z = hsv.z * m.recolorBrightness;
+    return nl_hsv2rgb(hsv);
+}
 
 struct VertexIn {
     float3 position [[attribute(0)]];

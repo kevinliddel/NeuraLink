@@ -149,14 +149,18 @@ extension VRMModel {
         }
     }
 
-    public func initializeSpringBoneGPUSystem(device: MTLDevice) throws {
+    /// - Parameter expandChains: run the VRM 0.x root→chain expansion. Pass
+    ///   `false` when re-allocating for an already-expanded model (part
+    ///   grafts) — re-expanding would treat every chain joint as a new root
+    ///   and duplicate the chains.
+    public func initializeSpringBoneGPUSystem(device: MTLDevice, expandChains: Bool = true) throws {
         guard springBone != nil else {
             // No SpringBone data in this model
             return
         }
 
         // Expand VRM 0.0 chains (no-op for VRM 1.0 which already has full joint lists)
-        expandVRM0SpringBoneChains()
+        if expandChains { expandVRM0SpringBoneChains() }
 
         // Re-read after expansion
         guard let expandedSpringBone = self.springBone else { return }

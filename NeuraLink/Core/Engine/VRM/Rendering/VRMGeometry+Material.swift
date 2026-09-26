@@ -71,6 +71,30 @@ public class VRMMaterial {
         return isTransparent && zWriteEnabled
     }
 
+    /// Field-for-field copy (part grafts re-home a donor material under new
+    /// texture indices). Texture objects are shared, not duplicated.
+    public init(copying other: VRMMaterial) {
+        name = other.name
+        baseColorFactor = other.baseColorFactor
+        baseColorTexture = other.baseColorTexture
+        normalTexture = other.normalTexture
+        emissiveTexture = other.emissiveTexture
+        metallicFactor = other.metallicFactor
+        roughnessFactor = other.roughnessFactor
+        normalScale = other.normalScale
+        emissiveFactor = other.emissiveFactor
+        doubleSided = other.doubleSided
+        alphaMode = other.alphaMode
+        alphaCutoff = other.alphaCutoff
+        mtoon = other.mtoon
+        vrmVersion = other.vrmVersion
+        renderQueue = other.renderQueue
+        transparentWithZWrite = other.transparentWithZWrite
+        renderQueueOffset = other.renderQueueOffset
+        zWriteEnabled = other.zWriteEnabled
+        blendMode = other.blendMode
+    }
+
     public init(
         from gltfMaterial: GLTFMaterial, textures: [VRMTexture],
         vrm0MaterialProperty: VRM0MaterialProperty? = nil, vrmVersion: VRMSpecVersion = .v1_0

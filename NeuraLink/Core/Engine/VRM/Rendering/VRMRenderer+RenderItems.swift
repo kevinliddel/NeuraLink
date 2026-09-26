@@ -34,6 +34,11 @@ extension VRMRenderer {
             let mesh = model.meshes[meshIndex]
 
             for (primIdxInMesh, primitive) in mesh.primitives.enumerated() {
+                // Character customization: host parts replaced by a graft.
+                if !model.hiddenPrimitives.isEmpty,
+                    model.hiddenPrimitives.contains(ObjectIdentifier(primitive)) {
+                    continue
+                }
                 let alphaMode =
                     primitive.materialIndex.flatMap { idx in
                         idx < model.materials.count ? model.materials[idx].alphaMode : nil

@@ -178,6 +178,7 @@ public struct VRMSceneView: View {
         
         if state == nil {
             state = VRMMetalState()
+            VRMMetalState.active = state
         }
         guard let state else { return }
 
@@ -218,6 +219,9 @@ public struct VRMSceneView: View {
             // models) — the replacement task owns the scene now.
             guard !Task.isCancelled else { return }
             state.display(model)
+            // Saved customization (docs/CHARACTER_CUSTOMIZATION_PLAN.md) —
+            // applied on top of the fresh model, never by reloading it.
+            AppearanceApplier.shared.applyStored(slug: characterName.lowercased(), to: state)
         } catch {
             // A cancelled load surfaces as CancellationError from the
             // loader's checkpoints — that's a model switch, not a failure,
@@ -232,6 +236,7 @@ public struct VRMSceneView: View {
                     let model = try await VRMModel.load(from: defaultEntry.url, device: device)
                     guard !Task.isCancelled else { return }
                     state.display(model)
+                    AppearanceApplier.shared.applyStored(slug: defaultEntry.name.lowercased(), to: state)
                     toastMessage = "Couldn't load that avatar — using the default"
                 } catch {
                     nlLog("[VRMSceneView] Fallback model load failed: \(error.localizedDescription)", level: .error)
