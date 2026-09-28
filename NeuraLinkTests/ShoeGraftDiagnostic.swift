@@ -33,12 +33,25 @@ struct ShoeGraftDiagnostic {
 
         var report = ""
         Self.restPose = [:]
-        let shoeItems = PartsLibrary.shared.items.filter { $0.kind == .shoes }
+        // Library parts AND the bundled characters: the picker offers both,
+        // and Sonya's own high-tops are the pair actually reported broken.
+        // By bundle URL, not VRMModelRegistry, which is empty in tests.
+        var donors: [(label: String, url: URL)] = []
+        for item in PartsLibrary.shared.items where item.kind == .shoes {
+            if let url = try? await item.resolvedURL() { donors.append((item.modelStem, url)) }
+        }
+        for name in ["Sonya", "Ekaterina"] {
+            if let url = Bundle.main.url(forResource: name, withExtension: "vrm") {
+                donors.append((name.lowercased(), url))
+            }
+        }
+        #expect(donors.count >= 14, "library shoes plus both characters")
+
         for hostName in ["Sonya", "Ekaterina"] {
             guard let hostURL = Bundle.main.url(forResource: hostName, withExtension: "vrm") else { continue }
-            for item in shoeItems {
+            for entry in donors where entry.label != hostName.lowercased() {
                 let host = try await VRMModel.load(from: hostURL, device: device)
-                let donor = try await VRMModel.load(from: item.resolvedURL(), device: device)
+                let donor = try await VRMModel.load(from: entry.url, device: device)
                 let hostFoot = host.referenceFootLength ?? 0
                 let donorFoot = donor.referenceFootLength ?? 0
                 // Pose the host first: in the app the idle animation is
@@ -48,7 +61,7 @@ struct ShoeGraftDiagnostic {
                 host.updateNodeTransforms()
                 let ownShoe = skinnedBounds(host, slots: AppearancePartKind.shoes.slots)
                 let baseMeshes = host.meshes.count
-                try VRMPartGrafter.graft(.shoes, from: donor, donorSlug: item.donorSlug, onto: host)
+                try VRMPartGrafter.graft(.shoes, from: donor, donorSlug: entry.label, onto: host)
                 host.updateNodeTransforms()
 
                 let skin = bounds(host, slots: [.bodySkin], below: 0.18)
@@ -60,7 +73,7 @@ struct ShoeGraftDiagnostic {
                     of: donor, slots: AppearancePartKind.shoes.slots)
                 let cut = VRMPartGrafter.skinCutLine(.shoes, donor: donor, host: host, fit: fit)
                 report += """
-                    == \(hostName) + \(item.modelStem)
+                    == \(hostName) + \(entry.label)
                        boxTop=\(fmt(box?.max.y)) collar=\(fmt(collar)) \
                     sole=\(fmt(box?.min.y)) fit=\(String(format: "%.3f", fit)) cut=\(fmt(cut))
                        hostFoot=\(String(format: "%.4f", hostFoot)) \
@@ -81,7 +94,7 @@ struct ShoeGraftDiagnostic {
                     guard let image = renderer.render(model: host, subject: .shoes),
                         let png = image.pngData() else { continue }
                     try png.write(to: outputDir.appendingPathComponent(
-                        "\(hostName.lowercased())_\(item.modelStem)\(suffix).png"), options: .atomic)
+                        "\(hostName.lowercased())_\(entry.label)\(suffix).png"), options: .atomic)
                 }
                 turnModel(host, by: 0)
             }

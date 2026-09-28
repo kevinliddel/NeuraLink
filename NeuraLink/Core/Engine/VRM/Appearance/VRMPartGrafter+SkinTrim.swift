@@ -156,11 +156,17 @@ extension VRMPartGrafter {
         }
         let depths = (0..<bands).map { high[$0] > low[$0] ? high[$0] - low[$0] : 0 }
         guard let deepest = depths.max(), deepest > 0.0001 else { return nil }
-        var top = lowest + bandHeight
-        for band in 0..<bands where depths[band] >= deepest * 0.6 {
-            top = lowest + Float(band + 1) * bandHeight
+        // Contiguous from the sole, NOT the highest qualifying band anywhere.
+        // An ankle strap wraps front-to-back, so it is as deep as the vamp
+        // and re-qualifies above the open gap — which dragged the cut up past
+        // that gap and took the whole foot with it.
+        var band = 0
+        while band < bands, depths[band] >= deepest * 0.6 { band += 1 }
+        if ProcessInfo.processInfo.environment["NL_SHOE_DIAG_DIR"] != nil {
+            let profile = depths.map { String(format: "%.0f", $0 / deepest * 100) }.joined(separator: ",")
+            nlLog("[ShoeBands] \(profile) -> band \(band) of \(bands)", level: .info)
         }
-        return top
+        return lowest + Float(max(1, band)) * bandHeight
     }
 
     /// How far to lift or drop a part so it meets the floor the host stands
