@@ -81,7 +81,7 @@ nonisolated public enum AppearancePartKind: String, Codable, CaseIterable, Senda
 
     public var trimsHostSkinUnderneath: Bool {
         switch self {
-        case .shoes: return true
+        case .shoes: return ProcessInfo.processInfo.environment["NL_NO_SKIN_TRIM"] == nil
         case .hair, .outfit, .tops, .bottoms: return false
         }
     }

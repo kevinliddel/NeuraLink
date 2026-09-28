@@ -71,7 +71,14 @@ extension VRMPartGrafter {
             pair = nil
         }
         guard let pair, pair.0 > 0.0001, pair.1 > 0.0001 else { return 1 }
-        return min(1.4, max(0.72, pair.1 / pair.0))
+        // A shoe is never shrunk. Hair can be: a smaller head wants smaller
+        // hair, and hair sits ON the head. A shoe has to CONTAIN the foot,
+        // and Ekaterina has the smallest feet in the set — shrinking a
+        // borrowed shoe to her rig pushed her toes and instep straight
+        // through the shell. Too big reads as a chunky shoe; too small
+        // reads as broken.
+        let smallest: Float = kind == .shoes ? 1 : 0.72
+        return min(1.4, max(smallest, pair.1 / pair.0))
     }
 
     /// Where to cut the host's skin, in the HOST's rest space.
@@ -88,14 +95,72 @@ extension VRMPartGrafter {
             let shoe = donor.restBounds(ofSlots: kind.slots),
             let floor = floorHeight(of: host)
         else { return nil }
-        let height = (shoe.max.y - shoe.min.y) * fit
+        // Where the shoe CLOSES around the leg, not the top of its box: a
+        // heel's box is tall because of the heel, and a boot shaft reaches
+        // far above the vamp the leg actually passes through. Trimming to
+        // the box top cut the leg off above some shoes and left a gap.
+        let opening = collarHeight(of: donor, slots: kind.slots) ?? shoe.max.y
+        let height = (opening - shoe.min.y) * fit
         guard height > 0.0001 else { return nil }
-        // Just under the collar. A triangle is only dropped when ALL THREE
+        // Just under the opening. A triangle is only dropped when ALL THREE
         // of its corners are below the line, so the ones straddling it stay
-        // and the leg still plugs the opening — which means the line can sit
-        // this high without leaving a hole to see into. At 0.7 it left a
-        // band of ankle and heel outside a low sneaker.
-        return floor + height * 0.85
+        // and the leg still plugs it.
+        return floor + height * 0.9
+    }
+
+    /// Height up to which the shoe is a SOLID shell around the foot, in the
+    /// donor's rest space.
+    ///
+    /// Neither the box top nor the highest geometry near the ankle works: on
+    /// a strap heel both of those are the strap, and the skin between the
+    /// vamp and the strap is visible on the original character too, so
+    /// trimming to it leaves a gap where the leg should be. What separates
+    /// the two is depth — a vamp runs most of the foot's length, an ankle
+    /// strap is a thin band. So this walks up in bands and returns the top
+    /// of the highest one still as deep as the shoe's deepest.
+    ///
+    /// Under-shooting is safe: skin left inside a shoe that encloses it is
+    /// hidden anyway. Over-shooting is what shows.
+    static func collarHeight(of donor: VRMModel, slots: Set<VRoidMaterialSlot>) -> Float? {
+        guard let ankle = donor.bindPosition(of: .leftFoot) ?? donor.bindPosition(of: .rightFoot)
+        else { return nil }
+        let reach = max((donor.referenceFootLength ?? 0.1) * 1.2, 0.06)
+        let reachSquared = reach * reach
+        var samples: [SIMD2<Float>] = []
+        for mesh in donor.meshes {
+            for primitive in mesh.primitives {
+                guard let materialIndex = primitive.materialIndex,
+                    slots.contains(donor.slot(ofMaterial: materialIndex))
+                else { continue }
+                primitive.forEachRestPosition(budget: 6_000) { position in
+                    let dx = position.x - ankle.x, dz = position.z - ankle.z
+                    guard dx * dx + dz * dz < reachSquared else { return }
+                    samples.append(SIMD2<Float>(position.y, position.z))
+                }
+            }
+        }
+        guard samples.count > 24 else { return nil }
+        let lowest = samples.lazy.map(\.x).min() ?? 0
+        let highest = samples.lazy.map(\.x).max() ?? 0
+        let span = highest - lowest
+        guard span > 0.0001 else { return nil }
+
+        let bands = 12
+        let bandHeight = span / Float(bands)
+        var low = [Float](repeating: .greatestFiniteMagnitude, count: bands)
+        var high = [Float](repeating: -.greatestFiniteMagnitude, count: bands)
+        for sample in samples {
+            let band = min(bands - 1, max(0, Int((sample.x - lowest) / bandHeight)))
+            low[band] = min(low[band], sample.y)
+            high[band] = max(high[band], sample.y)
+        }
+        let depths = (0..<bands).map { high[$0] > low[$0] ? high[$0] - low[$0] : 0 }
+        guard let deepest = depths.max(), deepest > 0.0001 else { return nil }
+        var top = lowest + bandHeight
+        for band in 0..<bands where depths[band] >= deepest * 0.6 {
+            top = lowest + Float(band + 1) * bandHeight
+        }
+        return top
     }
 
     /// How far to lift or drop a part so it meets the floor the host stands

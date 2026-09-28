@@ -36,11 +36,15 @@ struct ShoeGraftDiagnostic {
         let shoeItems = PartsLibrary.shared.items.filter { $0.kind == .shoes }
         for hostName in ["Sonya", "Ekaterina"] {
             guard let hostURL = Bundle.main.url(forResource: hostName, withExtension: "vrm") else { continue }
-            for item in shoeItems.prefix(6) {
+            for item in shoeItems {
                 let host = try await VRMModel.load(from: hostURL, device: device)
                 let donor = try await VRMModel.load(from: item.resolvedURL(), device: device)
                 let hostFoot = host.referenceFootLength ?? 0
                 let donorFoot = donor.referenceFootLength ?? 0
+                // Pose the host first: in the app the idle animation is
+                // already running when the saved look is grafted, and an
+                // unposed render cannot show what that breaks.
+                poseOffBindPose(host)
                 host.updateNodeTransforms()
                 let ownShoe = skinnedBounds(host, slots: AppearancePartKind.shoes.slots)
                 let baseMeshes = host.meshes.count
@@ -50,8 +54,15 @@ struct ShoeGraftDiagnostic {
                 let skin = bounds(host, slots: [.bodySkin], below: 0.18)
                 let shoe = skinnedBounds(
                     host, slots: AppearancePartKind.shoes.slots, fromMesh: baseMeshes)
+                let fit = VRMPartGrafter.fitScale(.shoes, donor: donor, host: host)
+                let box = donor.restBounds(ofSlots: AppearancePartKind.shoes.slots)
+                let collar = VRMPartGrafter.collarHeight(
+                    of: donor, slots: AppearancePartKind.shoes.slots)
+                let cut = VRMPartGrafter.skinCutLine(.shoes, donor: donor, host: host, fit: fit)
                 report += """
                     == \(hostName) + \(item.modelStem)
+                       boxTop=\(fmt(box?.max.y)) collar=\(fmt(collar)) \
+                    sole=\(fmt(box?.min.y)) fit=\(String(format: "%.3f", fit)) cut=\(fmt(cut))
                        hostFoot=\(String(format: "%.4f", hostFoot)) \
                     donorFoot=\(String(format: "%.4f", donorFoot)) \
                     ratio=\(String(format: "%.3f", donorFoot > 0 ? hostFoot / donorFoot : 0))
@@ -102,6 +113,24 @@ struct ShoeGraftDiagnostic {
         return lines.joined(separator: "\n")
     }
 
+    /// Moves the skeleton off its bind pose the way the idle animation has
+    /// by the time a graft runs.
+    @MainActor
+    private func poseOffBindPose(_ model: VRMModel) {
+        guard let humanoid = model.humanoid else { return }
+        for bone in [VRMHumanoidBone.leftUpperLeg, .rightUpperLeg] {
+            guard let index = humanoid.getBoneNode(bone), index < model.nodes.count else { continue }
+            let node = model.nodes[index]
+            node.rotation = simd_quatf(angle: 0.15, axis: SIMD3<Float>(1, 0, 0)) * node.rotation
+            node.updateLocalMatrix()
+        }
+        if let hips = humanoid.getBoneNode(.hips), hips < model.nodes.count {
+            model.nodes[hips].translation.y -= 0.06
+            model.nodes[hips].updateLocalMatrix()
+        }
+        model.updateNodeTransforms()
+    }
+
     /// Yaws every root node so the offscreen camera, which is fixed on +Z,
     /// can look at the model from another angle.
     ///
@@ -126,6 +155,10 @@ struct ShoeGraftDiagnostic {
             node.localMatrix = turn * original
         }
         model.updateNodeTransforms()
+    }
+
+    private func fmt(_ value: Float?) -> String {
+        value.map { String(format: "%.3f", $0) } ?? "nil"
     }
 
     private func describe(_ box: (min: SIMD3<Float>, max: SIMD3<Float>)?) -> String {

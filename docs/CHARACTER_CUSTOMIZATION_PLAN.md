@@ -596,6 +596,26 @@ its original clothes and was re-dressed a beat later on launch, because
 avatar is ready to SHOW, not that its geometry is uploaded. The 600 s reveal
 backstop in ContentView still covers a hang.
 
+**A graft runs on an ANIMATED skeleton (2026-09-28)** — the grounding above was
+measured in the wrong space and made things worse: shoes sank into the ground and
+a gap opened between leg and shoe. `VRMMetalState.display` starts the idle
+animation before the saved look is applied, so by the time a graft runs the
+skeleton has already left its bind pose. `groundOffset` read the ankle from
+`node.worldPosition` (animated) and the floor from `restBounds` (rest), and the
+mismatch pushed the shoe down by however far the idle had moved the foot. The gap
+followed from it: the trim cut assumes the sole is on the floor, so a sunk shoe
+put the cut above the collar and took the leg with it.
+
+`VRMModel.bindPosition(of:)` now recovers a bone's bind position from
+`inverse(inverseBindMatrix)`, which is pose-independent and in the same space as
+`restBounds`. It backs both `groundOffset` and `referenceFootLength`, which had
+the same flaw. The trim cut went back to 0.85. The rule for this feature:
+everything a graft measures must be in BIND space, never `node.worldPosition`.
+
+`shoesMeetTheFloor` now runs posed as well as unposed, with the reference wearing
+its own shoes under the same pose. A negative control confirmed the test reaches
+the bug: with the fix reverted the unposed case passes and BOTH posed cases fail.
+
 **Parts library moved off the device (2026-09-28)** — 68 part files weigh 225 MB,
 which took the installed app to 638 MB. They now live in the same Hugging Face
 dataset as the environment GLBs, under `Parts/`, reached through
