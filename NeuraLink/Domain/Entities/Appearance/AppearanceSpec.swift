@@ -54,14 +54,56 @@ nonisolated public struct DonorTextureRef: Codable, Equatable, Sendable {
 /// the reference project's hair-set toggle and whole-body outfit swap.
 nonisolated public enum AppearancePartKind: String, Codable, CaseIterable, Sendable {
     case hair
+    /// The whole look: the donor's body skin and every garment. Grafting
+    /// the skin too is what keeps VRoid's carved-away geometry consistent
+    /// (it deletes the skin its own outfit hides).
     case outfit
+    case tops
+    case bottoms
+    case shoes
+
+    /// Bones a rigid part rides on, and so is resized around. Clothes list
+    /// none: they are skinned across the humanoid and fit on their own.
+    /// Whether grafting this part should cut the host's own skin out from
+    /// under it. VRoid keeps a full foot in the body mesh, shaped for the
+    /// shoe that character shipped with, so a borrowed shoe lets the heel
+    /// and the sides of the foot through. Clothes don't need it: they are
+    /// skinned across the body and follow it.
+    /// Whether this part rests on the ground, so a borrowed one has to be
+    /// lifted or dropped until its sole meets the host's floor rather than
+    /// landing wherever the donor's ankle happened to sit above it.
+    public var standsOnTheFloor: Bool {
+        switch self {
+        case .shoes: return true
+        case .hair, .outfit, .tops, .bottoms: return false
+        }
+    }
+
+    public var trimsHostSkinUnderneath: Bool {
+        switch self {
+        case .shoes: return true
+        case .hair, .outfit, .tops, .bottoms: return false
+        }
+    }
+
+    public var fitAnchorBones: [VRMHumanoidBone] {
+        switch self {
+        case .hair: return [.head]
+        case .shoes: return [.leftFoot, .rightFoot, .leftToes, .rightToes]
+        case .outfit, .tops, .bottoms: return []
+        }
+    }
 
     /// Slots a part of this kind carries; the host's own primitives in
-    /// these slots are hidden while the part is grafted.
+    /// these slots are hidden while the part is grafted. Single garments
+    /// are declared after `outfit` so they win when both are chosen.
     public var slots: Set<VRoidMaterialSlot> {
         switch self {
         case .hair: return [.hair, .hairBack]
         case .outfit: return [.bodySkin, .tops, .bottoms, .shoes, .onepiece, .accessory]
+        case .tops: return [.tops, .onepiece]
+        case .bottoms: return [.bottoms]
+        case .shoes: return [.shoes]
         }
     }
 }

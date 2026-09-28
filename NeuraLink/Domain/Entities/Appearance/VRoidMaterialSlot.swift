@@ -59,18 +59,6 @@ nonisolated public enum VRoidMaterialSlot: String, Codable, CaseIterable, Sendab
         }
     }
 
-    /// Tab the slot belongs to in the customization UI.
-    public var group: VRoidSlotGroup {
-        switch self {
-        case .faceSkin, .bodySkin: return .skin
-        case .mouth, .brow, .eyeline, .eyelash: return .face
-        case .eyeIris, .eyeWhite, .eyeHighlight, .eyeExtra: return .eyes
-        case .hair, .hairBack: return .hair
-        case .tops, .bottoms, .shoes, .onepiece, .accessory: return .outfit
-        case .other: return .outfit
-        }
-    }
-
     // MARK: - Classification
 
     /// Maps a glTF material name to its slot. Token-based (split on `_`) so
@@ -127,44 +115,4 @@ nonisolated public enum VRoidMaterialSlot: String, Codable, CaseIterable, Sendab
         if lower.contains("cloth") || lower.contains("shirt") || lower.contains("dress") { return .tops }
         return .other
     }
-}
-
-/// Tabs of the customization panel. Order is the on-screen order.
-nonisolated public enum VRoidSlotGroup: String, CaseIterable, Sendable, Identifiable {
-    case skin
-    case face
-    case eyes
-    case hair
-    case outfit
-
-    public var id: String { rawValue }
-
-    public var displayName: String {
-        switch self {
-        case .skin: return "Skin"
-        case .face: return "Face"
-        case .eyes: return "Eyes"
-        case .hair: return "Hair"
-        case .outfit: return "Outfit"
-        }
-    }
-
-    public var systemImage: String {
-        switch self {
-        case .skin: return "hand.raised"
-        case .face: return "face.smiling"
-        case .eyes: return "eye"
-        case .hair: return "scissors"
-        case .outfit: return "tshirt"
-        }
-    }
-
-    /// Slots in this group, in display order.
-    public var slots: [VRoidMaterialSlot] {
-        VRoidMaterialSlot.allCases.filter { $0.group == self && $0 != .other }
-    }
-
-    /// Skin tone must stay uniform between the face and body atlases, so the
-    /// skin tab edits both slots as one.
-    public var editsSlotsJointly: Bool { self == .skin }
 }

@@ -33,8 +33,10 @@ final class AppearanceApplier {
 
     private var generation = 0
     private var coverageCache: (model: ObjectIdentifier, masks: [VRoidMaterialSlot: UVCoverageMask])?
-    /// Most recent donor model, kept for cheap hair+outfit from one donor.
-    private var donorCache: (slug: String, model: VRMModel)?
+    /// Recently loaded donor models keyed by "slug#part" (a part load skips
+    /// the textures the part doesn't use). Two deep: hair + outfit of the
+    /// donor being tried.
+    private var donorCache: [(key: String, model: VRMModel)] = []
     private var donorLoads: [String: Task<VRMModel?, Never>] = [:]
 
     private init() {}
@@ -50,25 +52,59 @@ final class AppearanceApplier {
         apply(spec, to: state)
     }
 
+    /// Same, but doesn't return until the look is actually on the model.
+    ///
+    /// Used on load: grafting is asynchronous, so a caller that displays the
+    /// model and moves on shows the character in its original clothes for a
+    /// beat before the saved outfit appears.
+    func applyStoredAndWait(slug: String, to state: VRMMetalState) async {
+        guard let spec = AppearanceStore.shared.spec(for: slug), !spec.isEmpty else {
+            clear(on: state)
+            return
+        }
+        guard let plan = beginApplying(spec, to: state) else { return }
+        await finishApplying(plan)
+    }
+
     /// Applies `spec` to the model currently displayed by `state`.
     func apply(_ spec: AppearanceSpec, to state: VRMMetalState) {
-        guard let model = state.currentModel, let renderer = state.renderer else { return }
-        generation += 1
-        let myGeneration = generation
-        let layer = renderer.appearanceLayer
+        guard let plan = beginApplying(spec, to: state) else { return }
+        Task { [weak self] in await self?.finishApplying(plan) }
+    }
 
+    /// What one application needs, captured before any awaiting so a model
+    /// swap mid-flight is caught by the generation check rather than by
+    /// reading changed state.
+    private struct ApplyPlan {
+        let spec: AppearanceSpec
+        let state: VRMMetalState
+        let model: VRMModel
+        let renderer: VRMRenderer
+        let layer: AppearanceMaterialLayer
+        let generation: Int
+    }
+
+    private func beginApplying(_ spec: AppearanceSpec, to state: VRMMetalState) -> ApplyPlan? {
+        guard let model = state.currentModel, let renderer = state.renderer else { return nil }
+        generation += 1
+        let layer = renderer.appearanceLayer
         // Colours first so sliders feel instant; re-applied after parts.
         applyRecolors(spec.recolors, model: model, layer: layer)
+        return ApplyPlan(
+            spec: spec, state: state, model: model, renderer: renderer, layer: layer,
+            generation: generation)
+    }
 
-        Task { [weak self] in
-            guard let self else { return }
-            let partsChanged = await self.applyParts(spec.parts, model: model, renderer: renderer, generation: myGeneration)
-            guard self.generation == myGeneration else { return }
-            if partsChanged { self.applyRecolors(spec.recolors, model: model, layer: layer) }
-            self.reconcileTextureOverrides(spec.textures, model: model, layer: layer)
-            guard !spec.textures.isEmpty, let device = state.mtkView.device else { return }
-            await self.applyTextures(spec.textures, model: model, layer: layer, device: device, generation: myGeneration)
-        }
+    private func finishApplying(_ plan: ApplyPlan) async {
+        let partsChanged = await applyParts(
+            plan.spec.parts, model: plan.model, renderer: plan.renderer, generation: plan.generation)
+        guard generation == plan.generation else { return }
+        if partsChanged { applyRecolors(plan.spec.recolors, model: plan.model, layer: plan.layer) }
+        reconcileTextureOverrides(plan.spec.textures, model: plan.model, layer: plan.layer)
+        guard !plan.spec.textures.isEmpty, let device = plan.state.mtkView.device else { return }
+        await applyTextures(
+            plan.spec.textures, model: plan.model, layer: plan.layer, device: device,
+            generation: plan.generation)
     }
 
     /// Restores the original look (parts, colours, textures) without
@@ -86,9 +122,9 @@ final class AppearanceApplier {
         }
     }
 
-    /// Frees the cached donor model (panel closed).
+    /// Frees the cached donor models (panel closed).
     func releaseDonorCache() {
-        donorCache = nil
+        donorCache.removeAll()
     }
 
     // MARK: - Parts
@@ -103,15 +139,15 @@ final class AppearanceApplier {
 
         isGrafting = true
         defer { isGrafting = false }
-        var donors: [String: VRMModel] = [:]
-        for slug in Set(wanted.values) {
-            if let donor = await donorModel(slug: slug) { donors[slug] = donor }
+        var donors: [AppearancePartKind: VRMModel] = [:]
+        for (kind, slug) in wanted {
+            if let donor = await donorModel(slug: slug, part: kind) { donors[kind] = donor }
             guard generation == myGeneration else { return false }
         }
 
         model.restoreBaseComposition()
         for kind in AppearancePartKind.allCases {
-            guard let slug = wanted[kind], let donor = donors[slug] else { continue }
+            guard let slug = wanted[kind], let donor = donors[kind] else { continue }
             do {
                 try VRMPartGrafter.graft(kind, from: donor, donorSlug: slug, onto: model)
             } catch {
@@ -123,17 +159,24 @@ final class AppearanceApplier {
         return true
     }
 
-    /// Fully loaded donor model (GPU buffers + textures), cached one deep.
-    func donorModel(slug: String) async -> VRMModel? {
-        let key = slug.lowercased()
-        if let cached = donorCache, cached.slug == key { return cached.model }
+    /// Loaded donor model. With `part`, only the textures that part uses
+    /// are decoded (the scan knows which) — a hair load is a fraction of a
+    /// full one. Cached two deep.
+    func donorModel(slug: String, part: AppearancePartKind? = nil) async -> VRMModel? {
+        let key = "\(slug.lowercased())#\(part?.rawValue ?? "full")"
+        if let cached = donorCache.first(where: { $0.key == key }) { return cached.model }
         if let inFlight = donorLoads[key] { return await inFlight.value }
-        guard let entry = VRMModelRegistry.shared.entry(named: key),
+        guard let source = await donorSource(slug: slug),
             let device = MTLCreateSystemDefaultDevice()
         else { return nil }
+        var filter: Set<Int>?
+        if let part, let scan = await donorScan(slug: slug), let indices = scan.partTextureIndices[part] {
+            filter = indices
+        }
+        let options = VRMLoadingOptions(textureIndexFilter: filter)
         let task = Task<VRMModel?, Never> {
             do {
-                return try await VRMModel.load(from: entry.url, device: device)
+                return try await VRMModel.load(from: source.url, device: device, options: options)
             } catch {
                 nlLog("[Appearance] donor model load failed for '\(key)': \(error.localizedDescription)", level: .warning)
                 return nil
@@ -142,7 +185,11 @@ final class AppearanceApplier {
         donorLoads[key] = task
         let model = await task.value
         donorLoads[key] = nil
-        if let model { donorCache = (key, model) }
+        if let model {
+            donorCache.removeAll { $0.key == key }
+            donorCache.append((key, model))
+            if donorCache.count > 2 { donorCache.removeFirst() }
+        }
         return model
     }
 
@@ -181,12 +228,13 @@ final class AppearanceApplier {
         for (slot, ref) in textures {
             guard generation == myGeneration else { return }
             guard let scan = await donorScan(slug: ref.donorSlug), let donor = scan.slots[ref.slot] else { continue }
-            guard isCompatible(donor: donor, slot: slot, model: model) else {
+            guard await isCompatible(donor: donor, slot: slot, model: model) else {
                 nlLog("[Appearance] '\(ref.donorSlug)' \(ref.slot.rawValue) does not cover this model's \(slot.rawValue) UVs — skipped", level: .info)
                 continue
             }
             let texture = await Task.detached(priority: .userInitiated) { () -> MTLTexture? in
-                AppearanceTextureFactory.makeTexture(imageData: donor.imageData, device: device)
+                guard let data = donor.loadImageData() else { return nil }
+                return AppearanceTextureFactory.makeTexture(imageData: data, device: device)
             }.value
             guard generation == myGeneration, let texture else { continue }
             for materialIndex in Self.materialIndices(for: slot, in: model) {
@@ -201,9 +249,9 @@ final class AppearanceApplier {
 
     /// Scans a registry character's file; nil when unknown or unreadable.
     func donorScan(slug: String) async -> DonorScan? {
-        guard let entry = VRMModelRegistry.shared.entry(named: slug) else { return nil }
+        guard let source = await donorSource(slug: slug) else { return nil }
         do {
-            return try await VRMDonorTextureCache.shared.scan(url: entry.url, slug: entry.name)
+            return try await VRMDonorTextureCache.shared.scan(url: source.url, slug: source.name)
         } catch {
             nlLog("[Appearance] donor scan failed for '\(slug)': \(error.localizedDescription)", level: .warning)
             return nil
@@ -211,10 +259,14 @@ final class AppearanceApplier {
     }
 
     /// True when the donor texture covers (almost) every atlas cell the
-    /// target slot samples.
-    func isCompatible(donor: DonorSlotTexture, slot: VRoidMaterialSlot, model: VRMModel) -> Bool {
+    /// target slot samples. Decodes the donor texture (once per image) for
+    /// its painted-area masks.
+    func isCompatible(donor: DonorSlotTexture, slot: VRoidMaterialSlot, model: VRMModel) async -> Bool {
         guard let target = targetCoverage(for: slot, in: model), !target.isEmpty else { return false }
-        return target.fraction(coveredBy: donor.coverage(for: slot)) >= Self.compatibilityThreshold
+        // Cheap pre-check: the donor's own UV footprint alone may already cover it.
+        if target.fraction(coveredBy: donor.uvCoverage) >= Self.compatibilityThreshold { return true }
+        guard let masks = await VRMDonorTextureCache.shared.coverageMasks(for: donor) else { return false }
+        return target.fraction(coveredBy: donor.coverage(for: slot, masks: masks)) >= Self.compatibilityThreshold
     }
 
     /// Union of the UV footprints of every BASE primitive drawn with a
@@ -231,7 +283,7 @@ final class AppearanceApplier {
         for mesh in meshes {
             for primitive in mesh.primitives {
                 guard let materialIndex = primitive.materialIndex, materialIndex < model.materials.count,
-                    VRoidMaterialSlot.classify(materialName: model.materials[materialIndex].name) == slot,
+                    model.slot(ofMaterial: materialIndex) == slot,
                     let coverage = primitive.computeUVCoverage()
                 else { continue }
                 union.formUnion(coverage)
@@ -245,22 +297,38 @@ final class AppearanceApplier {
     // MARK: - Slots
 
     nonisolated static func materialIndices(for slot: VRoidMaterialSlot, in model: VRMModel) -> [Int] {
-        model.materials.indices.filter {
-            VRoidMaterialSlot.classify(materialName: model.materials[$0].name) == slot
-        }
+        model.materials.indices.filter { model.slot(ofMaterial: $0) == slot }
     }
 
     nonisolated static func materialIndicesBySlot(in model: VRMModel) -> [VRoidMaterialSlot: [Int]] {
         var result: [VRoidMaterialSlot: [Int]] = [:]
-        for (index, material) in model.materials.enumerated() {
-            result[VRoidMaterialSlot.classify(materialName: material.name), default: []].append(index)
+        for index in model.materials.indices {
+            result[model.slot(ofMaterial: index), default: []].append(index)
         }
         return result
     }
 
     /// Slots the BASE model has materials for (drives the panel's tabs).
     nonisolated static func presentSlots(in model: VRMModel) -> Set<VRoidMaterialSlot> {
-        let materials = model.composition?.snapshot.materials ?? model.materials
-        return Set(materials.map { VRoidMaterialSlot.classify(materialName: $0.name) }).subtracting([.other])
+        let baseCount = model.composition?.snapshot.materials.count ?? model.materials.count
+        return Set((0..<baseCount).map { model.slot(ofMaterial: $0) }).subtracting([.other])
+    }
+
+    // MARK: - Donor sources
+
+    /// A donor is either another character in the registry (slug) or a
+    /// parts-library model (`lib:<stem>`, see PartsLibrary). A library part
+    /// lives in the Hugging Face dataset, so resolving one may have to wait
+    /// for it to arrive; a character is always in the app already.
+    func donorSource(slug: String) async -> (url: URL, name: String, displayName: String)? {
+        if let item = PartsLibrary.shared.item(slug: slug) {
+            guard let url = try? await item.resolvedURL() else {
+                nlLog("[Appearance] part '\(slug)' has not been downloaded yet", level: .warning)
+                return nil
+            }
+            return (url, item.donorSlug, item.displayName)
+        }
+        guard let entry = VRMModelRegistry.shared.entry(named: slug) else { return nil }
+        return (entry.url, entry.name.lowercased(), entry.displayName)
     }
 }

@@ -37,7 +37,7 @@ struct ModelSelectionOverlay: View {
                             Button {
                                 onCustomize(entry)
                             } label: {
-                                Label("Customize Appearance", systemImage: "paintpalette")
+                                Label("Customize", systemImage: "paintpalette")
                             }
                         }
                         if entry.isImported, let onDelete {

@@ -94,6 +94,7 @@ struct RemoteAssetIntegrityTests {
         assets += RemoteAssetRegistry.jtalkDictFilenames.map { .jtalkDictFile($0) }
         assets += ["apartment", "art_gallery", "campus", "city", "ruined_city"]
             .map { .scene($0) }
+        assets += RemoteAssetRegistry.libraryPartStems.map { .libraryPart($0) }
 
         for asset in assets {
             #expect(asset.integrity != nil, "missing pin for \(asset.pathInRepo)")
@@ -150,5 +151,35 @@ struct RemoteAssetIntegrityTests {
         #expect(
             !VRMRenderer.isConnectivityError(
                 RemoteAssetCache.CacheError.checksumMismatch(expected: "a", actual: "b")))
+    }
+
+    @Test("The parts library manifest is complete and self-consistent")
+    func partsManifest() {
+        let stems = RemoteAssetRegistry.libraryPartStems
+        #expect(stems.count == 68)
+        #expect(Set(stems).count == stems.count, "no part is listed twice")
+        // Every part is named `<model>__<kind>`, which is what both the
+        // picker and the picture lookup rely on.
+        for stem in stems {
+            #expect(PartsLibrary.Kind.from(stem: stem) != nil, "\(stem) names a kind")
+        }
+        let sized = stems.compactMap { RemoteAssetRegistry.libraryPart($0).integrity?.size }
+        #expect(sized.count == stems.count, "every part is pinned")
+        #expect(sized.reduce(0, +) == RemoteAssetRegistry.libraryPartsTotalBytes)
+    }
+
+    @Test("A part resolves to the Parts folder of the shared dataset")
+    func partURL() {
+        let asset = RemoteAssetRegistry.libraryPart("casual__hair")
+        #expect(asset.filename == "casual__hair.vrm")
+        #expect(asset.pathInRepo == "Parts/casual__hair.vrm")
+        let url = try? #require(asset.remoteURL)
+        #expect(url?.absoluteString
+            == "https://huggingface.co/datasets/Dedicatus/NeuraLink/resolve/main/Parts/casual__hair.vrm")
+    }
+
+    @Test("An unknown part has no pin, so it can never be silently accepted")
+    func unknownPart() {
+        #expect(RemoteAssetRegistry.libraryPart("not_a_part__hair").integrity == nil)
     }
 }

@@ -48,6 +48,20 @@ public enum VRMPartGrafter {
         guard host.humanoid != nil else { throw VRMPartGraftError.noHumanoid }
         host.beginComposition()
         let yaw: simd_quatf? = donor.isVRM0 != host.isVRM0 ? VRMModel.vrmVersionYaw : nil
+        // Hair and shoes are rigid on one joint, so unlike clothes — which
+        // are skinned across the humanoid and adapt on their own — they keep
+        // the donor's size. A style cut for a small head leaves a bigger
+        // host's scalp poking through it, and the same goes for a shoe on a
+        // bigger foot. Fit them to what they are moving to.
+        let fit = fitScale(kind, donor: donor, host: host)
+        // A rigid part also has to MEET the host: a shoe keeps the donor's
+        // ankle-to-sole drop, so on a host whose ankle sits higher or lower
+        // it sinks into the ground or floats over it.
+        let ground = groundOffset(kind, donor: donor, host: host, fit: fit)
+        let fitAnchors = Set(kind.fitAnchorBones.compactMap { bone -> ObjectIdentifier? in
+            guard let index = host.humanoid?.getBoneNode(bone), index < host.nodes.count else { return nil }
+            return ObjectIdentifier(host.nodes[index])
+        })
         let counts = Counts()
 
         // 1. Donor primitives by slot, grouped by their mesh node (skin).
@@ -57,7 +71,7 @@ public enum VRMPartGrafter {
             let mesh = donor.meshes[meshIndex]
             let picked = mesh.primitives.filter { primitive in
                 guard let m = primitive.materialIndex, m < donor.materials.count else { return false }
-                return kind.slots.contains(VRoidMaterialSlot.classify(materialName: donor.materials[m].name))
+                return kind.slots.contains(donor.slot(ofMaterial: m))
             }
             if !picked.isEmpty { selection.append((node, mesh, picked)) }
         }
@@ -82,7 +96,8 @@ public enum VRMPartGrafter {
             var skinIndex: Int?
             if let donorSkinIndex = donorNode.skin, donorSkinIndex < donor.skins.count {
                 let skin = resolveSkin(donor.skins[donorSkinIndex], usedJoints: usedJoints, donor: donor,
-                                       host: host, nodeMap: &nodeMap, yaw: yaw, counts: counts)
+                                       host: host, nodeMap: &nodeMap, yaw: yaw, fit: fit,
+                                       ground: ground, fitAnchors: fitAnchors, counts: counts)
                 host.skins.append(skin)
                 skinIndex = host.skins.count - 1
                 counts.skins += 1
@@ -103,18 +118,21 @@ public enum VRMPartGrafter {
             guard let mapped = nodeMap[donorIndex], !host.isBaseNode(mapped),
                 donorIndex < donor.nodes.count
             else { continue }
-            appendDescendants(of: donor.nodes[donorIndex], donor: donor, host: host, nodeMap: &nodeMap, yaw: yaw, counts: counts)
+            appendDescendants(of: donor.nodes[donorIndex], donor: donor, host: host, nodeMap: &nodeMap, yaw: yaw, fit: fit, counts: counts)
         }
 
         // 4. Physics for the appended bones.
         counts.springs = appendSprings(from: donor, host: host, nodeMap: nodeMap, yaw: yaw)
 
-        // 5. Hide the host's own part.
+        // 5. Hide whatever already occupied these slots — the host's own
+        // geometry AND anything an earlier graft put there, so choosing a
+        // single garment overrides a whole-outfit pick.
         var hidden = 0
-        for mesh in host.composition?.snapshot.meshes ?? [] {
+        let justAdded = Set(host.meshes.suffix(counts.meshes).map { ObjectIdentifier($0) })
+        for mesh in host.meshes where !justAdded.contains(ObjectIdentifier(mesh)) {
             for primitive in mesh.primitives {
                 guard let m = primitive.materialIndex, m < host.materials.count,
-                    kind.slots.contains(VRoidMaterialSlot.classify(materialName: host.materials[m].name))
+                    kind.slots.contains(host.slot(ofMaterial: m))
                 else { continue }
                 host.hiddenPrimitives.insert(ObjectIdentifier(primitive))
                 hidden += 1
@@ -123,6 +141,11 @@ public enum VRMPartGrafter {
 
         host.buildNodeLookupTable()
         host.updateNodeTransforms()
+        // Now that the new geometry is in and the old is hidden, take the
+        // host's own skin out from under it where the part can't cover it.
+        if let cut = skinCutLine(kind, donor: donor, host: host, fit: fit) {
+            trimHostSkin(under: kind, in: host, below: cut)
+        }
         let receipt = GraftReceipt(
             kind: kind, donorSlug: donorSlug.lowercased(), meshCount: counts.meshes,
             materialCount: counts.materials, textureCount: counts.textures, nodeCount: counts.nodes,
@@ -146,6 +169,7 @@ public enum VRMPartGrafter {
         if let existing = materialMap[donorIndex] { return existing }
         let source = donor.materials[donorIndex]
         let copy = VRMMaterial(copying: source)
+        copy.slotHint = donor.slot(ofMaterial: donorIndex)
         func rehome(_ texture: VRMTexture?) {
             guard let texture, let donorTexIndex = donor.textures.firstIndex(where: { $0 === texture }) else { return }
             _ = rehomeTexture(donorTexIndex, donor: donor, host: host, textureMap: &textureMap, counts: counts)
@@ -189,23 +213,41 @@ public enum VRMPartGrafter {
 
     private static func resolveSkin(
         _ donorSkin: VRMSkin, usedJoints: Set<Int>, donor: VRMModel, host: VRMModel,
-        nodeMap: inout [Int: VRMNode], yaw: simd_quatf?, counts: Counts
+        nodeMap: inout [Int: VRMNode], yaw: simd_quatf?, fit: Float, ground: Float,
+        fitAnchors: Set<ObjectIdentifier>, counts: Counts
     ) -> VRMSkin {
         var joints: [VRMNode] = []
         var ibms: [float4x4] = []
         let yawMatrix = yaw.map { float4x4($0) }
+        let fitMatrix = float4x4(diagonal: SIMD4<Float>(fit, fit, fit, 1))
         for (i, joint) in donorSkin.joints.enumerated() {
             let ibm = i < donorSkin.inverseBindMatrices.count ? donorSkin.inverseBindMatrices[i] : matrix_identity_float4x4
             // Joints the part never weights still need a valid slot in the
             // palette; bind them to hips so a stray index can't explode.
             let hostNode: VRMNode
             if usedJoints.contains(i) {
-                hostNode = resolveNode(joint, donor: donor, host: host, nodeMap: &nodeMap, yaw: yaw, counts: counts)
+                hostNode = resolveNode(joint, donor: donor, host: host, nodeMap: &nodeMap, yaw: yaw, fit: fit, counts: counts)
             } else {
-                hostNode = host.compositionBindTarget(forDonorBoneNamed: joint.name) ?? host.nodes[0]
+                hostNode = host.compositionBindTarget(forDonorNode: joint.index, in: donor) ?? host.nodes[0]
             }
             joints.append(hostNode)
-            ibms.append(yawMatrix.map { $0 * ibm } ?? ibm)
+            let rehomed = yawMatrix.map { $0 * ibm } ?? ibm
+            // Only what rides the anchor gets resized: hair strands weighted
+            // to chest or shoulder bones belong to the body's scale, not the
+            // head's, and the same holds for a shoe's stray leg weights.
+            let ridesAnchor = fitAnchors.contains(ObjectIdentifier(hostNode)) || !host.isBaseNode(hostNode)
+            var placement = fit != 1 && ridesAnchor ? fitMatrix * rehomed : rehomed
+            // Grounding is a WORLD-space lift, but an inverse bind matrix is
+            // applied before the joint's world matrix — so express it in that
+            // joint's frame. Only the anchor bones themselves: an appended
+            // bone's world matrix isn't built yet.
+            if ground != 0, fitAnchors.contains(ObjectIdentifier(hostNode)) {
+                var lift = matrix_identity_float4x4
+                lift.columns.3 = SIMD4<Float>(0, ground, 0, 1)
+                let world = hostNode.worldMatrix
+                placement = (world.inverse * lift * world) * placement
+            }
+            ibms.append(placement)
         }
         return VRMSkin(name: donorSkin.name, joints: joints, inverseBindMatrices: ibms)
     }
@@ -215,16 +257,16 @@ public enum VRMPartGrafter {
     /// the nearest mapped ancestor.
     private static func resolveNode(
         _ donorNode: VRMNode, donor: VRMModel, host: VRMModel,
-        nodeMap: inout [Int: VRMNode], yaw: simd_quatf?, counts: Counts
+        nodeMap: inout [Int: VRMNode], yaw: simd_quatf?, fit: Float, counts: Counts
     ) -> VRMNode {
         if let mapped = nodeMap[donorNode.index] { return mapped }
-        if let bound = host.compositionBindTarget(forDonorBoneNamed: donorNode.name) {
+        if let bound = host.compositionBindTarget(forDonorNode: donorNode.index, in: donor) {
             nodeMap[donorNode.index] = bound
             return bound
         }
         // Parent first so the chain above us exists in the host.
         let hostParent: VRMNode? = donorNode.parent.map {
-            resolveNode($0, donor: donor, host: host, nodeMap: &nodeMap, yaw: yaw, counts: counts)
+            resolveNode($0, donor: donor, host: host, nodeMap: &nodeMap, yaw: yaw, fit: fit, counts: counts)
         }
         // Conjugate EVERY appended local frame by the version yaw so
         // world = R·Wd·R⁻¹ holds down the whole appended chain, matching the
@@ -238,8 +280,10 @@ public enum VRMPartGrafter {
             translation = donorNode.initialTranslation
             rotation = donorNode.initialRotation
         }
+        // Appended bones move outward with the part so the chain keeps its
+        // proportions at the new scale.
         let node = VRMNode(
-            index: host.nodes.count, name: donorNode.name, translation: translation,
+            index: host.nodes.count, name: donorNode.name, translation: translation * fit,
             rotation: rotation, scale: donorNode.initialScale)
         host.nodes.append(node)
         counts.nodes += 1
@@ -256,11 +300,11 @@ public enum VRMPartGrafter {
 
     private static func appendDescendants(
         of donorNode: VRMNode, donor: VRMModel, host: VRMModel,
-        nodeMap: inout [Int: VRMNode], yaw: simd_quatf?, counts: Counts
+        nodeMap: inout [Int: VRMNode], yaw: simd_quatf?, fit: Float, counts: Counts
     ) {
         for child in donorNode.children where child.mesh == nil {
-            _ = resolveNode(child, donor: donor, host: host, nodeMap: &nodeMap, yaw: yaw, counts: counts)
-            appendDescendants(of: child, donor: donor, host: host, nodeMap: &nodeMap, yaw: yaw, counts: counts)
+            _ = resolveNode(child, donor: donor, host: host, nodeMap: &nodeMap, yaw: yaw, fit: fit, counts: counts)
+            appendDescendants(of: child, donor: donor, host: host, nodeMap: &nodeMap, yaw: yaw, fit: fit, counts: counts)
         }
     }
 
@@ -296,8 +340,9 @@ public enum VRMPartGrafter {
             copy.joints = mappedJoints
             copy.center = spring.center.flatMap { nodeMap[$0]?.index }
             copy.colliderGroups = spring.colliderGroups.compactMap { groupIndex in
-                rehomeColliderGroup(groupIndex, donor: donorSpring, host: &hostSpring, nodeMap: nodeMap,
-                                    yaw: yaw, colliderMap: &colliderMap, groupMap: &groupMap)
+                rehomeColliderGroup(groupIndex, donorModel: donor, donorSpring: donorSpring, hostModel: host,
+                                    host: &hostSpring, nodeMap: nodeMap, yaw: yaw,
+                                    colliderMap: &colliderMap, groupMap: &groupMap)
             }
             hostSpring.springs.append(copy)
             added += 1
@@ -306,8 +351,20 @@ public enum VRMPartGrafter {
         return added
     }
 
+    /// Host bone a donor collider belongs on. Colliders sit on body bones
+    /// (head, chest, arms) that the part itself usually doesn't weight, so
+    /// they are absent from `nodeMap` — without the name fallback every
+    /// collider is dropped and the hair passes straight through the head.
+    private static func colliderHost(
+        _ donorNodeIndex: Int, donorModel: VRMModel, hostModel: VRMModel, nodeMap: [Int: VRMNode]
+    ) -> VRMNode? {
+        if let mapped = nodeMap[donorNodeIndex] { return mapped }
+        return hostModel.compositionBindTarget(forDonorNode: donorNodeIndex, in: donorModel)
+    }
+
     private static func rehomeColliderGroup(
-        _ groupIndex: Int, donor: VRMSpringBone, host: inout VRMSpringBone, nodeMap: [Int: VRMNode],
+        _ groupIndex: Int, donorModel: VRMModel, donorSpring donor: VRMSpringBone, hostModel: VRMModel,
+        host: inout VRMSpringBone, nodeMap: [Int: VRMNode],
         yaw: simd_quatf?, colliderMap: inout [Int: Int], groupMap: inout [Int: Int]
     ) -> Int? {
         if let existing = groupMap[groupIndex] { return existing }
@@ -320,10 +377,11 @@ public enum VRMPartGrafter {
                 continue
             }
             guard colliderIndex < donor.colliders.count,
-                let node = nodeMap[donor.colliders[colliderIndex].node]
+                let node = colliderHost(donor.colliders[colliderIndex].node,
+                                        donorModel: donorModel, hostModel: hostModel, nodeMap: nodeMap)
             else { continue }
             var collider = donor.colliders[colliderIndex]
-            collider.node = node.index
+            collider.node = hostModel.nodes.firstIndex { $0 === node } ?? node.index
             if let yaw { collider.shape = rotated(collider.shape, by: yaw) }
             host.colliders.append(collider)
             colliderMap[colliderIndex] = host.colliders.count - 1

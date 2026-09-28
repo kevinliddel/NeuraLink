@@ -148,6 +148,12 @@ extension VRMRenderer {
         // Initialize SpringBone GPU compute system if available
         if model.springBone != nil {
             do {
+                // A model that has been grafted onto carries more spring
+                // chains than its buffers were sized for; filling them
+                // without re-allocating writes past the end.
+                if !model.springBoneBuffersMatchSprings, let device = model.device {
+                    try model.initializeSpringBoneGPUSystem(device: device, expandChains: false)
+                }
                 try springBoneComputeSystem?.populateSpringBoneData(model: model)
                 
                 // Warm up physics to prevent initial bounce/oscillation

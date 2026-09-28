@@ -76,11 +76,11 @@ struct ContentView: View {
                     .zIndex(100)
                 }
 
-                // Character customization panel (Tier A): edits the live
-                // model in place, so it sits over the scene like the picker.
+                // Character customization sheet: edits the live model in
+                // place, so it rises over the scene rather than covering it.
                 if customization.isPresented, !aiState.isUIHidden, let sceneState = VRMMetalState.active {
-                    VStack {
-                        Spacer()
+                    VStack(spacing: 0) {
+                        Spacer(minLength: 0)
                         CharacterCustomizationView(
                             slug: aiState.selectedCharacterName.lowercased(),
                             state: sceneState,
@@ -91,9 +91,9 @@ struct ContentView: View {
                             }
                         )
                         .id(aiState.selectedCharacterName.lowercased())
-                        .padding(.horizontal, 16)
                     }
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .ignoresSafeArea(edges: .bottom)
+                    .transition(.move(edge: .bottom))
                     .zIndex(150)
                 }
 
@@ -255,6 +255,16 @@ struct ContentView: View {
                 Text("Removes the model file and its persona settings. Chat history is kept.")
             }
             .task {
+                // The parts library comes down alongside the environment on
+                // first launch, and gates the reveal the same way. On every
+                // later launch the files are already on disk and this
+                // finishes on the first runloop.
+                EnvironmentLoadState.shared.setPartsRetryHandler {
+                    PartsLibraryDownloader.reset()
+                    PartsLibraryDownloader.start()
+                }
+                PartsLibraryDownloader.start()
+
                 // The reveal is normally driven by `environmentDidLoad` — fired
                 // when the selected environment's mesh finishes downloading +
                 // loading, on success OR failure — plus the `forceReady()` calls

@@ -328,8 +328,302 @@ exactly the Unity project's model: every other character is a donor.
   tab can copy the donor's face texture to match tone.
 - Panel redesigned: five tabs (Hair · Outfit · Face · Eyes · Skin), 96-pt donor
   cards with names, a collapsible colour section, 48-pt Reset/Cancel/Save.
-Still open from the original plan: shipped parts library (hair-only / outfit-only
-exports), face variants, `targetNames` plumbing (not needed for hair/outfit).
+**Parts library added 2026-09-26** (`App/Resources/Custom`, 14 VRoid models, ~263 MB,
+flattened into the bundle root by the synchronized group): `PartsLibrary` lists every
+bundled .vrm/.glb that isn't a playable character (donor slug `lib:<stem>`); they never
+appear in the character picker. Picker cards now show a **rendered picture of the part**
+(`VRMPartThumbnailRenderer`: private VRMRenderer, no sky/terrain, other primitives hidden,
+framed on head/torso from the humanoid bones, MSAA-aware offscreen pass, cached as PNG by
+fingerprint in `PartThumbnailStore`, generated one donor at a time). **Dedupe**: each
+donor scan carries a per-part fingerprint (slot + SHA-256 of the texture bytes + index
+count; body skin excluded from the outfit), so the same school uniform on different
+models is one card (`school_uniform` ≡ `school_uniform_2`, `_3` distinct — pinned).
+Older UniGLTF 1.x exports name materials "VRM/MToon": slots come from the VRM 0.x
+materialProperties names, and as a last resort from an exclusive "Hair…" mesh name
+(`boy_uniform.glb` has no names at all → hair only, no outfit).
+**Performance round 2026-09-26** (device feedback: panel took ages, library "loading
+infinitely"): donor scans no longer decode any texture — they hash bytes, read UV
+footprints and record the image byte range (~KB per donor, all 14 scanned in parallel on
+panel open); painted-area masks decode lazily per image hash only for texture-borrow
+gating; part loads pass `VRMLoadingOptions.textureIndexFilter` so a hair graft decodes
+only the hair's textures (the scan records which); donor models cache two deep keyed by
+slug+part; library card pictures are **pre-rendered and bundled**
+(`App/Resources/Custom/Thumbs/<fingerprint>.png`, produced by the env-gated
+`PartThumbnailGeneratorTests` — re-run it when Custom/ changes:
+`TEST_RUNNER_NL_THUMB_OUTPUT_DIR=… xcodebuild test -only-testing:NeuraLinkTests/PartThumbnailGeneratorTests`);
+runtime thumbnail rendering remains only for imported characters and never runs while a
+graft is in flight.
+**Part files 2026-09-26**: `scripts/extract_parts.py` cuts every whole model in
+`CustomSources/` (git-ignored, 255 MB) into `App/Resources/Custom/Parts/<model>__hair.vrm`,
+`__outfit.vrm`, `__face.vrm` — minimal VRMs (only that part's primitives with vertices
+re-indexed, its materials/textures, the full skeleton so node indices stay valid, springs,
+trimmed VRM extension; morph targets dropped). Texture bytes + index counts are verbatim,
+so fingerprints — and the bundled thumbnails — are unchanged (pinned by
+`thumbnailsMatchFingerprints`). A hair donor is now 1–3 MB instead of 15–28 MB. Bundle
+size is NOT reduced (parts ≈ 254 MB: hair ≈ 51, outfit ≈ 107, face ≈ 118 — outfit and
+face parts each carry full-res textures); dropping the face texture donors or
+down-scaling their textures are the levers if app size matters. Cards are picture-only
+(name kept as the accessibility label). Grafts from library parts are pinned on both a
+VRM 1.0 host (Sonya) and a 0.x host (Ekaterina).
+**Recovering unnamed parts 2026-09-27** (two models showed no clothes): the extractor now
+resolves a slot from, in order, the glTF material name, the VRM 0.x materialProperty name,
+**the names of the images the material samples** (VRoid writes `F00_000_Body_00_nml` even
+when every material is called "VRM/MToon"), an exclusively-hair mesh name, and finally
+**"anything else on a body mesh whose skin we identified is clothing"** — which is how VRoid
+builds that mesh. Recovered slots are written into the part file under canonical names
+(`NL_Tops_01_CLOTH` …) so the app's plain classifier reads them with no extra rules.
+`boy_uniform` (no part names anywhere) now yields hair + outfit; its eye/brow/mouth
+materials stay unidentifiable, so it deliberately produces no face donor — a face part now
+requires skin AND an eye slot rather than rendering a blank mask. An outfit is accepted when
+ANY garment slot is present, including shoes alone: `brownie` paints its clothes into the
+body-skin texture and keeps only shoes as geometry, so its outfit is that skin plus shoes
+(`DonorScan.hasPart(.outfit)` matches). All 14 models now yield hair and an outfit.
+**Sheet redesign 2026-09-27**: the panel now reads like a character-creator catalogue —
+edge-to-edge bottom sheet with a grab handle, an icon-over-label category rail, a scrolling
+**grid** of light item tiles (two rows visible) with an accent ring + check badge on the
+selection, a collapsible colour section offering one-tap hue swatches above the exact
+sliders, and a two-button footer (Reset / Save; the close button dismisses). Look lives in
+`CustomizationTheme`; the grid and colour halves are their own files to stay under the
+file-length limit. Thumbnails are rendered **transparent** so the light tile supplies the
+background and a part reads as a cut-out catalogue item. Picture files are now named after
+the part they show — `<model>__<category>.png` (`casual__hair.png`,
+`school_uniform_2__outfit.png`), mirroring the part files, resolved by
+`PartThumbnailStore.thumbnailName(base:category:)`; fingerprints still do the dedupe.
+**Per-garment tabs 2026-09-27**: `AppearancePartKind` gained `.tops` (top + one-piece),
+`.bottoms` and `.shoes` beside `.outfit`, and the extractor writes `__tops/__bottoms/__shoes`
+part files. Tabs are now Hair · Outfit · Top · Bottom · Shoes · Face · Eyes · Skin. **Outfit**
+still swaps the whole look INCLUDING the donor's body skin, which is the faithful option
+because VRoid deletes the skin its own outfit hides; a single-garment swap leaves the host's
+skin alone, so a new garment that covers less than the old one can expose a carved-away gap.
+Single garments are declared after `outfit` in `allCases`, and the grafter now hides
+previously-grafted primitives in the same slots as well as the host's own, so a garment pick
+overrides a whole-outfit pick (pinned by `garmentOverridesOutfit`). Part tabs no longer
+require the host to already own the slot — a graft can add what it lacks. Eyes thumbnails
+render the eyes alone (no face behind them), and garment thumbnails frame on the part file's
+own bounding box, which *is* the garment.
+Bundle cost: parts 266 MB → **332 MB** (the single garments duplicate their textures). If
+that matters, the levers are dropping the whole-look Outfit files or down-scaling library
+part textures to 1024 (both change fingerprints, so thumbnails regenerate).
+**Face and Skin dropped 2026-09-27** (user: not worth customizing): those two tabs are gone,
+`__face.vrm` donors are replaced by much smaller `__eyes.vrm` (iris/white/highlight/extra
+plus eyeline and lashes so the picture reads as eyes), and the dead `VRoidSlotGroup` enum
+from the first UI went with them. Tabs are now **Hair · Outfit · Top · Bottom · Shoes ·
+Eyes**. Note this also removed the skin-tone recolour, which lived on the Skin tab — it can
+come back as a colour-only control if wanted. Parts: 346 MB → **251 MB**.
+**Cross-rig binding fix 2026-09-27** (user: a grafted hairstyle lost meshes on an imported
+model): donor bones were matched to the host **by bone name**, which only works because every
+bundled model uses VRoid's `J_Bip_*` vocabulary — an imported rig that names its bones
+anything else failed to match, so the chain was appended instead of bound and the hair hung
+off the model origin instead of the head. Binding is now **humanoid-role first**
+(`VRMModel.humanoidRole(ofNode:)` reverses the donor's humanoid map, then the host's map gives
+the node for the same role), with the name match kept only for role-less helper bones like
+VRoid's `J_Adj_*`. Secondary bones still never bind — those names DO collide across VRoid
+models while meaning different bones. Also fixed: spring **colliders** sit on body bones the
+part itself doesn't weight, so they were absent from the graft's node map and silently dropped,
+leaving hair to pass through the head; they now resolve by role/name too. Pinned by
+`VRMGraftCompatibilityTests` (role binding over ~45 bones, whole-hair grafts onto both spec
+versions with textures intact and bones near the head, collider survival). A sweep of all 14
+hair donors × both hosts showed no primitive loss, so the bundled pairs were never the failing
+case — the bug only reproduces on a differently-named rig.
+Thumbnails render at 512 instead of 256: tiles are ~288 px on a 3x screen and the median
+cropped picture was 254 px, so they were being upscaled.
+**Root cause of the broken grafted hair 2026-09-27**: `SpringBoneBuffers` are sized at model
+load for that model's spring-joint count. A graft APPENDS chains, so filling those buffers
+afterwards writes past the end — reproduced as a hard `SIGBUS` inside
+`populateSpringBoneData`, and in the app as scattered/missing hair after swapping a few times.
+`VRMModel.springBoneBuffersMatchSprings` now reports the mismatch, `VRMRenderer.loadModel`
+re-allocates before populating, and `refreshModelStructure` additionally sets
+`requestPhysicsReset` because the bone list changed identity and every carried-over
+position/velocity referred to a different bone. Pinned by `springBuffersTrackTheGraft` and
+`repeatedSwapsStayConsistent` (two rounds of the picker's restore → re-graft cycle). An
+offscreen render of that same cycle now comes out clean for hair, and hair+outfit together.
+Thumbnail follow-ups: the `.hair` subject shows hair ONLY (a whole character used as a donor
+was rendering its head, unlike the part files), garments render from the whole-look file with
+the body behind them and are framed on the garment's own rest bounds
+(`VRMModel.restBounds(ofSlots:)`) — a shoe on its own was a dark hollow shell. The runtime
+picture cache directory is versioned so older cached tiles are not reused.
+**Nameless garments split by body band 2026-09-27** (user: boy_uniform should have a top and
+a bottom, not one blob): a clothing material with no usable name is now assigned from the band
+it occupies — shoes at the ankles, bottoms around hips and legs, tops above the waist — which
+is how VRoid lays a body mesh out whatever it calls the pieces. `boy_uniform` (zero material
+names anywhere) now yields tops + bottoms + shoes as well as the whole outfit. **Gotcha**: VRoid
+merges a whole body into ONE position accessor and slices it per primitive with indices, so a
+per-material extent must follow the indices; reading the accessor alone reports the entire model
+for every material (that bug put all four of boy_uniform's garments in "bottoms"). A single
+garment whose geometry spans more than 65% of the model height is rejected as a garment — some
+models carry their whole look on one material that happens to be named "Shoes" (brownie). It
+stays available under Outfit. Parts: 251 MB → **225 MB**.
+Thumbnail lighting and angle: the scene takes its ambient from the sky, which this offscreen
+renderer has none of, so the 0.05 default left every face turned away from the three front
+lights at pure black — a shoe's sole read as a punched-out hole. `applyCatalogueLighting()`
+raises ambient to 0.42 and adds a bounce travelling upward; shoes are also framed from a raised,
+looking-down angle (`Subject.elevation`) so the camera never looks into the opening where VRoid
+deleted the foot.
+**Why Ekaterina's hair looked broken 2026-09-27** — and it was never a mesh loss. Her hair
+grafts complete and lands in exactly the right place; **her head is 20% smaller than Sonya's**
+(face bbox diagonal 0.292 vs 0.350). Hair is rigid on the head, so unlike clothes — which are
+skinned across the whole humanoid and adapt on their own — it keeps the donor's size, and a
+style cut for a small head leaves a bigger host's scalp poking straight through it. Rendered,
+that reads as a bald head with a few floating strands, which is exactly what the screenshot
+showed. `VRMPartGrafter` now fits a hair graft to the head it moves to: scale =
+hostHeadSize / donorHeadSize (bbox diagonals, clamped 0.72–1.4), applied to the grafted inverse
+bind matrices and to the appended bones' local translations, and **only** to joints that ride
+the head — strands weighted to chest or shoulder bones keep the body's scale. Head size comes
+from the model's own face geometry, or, for a hair part file that keeps no face, from
+`NL_headSize` in the part's document `extras` (written by the extractor; `GLTFDocument` now
+decodes document extras). Library parts measure within a few percent of Sonya, so working
+combinations are untouched. Pinned by `hairFitsTheNewHead` and `partsRecordTheirHeadSize`.
+Still open: `targetNames` plumbing (not needed for any current part).
+
+**Anchor fitting, generalised to shoes (2026-09-27)** — head fitting turned out
+to be one case of a general rule: a *rigid* part sits on one bone and keeps the
+donor's size, so it only fits if that bone is the same size on both bodies.
+`AppearancePartKind.fitAnchorBones` now names those bones per kind — hair rides
+`head`, shoes ride `leftFoot`/`rightFoot`/`leftToes`/`rightToes`, clothes name
+none — and `VRMPartGrafter.fitScale` measures the matching proxy:
+`referenceHeadSize` for hair, `referenceFootLength` (foot→toes world distance)
+for shoes. The scale applies to inverse bind matrices and appended-bone
+translations, and only to joints inside the anchor set, so a shoe's ankle cuff
+scales with the foot while nothing above it moves. Clamped to 0.72–1.4 and
+skipped entirely when either measurement is missing. Ekaterina's foot measures
+0.0966 against Sonya's 0.1274 — a 32% difference, the same order as the 20%
+head difference that caused the visible hair break, so the same fix was needed.
+Foot length was chosen over eye spacing or ankle width because it is the only
+proxy that stayed stable across all bundled and library models. Clothes stay at
+scale 1 on purpose: they are skinned across the whole skeleton and already
+follow the host's proportions, so scaling them would break what works. Pinned by
+`shoesFitTheNewFoot` and `clothesAreNotResized`.
+
+**Garment tiles, and the bundled characters' own tiles (2026-09-27)** — the
+picker offers the other bundled characters as donors, and their tiles for Top,
+Bottom and Shoes showed the whole figure. Root cause was not the framing but
+`VRMModel.restBounds(ofSlots:)`, which walked each primitive's raw vertex array.
+VRoid merges an entire body into ONE array sliced per primitive by indices, so
+every garment on it reported the whole model's box — the third time that trap has
+bitten this feature, after the two in the extractor. `VRMPrimitive` now has one
+sampler, `forEachRestPosition(budget:)`, that follows the index buffer, and both
+`restHeightRange` and `restBounds` go through it. Pinned by
+`slotBoundsFollowTheIndices`.
+
+Two follow-on fixes fell out of looking at the re-rendered sheet. The crop is now
+taken from the garment's box projected through the same camera rather than from
+whatever came out opaque, because the body is drawn behind a garment on purpose
+(a lone shoe is a dark hollow shell) and it runs head to toe. And that crop is
+letterboxed into the square tile instead of grown to a square: a T-posed shirt is
+as wide as the model's wingspan, so squaring its box reached from the head to the
+feet and put the whole character back. Outfit tiles additionally cut at the neck,
+because VRoid's body mesh carries a scalp cap painted near-black to hide under
+the hair, which reads as a floating black head once the hair is off.
+
+Ekaterina's and Sonya's tiles are now pre-rendered into `Custom/Thumbs` by the
+generator test, which walks `VRMModelRegistry` after the parts library, so no
+tile waits on a whole character being loaded and rendered on device. 79 pictures
+now ship (68 library + 11 character). Ekaterina's hair tile is a black
+silhouette; that is faithful, her hair base texture is RGB 0.1.
+
+**Feet through shoes, and why no scale fixed it (2026-09-28)** — a borrowed
+shoe let the host's heel and the sides of her foot through. Measured on Sonya
+against a donor shoe of the SAME rig foot length (0.1274 vs 0.1275, so the fit
+scale was 1.0), her foot skin reached 0.048 further back and 0.022 wider on each
+side: the shell is a different SHAPE, not a different size, and growing it enough
+to swallow the foot would leave a clown shoe. Ekaterina never showed it because
+her foot is 32% shorter, so donor shells happen to cover it.
+VRoid leaves a whole foot in the body mesh, modelled for the shoe that character
+shipped with. The body is one merged primitive, so the foot cannot be hidden on
+its own. `VRMPartGrafter+SkinTrim` instead keeps the vertices and gives the
+primitive a narrower index buffer with the triangles under the shoe left out,
+cutting at 70% of the shoe's height so a rim of skin still plugs the collar and
+it doesn't read as a hole. The full buffer is kept on the primitive
+(`VRMPrimitive.untrimmedIndices`) and `restoreBaseComposition` puts it back,
+because the snapshot holds the same object and restoring the array alone would
+not. Gated by `AppearancePartKind.trimsHostSkinUnderneath` (shoes only for now;
+outfits are the obvious next user). Pinned by `shoeTrimsTheFootBeneathIt`.
+
+Also fixed on the way: `VRMPartThumbnailRenderer` rebuilt the hidden-primitive
+set from scratch, so a picture of a grafted model revealed what the graft had
+hidden and showed two pairs of shoes. It now starts from the model's existing
+hidden set.
+
+**Grounding: shoes met the foot but not the floor (2026-09-28)** — with the foot
+trimmed, the shoes were still misaligned VERTICALLY. A shoe is rigid on the foot
+bone, so it keeps whatever ankle-to-sole drop the donor authored; on a host whose
+ankle sits at a different height it sinks or floats. Measured with CPU skinning:
+soles landed up to 63 mm under Sonya's floor and 37 mm above Ekaterina's.
+`VRMPartGrafter.groundOffset` now computes the donor's ankle-to-sole drop, scales
+it with the fit, and lifts the part until its sole meets the host's own floor
+(the sole of the host's shoes, else its bare feet). The lift is world-space but an
+inverse bind matrix applies BEFORE the joint's world matrix, so it goes in as
+`world⁻¹ · T · world` per anchor bone, and only for the real anchor bones — an
+appended bone's world matrix isn't built yet. Capped at 120 mm so a bad
+measurement can't bury a shoe. Gated by `AppearancePartKind.standsOnTheFloor`.
+Pinned by `shoesMeetTheFloor`. Every one of the 12 host×donor pairs now lands
+within 6 mm of the floor.
+
+MEASUREMENT TRAP that cost a round here: `restBounds` returns REST-POSE vertex
+positions, and grafted geometry keeps the DONOR's vertices — it is placed
+entirely by its inverse bind matrices. So a rest-space box of a grafted part is
+identical no matter what the graft did with it, and the tell was that the same
+donor on two different hosts produced byte-identical boxes. Anything about where
+grafted geometry ENDS UP has to be CPU-skinned
+(`joint.worldMatrix · inverseBindMatrix · vertex`). The skin-trim cut line had
+the same flaw and only worked because both models are VRoid-proportioned with
+the floor near zero; it is now computed in the host's frame from the grounded
+sole plus the scaled shoe height.
+
+**Trim depth, and the diagnostic that lied twice (2026-09-28)** — a side-on
+screenshot showed the foot still not fully inside a low sneaker. The cut was at
+70% of the shoe's height, which left a band of ankle and heel outside it. It is
+now 95%: a triangle is only dropped when ALL THREE corners are below the line,
+so the straddling ones stay and the leg still plugs the collar, which means the
+line can sit that high without leaving a hole to see into.
+
+Every sheet this had been judged on was FRONT-facing and slightly elevated —
+exactly the angle that hides a heel left outside a shoe. The diagnostic now
+renders each pair from the side too, and it took two corrections to make that
+real: `updateWorldTransform` reads the CACHED `localMatrix`, so setting a node's
+`rotation` does nothing, and the rest-pose cache was keyed on the first model's
+nodes while every combination loads a fresh one, so eleven of twelve were never
+turned. Both were caught by hashing each side render against its front render
+rather than by trusting the picture — worth keeping: A RENDER THAT SILENTLY
+DIDN'T CHANGE LOOKS EXACTLY LIKE A RENDER THAT PASSED.
+
+**Saved look applied before the reveal (2026-09-28)** — the character appeared in
+its original clothes and was re-dressed a beat later on launch, because
+`display(model)` revealed it and `applyStored` grafted asynchronously afterwards.
+`AppearanceApplier.applyStoredAndWait` now awaits the whole pipeline, and
+`markBaseSceneReady()` moved out of `VRMMetalState.display` into the two
+`VRMSceneView` call sites, after the look is on. "Base scene ready" now means the
+avatar is ready to SHOW, not that its geometry is uploaded. The 600 s reveal
+backstop in ContentView still covers a hang.
+
+**Parts library moved off the device (2026-09-28)** — 68 part files weigh 225 MB,
+which took the installed app to 638 MB. They now live in the same Hugging Face
+dataset as the environment GLBs, under `Parts/`, reached through
+`RemoteAssetRegistry.libraryPart(stem)` and pinned by size + SHA-256 like
+everything else (all 68 were verified byte-identical to the local copies before
+the pins were taken). `PartsLibrary` is a manifest over
+`RemoteAssetRegistry.libraryPartStems` rather than a bundle scan, which also
+means a part that fails to arrive reports a failure instead of silently
+vanishing from the picker, and `Item.resolvedURL()` fetches on first use.
+`PartsLibraryDownloader` brings the set down on first launch and gates the
+loading screen through `EnvironmentLoadState.partsReady`, releasing it whether
+the download succeeded or gave up — a missing library costs the extra outfits,
+never the app. The thumbnails (9.7 MB) still ship, so the picker looks complete
+before anything arrives. Bundled custom assets: 224 MB → 9.7 MB.
+
+NOTE the trade-off: first install now waits on ~225 MB of parts on top of the
+environment. The environment's own pattern gates only on the SELECTED scene and
+prefetches the rest in the background; moving parts to that shape is a one-line
+change to `isReady` if the wait proves too long on device.
+
+**Sheet resize stability (2026-09-27)** — the grabber first used a local-space
+`DragGesture`, which feeds back on itself: resizing the grid moves the handle,
+which moves the gesture's own origin, which changes the translation, which
+resizes again. The handle now reads `coordinateSpace: .global`, anchors on the
+height captured at drag start rather than the live height, and applies each
+update inside a `Transaction` with `disablesAnimations`, so no implicit
+animation competes with the next frame's drag value. The hit area is 26pt tall
+with a 1pt `minimumDistance` so the drag starts on contact.
 
 **Loader**
 - `VRMLoadingOptions.isPart`: skips spring GPU init, lookAt, expression

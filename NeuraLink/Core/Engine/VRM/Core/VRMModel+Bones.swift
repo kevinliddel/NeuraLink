@@ -149,6 +149,18 @@ extension VRMModel {
         }
     }
 
+    /// Total spring-bone joints the current spring data needs room for.
+    public var springBoneJointCount: Int {
+        springBone?.springs.reduce(0) { $0 + $1.joints.count } ?? 0
+    }
+
+    /// False once a part graft has added (or a restore removed) spring
+    /// chains — the GPU buffers were sized for the old count, and filling
+    /// them with the new one writes out of bounds.
+    public var springBoneBuffersMatchSprings: Bool {
+        (springBoneBuffers?.numBones ?? 0) == springBoneJointCount
+    }
+
     /// - Parameter expandChains: run the VRM 0.x root→chain expansion. Pass
     ///   `false` when re-allocating for an already-expanded model (part
     ///   grafts) — re-expanding would treat every chain joint as a new root

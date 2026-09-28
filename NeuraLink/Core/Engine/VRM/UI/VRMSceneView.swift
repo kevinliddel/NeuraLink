@@ -220,8 +220,12 @@ public struct VRMSceneView: View {
             guard !Task.isCancelled else { return }
             state.display(model)
             // Saved customization (docs/CHARACTER_CUSTOMIZATION_PLAN.md) —
-            // applied on top of the fresh model, never by reloading it.
-            AppearanceApplier.shared.applyStored(slug: characterName.lowercased(), to: state)
+            // applied on top of the fresh model, never by reloading it, and
+            // awaited before the scene is declared ready so the character is
+            // never shown in its original clothes first.
+            await AppearanceApplier.shared.applyStoredAndWait(
+                slug: characterName.lowercased(), to: state)
+            EnvironmentLoadState.shared.markBaseSceneReady()
         } catch {
             // A cancelled load surfaces as CancellationError from the
             // loader's checkpoints — that's a model switch, not a failure,
@@ -236,7 +240,9 @@ public struct VRMSceneView: View {
                     let model = try await VRMModel.load(from: defaultEntry.url, device: device)
                     guard !Task.isCancelled else { return }
                     state.display(model)
-                    AppearanceApplier.shared.applyStored(slug: defaultEntry.name.lowercased(), to: state)
+                    await AppearanceApplier.shared.applyStoredAndWait(
+                        slug: defaultEntry.name.lowercased(), to: state)
+                    EnvironmentLoadState.shared.markBaseSceneReady()
                     toastMessage = "Couldn't load that avatar — using the default"
                 } catch {
                     nlLog("[VRMSceneView] Fallback model load failed: \(error.localizedDescription)", level: .error)

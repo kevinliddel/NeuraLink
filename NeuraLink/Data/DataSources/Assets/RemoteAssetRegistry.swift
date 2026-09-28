@@ -29,6 +29,10 @@ import Foundation
 nonisolated enum RemoteAssetRegistry: Hashable, Sendable {
     // Scenes — `name` is the GLB basename (resolves to `scenes/<name>.glb`).
     case scene(String)
+    /// One cut-out donor part for character customization — resolves to
+    /// `Parts/<stem>.vrm`. The library is 225 MB, far too much to ship in
+    /// the app, and nothing at startup needs it.
+    case libraryPart(String)
 
     // VOICEVOX TTS data — per-speaker .vvm + Open JTalk dict files.
     case voicevoxSpeaker(Int)
@@ -58,6 +62,7 @@ nonisolated enum RemoteAssetRegistry: Hashable, Sendable {
     var filename: String {
         switch self {
         case .scene(let name): return "\(name).glb"
+        case .libraryPart(let stem): return "\(stem).vrm"
         case .voicevoxSpeaker(let id): return "\(id).vvm"
         case .jtalkDictFile(let name): return name
         case .openVoiceMelo: return "melo_en.onnx"
@@ -76,6 +81,8 @@ nonisolated enum RemoteAssetRegistry: Hashable, Sendable {
         switch self {
         case .scene:
             return "scenes/\(filename)"
+        case .libraryPart:
+            return "Parts/\(filename)"
         case .voicevoxSpeaker:
             return "tts/voicevox/\(filename)"
         case .jtalkDictFile:
@@ -109,6 +116,8 @@ nonisolated enum RemoteAssetRegistry: Hashable, Sendable {
         switch self {
         case .scene:
             return "Models/Environments"
+        case .libraryPart:
+            return nil
         case .jtalkDictFile:
             return "open_jtalk_dic_utf_8-1.11"
         case .voicevoxSpeaker,
@@ -147,6 +156,8 @@ nonisolated enum RemoteAssetRegistry: Hashable, Sendable {
         switch self {
         case .scene(let name):
             return Self.sceneIntegrity[name.lowercased()]
+        case .libraryPart(let stem):
+            return Self.libraryPartIntegrity[stem.lowercased()]
         case .voicevoxSpeaker(let id):
             return Self.voicevoxIntegrity[id]
         case .jtalkDictFile(let name):

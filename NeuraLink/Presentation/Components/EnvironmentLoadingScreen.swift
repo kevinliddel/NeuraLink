@@ -75,15 +75,17 @@ struct EnvironmentLoadingScreen: View {
                     .tint(foreground)
                 // Live loader/texture log line (game-console feel), tag stripped;
                 // a neutral "Loading…" before the first log / in Release builds.
-                Text(envLoad.currentLogLine ?? "Loading…")
+                Text(envLoad.partsProgressText ?? envLoad.currentLogLine ?? "Loading…")
                     .font(.callout.weight(.semibold))
                     .foregroundStyle(foreground)
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            // Real download progress (bytes / %) once the environment mesh
-            // starts streaming, so a slow first-install fetch shows movement.
+            // Real download progress (bytes / %) once the environment mesh or
+            // the parts library starts streaming, so a slow first-install
+            // fetch shows movement. The parts count takes the headline slot
+            // above, because "Outfits 12 / 68" says more than the bytes do.
             Text(envLoad.progressText ?? " ")
                 .font(.caption.weight(.medium).monospacedDigit())
                 .foregroundStyle(foreground.opacity(0.85))

@@ -62,3 +62,6 @@ agents/
 # Local-only optimization backlog (working notes, not shipped)
 docs/OPT.md
 
+CustomSources/
+scripts/__pycache__
+CustomParts/

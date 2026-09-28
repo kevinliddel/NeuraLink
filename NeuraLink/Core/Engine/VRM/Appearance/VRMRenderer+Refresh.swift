@@ -28,6 +28,9 @@ extension VRMRenderer {
                 // Chains are already expanded (the model was loaded with a
                 // device); re-expanding would duplicate them.
                 try model.initializeSpringBoneGPUSystem(device: device, expandChains: false)
+                // The bone list changed identity, so every carried-over
+                // position/velocity refers to a different bone now.
+                springBoneComputeSystem?.requestPhysicsReset = true
                 try springBoneComputeSystem?.populateSpringBoneData(model: model)
                 springBoneComputeSystem?.warmupPhysics(model: model, steps: 30)
             } catch {

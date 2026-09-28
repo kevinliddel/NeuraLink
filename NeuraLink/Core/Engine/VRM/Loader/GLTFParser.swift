@@ -26,6 +26,9 @@ public struct GLTFDocument: Codable {
     public let extensions: [String: Any]?
     public let extensionsUsed: [String]?
     public let extensionsRequired: [String]?
+    /// Document-level extras. NeuraLink's part extractor records the source
+    /// model's head size here so a hair part can be fitted to a new head.
+    public let extras: [String: AnyCodable]?
 
     public var binaryBufferData: Data?
 
@@ -33,7 +36,7 @@ public struct GLTFDocument: Codable {
         case asset, scene, scenes, nodes, meshes, materials
         case textures, images, samplers, buffers, bufferViews
         case accessors, skins, animations, extensions
-        case extensionsUsed, extensionsRequired
+        case extensionsUsed, extensionsRequired, extras
     }
 
     public init(from decoder: Decoder) throws {
@@ -52,6 +55,7 @@ public struct GLTFDocument: Codable {
         accessors = try container.decodeIfPresent([GLTFAccessor].self, forKey: .accessors)
         skins = try container.decodeIfPresent([GLTFSkin].self, forKey: .skins)
         animations = try container.decodeIfPresent([GLTFAnimation].self, forKey: .animations)
+        extras = try? container.decodeIfPresent([String: AnyCodable].self, forKey: .extras)
         extensionsUsed = try container.decodeIfPresent([String].self, forKey: .extensionsUsed)
         extensionsRequired = try container.decodeIfPresent(
             [String].self, forKey: .extensionsRequired)

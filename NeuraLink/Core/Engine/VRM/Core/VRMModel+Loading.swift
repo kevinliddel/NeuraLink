@@ -50,6 +50,7 @@ extension VRMModel {
         if let device = device {
             let useParallelLoading =
                 context?.options.optimizations.contains(.parallelTextureLoading) ?? false
+            let textureFilter = context?.options.textureIndexFilter
 
             if useParallelLoading && textureCount > 1 {
                 // Use parallel texture loader for better performance
@@ -61,7 +62,7 @@ extension VRMModel {
                     maxConcurrentLoads: min(4, textureCount)
                 )
 
-                let indices = Array(0..<textureCount)
+                let indices = Array(0..<textureCount).filter { textureFilter?.contains($0) ?? true }
                 let loadedTextures = await parallelLoader.loadTexturesParallel(
                     indices: indices,
                     normalMapIndices: normalMapTextureIndices
@@ -102,6 +103,10 @@ extension VRMModel {
                     let textureName =
                         gltf.textures?[safe: textureIndex]?.name ?? "texture_\(textureIndex)"
 
+                    if let textureFilter, !textureFilter.contains(textureIndex) {
+                        textures.append(VRMTexture(name: textureName))
+                        continue
+                    }
                     if let mtlTexture = try await textureLoader.loadTexture(
                         at: textureIndex, sRGB: useSRGB) {
                         let vrmTexture = VRMTexture(name: textureName)

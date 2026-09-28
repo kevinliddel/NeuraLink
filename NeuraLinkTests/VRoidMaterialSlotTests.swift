@@ -52,13 +52,17 @@ struct VRoidMaterialSlotTests {
         #expect(VRoidMaterialSlot.classify(materialName: "") == .other)
     }
 
-    @Test("Every slot except other belongs to exactly one group")
-    func groups() {
-        for slot in VRoidMaterialSlot.allCases where slot != .other {
-            #expect(VRoidSlotGroup.allCases.filter { $0.slots.contains(slot) }.count == 1, "\(slot)")
+    @Test("Every customization tab maps to slots that exist in the vocabulary")
+    func categories() {
+        for category in CustomizationCategory.allCases {
+            let slots = category.textureSlots + category.recolorSlots
+            #expect(!slots.isEmpty, "\(category.rawValue) acts on something")
+            #expect(!slots.contains(.other))
         }
-        #expect(VRoidSlotGroup.skin.editsSlotsJointly)
-        #expect(!VRoidSlotGroup.eyes.editsSlotsJointly)
+        // A tab is either a geometry graft or a texture borrow, never both.
+        for category in CustomizationCategory.allCases {
+            #expect((category.part != nil) == category.textureSlots.isEmpty, "\(category.rawValue)")
+        }
     }
 
     @Test("Bundled characters expose the expected slots", arguments: ["Ekaterina", "Sonya"])

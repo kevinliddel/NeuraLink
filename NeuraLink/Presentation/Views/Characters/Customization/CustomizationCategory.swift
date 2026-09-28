@@ -2,10 +2,15 @@
 //  CustomizationCategory.swift
 //  NeuraLink
 //
-//  The five tabs of the customization panel, mirroring the reference
-//  project's sliders (Hair · Clothes · Face · Eyes · Skin). Part categories
-//  graft geometry from the donor; texture categories borrow the donor's
-//  textures for the listed slots; every category can also be recoloured.
+//  The tabs of the customization sheet. Part categories graft geometry
+//  from the donor; Eyes borrows the donor's eye textures; every category
+//  can also be recoloured.
+//
+//  Outfit swaps the whole look — the donor's body skin and all its
+//  garments — which is the faithful option, because VRoid deletes the skin
+//  its own outfit hides. Top / Bottom / Shoes swap one garment and leave
+//  the host's skin alone, which is freer but can expose a gap where the
+//  host's original garment covered more than the new one does.
 //
 
 import Foundation
@@ -13,9 +18,10 @@ import Foundation
 enum CustomizationCategory: String, CaseIterable, Identifiable {
     case hair
     case outfit
-    case face
+    case tops
+    case bottoms
+    case shoes
     case eyes
-    case skin
 
     var id: String { rawValue }
 
@@ -23,19 +29,21 @@ enum CustomizationCategory: String, CaseIterable, Identifiable {
         switch self {
         case .hair: return "Hair"
         case .outfit: return "Outfit"
-        case .face: return "Face"
+        case .tops: return "Top"
+        case .bottoms: return "Bottom"
+        case .shoes: return "Shoes"
         case .eyes: return "Eyes"
-        case .skin: return "Skin"
         }
     }
 
     var systemImage: String {
         switch self {
         case .hair: return "scissors"
-        case .outfit: return "tshirt"
-        case .face: return "face.smiling"
+        case .outfit: return "figure.stand"
+        case .tops: return "tshirt"
+        case .bottoms: return "rectangle.portrait"
+        case .shoes: return "shoeprints.fill"
         case .eyes: return "eye"
-        case .skin: return "hand.raised"
         }
     }
 
@@ -44,17 +52,18 @@ enum CustomizationCategory: String, CaseIterable, Identifiable {
         switch self {
         case .hair: return .hair
         case .outfit: return .outfit
-        default: return nil
+        case .tops: return .tops
+        case .bottoms: return .bottoms
+        case .shoes: return .shoes
+        case .eyes: return nil
         }
     }
 
     /// Slots whose textures a donor pick copies (texture categories only).
     var textureSlots: [VRoidMaterialSlot] {
         switch self {
-        case .face: return [.mouth, .brow, .eyeline, .eyelash]
         case .eyes: return [.eyeIris, .eyeWhite, .eyeHighlight, .eyeExtra]
-        case .skin: return [.faceSkin, .bodySkin]
-        case .hair, .outfit: return []
+        case .hair, .outfit, .tops, .bottoms, .shoes: return []
         }
     }
 
@@ -63,9 +72,10 @@ enum CustomizationCategory: String, CaseIterable, Identifiable {
         switch self {
         case .hair: return [.hair, .hairBack]
         case .outfit: return [.tops, .bottoms, .shoes, .onepiece, .accessory]
-        case .face: return [.brow, .eyeline, .eyelash, .mouth]
+        case .tops: return [.tops, .onepiece]
+        case .bottoms: return [.bottoms]
+        case .shoes: return [.shoes]
         case .eyes: return [.eyeIris, .eyeHighlight]
-        case .skin: return [.faceSkin, .bodySkin]
         }
     }
 
@@ -73,15 +83,18 @@ enum CustomizationCategory: String, CaseIterable, Identifiable {
         switch self {
         case .hair: return "Hair colour"
         case .outfit: return "Outfit colour"
-        case .face: return "Brow & lip colour"
+        case .tops: return "Top colour"
+        case .bottoms: return "Bottom colour"
+        case .shoes: return "Shoe colour"
         case .eyes: return "Eye colour"
-        case .skin: return "Skin tone"
         }
     }
 
-    /// Whether the base model has anything this tab can edit.
+    /// Whether this tab can do anything on the current model. A graft can
+    /// always add a part the host lacks, so part tabs stay open; borrowing a
+    /// texture needs a material to put it on.
     func isAvailable(presentSlots: Set<VRoidMaterialSlot>) -> Bool {
-        if let part { return !part.slots.isDisjoint(with: presentSlots) }
+        if part != nil { return true }
         return !Set(textureSlots).isDisjoint(with: presentSlots)
     }
 }

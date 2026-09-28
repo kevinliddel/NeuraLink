@@ -97,16 +97,19 @@ struct UVCoverageTests {
         // The body slot only passes because the PNG is decoded straight:
         // VRoid keeps skin colour under the alpha-0 texels its outfit hid.
         let body = try #require(scan.slots[.bodySkin])
-        let straight = try #require(PNGStraightDecoder.decode(body.imageData), "VRoid body texture decodes natively")
+        let bodyData = try #require(body.loadImageData(), "image bytes come back from the recorded file range")
+        let straight = try #require(PNGStraightDecoder.decode(bodyData), "VRoid body texture decodes natively")
         #expect(straight.width == body.width && straight.height == body.height)
-        #expect(body.colorCoverage.count > body.alphaCoverage.count, "colour survives under alpha holes")
+        let bodyMasks = try #require(await VRMDonorTextureCache.shared.coverageMasks(for: body))
+        #expect(bodyMasks.color.count > bodyMasks.alpha.count, "colour survives under alpha holes")
 
         let applier = await AppearanceApplier.shared
         for slot: VRoidMaterialSlot in [.faceSkin, .eyeWhite, .mouth] {
             let donor = try #require(scan.slots[slot], "\(slot.rawValue) missing on donor")
+            let masks = try #require(await VRMDonorTextureCache.shared.coverageMasks(for: donor))
             let coverage = try #require(await applier.targetCoverage(for: slot, in: target))
             #expect(!coverage.isEmpty, "\(slot.rawValue): target has UV footprint")
-            let fraction = coverage.fraction(coveredBy: donor.coverage(for: slot))
+            let fraction = coverage.fraction(coveredBy: donor.coverage(for: slot, masks: masks))
             #expect(fraction >= AppearanceApplier.compatibilityThreshold, "\(slot.rawValue): \(fraction)")
             #expect(await applier.isCompatible(donor: donor, slot: slot, model: target))
         }
@@ -116,10 +119,10 @@ struct UVCoverageTests {
         // own UV footprint too, which makes the shared-atlas body a clean
         // pass — pins both the straight decode and the union rule.
         let bodyCoverage = try #require(await applier.targetCoverage(for: .bodySkin, in: target))
-        let bodyFraction = bodyCoverage.fraction(coveredBy: body.coverage(for: .bodySkin))
+        let bodyFraction = bodyCoverage.fraction(coveredBy: body.coverage(for: .bodySkin, masks: bodyMasks))
         #expect(bodyFraction >= AppearanceApplier.compatibilityThreshold, "bodySkin: \(bodyFraction)")
-        #expect(bodyCoverage.fraction(coveredBy: body.alphaCoverage) < 0.95, "alpha alone would have refused it")
-        #expect(bodyCoverage.fraction(coveredBy: body.colorCoverage) > bodyCoverage.fraction(coveredBy: body.alphaCoverage))
+        #expect(bodyCoverage.fraction(coveredBy: bodyMasks.alpha) < 0.95, "alpha alone would have refused it")
+        #expect(bodyCoverage.fraction(coveredBy: bodyMasks.color) > bodyCoverage.fraction(coveredBy: bodyMasks.alpha))
 
         // Iris: the donor paints only the disc, so alpha alone fails (~0.7)
         // but the shared UV island makes it compatible — the OG "eyes" copy.

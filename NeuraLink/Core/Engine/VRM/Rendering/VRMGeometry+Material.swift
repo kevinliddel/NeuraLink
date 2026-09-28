@@ -51,6 +51,10 @@ public class VRMMaterial {
     // Blend mode from VRM 0.x (0=Opaque, 1=Cutout, 2=Transparent, 3=TransparentWithZWrite)
     public var blendMode: Int = 0
 
+    /// Customization slot resolved on the donor side for a grafted copy
+    /// (its `name` may be a generic "VRM/MToon" on older VRoid exports).
+    public var slotHint: VRoidMaterialSlot?
+
     /// Computed property: Is this material transparent but should write to depth?
     /// Used for proper layering of overlapping transparent materials (e.g., eyebrows over face skin)
     public var isTransparentWithZWrite: Bool {
@@ -93,6 +97,7 @@ public class VRMMaterial {
         renderQueueOffset = other.renderQueueOffset
         zWriteEnabled = other.zWriteEnabled
         blendMode = other.blendMode
+        slotHint = other.slotHint
     }
 
     public init(

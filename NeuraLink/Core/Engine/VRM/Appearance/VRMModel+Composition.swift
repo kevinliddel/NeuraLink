@@ -73,6 +73,12 @@ extension VRMModel {
     public func restoreBaseComposition() {
         guard let composition else { return }
         let snap = composition.snapshot
+        // A trim narrowed a base primitive's index buffer in place, and the
+        // snapshot holds that same object, so putting the array back is not
+        // enough — the buffer has to be restored on the primitive itself.
+        for mesh in snap.meshes {
+            for primitive in mesh.primitives { primitive.restoreUntrimmedIndices() }
+        }
         meshes = snap.meshes
         materials = snap.materials
         textures = snap.textures
@@ -102,11 +108,32 @@ extension VRMModel {
 
     // MARK: - Helpers shared with the grafter
 
-    /// Host node for a donor bone name, or nil when the bone must be
-    /// appended. Only humanoid bones and VRoid's `J_Adj_*` helper bones bind
-    /// by name: secondary bones (`J_Sec_*`, `HairJoint-*`) share names
-    /// between VRoid models but are different bones, so they always come
-    /// with the part.
+    /// Humanoid role a node plays, if any. Reverse of `humanoid.humanBones`.
+    func humanoidRole(ofNode index: Int) -> VRMHumanoidBone? {
+        guard let humanoid else { return nil }
+        return humanoid.humanBones.first { $0.value.node == index }?.key
+    }
+
+    /// Host node a donor bone should bind to, or nil when the bone has to be
+    /// appended with the part.
+    ///
+    /// Roles come first and names second on purpose: a donor's `head` must
+    /// land on the host's head whatever either rig calls it, and only VRoid
+    /// models happen to share the `J_Bip_*` vocabulary. Secondary bones
+    /// (`J_Sec_*`, `HairJoint-*`) never bind — those names DO collide
+    /// between VRoid models while meaning different bones, so they always
+    /// travel with the part.
+    func compositionBindTarget(forDonorNode index: Int, in donor: VRMModel) -> VRMNode? {
+        if let role = donor.humanoidRole(ofNode: index),
+            let hostIndex = humanoid?.getBoneNode(role), hostIndex < nodes.count {
+            return nodes[hostIndex]
+        }
+        guard index < donor.nodes.count else { return nil }
+        return compositionBindTarget(forDonorBoneNamed: donor.nodes[index].name)
+    }
+
+    /// Name-only fallback, for rigs whose helper bones have no humanoid role
+    /// (VRoid's `J_Adj_*` eye-adjust bones) and for donors with no humanoid map.
     func compositionBindTarget(forDonorBoneNamed name: String?) -> VRMNode? {
         guard let name, !name.isEmpty else { return nil }
         guard let node = nodes.first(where: { $0.name == name }) else { return nil }
