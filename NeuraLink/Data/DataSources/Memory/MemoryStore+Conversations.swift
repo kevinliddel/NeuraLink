@@ -224,6 +224,31 @@ extension MemoryStore {
 
     // MARK: - Messages
 
+    /// Removes tool-call rows the companion never said out loud.
+    ///
+    /// Memory recall and fact-filing used to be written into the transcript
+    /// like messages, so old histories still carry "Memory search results…"
+    /// and "Got it! I'll always remember…" bubbles. New ones are no longer
+    /// logged; this clears what is already stored.
+    @discardableResult
+    func deleteToolMessages(startingWith prefixes: [String]) -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        var removed = 0
+        for prefix in prefixes {
+            var statement: OpaquePointer?
+            let query = "DELETE FROM messages WHERE kind = 'tool_call' AND content LIKE ?;"
+            if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
+                sqlite3_bind_text(statement, 1, ("\(prefix)%" as NSString).utf8String, -1, nil)
+                if sqlite3_step(statement) == SQLITE_DONE {
+                    removed += Int(sqlite3_changes(db))
+                }
+            }
+            sqlite3_finalize(statement)
+        }
+        return removed
+    }
+
     func insertMessage(conversationID: Int64, role: String, kind: String, content: String) {
         lock.lock()
         defer { lock.unlock() }

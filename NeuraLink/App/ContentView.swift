@@ -28,6 +28,7 @@ struct ContentView: View {
     @State private var showPhotoPicker = false
     @State private var pickedPhoto: PhotosPickerItem?
     @State private var tutorial = TutorialCoordinator.shared
+    @State private var customization = CharacterCustomizationCoordinator.shared
 
     var body: some View {
         NavigationStack {
@@ -55,6 +56,13 @@ struct ContentView: View {
                             },
                             onDelete: { entry in
                                 pendingDelete = entry
+                            },
+                            onCustomize: { entry in
+                                withAnimation { showModelSelection = false }
+                                if selectedModelURL != entry.url { selectedModelURL = entry.url }
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                    customization.isPresented = true
+                                }
                             }
                         )
                         .padding(.horizontal, 16)
@@ -66,6 +74,27 @@ struct ContentView: View {
                     }
                     .transition(.opacity)
                     .zIndex(100)
+                }
+
+                // Character customization sheet: edits the live model in
+                // place, so it rises over the scene rather than covering it.
+                if customization.isPresented, !aiState.isUIHidden, let sceneState = VRMMetalState.active {
+                    VStack(spacing: 0) {
+                        Spacer(minLength: 0)
+                        CharacterCustomizationView(
+                            slug: aiState.selectedCharacterName.lowercased(),
+                            state: sceneState,
+                            onClose: {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                    customization.isPresented = false
+                                }
+                            }
+                        )
+                        .id(aiState.selectedCharacterName.lowercased())
+                    }
+                    .ignoresSafeArea(edges: .bottom)
+                    .transition(.move(edge: .bottom))
+                    .zIndex(150)
                 }
 
             }
@@ -226,6 +255,16 @@ struct ContentView: View {
                 Text("Removes the model file and its persona settings. Chat history is kept.")
             }
             .task {
+                // The parts library comes down alongside the environment on
+                // first launch, and gates the reveal the same way. On every
+                // later launch the files are already on disk and this
+                // finishes on the first runloop.
+                EnvironmentLoadState.shared.setPartsRetryHandler {
+                    PartsLibraryDownloader.reset()
+                    PartsLibraryDownloader.start()
+                }
+                PartsLibraryDownloader.start()
+
                 // The reveal is normally driven by `environmentDidLoad` — fired
                 // when the selected environment's mesh finishes downloading +
                 // loading, on success OR failure — plus the `forceReady()` calls

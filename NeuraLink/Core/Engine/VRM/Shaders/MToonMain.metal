@@ -74,11 +74,15 @@ fragment float4 mtoon_fragment_v2(VertexOut in [[stage_in]],
     }
     if (material.alphaMode == 0) { baseColor.a = 1.0; }
     if (material.alphaMode == 1 && baseColor.a < material.alphaCutoff) { discard_fragment(); }
+    // Character customization: recolour after the sample so alpha cutout
+    // and every lighting term below see the adjusted colour.
+    baseColor.rgb = nl_applyRecolor(baseColor.rgb, material);
 
     float3 shadeColor = float3(material.shadeColorR, material.shadeColorG, material.shadeColorB);
     if (material.hasShadeMultiplyTexture > 0) {
         shadeColor *= shadeMultiplyTexture.sample(textureSampler, uv).rgb;
     }
+    shadeColor = nl_applyRecolor(shadeColor, material);
 
     // ── Normals ─────────────────────────────────────────────────
     float3 normal = normalize(in.worldNormal);

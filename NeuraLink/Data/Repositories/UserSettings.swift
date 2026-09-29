@@ -36,16 +36,34 @@ final class UserSettings {
         didSet { UserDefaults.standard.set(selectedCharacter, forKey: selectedCharacterKey) }
     }
     
+    /// Posted when name, gender or birthday changes, so the agentic memory
+    /// can re-sync the facts it keeps about who the user is.
+    nonisolated static let profileDidChange = Notification.Name("com.neuralink.user.profileDidChange")
+
     var name: String {
-        didSet { UserDefaults.standard.set(name, forKey: nameKey) }
+        didSet {
+            UserDefaults.standard.set(name, forKey: nameKey)
+            announceProfileChange(changed: name != oldValue)
+        }
     }
-    
+
     var gender: String {
-        didSet { UserDefaults.standard.set(gender, forKey: genderKey) }
+        didSet {
+            UserDefaults.standard.set(gender, forKey: genderKey)
+            announceProfileChange(changed: gender != oldValue)
+        }
     }
-    
+
     var birthday: Date {
-        didSet { UserDefaults.standard.set(birthday.timeIntervalSince1970, forKey: birthdayKey) }
+        didSet {
+            UserDefaults.standard.set(birthday.timeIntervalSince1970, forKey: birthdayKey)
+            announceProfileChange(changed: birthday != oldValue)
+        }
+    }
+
+    private func announceProfileChange(changed: Bool) {
+        guard changed else { return }
+        NotificationCenter.default.post(name: Self.profileDidChange, object: nil)
     }
 
     /// JPEG bytes of the user's profile photo, or nil. Kept in-memory for

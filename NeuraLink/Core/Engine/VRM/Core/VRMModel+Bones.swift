@@ -149,14 +149,30 @@ extension VRMModel {
         }
     }
 
-    public func initializeSpringBoneGPUSystem(device: MTLDevice) throws {
+    /// Total spring-bone joints the current spring data needs room for.
+    public var springBoneJointCount: Int {
+        springBone?.springs.reduce(0) { $0 + $1.joints.count } ?? 0
+    }
+
+    /// False once a part graft has added (or a restore removed) spring
+    /// chains — the GPU buffers were sized for the old count, and filling
+    /// them with the new one writes out of bounds.
+    public var springBoneBuffersMatchSprings: Bool {
+        (springBoneBuffers?.numBones ?? 0) == springBoneJointCount
+    }
+
+    /// - Parameter expandChains: run the VRM 0.x root→chain expansion. Pass
+    ///   `false` when re-allocating for an already-expanded model (part
+    ///   grafts) — re-expanding would treat every chain joint as a new root
+    ///   and duplicate the chains.
+    public func initializeSpringBoneGPUSystem(device: MTLDevice, expandChains: Bool = true) throws {
         guard springBone != nil else {
             // No SpringBone data in this model
             return
         }
 
         // Expand VRM 0.0 chains (no-op for VRM 1.0 which already has full joint lists)
-        expandVRM0SpringBoneChains()
+        if expandChains { expandVRM0SpringBoneChains() }
 
         // Re-read after expansion
         guard let expandedSpringBone = self.springBone else { return }

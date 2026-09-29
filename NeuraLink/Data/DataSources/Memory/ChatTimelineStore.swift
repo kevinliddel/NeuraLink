@@ -37,7 +37,35 @@ enum ChatTimelineStore {
         CompanionStateStore.shared.refresh()
     }
 
+    /// Tools whose result is the companion's own bookkeeping rather than
+    /// anything it said. Recalling a memory or filing one away is thinking,
+    /// not conversation, and the raw text of it turning up in the history
+    /// reads like the model talking to itself.
+    private static let silentTools: Set<String> = [
+        AppFunctionTool.searchMemory, AppFunctionTool.rememberFact
+    ]
+
+    /// Opening lines of the tool results that used to reach the transcript,
+    /// so histories written before they were silenced can be cleaned once.
+    private static let silentToolPrefixes = [
+        "Memory search results", "Got it! I'll always remember"
+    ]
+
+    /// Clears those rows from stored conversations. Cheap and idempotent —
+    /// after the first pass it matches nothing.
+    static func purgeSilentToolMessages() {
+        let removed = MemoryStore.shared.deleteToolMessages(startingWith: silentToolPrefixes)
+        if removed > 0 {
+            nlLog("[ChatTimeline] removed \(removed) recall/remember rows from history", level: .info)
+            CompanionStateStore.shared.refresh()
+        }
+    }
+
+    /// True for tools whose result is the companion's own bookkeeping.
+    static func isSilentTool(_ name: String) -> Bool { silentTools.contains(name) }
+
     static func logToolCall(name: String, result: String) {
+        guard !isSilentTool(name) else { return }
         guard !result.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         ConversationStore.shared.appendMessage(role: "tool", kind: "tool_call", content: result)
         pruneIfNeeded()

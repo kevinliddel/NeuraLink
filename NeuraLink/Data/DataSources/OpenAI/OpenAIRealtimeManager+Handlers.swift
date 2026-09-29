@@ -33,6 +33,16 @@ extension OpenAIRealtimeManager {
                     hasFreshAITranscript = true
                 }
 
+            // The server's own VAD. Silero also reports speech, but it drives
+            // barge-in and is best-effort — when its engine doesn't start,
+            // nothing ever moved the status off `.ready` and the capsule sat
+            // on "Start talking" for the whole conversation.
+            case "input_audio_buffer.speech_started":
+                if state.status == .ready { state.status = .listening }
+
+            case "input_audio_buffer.speech_stopped":
+                if state.status == .listening { state.status = .ready }
+
             case "conversation.item.input_audio_transcription.completed":
                 if let transcript = json["transcript"] as? String {
                     // Whisper returns "", "\n", or lone punctuation when

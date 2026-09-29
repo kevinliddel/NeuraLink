@@ -13,6 +13,11 @@ import Combine
 @Observable
 @MainActor
 final class VRMMetalState {
+    /// The scene state currently on screen. Set by VRMSceneView when it
+    /// creates its state; lets overlays that live outside the scene view
+    /// (the character customization panel) reach the live model + renderer.
+    static weak var active: VRMMetalState?
+
     let mtkView: MTKView
     var renderer: VRMRenderer?
     
@@ -293,9 +298,10 @@ final class VRMMetalState {
         loadAnimationSequence(for: model)
         isModelLoaded = true
         isEnvironmentReady = true
-        // Base scene (avatar + sky + ground) is up. The launch loading screen
-        // also waits for the selected environment mesh — see EnvironmentLoadState.
-        EnvironmentLoadState.shared.markBaseSceneReady()
+        // `markBaseSceneReady()` is NOT called here. The caller applies the
+        // saved customization first and signals afterwards, so the avatar is
+        // never revealed in its original clothes and then re-dressed a beat
+        // later — see VRMSceneView.
     }
 
     // MARK: - Tickers

@@ -167,6 +167,11 @@ public struct VRMLoadingOptions: Sendable {
     /// Performance optimizations to apply.
     public let optimizations: VRMLoadingOptimization
 
+    /// When set, only these glTF texture indices are decoded and uploaded;
+    /// the rest become empty placeholders. Part grafts use it to load a
+    /// donor's hair or outfit without decoding its whole texture set.
+    public let textureIndexFilter: Set<Int>?
+
     /// Creates loading options.
     ///
     /// - Parameters:
@@ -178,12 +183,14 @@ public struct VRMLoadingOptions: Sendable {
         progressCallback: (@Sendable (VRMLoadingProgress) -> Void)? = nil,
         progressUpdateInterval: TimeInterval = 0.1,
         enableCancellation: Bool = true,
-        optimizations: VRMLoadingOptimization = .default
+        optimizations: VRMLoadingOptimization = .default,
+        textureIndexFilter: Set<Int>? = nil
     ) {
         self.progressCallback = progressCallback
         self.progressUpdateInterval = progressUpdateInterval
         self.enableCancellation = enableCancellation
         self.optimizations = optimizations
+        self.textureIndexFilter = textureIndexFilter
     }
 
     /// Default options with no progress callback.

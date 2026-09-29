@@ -16,8 +16,9 @@ extension VRMRenderer {
         let swiftSize = MemoryLayout<MToonMaterialUniforms>.size
         let swiftStride = MemoryLayout<MToonMaterialUniforms>.stride
 
-        // Expected Metal struct size (11 blocks * 16 bytes = 176 bytes)
-        let expectedMetalSize = 176  // 11 * 16
+        // Expected Metal struct size (14 blocks * 16 bytes = 224 bytes) —
+        // MToonCommon.metal / SkinnedShader.metal must be updated in step.
+        let expectedMetalSize = 224  // 14 * 16
 
         // In strict mode, fail if sizes don't match
         if config.strict != .off {

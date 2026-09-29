@@ -23,6 +23,16 @@ final class EnvironmentLoadState {
     private(set) var baseSceneReady = false
     /// The selected environment's 3D mesh finished loading (success or failure).
     private(set) var environmentMeshReady = false
+    /// The customization parts library has arrived, or has been given up on.
+    /// Only the first install waits: afterwards the files are on disk and
+    /// this flips on the first runloop.
+    private(set) var partsReady = false
+
+    /// Parts downloaded so far, and how many there are in total. Shown
+    /// instead of a byte count, because 68 files is easier to read as a
+    /// count than as a fraction of 225 MB.
+    private(set) var partsDone = 0
+    private(set) var partsTotal = 0
 
     /// Latest loader/texture log line (tag stripped), shown on the loading
     /// screen for a game-console feel. Nil until the first loader log (and in
@@ -45,6 +55,9 @@ final class EnvironmentLoadState {
     private let stallThresholdSeconds = 35
     @ObservationIgnored private var secondsSinceProgress = 0
     @ObservationIgnored private var stallMonitor: Task<Void, Never>?
+
+    /// Invoked by `requestRetry()`. Set by the parts downloader.
+    @ObservationIgnored private var partsRetryHandler: (() -> Void)?
 
     /// Invoked by `requestRetry()`. Set by the environment loader to invalidate
     /// the cached download and re-kick a fresh fetch.
@@ -108,10 +121,36 @@ final class EnvironmentLoadState {
         noteProgress()
     }
 
+    /// Records parts-library download progress. `downloaded` and `total` are
+    /// cumulative across the whole library, not per file.
+    func reportPartsProgress(done: Int, of count: Int, downloaded: Int64, total: Int64) {
+        guard !partsReady else { return }
+        partsDone = done
+        partsTotal = count
+        downloadedBytes = downloaded
+        if total > 0 { totalBytes = total }
+        noteProgress()
+    }
+
+    /// Called once the library is on the device, or once fetching it has
+    /// failed for good. A missing library costs the user the extra outfits,
+    /// never the app, so this releases the screen either way.
+    func partsDidLoad() {
+        partsReady = true
+        noteProgress()
+    }
+
     /// Registers the "Retry" action for the loading screen (invalidate cache +
     /// re-kick the environment download). Set by the environment loader.
     func setRetryHandler(_ handler: @escaping () -> Void) {
         retryHandler = handler
+    }
+
+    /// Registers the "Retry" action for the parts library. Kept separate
+    /// from the environment's so this stays free of any dependency on the
+    /// data layer that owns the downloader.
+    func setPartsRetryHandler(_ handler: @escaping () -> Void) {
+        partsRetryHandler = handler
     }
 
     /// Loading-screen "Retry": cancel the stalled fetch and re-attempt the
@@ -123,7 +162,12 @@ final class EnvironmentLoadState {
         totalBytes = 0
         secondsSinceProgress = 0
         isStalled = false
-        retryHandler?()
+        if !environmentMeshReady { retryHandler?() }
+        if !partsReady {
+            partsDone = 0
+            partsTotal = 0
+            partsRetryHandler?()
+        }
     }
 
     // MARK: - Live loader log feed
@@ -162,8 +206,15 @@ final class EnvironmentLoadState {
     /// Everything needed before revealing the live 3D scene. When the user has
     /// the 3D environment disabled, the mesh load is not awaited.
     var isReady: Bool {
-        guard baseSceneReady else { return false }
+        guard baseSceneReady, partsReady else { return false }
         return UserSettings.shared.showEnvironment ? environmentMeshReady : true
+    }
+
+    /// What the loading screen shows while the parts library comes down.
+    /// Nil once it is in, or before it has started.
+    var partsProgressText: String? {
+        guard !partsReady, partsTotal > 0 else { return nil }
+        return "Outfits \(partsDone) / \(partsTotal)"
     }
 
     func markBaseSceneReady() {
@@ -186,5 +237,6 @@ final class EnvironmentLoadState {
     func forceReady() {
         baseSceneReady = true
         environmentMeshReady = true
+        partsReady = true
     }
 }

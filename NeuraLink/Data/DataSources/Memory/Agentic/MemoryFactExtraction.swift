@@ -34,9 +34,19 @@ enum MemoryFactExtraction {
 
     // MARK: - Cloud (JSON)
 
-    static func cloudSystemPrompt(assistantName: String) -> String {
-        """
-        Extract SIGNIFICANT facts from a conversation between the user and \(assistantName) (the assistant). \
+    /// `userName` is what the user calls themselves. Facts name them
+    /// directly — "Kevin prefers tea" reads back as a memory about a
+    /// person, where "User prefers tea" reads like a database row, and the
+    /// entity graph can link it to every other mention of that name.
+    static func cloudSystemPrompt(assistantName: String, userName: String) -> String {
+        let subject = userName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let naming = subject.isEmpty
+            ? "Refer to the user as \"User\"."
+            : "The user is called \(subject). Refer to them BY NAME (\"\(subject) …\", "
+                + "\"\(subject)'s …\"), never as \"the user\" or \"User\"."
+        return """
+        Extract SIGNIFICANT facts from a conversation between \(subject.isEmpty ? "the user" : subject) \
+        and \(assistantName) (the assistant). \(naming) \
         Be SELECTIVE — only facts worth remembering long-term: personal info, preferences, relationships, \
         significant events, plans, expertise, emotional context, corrections. Skip greetings, filler, \
         process chatter and repeats. Consolidate related statements into ONE fact.

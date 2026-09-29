@@ -1,0 +1,357 @@
+//
+//  ShoeGraftDiagnostic.swift
+//  NeuraLinkTests
+//
+//  Temporary developer tool: grafts every library shoe onto the bundled
+//  characters and writes a picture of the result, so the fit can be looked
+//  at rather than inferred from bounding boxes. Set NL_SHOE_DIAG_DIR to run.
+//
+
+import Testing
+import Foundation
+import Metal
+import UIKit
+import simd
+@testable import NeuraLink
+
+@Suite("Shoe graft diagnostic", .serialized)
+struct ShoeGraftDiagnostic {
+
+    /// Root local matrices as loaded, so a turn is applied to the rest pose
+    /// rather than to the previous turn.
+    @MainActor private static var restPose: [ObjectIdentifier: float4x4] = [:]
+
+    @Test("Render grafted shoes when NL_SHOE_DIAG_DIR is set")
+    @MainActor
+    func render() async throws {
+        guard let path = ProcessInfo.processInfo.environment["NL_SHOE_DIAG_DIR"], !path.isEmpty else { return }
+        guard let device = MTLCreateSystemDefaultDevice(),
+            let renderer = VRMPartThumbnailRenderer(size: 512)
+        else { return }
+        let outputDir = URL(fileURLWithPath: path, isDirectory: true)
+        try FileManager.default.createDirectory(at: outputDir, withIntermediateDirectories: true)
+
+        var report = ""
+        Self.restPose = [:]
+        // Library parts AND the bundled characters: the picker offers both,
+        // and Sonya's own high-tops are the pair actually reported broken.
+        // By bundle URL, not VRMModelRegistry, which is empty in tests.
+        var donors: [(label: String, url: URL)] = []
+        for item in PartsLibrary.shared.items where item.kind == .shoes {
+            if let url = try? await item.resolvedURL() { donors.append((item.modelStem, url)) }
+        }
+        for name in ["Sonya", "Ekaterina"] {
+            if let url = Bundle.main.url(forResource: name, withExtension: "vrm") {
+                donors.append((name.lowercased(), url))
+            }
+        }
+        #expect(donors.count >= 14, "library shoes plus both characters")
+
+        for hostName in ["Sonya", "Ekaterina"] {
+            guard let hostURL = Bundle.main.url(forResource: hostName, withExtension: "vrm") else { continue }
+            for entry in donors where entry.label != hostName.lowercased() {
+                let host = try await VRMModel.load(from: hostURL, device: device)
+                let donor = try await VRMModel.load(from: entry.url, device: device)
+                let hostFoot = host.referenceFootLength ?? 0
+                let donorFoot = donor.referenceFootLength ?? 0
+                // Pose the host first: in the app the idle animation is
+                // already running when the saved look is grafted, and an
+                // unposed render cannot show what that breaks.
+                poseOffBindPose(host)
+                host.updateNodeTransforms()
+                let ownShoe = skinnedBounds(host, slots: AppearancePartKind.shoes.slots)
+                let baseMeshes = host.meshes.count
+                try VRMPartGrafter.graft(.shoes, from: donor, donorSlug: entry.label, onto: host)
+                host.updateNodeTransforms()
+
+                let skin = bounds(host, slots: [.bodySkin], below: 0.18)
+                let shoe = skinnedBounds(
+                    host, slots: AppearancePartKind.shoes.slots, fromMesh: baseMeshes)
+                let fit = VRMPartGrafter.fitScale(.shoes, donor: donor, host: host)
+                let box = donor.restBounds(ofSlots: AppearancePartKind.shoes.slots)
+                let collar = VRMPartGrafter.collarHeight(
+                    of: donor, slots: AppearancePartKind.shoes.slots)
+                let cut = VRMPartGrafter.skinCutLine(.shoes, donor: donor, host: host, fit: fit)
+                report += """
+                    == \(hostName) + \(entry.label)
+                       boxTop=\(fmt(box?.max.y)) collar=\(fmt(collar)) \
+                    sole=\(fmt(box?.min.y)) fit=\(String(format: "%.3f", fit)) cut=\(fmt(cut))
+                       hostFoot=\(String(format: "%.4f", hostFoot)) \
+                    donorFoot=\(String(format: "%.4f", donorFoot)) \
+                    ratio=\(String(format: "%.3f", donorFoot > 0 ? hostFoot / donorFoot : 0))
+                       donorDepth=\(fmt(VRMPartGrafter.ankleAboveSole(of: donor, slots: AppearancePartKind.shoes.slots))) \
+                    hostDepth=\(fmt(VRMPartGrafter.footDepth(of: host)))
+                       grafted=\(graftedSlots(host, fromMesh: baseMeshes))
+                       exposed=\(String(format: "%.1f%%", exposedSkinFraction(host, fromMesh: baseMeshes) * 100))
+                       ownShoe     = \(describe(ownShoe))
+                       graftedShoe = \(describe(shoe))
+                       skinBelowAnkle = \(describe(skin))
+                       drawn below ankle:
+                    \(footPrimitives(host))
+
+                    """
+
+                // Front AND side. A heel left outside the shoe is invisible
+                // head-on — the first sheet I judged this on was front-only.
+                for (turn, suffix) in [(Float(0), ""), (Float.pi / 2, "_side")] {
+                    turnModel(host, by: turn)
+                    guard let image = renderer.render(model: host, subject: .shoes),
+                        let png = image.pngData() else { continue }
+                    try png.write(to: outputDir.appendingPathComponent(
+                        "\(hostName.lowercased())_\(entry.label)\(suffix).png"), options: .atomic)
+                }
+                turnModel(host, by: 0)
+            }
+        }
+        try report.write(
+            to: outputDir.appendingPathComponent("report.txt"), atomically: true, encoding: .utf8)
+    }
+
+    /// Every primitive still drawn below the ankle, with what it is. This is
+    /// what tells a poking foot apart from a shoe that failed to hide.
+    @MainActor
+    private func footPrimitives(_ model: VRMModel) -> String {
+        let whole = model.calculateBoundingBox()
+        let cut = whole.min.y + (whole.max.y - whole.min.y) * 0.14
+        var lines: [String] = []
+        for (meshIndex, mesh) in model.meshes.enumerated() {
+            for primitive in mesh.primitives {
+                guard !model.hiddenPrimitives.contains(ObjectIdentifier(primitive)),
+                    let range = primitive.restHeightRange(), range.min < cut,
+                    let materialIndex = primitive.materialIndex
+                else { continue }
+                let slot = model.slot(ofMaterial: materialIndex)
+                let name = model.slotMaterialName(at: materialIndex) ?? "<unnamed>"
+                lines.append(String(
+                    format: "      mesh %d mat %d %@ y[%.3f,%.3f] %@",
+                    meshIndex, materialIndex, slot.rawValue, range.min, range.max, name))
+            }
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    /// Moves the skeleton off its bind pose the way the idle animation has
+    /// by the time a graft runs.
+    @MainActor
+    private func poseOffBindPose(_ model: VRMModel) {
+        guard let humanoid = model.humanoid else { return }
+        for bone in [VRMHumanoidBone.leftUpperLeg, .rightUpperLeg] {
+            guard let index = humanoid.getBoneNode(bone), index < model.nodes.count else { continue }
+            let node = model.nodes[index]
+            node.rotation = simd_quatf(angle: 0.15, axis: SIMD3<Float>(1, 0, 0)) * node.rotation
+            node.updateLocalMatrix()
+        }
+        if let hips = humanoid.getBoneNode(.hips), hips < model.nodes.count {
+            model.nodes[hips].translation.y -= 0.06
+            model.nodes[hips].updateLocalMatrix()
+        }
+        model.updateNodeTransforms()
+    }
+
+    /// Yaws every root node so the offscreen camera, which is fixed on +Z,
+    /// can look at the model from another angle.
+    ///
+    /// `updateWorldTransform` reads the CACHED `localMatrix`, so setting
+    /// `rotation` alone changes nothing — the matrix has to be rebuilt from
+    /// the one the model loaded with, or repeated turns compound.
+    @MainActor
+    private func turnModel(_ model: VRMModel, by radians: Float) {
+        let roots = model.nodes.filter { $0.parent == nil }
+        // Per NODE, not once for the suite: every combination loads a fresh
+        // model, so a cache keyed on the first one's nodes silently left all
+        // the others unturned.
+        for node in roots where Self.restPose[ObjectIdentifier(node)] == nil {
+            Self.restPose[ObjectIdentifier(node)] = node.localMatrix
+        }
+        var turn = matrix_identity_float4x4
+        let c = cos(radians), s = sin(radians)
+        turn.columns.0 = SIMD4<Float>(c, 0, -s, 0)
+        turn.columns.2 = SIMD4<Float>(s, 0, c, 0)
+        for node in roots {
+            guard let original = Self.restPose[ObjectIdentifier(node)] else { continue }
+            node.localMatrix = turn * original
+        }
+        model.updateNodeTransforms()
+    }
+
+    /// Share of the host's remaining foot skin that ends up OUTSIDE the
+    /// grafted shoe — the thing the user actually sees. Both skinned, so it
+    /// reflects where the geometry really lands rather than rest positions.
+    @MainActor
+    private func exposedSkinFraction(_ model: VRMModel, fromMesh first: Int) -> Float {
+        guard let shoe = skinnedBounds(
+            model, slots: AppearancePartKind.shoes.slots, fromMesh: first) else { return 0 }
+        guard let skin = skinnedPoints(model, slots: [.bodySkin]) else { return 0 }
+        // Only skin low enough to be the foot at all.
+        let ceiling = shoe.max.y
+        let candidates = skin.filter { $0.y < ceiling }
+        guard candidates.count > 20 else { return 0 }
+        let slack: Float = 0.004
+        let outside = candidates.filter {
+            $0.x < shoe.min.x - slack || $0.x > shoe.max.x + slack
+                || $0.z < shoe.min.z - slack || $0.z > shoe.max.z + slack
+                || $0.y < shoe.min.y - slack
+        }
+        return Float(outside.count) / Float(candidates.count)
+    }
+
+    @MainActor
+    private func skinnedPoints(
+        _ model: VRMModel, slots: Set<VRoidMaterialSlot>
+    ) -> [SIMD3<Float>]? {
+        guard let pOff = MemoryLayout<VRMVertex>.offset(of: \VRMVertex.position),
+            let jOff = MemoryLayout<VRMVertex>.offset(of: \VRMVertex.joints),
+            let wOff = MemoryLayout<VRMVertex>.offset(of: \VRMVertex.weights)
+        else { return nil }
+        let vstride = MemoryLayout<VRMVertex>.stride
+        var points: [SIMD3<Float>] = []
+        for (mi, mesh) in model.meshes.enumerated() {
+            guard let node = model.nodes.first(where: { $0.mesh == mi }), let si = node.skin,
+                si < model.skins.count else { continue }
+            let skin = model.skins[si]
+            for p in mesh.primitives {
+                guard let m = p.materialIndex, slots.contains(model.slot(ofMaterial: m)),
+                    !model.hiddenPrimitives.contains(ObjectIdentifier(p)),
+                    let vb = p.vertexBuffer, let ib = p.indexBuffer else { continue }
+                let base = vb.contents(), ibase = ib.contents().advanced(by: p.indexBufferOffset)
+                var step = max(1, p.indexCount / 4_000)
+                if step % 3 != 0 { step += 3 - (step % 3) }
+                for n in Swift.stride(from: 0, to: p.indexCount, by: step) {
+                    let vi = p.indexType == .uint16
+                        ? Int(ibase.load(fromByteOffset: n * 2, as: UInt16.self))
+                        : Int(ibase.load(fromByteOffset: n * 4, as: UInt32.self))
+                    guard vi < p.vertexCount else { continue }
+                    let pos = base.load(fromByteOffset: vi * vstride + pOff, as: SIMD3<Float>.self)
+                    let js = base.load(fromByteOffset: vi * vstride + jOff, as: SIMD4<UInt32>.self)
+                    let ws = base.load(fromByteOffset: vi * vstride + wOff, as: SIMD4<Float>.self)
+                    var acc = SIMD4<Float>(repeating: 0)
+                    var total: Float = 0
+                    for k in 0..<4 where ws[k] > 0 {
+                        let ji = Int(js[k])
+                        guard ji < skin.joints.count else { continue }
+                        acc += (skin.joints[ji].worldMatrix * skin.inverseBindMatrices[ji]
+                            * SIMD4<Float>(pos, 1)) * ws[k]
+                        total += ws[k]
+                    }
+                    guard total > 0.001 else { continue }
+                    let world = SIMD3<Float>(acc.x, acc.y, acc.z) / total
+                    if world.x.isFinite { points.append(world) }
+                }
+            }
+        }
+        return points.isEmpty ? nil : points
+    }
+
+    /// What the graft actually appended, by slot. Legwear arriving with a
+    /// shoe shows up here as tops/onepiece/bottoms — the exposed-skin metric
+    /// cannot see it, because a sock COVERS host skin rather than removing
+    /// it.
+    @MainActor
+    private func graftedSlots(_ model: VRMModel, fromMesh first: Int) -> String {
+        var counts: [String: Int] = [:]
+        for mesh in model.meshes.dropFirst(first) {
+            for primitive in mesh.primitives {
+                guard let m = primitive.materialIndex,
+                    !model.hiddenPrimitives.contains(ObjectIdentifier(primitive))
+                else { continue }
+                counts[model.slot(ofMaterial: m).rawValue, default: 0] += 1
+            }
+        }
+        return counts.isEmpty
+            ? "none"
+            : counts.sorted { $0.key < $1.key }.map { "\($0.key)×\($0.value)" }.joined(separator: " ")
+    }
+
+    private func fmt(_ value: Float?) -> String {
+        value.map { String(format: "%.3f", $0) } ?? "nil"
+    }
+
+    private func describe(_ box: (min: SIMD3<Float>, max: SIMD3<Float>)?) -> String {
+        guard let box else { return "nil" }
+        return String(
+            format: "x[%.3f,%.3f] y[%.3f,%.3f] z[%.3f,%.3f]",
+            box.min.x, box.max.x, box.min.y, box.max.y, box.min.z, box.max.z)
+    }
+
+    /// Body-skin geometry under `below` (fraction of model height) — the feet.
+    @MainActor
+    private func bounds(
+        _ model: VRMModel, slots: Set<VRoidMaterialSlot>, below: Float
+    ) -> (min: SIMD3<Float>, max: SIMD3<Float>)? {
+        let whole = model.calculateBoundingBox()
+        let cut = whole.min.y + (whole.max.y - whole.min.y) * below
+        var lo = SIMD3<Float>(repeating: .infinity)
+        var hi = SIMD3<Float>(repeating: -.infinity)
+        var found = false
+        for mesh in model.meshes {
+            for primitive in mesh.primitives {
+                guard let m = primitive.materialIndex,
+                    slots.contains(model.slot(ofMaterial: m)) else { continue }
+                primitive.forEachRestPosition(budget: 4_000) { position in
+                    guard position.y < cut else { return }
+                    lo = simd_min(lo, position)
+                    hi = simd_max(hi, position)
+                    found = true
+                }
+            }
+        }
+        return found ? (lo, hi) : nil
+    }
+
+    /// World box of the drawn geometry, skinned by hand. Rest positions are
+    /// useless here: grafted geometry keeps the DONOR's vertices and is
+    /// placed entirely by its inverse bind matrices, so a rest-space box is
+    /// identical whatever the graft did with it.
+    @MainActor
+    private func skinnedBounds(
+        _ model: VRMModel, slots: Set<VRoidMaterialSlot>, fromMesh first: Int = 0
+    ) -> (min: SIMD3<Float>, max: SIMD3<Float>)? {
+        guard let pOff = MemoryLayout<VRMVertex>.offset(of: \VRMVertex.position),
+            let jOff = MemoryLayout<VRMVertex>.offset(of: \VRMVertex.joints),
+            let wOff = MemoryLayout<VRMVertex>.offset(of: \VRMVertex.weights)
+        else { return nil }
+        let vstride = MemoryLayout<VRMVertex>.stride
+        var lo = SIMD3<Float>(repeating: .infinity)
+        var hi = SIMD3<Float>(repeating: -.infinity)
+        var found = false
+        for (mi, mesh) in model.meshes.enumerated() where mi >= first {
+            guard let node = model.nodes.first(where: { $0.mesh == mi }), let si = node.skin,
+                si < model.skins.count else { continue }
+            let skin = model.skins[si]
+            for p in mesh.primitives {
+                guard let m = p.materialIndex,
+                    slots.contains(model.slot(ofMaterial: m)),
+                    !model.hiddenPrimitives.contains(ObjectIdentifier(p)),
+                    let vb = p.vertexBuffer, let ib = p.indexBuffer else { continue }
+                let base = vb.contents(), ibase = ib.contents().advanced(by: p.indexBufferOffset)
+                var step = max(1, p.indexCount / 900)
+                if step % 3 != 0 { step += 3 - (step % 3) }
+                for n in Swift.stride(from: 0, to: p.indexCount, by: step) {
+                    let vi = p.indexType == .uint16
+                        ? Int(ibase.load(fromByteOffset: n * 2, as: UInt16.self))
+                        : Int(ibase.load(fromByteOffset: n * 4, as: UInt32.self))
+                    guard vi < p.vertexCount else { continue }
+                    let pos = base.load(fromByteOffset: vi * vstride + pOff, as: SIMD3<Float>.self)
+                    let js = base.load(fromByteOffset: vi * vstride + jOff, as: SIMD4<UInt32>.self)
+                    let ws = base.load(fromByteOffset: vi * vstride + wOff, as: SIMD4<Float>.self)
+                    var acc = SIMD4<Float>(repeating: 0)
+                    var total: Float = 0
+                    for k in 0..<4 where ws[k] > 0 {
+                        let ji = Int(js[k])
+                        guard ji < skin.joints.count else { continue }
+                        acc += (skin.joints[ji].worldMatrix * skin.inverseBindMatrices[ji]
+                            * SIMD4<Float>(pos, 1)) * ws[k]
+                        total += ws[k]
+                    }
+                    guard total > 0.001 else { continue }
+                    let world = SIMD3<Float>(acc.x, acc.y, acc.z) / total
+                    guard world.x.isFinite else { continue }
+                    lo = simd_min(lo, world)
+                    hi = simd_max(hi, world)
+                    found = true
+                }
+            }
+        }
+        return found ? (lo, hi) : nil
+    }
+}

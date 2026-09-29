@@ -52,6 +52,10 @@ public class VRMPrimitive {
     public var primitiveType: MTLPrimitiveType = .triangle
     public var materialIndex: Int?
 
+    /// Set while a graft has trimmed triangles out of this primitive's
+    /// index buffer (see VRMPartGrafter+SkinTrim). Holds what to put back.
+    public var untrimmedIndices: UntrimmedIndices?
+
     // Vertex attributes
     public var hasNormals = false
     public var hasTexCoords = false
