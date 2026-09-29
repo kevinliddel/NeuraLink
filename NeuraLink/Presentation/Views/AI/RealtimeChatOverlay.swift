@@ -61,6 +61,12 @@ struct RealtimeChatOverlay: View {
         case .preparing, .connecting, .reconnecting:
             return (aiState.status.label, nil, true, nil)
 
+        case .listening:
+            // Named, so it reads as the companion hearing you rather than a
+            // device state.
+            let name = aiState.selectedCharacterName.capitalized
+            return (name.isEmpty ? "Listening" : "\(name) is listening", "waveform", false, nil)
+
         case .ready, .disconnected:
             // isEnabled / isLocalLLMEnabled are mutually exclusive
             // (OpenAISettings setters clear the other), so at most one of

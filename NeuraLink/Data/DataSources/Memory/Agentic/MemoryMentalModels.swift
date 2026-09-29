@@ -156,6 +156,7 @@ final class MemoryMentalModels: @unchecked Sendable {
         using ONLY the EVIDENCE. Prefer newer evidence when facts conflict. Never invent details. \
         If the evidence does not answer the question, reply with the single word UNKNOWN.
         """
+        text += MemoryUserProfile.promptBlock
         let traits = disposition.promptDescription
         if !traits.isEmpty { text += "\nDisposition: \(traits)" }
         return text

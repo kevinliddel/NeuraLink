@@ -42,9 +42,37 @@ enum MemoryUserProfile {
         return name.hasSuffix("s") ? "\(name)'" : "\(name)'s"
     }
 
+    /// Ground truth about the user for any prompt that would otherwise have
+    /// to infer it from retrieved evidence — which is how "the user's name
+    /// is unknown" kept turning up in a summary written for someone whose
+    /// name is in Settings. Cached so prompts built off the main actor can
+    /// read it; refreshed by `sync()`.
+    nonisolated(unsafe) private(set) static var promptBlock = ""
+
+    @MainActor
+    private static func makePromptBlock() -> String {
+        let settings = UserSettings.shared
+        let name = settings.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        var known: [String] = []
+        if !name.isEmpty { known.append("is called \(name)") }
+        if settings.gender != "Prefer not to say", !settings.gender.isEmpty {
+            known.append("is \(settings.gender)")
+        }
+        let formatter = DateFormatter()
+        formatter.dateStyle = .long
+        known.append("was born on \(formatter.string(from: settings.birthday))")
+        guard !known.isEmpty else { return "" }
+        var block = "\nThe user \(known.joined(separator: ", ")). This is known — never call it unknown."
+        if !name.isEmpty {
+            block += " Refer to them by name (\"\(name)\", \"\(name)'s\"), not as \"the user\" or \"User\"."
+        }
+        return block
+    }
+
     /// Writes the profile into memory, replacing whatever it wrote before.
     @MainActor
     static func sync() {
+        promptBlock = makePromptBlock()
         let store = MemoryStore.shared
         for id in store.unitIDs(source: source) { store.deleteUnit(id: id) }
 

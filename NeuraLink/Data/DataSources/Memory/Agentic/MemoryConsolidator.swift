@@ -127,6 +127,7 @@ final class MemoryConsolidator: @unchecked Sendable {
         Never delete event records. Never calculate or derive numbers. DELETE only when directly superseded or contradicted. \
         Keep each observation under 30 words, third person. Output NONE when nothing changes.
         """
+        text += MemoryUserProfile.promptBlock
         let traits = disposition.promptDescription
         if !traits.isEmpty { text += "\nDisposition: \(traits)" }
         return text
