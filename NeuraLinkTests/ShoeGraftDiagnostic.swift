@@ -81,6 +81,7 @@ struct ShoeGraftDiagnostic {
                     ratio=\(String(format: "%.3f", donorFoot > 0 ? hostFoot / donorFoot : 0))
                        donorDepth=\(fmt(VRMPartGrafter.ankleAboveSole(of: donor, slots: AppearancePartKind.shoes.slots))) \
                     hostDepth=\(fmt(VRMPartGrafter.footDepth(of: host)))
+                       grafted=\(graftedSlots(host, fromMesh: baseMeshes))
                        exposed=\(String(format: "%.1f%%", exposedSkinFraction(host, fromMesh: baseMeshes) * 100))
                        ownShoe     = \(describe(ownShoe))
                        graftedShoe = \(describe(shoe))
@@ -239,6 +240,26 @@ struct ShoeGraftDiagnostic {
             }
         }
         return points.isEmpty ? nil : points
+    }
+
+    /// What the graft actually appended, by slot. Legwear arriving with a
+    /// shoe shows up here as tops/onepiece/bottoms — the exposed-skin metric
+    /// cannot see it, because a sock COVERS host skin rather than removing
+    /// it.
+    @MainActor
+    private func graftedSlots(_ model: VRMModel, fromMesh first: Int) -> String {
+        var counts: [String: Int] = [:]
+        for mesh in model.meshes.dropFirst(first) {
+            for primitive in mesh.primitives {
+                guard let m = primitive.materialIndex,
+                    !model.hiddenPrimitives.contains(ObjectIdentifier(primitive))
+                else { continue }
+                counts[model.slot(ofMaterial: m).rawValue, default: 0] += 1
+            }
+        }
+        return counts.isEmpty
+            ? "none"
+            : counts.sorted { $0.key < $1.key }.map { "\($0.key)×\($0.value)" }.joined(separator: " ")
     }
 
     private func fmt(_ value: Float?) -> String {

@@ -71,4 +71,20 @@ struct AppearanceSpecTests {
         #expect(!SlotRecolor(saturation: 0.5).isIdentity)
         #expect(!SlotRecolor(brightness: 1.2).isIdentity)
     }
+
+    @Test("A whole outfit and the single garments replace each other")
+    func outfitAndGarmentsAreExclusive() {
+        #expect(AppearancePartKind.outfit.supersedes == [.tops, .bottoms, .shoes])
+        for garment in [AppearancePartKind.tops, .bottoms, .shoes] {
+            #expect(garment.supersedes == [.outfit], "\(garment.rawValue) clears the whole outfit")
+        }
+        // Hair shares its region with nothing.
+        #expect(AppearancePartKind.hair.supersedes.isEmpty)
+        // And the relation holds both ways, so no pair can ever be set at once.
+        for kind in AppearancePartKind.allCases {
+            for other in kind.supersedes {
+                #expect(other.supersedes.contains(kind), "\(kind.rawValue) ↔ \(other.rawValue)")
+            }
+        }
+    }
 }

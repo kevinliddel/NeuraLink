@@ -47,7 +47,13 @@ public enum VRMPartGrafter {
     ) throws -> GraftReceipt {
         guard host.humanoid != nil else { throw VRMPartGraftError.noHumanoid }
         host.beginComposition()
-        let yaw: simd_quatf? = donor.isVRM0 != host.isVRM0 ? VRMModel.vrmVersionYaw : nil
+        // Which way the part faces is decided by its GEOMETRY, not by the
+        // spec version in its header. Those usually agree, but one library
+        // part declares VRM 1.0 while its mesh is laid out the 0.x way, so
+        // the version check left it backwards and 34% of the foot escaped
+        // past the toe. A file can be mislabelled; the vertices cannot.
+        let yaw: simd_quatf? = facesAwayFromHost(kind, donor: donor, host: host)
+            ?? (donor.isVRM0 != host.isVRM0 ? VRMModel.vrmVersionYaw : nil)
         // Hair and shoes are rigid on one joint, so unlike clothes — which
         // are skinned across the humanoid and adapt on their own — they keep
         // the donor's size. A style cut for a small head leaves a bigger

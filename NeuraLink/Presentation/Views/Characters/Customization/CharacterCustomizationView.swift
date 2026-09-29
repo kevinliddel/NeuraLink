@@ -322,6 +322,10 @@ struct CharacterCustomizationView: View {
         if let part = category.part {
             if let option {
                 draft.parts[part] = option.slug
+                // A whole outfit and the single garments cover the same
+                // ground. Leaving both set meant the result depended on
+                // which graft ran last, so choosing one drops the other.
+                for replaced in part.supersedes { draft.parts.removeValue(forKey: replaced) }
             } else {
                 draft.parts.removeValue(forKey: part)
             }
@@ -369,9 +373,16 @@ struct CharacterCustomizationView: View {
         let category = self.category
         let present = presentSlots
         let applier = self.applier
+        // Characters are not offered as SHOE donors. VRoid draws socks and
+        // stockings into the outfit material rather than the shoe, so a shoe
+        // lifted off a whole character arrives without the legwear that
+        // belongs with it and the borrowed leg reads as bare or broken. The
+        // library's shoe PARTS carry their legwear, cut in at extraction, so
+        // they stay. (Taking the same slice at graft time was tried and
+        // produced sheets of stray geometry around the calf.)
         let sources = PartsLibrary.shared.items.filter { $0.serves(category) }
             .map { DonorSource(slug: $0.donorSlug, displayName: $0.displayName, thumbnailBase: $0.modelStem) }
-            + registry.all.filter { $0.name.lowercased() != slug }
+            + registry.all.filter { $0.name.lowercased() != slug && category != .shoes }
                 .map {
                     DonorSource(
                         slug: $0.name.lowercased(), displayName: $0.displayName,

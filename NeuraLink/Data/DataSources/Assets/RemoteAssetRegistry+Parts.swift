@@ -56,7 +56,7 @@ extension RemoteAssetRegistry {
 
     /// Total download for the whole library, used for progress before
     /// any individual file has reported its size.
-    static let libraryPartsTotalBytes: Int64 = 224834704
+    static let libraryPartsTotalBytes: Int64 = 226503624
 
     /// Keyed by part stem. Captured from the dataset tree API 2026-09-27.
     static let libraryPartIntegrity: [String: AssetIntegrity] = [
@@ -70,8 +70,8 @@ extension RemoteAssetRegistry {
             size: 7_923_340,
             sha256: "dcb3fd74c0cc0f21712d1e55b4d00c1ae3be07b0b6e0f8bdec0839761adddab4"),
         "boy_uniform__shoes": .init(
-            size: 267_064,
-            sha256: "3212e65038a83d9428c8791cd015ab6883edd489cb8e7439e1a959bfb3703c3c"),
+            size: 1_031_036,
+            sha256: "6eadd3410b271abca53d8deed7d4e888fa57a0c007cb126e25e8da36a03edf8d"),
         "boy_uniform__tops": .init(
             size: 2_574_080,
             sha256: "1485848d4eb2a0897548215459f786f51fa09560e1a97c4bbc3e1107ac5127ab"),
@@ -94,8 +94,8 @@ extension RemoteAssetRegistry {
             size: 9_287_156,
             sha256: "69c9ee5b8aecae172e1af2498180facfe63ea21f72176c0802e94f069dc2a603"),
         "bunny_girl__shoes": .init(
-            size: 190_396,
-            sha256: "f9b1ac9f3d55c4d7412795cb1a56e42571a0fdfc083121e82e3d9b478fcf7268"),
+            size: 733_180,
+            sha256: "2bfdc974ad21b94a59ed15a87fe596d0fc5914efffa819392d66360c1b803566"),
         "casual__bottoms": .init(
             size: 451_360,
             sha256: "0bad78c56327844294613cf638927b727117dfff89b92048fd1a10153f6943d7"),
@@ -139,8 +139,8 @@ extension RemoteAssetRegistry {
             size: 6_966_628,
             sha256: "a284e881350fd8d7ac12dc930b50f3b33cc17be5529b32a6f3b01a6926841b79"),
         "classic_bunny_girl__shoes": .init(
-            size: 237_656,
-            sha256: "0d0e2afea674a2057af9670bdd13072f3df07754d951fbf50a328aba997118f8"),
+            size: 599_820,
+            sha256: "4ffcd8d4929733e6bb876813dca2d6d8e407ba06800e54560f988f344281405a"),
         "cool__eyes": .init(
             size: 6_163_832,
             sha256: "10bc7b807b202804d4784e3d56cff91d86236c238216bb7d95a4f2073771d0cf"),

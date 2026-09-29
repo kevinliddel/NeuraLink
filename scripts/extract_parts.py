@@ -359,35 +359,73 @@ def remap_material(material, tex_map, slot=None):
 
 # ---------------------------------------------------------------- extraction
 
+def legwear(g, binary, slots, kept):
+    """Socks and stockings that run down into the shoe.
+
+    VRoid draws these as part of a garment material that also covers the
+    torso — the bunny-girl stockings live in the same "Tops" as her bodysuit.
+    Taking only the shoe leaves the leg bare, which is what made a borrowed
+    shoe look like it had lost the foot. Only the geometry below the knee
+    comes along, clipped triangle by triangle.
+    """
+    spans, height = vertical_extents(g, binary)
+    if not spans or height <= 0:
+        return []
+    floor = min(v[0] for v in spans.values())
+    ankle = floor + height * 0.13
+    knee = floor + height * 0.30
+    already = {id(p) for _, p, _ in kept}
+    extra = []
+    for mi, mesh in enumerate(g.get("meshes", [])):
+        for prim in mesh["primitives"]:
+            index = prim.get("material")
+            if id(prim) in already or index not in spans:
+                continue
+            if slots.get(index) not in ("tops", "bottoms", "onepiece", "accessory"):
+                continue
+            low, high = spans[index]
+            # Reaches the ankle, and is not itself a full-length garment we
+            # would only be taking a slice out of the middle of.
+            if low <= ankle < high:
+                extra.append((mi, prim, knee))
+    return extra
+
+
 def extract(g, binary, slots, wanted, kind):
     """Returns (json, binary) for the part, or None when the model lacks it."""
-    kept_prims = []  # (mesh index, primitive)
+    kept_prims = []  # (mesh index, primitive, clip height or None)
     for mi, mesh in enumerate(g.get("meshes", [])):
         for prim in mesh["primitives"]:
             if slots.get(prim.get("material")) in wanted:
-                kept_prims.append((mi, prim))
+                kept_prims.append((mi, prim, None))
     if not kept_prims:
         return None
-    if kind == "hair" and not any(slots.get(p.get("material")) == "hair" for _, p in kept_prims):
+    if kind == "hair" and not any(slots.get(p.get("material")) == "hair" for _, p, _c in kept_prims):
         return None
     if kind in ("tops", "bottoms", "shoes"):
         spans, height = vertical_extents(g, binary)
         floor = min((v[0] for v in spans.values()), default=0.0)
-        lows = [spans[p["material"]][0] for _, p in kept_prims if p.get("material") in spans]
-        highs = [spans[p["material"]][1] for _, p in kept_prims if p.get("material") in spans]
+        lows = [spans[p["material"]][0] for _, p, _c in kept_prims if p.get("material") in spans]
+        highs = [spans[p["material"]][1] for _, p, _c in kept_prims if p.get("material") in spans]
         if lows and highs and height > 0 and (max(highs) - min(lows)) / height > 0.65:
             # Whole-look geometry wearing one garment's name — it stays
             # available under Outfit, but it isn't a single garment.
             return None
+
+    # Socks come along AFTER the span check above: the stockings run from
+    # ankle to knee, and counting them would make every shoe look like
+    # whole-look geometry and drop it from the library entirely.
+    if kind == "shoes":
+        kept_prims += legwear(g, binary, slots, kept_prims)
 
     # An outfit needs at least one garment. Some VRoid models paint the
     # clothes into the body-skin texture and keep only shoes as geometry —
     # there the outfit IS "this model's skin + shoes".
     if kind == "outfit" and not any(
             slots.get(p.get("material")) in ("tops", "onepiece", "bottoms", "shoes", "accessory")
-            for _, p in kept_prims):
+            for _, p, _c in kept_prims):
         return None
-    part_slots = {slots.get(p.get("material")) for _, p in kept_prims}
+    part_slots = {slots.get(p.get("material")) for _, p, _c in kept_prims}
     if kind == "eyes" and not part_slots & {"eyeIris", "eyeWhite"}:
         return None
 
@@ -398,7 +436,7 @@ def extract(g, binary, slots, wanted, kind):
 
     # Materials + textures actually used.
     mat_order = []
-    for _, prim in kept_prims:
+    for _, prim, _clip in kept_prims:
         if prim["material"] not in mat_order:
             mat_order.append(prim["material"])
     tex_order = []
@@ -429,12 +467,20 @@ def extract(g, binary, slots, wanted, kind):
 
     # Meshes: primitives grouped by original mesh, vertices re-indexed.
     new_meshes, mesh_map = [], {}
-    for mi, prim in kept_prims:
+    for mi, prim, clip in kept_prims:
         if mi not in mesh_map:
             mesh_map[mi] = len(new_meshes)
             new_meshes.append({"name": g["meshes"][mi].get("name", f"mesh{mi}"), "primitives": []})
         indices, idx_acc = read_accessor(g, binary, prim["indices"])
         indices = indices.flatten()
+        if clip is not None:
+            positions = read_accessor(g, binary, prim["attributes"]["POSITION"])[0]
+            tris = indices.reshape(-1, 3)
+            below = positions[:, 1] <= clip
+            tris = tris[np.all(below[tris], axis=1)]
+            if len(tris) < 1:
+                continue
+            indices = tris.flatten()
         used, inverse = np.unique(indices, return_inverse=True)
         attributes = {}
         for attr, acc_index in prim["attributes"].items():

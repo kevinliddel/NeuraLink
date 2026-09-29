@@ -86,6 +86,18 @@ nonisolated public enum AppearancePartKind: String, Codable, CaseIterable, Senda
         }
     }
 
+    /// Parts this one replaces when chosen. A whole outfit and the single
+    /// garments describe the same region of the body, so wearing both at
+    /// once leaves whichever the graft order happened to apply last —
+    /// picking one clears the other.
+    public var supersedes: [AppearancePartKind] {
+        switch self {
+        case .outfit: return [.tops, .bottoms, .shoes]
+        case .tops, .bottoms, .shoes: return [.outfit]
+        case .hair: return []
+        }
+    }
+
     public var fitAnchorBones: [VRMHumanoidBone] {
         switch self {
         case .hair: return [.head]
