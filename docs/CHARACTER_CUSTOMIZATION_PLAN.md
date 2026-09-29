@@ -616,6 +616,45 @@ everything a graft measures must be in BIND space, never `node.worldPosition`.
 its own shoes under the same pose. A negative control confirmed the test reaches
 the bug: with the fix reverted the unposed case passes and BOTH posed cases fail.
 
+**Shoes, what actually governs the fit (2026-09-29)** — after many wrong turns,
+three things decide whether a borrowed shoe holds a foot, and the trim is not
+one of them:
+
+1. **The FIGURE rises, the shoe does not.** Forcing a sole to the floor slides
+   the shoe along the leg and drags its cavity off the foot. A heel needs the
+   biggest slide and loses the foot entirely. `raiseFigure` moves the root
+   nodes instead — wearing heels makes you taller — and
+   `restoreBaseComposition` calls `lowerFigure` to undo it, because the
+   snapshot restores the node ARRAY, not a translation changed in place.
+2. **Size by DEPTH and LENGTH, whichever demands more.** Depth (ankle to sole)
+   decides whether the foot drops out of the bottom; length decides whether
+   toes and heel come out the ends. A donor can satisfy one and fail the other:
+   the maid shoe was too shallow for Ekaterina (37% of her foot outside), the
+   classic boot too short for Sonya (13%). Host depth is read from the shoe the
+   host ALREADY WEARS — a bare foot is not the same quantity, since a shoe's
+   depth includes its sole, and comparing them came out under 1 every time.
+3. **The trim is still needed, and must be capped by the HOST.** Disabling it
+   took 2 failing pairs to 9, worst 29%. But its cut comes from the donor's
+   collar, so on a rig with other proportions it removes the foot outright;
+   it is now capped at 80% of the host's own foot depth.
+
+The collar scan: take the HIGHEST band still at full depth across the whole
+profile, never stopping at the first break — a shoe narrows just above its sole,
+and that one shallow band left tall shoes cut at 0.012 with the shin through the
+shaft. Sample density matters: at 6k samples the same shoe measured 0.064 in one
+run and 0.116 in another, which is why "the same code" appeared to behave
+differently. It is 40k now.
+
+Measured over 26 host×donor pairs: 2 above 0.5% of the foot exposed, worst 1.7%.
+`ShoeGraftDiagnostic` (env-gated, NL_SHOE_DIAG_DIR) reports that exposure per
+pair and renders each from the front AND the side.
+
+STILL OPEN: all of this is measured on the two bundled characters. An IMPORTED
+model with other proportions is not covered, and is where the user still sees
+failures. A shoe is rigid on one bone, so no amount of scaling and trimming
+generalises to an arbitrary rig; binding the shaft to the lower leg, or
+restricting donors by foot proportion, is the next step if it persists.
+
 **Parts library moved off the device (2026-09-28)** — 68 part files weigh 225 MB,
 which took the installed app to 638 MB. They now live in the same Hugging Face
 dataset as the environment GLBs, under `Parts/`, reached through

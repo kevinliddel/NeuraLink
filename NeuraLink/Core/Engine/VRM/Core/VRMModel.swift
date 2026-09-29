@@ -101,6 +101,12 @@ public class VRMModel: @unchecked Sendable {
     /// customization) to hide the host's own hair/outfit under a donor part.
     public var hiddenPrimitives: Set<ObjectIdentifier> = []
 
+    /// How far this figure has been raised so a grafted shoe's sole reaches
+    /// the ground. Wearing heels makes you taller — the shoe stays on the
+    /// foot and the body moves, rather than the shoe lifting off the foot it
+    /// has to contain. Undone by `restoreBaseComposition`.
+    public var groundedShoeLift: Float = 0
+
     /// Base-model snapshot + active grafts (see VRMModel+Composition).
     public var composition: VRMCompositionState?
 

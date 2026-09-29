@@ -28,8 +28,17 @@ extension VRMPartGrafter {
     /// Drops host skin triangles below `cut`, in the host's own rest space.
     /// Returns how many primitives were trimmed.
     @discardableResult
-    static func trimHostSkin(under kind: AppearancePartKind, in host: VRMModel, below cut: Float) -> Int {
+    static func trimHostSkin(
+        under kind: AppearancePartKind, in host: VRMModel, donor: VRMModel, fit: Float,
+        below cut: Float
+    ) -> Int {
         guard kind.trimsHostSkinUnderneath, let device = host.device else { return 0 }
+        // Restricting this to the shoe's ground plan was tried and is far
+        // worse: it spares the toes but leaves every bit of foot the shoe
+        // fails to cover, and measured exposure went from 2 pairs at 1.7% to
+        // 9 pairs at 58%. The skin outside the shell is exactly what has to
+        // go — which is why a heel the foot cannot fit into reads as missing
+        // toes whichever way this is set.
         var trimmed = 0
         for mesh in host.meshes {
             for primitive in mesh.primitives {
@@ -38,7 +47,8 @@ extension VRMPartGrafter {
                     !host.hiddenPrimitives.contains(ObjectIdentifier(primitive)),
                     primitive.untrimmedIndices == nil
                 else { continue }
-                if primitive.dropTriangles(below: cut, device: device) { trimmed += 1 }
+                let dropped = primitive.dropTriangles(device: device) { $0.y < cut }
+                if dropped { trimmed += 1 }
             }
         }
         if trimmed > 0 {
@@ -47,6 +57,63 @@ extension VRMPartGrafter {
                 level: .debug)
         }
         return trimmed
+    }
+
+    /// How far a shoe's sole hangs below the ankle it is bound to — the
+    /// depth of the cavity the foot has to fit into.
+    static func ankleAboveSole(of model: VRMModel, slots: Set<VRoidMaterialSlot>) -> Float? {
+        guard let ankle = model.bindPosition(of: .leftFoot) ?? model.bindPosition(of: .rightFoot),
+            let sole = model.restBounds(ofSlots: slots)?.min.y
+        else { return nil }
+        let depth = ankle.y - sole
+        return depth > 0.0001 ? depth : nil
+    }
+
+    /// How deep a shoe must be to hold this figure's foot.
+    ///
+    /// Taken from the shoe it already wears, which is by definition deep
+    /// enough for it. Measuring the bare foot instead compares a different
+    /// quantity — a shoe's depth includes its sole — and came out under 1
+    /// every time, which the clamp then flattened to no change at all.
+    static func footDepth(of model: VRMModel) -> Float? {
+        if let own = ankleAboveSole(of: model, slots: AppearancePartKind.shoes.slots) {
+            return own
+        }
+        guard let ankle = model.bindPosition(of: .leftFoot) ?? model.bindPosition(of: .rightFoot),
+            let sole = model.restBounds(ofSlots: [.bodySkin])?.min.y
+        else { return nil }
+        let depth = ankle.y - sole
+        return depth > 0.0001 ? depth : nil
+    }
+
+    /// Moves the whole figure up (or down) so a grafted shoe's sole reaches
+    /// the ground it stands on.
+    ///
+    /// The alternative — sliding the shoe up to the floor — pulls its cavity
+    /// off the foot it is meant to contain, and the foot ends up hanging
+    /// outside. Across the library every shoe needing under ~23mm of slide
+    /// looked right and every shoe needing more did not, which is what a
+    /// heel is: a shoe whose ankle sits far above its sole.
+    static func raiseFigure(by lift: Float, in host: VRMModel) {
+        guard abs(lift) > 0.0005 else { return }
+        for node in host.nodes where node.parent == nil {
+            node.translation.y += lift
+            node.updateLocalMatrix()
+        }
+        host.groundedShoeLift += lift
+        host.updateNodeTransforms()
+    }
+
+    /// Puts the figure back down. Called by `restoreBaseComposition`, which
+    /// restores the node ARRAY but not a translation changed in place.
+    static func lowerFigure(in host: VRMModel) {
+        let lift = host.groundedShoeLift
+        guard lift != 0 else { return }
+        for node in host.nodes where node.parent == nil {
+            node.translation.y -= lift
+            node.updateLocalMatrix()
+        }
+        host.groundedShoeLift = 0
     }
 
     /// How much bigger the host's anchor is than the donor's, clamped so a
@@ -62,11 +129,28 @@ extension VRMPartGrafter {
                 pair = nil
             }
         case .shoes:
-            if let a = donor.referenceFootLength, let b = host.referenceFootLength {
-                pair = (a, b)
-            } else {
-                pair = nil
+            // DEPTH, not length. What puts a foot outside a shoe is the shoe
+            // being too shallow to hold it: the sole hangs a fixed distance
+            // below the ankle it is bound to, and anything the host's foot
+            // reaches past that comes out the bottom. On Ekaterina the
+            // exposed fraction tracked this exactly — 37% for the shallowest
+            // donor, 4.7% and 1.1% for the next two, nothing for the rest.
+            // A shoe has to be deep enough AND long enough. Depth decides
+            // whether the foot drops out of the bottom, length whether the
+            // toes and heel come out the ends, and a donor can satisfy one
+            // while failing the other — a boot deeper than Sonya's own shoe
+            // still left 13% of her longer foot outside it. Take whichever
+            // demands more growth.
+            var need: Float = 1
+            if let donorDepth = ankleAboveSole(of: donor, slots: kind.slots),
+                let hostDepth = footDepth(of: host), donorDepth > 0.0001 {
+                need = max(need, hostDepth / donorDepth)
             }
+            if let donorFoot = donor.referenceFootLength,
+                let hostFoot = host.referenceFootLength, donorFoot > 0.0001 {
+                need = max(need, hostFoot / donorFoot)
+            }
+            pair = need > 1 ? (1, need) : nil
         case .outfit, .tops, .bottoms:
             pair = nil
         }
@@ -88,6 +172,56 @@ extension VRMPartGrafter {
     /// bind matrices, so its rest positions are still in the donor's frame.
     /// The shoe's sole is grounded to the host's floor, so its collar ends
     /// up one scaled shoe-height above that, and the cut sits just below.
+    /// Ground plan of the grafted shoes in the host's bind space: one box
+    /// per foot, from the donor's shoe scaled about its ankle and re-centred
+    /// on the host's. Skin outside it is never touched.
+    struct Footprint {
+        var boxes: [(low: SIMD2<Float>, high: SIMD2<Float>)] = []
+        /// Slack outward, so skin lying against the inside of the shell
+        /// still counts as covered.
+        static let slack: Float = 0.012
+
+        func covers(_ point: SIMD3<Float>) -> Bool {
+            guard !boxes.isEmpty else { return true }
+            return boxes.contains { box in
+                point.x > box.low.x - Self.slack && point.x < box.high.x + Self.slack
+                    && point.z > box.low.y - Self.slack && point.z < box.high.y + Self.slack
+            }
+        }
+    }
+
+    static func shoeFootprint(
+        donor: VRMModel, host: VRMModel, slots: Set<VRoidMaterialSlot>, fit: Float
+    ) -> Footprint {
+        var footprint = Footprint()
+        for bone in [VRMHumanoidBone.leftFoot, .rightFoot] {
+            guard let donorAnkle = donor.bindPosition(of: bone),
+                let hostAnkle = host.bindPosition(of: bone)
+            else { continue }
+            var low = SIMD2<Float>(repeating: .greatestFiniteMagnitude)
+            var high = SIMD2<Float>(repeating: -.greatestFiniteMagnitude)
+            var found = false
+            for mesh in donor.meshes {
+                for primitive in mesh.primitives {
+                    guard let materialIndex = primitive.materialIndex,
+                        slots.contains(donor.slot(ofMaterial: materialIndex))
+                    else { continue }
+                    primitive.forEachRestPosition(budget: 20_000) { position in
+                        guard abs(position.x - donorAnkle.x) < 0.12 else { return }
+                        let mapped = SIMD2<Float>(
+                            (position.x - donorAnkle.x) * fit + hostAnkle.x,
+                            (position.z - donorAnkle.z) * fit + hostAnkle.z)
+                        low = simd_min(low, mapped)
+                        high = simd_max(high, mapped)
+                        found = true
+                    }
+                }
+            }
+            if found { footprint.boxes.append((low, high)) }
+        }
+        return footprint
+    }
+
     static func skinCutLine(
         _ kind: AppearancePartKind, donor: VRMModel, host: VRMModel, fit: Float
     ) -> Float? {
@@ -105,7 +239,16 @@ extension VRMPartGrafter {
         // Just under the opening. A triangle is only dropped when ALL THREE
         // of its corners are below the line, so the ones straddling it stay
         // and the leg still plugs it.
-        return floor + height * 0.9
+        // Never take more of the HOST's foot than a shoe could plausibly
+        // hide. The line above comes from the donor's collar, and on a rig
+        // whose proportions differ from the donor's — an imported character,
+        // say — that overshoots and removes the foot outright, leaving a gap
+        // between leg and shoe. The host's own foot depth is the ceiling.
+        var cut = floor + height * 0.9
+        if let depth = footDepth(of: host) {
+            cut = min(cut, floor + depth * 0.8)
+        }
+        return cut
     }
 
     /// Height up to which the shoe is a SOLID shell around the foot, in the
@@ -121,6 +264,11 @@ extension VRMPartGrafter {
     ///
     /// Under-shooting is safe: skin left inside a shoe that encloses it is
     /// hidden anyway. Over-shooting is what shows.
+    /// Depth of each band as a fraction of the deepest, from the last
+    /// `collarHeight` call. Diagnostics only — this is how the rule's
+    /// threshold gets chosen from measured shapes instead of guessed at.
+    nonisolated(unsafe) static var lastProfile: [Float] = []
+
     static func collarHeight(of donor: VRMModel, slots: Set<VRoidMaterialSlot>) -> Float? {
         guard let ankle = donor.bindPosition(of: .leftFoot) ?? donor.bindPosition(of: .rightFoot)
         else { return nil }
@@ -132,7 +280,9 @@ extension VRMPartGrafter {
                 guard let materialIndex = primitive.materialIndex,
                     slots.contains(donor.slot(ofMaterial: materialIndex))
                 else { continue }
-                primitive.forEachRestPosition(budget: 6_000) { position in
+                // Dense: at 6k samples the per-band depths moved enough between
+                // runs to shift the collar from 0.064 to 0.116 on the same shoe.
+                primitive.forEachRestPosition(budget: 40_000) { position in
                     let dx = position.x - ankle.x, dz = position.z - ankle.z
                     guard dx * dx + dz * dz < reachSquared else { return }
                     samples.append(SIMD2<Float>(position.y, position.z))
@@ -156,17 +306,17 @@ extension VRMPartGrafter {
         }
         let depths = (0..<bands).map { high[$0] > low[$0] ? high[$0] - low[$0] : 0 }
         guard let deepest = depths.max(), deepest > 0.0001 else { return nil }
-        // Contiguous from the sole, NOT the highest qualifying band anywhere.
-        // An ankle strap wraps front-to-back, so it is as deep as the vamp
-        // and re-qualifies above the open gap — which dragged the cut up past
-        // that gap and took the whole foot with it.
-        var band = 0
-        while band < bands, depths[band] >= deepest * 0.6 { band += 1 }
-        if ProcessInfo.processInfo.environment["NL_SHOE_DIAG_DIR"] != nil {
-            let profile = depths.map { String(format: "%.0f", $0 / deepest * 100) }.joined(separator: ",")
-            nlLog("[ShoeBands] \(profile) -> band \(band) of \(bands)", level: .info)
-        }
-        return lowest + Float(max(1, band)) * bandHeight
+        // The HIGHEST band still at full depth, scanning the whole profile.
+        // Stopping at the first break sounded principled and was wrong: a
+        // shoe narrows just above its sole, and that one shallow band halted
+        // the scan, leaving tall shoes cut at 0.012 with the shin showing
+        // through the shaft. Across the whole profile a heel stops at its
+        // vamp — its upper bands really are shallow — and a boot reaches its
+        // collar, because its are not.
+        lastProfile = depths.map { $0 / deepest }
+        var top = 1
+        for band in 0..<bands where depths[band] >= deepest * 0.6 { top = band + 1 }
+        return lowest + Float(top) * bandHeight
     }
 
     /// How far to lift or drop a part so it meets the floor the host stands
@@ -228,7 +378,7 @@ extension VRMPrimitive {
     /// all sit below `y`. Vertices are untouched — they are shared with
     /// every other primitive on a VRoid body. Returns false when nothing
     /// qualified, so the caller can tell a no-op from a trim.
-    func dropTriangles(below y: Float, device: MTLDevice) -> Bool {
+    func dropTriangles(device: MTLDevice, where isHidden: (SIMD3<Float>) -> Bool) -> Bool {
         guard primitiveType == .triangle,
             let positionOffset = MemoryLayout<VRMVertex>.offset(of: \VRMVertex.position),
             let vertexBuffer, vertexBuffer.storageMode == .shared,
@@ -249,8 +399,8 @@ extension VRMPrimitive {
         }
         func isUnder(_ vertex: Int) -> Bool {
             guard vertex < vertexCount else { return false }
-            return vertexBase.load(
-                fromByteOffset: vertex * stride + positionOffset, as: SIMD3<Float>.self).y < y
+            return isHidden(vertexBase.load(
+                fromByteOffset: vertex * stride + positionOffset, as: SIMD3<Float>.self))
         }
 
         var kept32: [UInt32] = []

@@ -79,6 +79,9 @@ struct ShoeGraftDiagnostic {
                        hostFoot=\(String(format: "%.4f", hostFoot)) \
                     donorFoot=\(String(format: "%.4f", donorFoot)) \
                     ratio=\(String(format: "%.3f", donorFoot > 0 ? hostFoot / donorFoot : 0))
+                       donorDepth=\(fmt(VRMPartGrafter.ankleAboveSole(of: donor, slots: AppearancePartKind.shoes.slots))) \
+                    hostDepth=\(fmt(VRMPartGrafter.footDepth(of: host)))
+                       exposed=\(String(format: "%.1f%%", exposedSkinFraction(host, fromMesh: baseMeshes) * 100))
                        ownShoe     = \(describe(ownShoe))
                        graftedShoe = \(describe(shoe))
                        skinBelowAnkle = \(describe(skin))
@@ -168,6 +171,74 @@ struct ShoeGraftDiagnostic {
             node.localMatrix = turn * original
         }
         model.updateNodeTransforms()
+    }
+
+    /// Share of the host's remaining foot skin that ends up OUTSIDE the
+    /// grafted shoe — the thing the user actually sees. Both skinned, so it
+    /// reflects where the geometry really lands rather than rest positions.
+    @MainActor
+    private func exposedSkinFraction(_ model: VRMModel, fromMesh first: Int) -> Float {
+        guard let shoe = skinnedBounds(
+            model, slots: AppearancePartKind.shoes.slots, fromMesh: first) else { return 0 }
+        guard let skin = skinnedPoints(model, slots: [.bodySkin]) else { return 0 }
+        // Only skin low enough to be the foot at all.
+        let ceiling = shoe.max.y
+        let candidates = skin.filter { $0.y < ceiling }
+        guard candidates.count > 20 else { return 0 }
+        let slack: Float = 0.004
+        let outside = candidates.filter {
+            $0.x < shoe.min.x - slack || $0.x > shoe.max.x + slack
+                || $0.z < shoe.min.z - slack || $0.z > shoe.max.z + slack
+                || $0.y < shoe.min.y - slack
+        }
+        return Float(outside.count) / Float(candidates.count)
+    }
+
+    @MainActor
+    private func skinnedPoints(
+        _ model: VRMModel, slots: Set<VRoidMaterialSlot>
+    ) -> [SIMD3<Float>]? {
+        guard let pOff = MemoryLayout<VRMVertex>.offset(of: \VRMVertex.position),
+            let jOff = MemoryLayout<VRMVertex>.offset(of: \VRMVertex.joints),
+            let wOff = MemoryLayout<VRMVertex>.offset(of: \VRMVertex.weights)
+        else { return nil }
+        let vstride = MemoryLayout<VRMVertex>.stride
+        var points: [SIMD3<Float>] = []
+        for (mi, mesh) in model.meshes.enumerated() {
+            guard let node = model.nodes.first(where: { $0.mesh == mi }), let si = node.skin,
+                si < model.skins.count else { continue }
+            let skin = model.skins[si]
+            for p in mesh.primitives {
+                guard let m = p.materialIndex, slots.contains(model.slot(ofMaterial: m)),
+                    !model.hiddenPrimitives.contains(ObjectIdentifier(p)),
+                    let vb = p.vertexBuffer, let ib = p.indexBuffer else { continue }
+                let base = vb.contents(), ibase = ib.contents().advanced(by: p.indexBufferOffset)
+                var step = max(1, p.indexCount / 4_000)
+                if step % 3 != 0 { step += 3 - (step % 3) }
+                for n in Swift.stride(from: 0, to: p.indexCount, by: step) {
+                    let vi = p.indexType == .uint16
+                        ? Int(ibase.load(fromByteOffset: n * 2, as: UInt16.self))
+                        : Int(ibase.load(fromByteOffset: n * 4, as: UInt32.self))
+                    guard vi < p.vertexCount else { continue }
+                    let pos = base.load(fromByteOffset: vi * vstride + pOff, as: SIMD3<Float>.self)
+                    let js = base.load(fromByteOffset: vi * vstride + jOff, as: SIMD4<UInt32>.self)
+                    let ws = base.load(fromByteOffset: vi * vstride + wOff, as: SIMD4<Float>.self)
+                    var acc = SIMD4<Float>(repeating: 0)
+                    var total: Float = 0
+                    for k in 0..<4 where ws[k] > 0 {
+                        let ji = Int(js[k])
+                        guard ji < skin.joints.count else { continue }
+                        acc += (skin.joints[ji].worldMatrix * skin.inverseBindMatrices[ji]
+                            * SIMD4<Float>(pos, 1)) * ws[k]
+                        total += ws[k]
+                    }
+                    guard total > 0.001 else { continue }
+                    let world = SIMD3<Float>(acc.x, acc.y, acc.z) / total
+                    if world.x.isFinite { points.append(world) }
+                }
+            }
+        }
+        return points.isEmpty ? nil : points
     }
 
     private func fmt(_ value: Float?) -> String {

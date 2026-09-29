@@ -96,6 +96,29 @@ extension VRMModel {
         return nil
     }
 
+    /// Length of the bare foot this model draws, from the skin below the
+    /// ankle. The rig's foot-to-toes distance says where the foot is; this
+    /// says how big the thing a shoe has to swallow actually is, which is
+    /// what decides whether toes and heel end up outside it.
+    public var barefootLength: Float? {
+        guard let ankle = bindPosition(of: .leftFoot) ?? bindPosition(of: .rightFoot) else { return nil }
+        var lo = Float.greatestFiniteMagnitude
+        var hi = -Float.greatestFiniteMagnitude
+        for mesh in meshes {
+            for primitive in mesh.primitives {
+                guard let materialIndex = primitive.materialIndex,
+                    slot(ofMaterial: materialIndex) == .bodySkin
+                else { continue }
+                primitive.forEachRestPosition(budget: 6_000) { position in
+                    guard position.y < ankle.y, abs(position.x - ankle.x) < 0.12 else { return }
+                    lo = min(lo, position.z)
+                    hi = max(hi, position.z)
+                }
+            }
+        }
+        return hi > lo ? hi - lo : nil
+    }
+
     /// Bind-pose position of a humanoid bone, recovered from the inverse
     /// bind matrix a skin holds for it.
     ///

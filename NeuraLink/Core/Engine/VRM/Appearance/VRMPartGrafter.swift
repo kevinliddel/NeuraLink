@@ -97,7 +97,7 @@ public enum VRMPartGrafter {
             if let donorSkinIndex = donorNode.skin, donorSkinIndex < donor.skins.count {
                 let skin = resolveSkin(donor.skins[donorSkinIndex], usedJoints: usedJoints, donor: donor,
                                        host: host, nodeMap: &nodeMap, yaw: yaw, fit: fit,
-                                       ground: ground, fitAnchors: fitAnchors, counts: counts)
+                                       fitAnchors: fitAnchors, counts: counts)
                 host.skins.append(skin)
                 skinIndex = host.skins.count - 1
                 counts.skins += 1
@@ -144,7 +144,16 @@ public enum VRMPartGrafter {
         // Now that the new geometry is in and the old is hidden, take the
         // host's own skin out from under it where the part can't cover it.
         if let cut = skinCutLine(kind, donor: donor, host: host, fit: fit) {
-            trimHostSkin(under: kind, in: host, below: cut)
+            // The sole meets the ground by raising the FIGURE, not by sliding the
+        // shoe up off the foot. Measured across the library, that slide was
+        // the whole story: every shoe needing less than ~23mm of it looked
+        // right, and every shoe needing more left the foot hanging outside.
+        raiseFigure(by: ground, in: host)
+        if let cut = skinCutLine(kind, donor: donor, host: host, fit: fit) {
+            // No `ground` term: the figure moves, not the geometry, so the
+            // host's rest positions this cut is compared against never shift.
+            trimHostSkin(under: kind, in: host, donor: donor, fit: fit, below: cut)
+        }
         }
         let receipt = GraftReceipt(
             kind: kind, donorSlug: donorSlug.lowercased(), meshCount: counts.meshes,
@@ -213,7 +222,7 @@ public enum VRMPartGrafter {
 
     private static func resolveSkin(
         _ donorSkin: VRMSkin, usedJoints: Set<Int>, donor: VRMModel, host: VRMModel,
-        nodeMap: inout [Int: VRMNode], yaw: simd_quatf?, fit: Float, ground: Float,
+        nodeMap: inout [Int: VRMNode], yaw: simd_quatf?, fit: Float,
         fitAnchors: Set<ObjectIdentifier>, counts: Counts
     ) -> VRMSkin {
         var joints: [VRMNode] = []
@@ -236,17 +245,7 @@ public enum VRMPartGrafter {
             // to chest or shoulder bones belong to the body's scale, not the
             // head's, and the same holds for a shoe's stray leg weights.
             let ridesAnchor = fitAnchors.contains(ObjectIdentifier(hostNode)) || !host.isBaseNode(hostNode)
-            var placement = fit != 1 && ridesAnchor ? fitMatrix * rehomed : rehomed
-            // Grounding is a WORLD-space lift, but an inverse bind matrix is
-            // applied before the joint's world matrix — so express it in that
-            // joint's frame. Only the anchor bones themselves: an appended
-            // bone's world matrix isn't built yet.
-            if ground != 0, fitAnchors.contains(ObjectIdentifier(hostNode)) {
-                var lift = matrix_identity_float4x4
-                lift.columns.3 = SIMD4<Float>(0, ground, 0, 1)
-                let world = hostNode.worldMatrix
-                placement = (world.inverse * lift * world) * placement
-            }
+            let placement = fit != 1 && ridesAnchor ? fitMatrix * rehomed : rehomed
             ibms.append(placement)
         }
         return VRMSkin(name: donorSkin.name, joints: joints, inverseBindMatrices: ibms)

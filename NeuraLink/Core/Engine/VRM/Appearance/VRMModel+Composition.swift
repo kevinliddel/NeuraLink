@@ -79,6 +79,7 @@ extension VRMModel {
         for mesh in snap.meshes {
             for primitive in mesh.primitives { primitive.restoreUntrimmedIndices() }
         }
+        VRMPartGrafter.lowerFigure(in: self)
         meshes = snap.meshes
         materials = snap.materials
         textures = snap.textures
