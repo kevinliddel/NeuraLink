@@ -71,6 +71,13 @@ final class MemoryRetain: @unchecked Sendable {
             MemoryRetain.shared.maybeRetain(force: true)
             FollowUpCoordinator.shared.consumeMentions()
         }
+        // Who the user is comes first: every other fact refers back to it.
+        MemoryUserProfile.sync()
+        NotificationCenter.default.addObserver(
+            forName: UserSettings.profileDidChange, object: nil, queue: .main
+        ) { _ in
+            MainActor.assumeIsolated { MemoryUserProfile.sync() }
+        }
         let character = RealtimeChatState.shared.selectedCharacterName
         Task.detached(priority: .background) {
             await EmbeddingService.shared.restorePreferredBackend()
@@ -187,10 +194,12 @@ final class MemoryRetain: @unchecked Sendable {
     func extract(from turns: [MemoryFactExtraction.Turn]) async -> [ExtractedFact] {
         guard !turns.isEmpty else { return [] }
         let assistant = RealtimeChatState.shared.selectedCharacterName.capitalized
+        let userName = UserSettings.shared.name.trimmingCharacters(in: .whitespacesAndNewlines)
         switch llm.tier {
         case .cloud:
             guard let raw = await llm.complete(
-                system: MemoryFactExtraction.cloudSystemPrompt(assistantName: assistant),
+                system: MemoryFactExtraction.cloudSystemPrompt(
+                    assistantName: assistant, userName: userName),
                 user: MemoryFactExtraction.cloudUserPrompt(turns: turns, assistantName: assistant),
                 maxTokens: MemoryFactExtraction.cloudMaxTokens)
             else { return [] }

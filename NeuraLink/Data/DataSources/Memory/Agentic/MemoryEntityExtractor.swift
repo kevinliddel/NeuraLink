@@ -79,7 +79,17 @@ enum MemoryEntityExtractor {
     /// or first-person statements).
     static func isAboutUser(_ text: String) -> Bool {
         let lower = text.lowercased().trimmingCharacters(in: .whitespaces)
-        return lower.hasPrefix("user") || lower.hasPrefix("the user") || lower.hasPrefix("i ")
-            || lower.hasPrefix("i'") || lower.hasPrefix("my ") || lower.contains(" user's ")
+        if lower.hasPrefix("user") || lower.hasPrefix("the user") || lower.hasPrefix("i ")
+            || lower.hasPrefix("i'") || lower.hasPrefix("my ") || lower.contains(" user's ") {
+            return true
+        }
+        // Facts now name the user rather than calling them "User", so the
+        // graph has to know that name is them — otherwise everything the
+        // extractor writes about the person stops linking to them.
+        let name = MainActor.assumeIsolated {
+            UserSettings.shared.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        }
+        guard name.count > 1 else { return false }
+        return lower.hasPrefix(name) || lower.contains(" \(name)'s ") || lower.contains(" \(name) ")
     }
 }

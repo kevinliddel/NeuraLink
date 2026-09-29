@@ -357,6 +357,25 @@ extension MemoryStore {
         return count
     }
 
+    /// Every unit written by one source. Used to replace a source's whole
+    /// set — the user profile re-syncs this way, so editing a birthday
+    /// corrects the memory instead of leaving two contradictory ones.
+    func unitIDs(source: String) -> [Int64] {
+        lock.lock()
+        defer { lock.unlock() }
+        var statement: OpaquePointer?
+        var ids: [Int64] = []
+        if sqlite3_prepare_v2(
+            db, "SELECT id FROM memories WHERE source = ?;", -1, &statement, nil) == SQLITE_OK {
+            sqlite3_bind_text(statement, 1, (source as NSString).utf8String, -1, nil)
+            while sqlite3_step(statement) == SQLITE_ROW {
+                ids.append(sqlite3_column_int64(statement, 0))
+            }
+        }
+        sqlite3_finalize(statement)
+        return ids
+    }
+
     func deleteUnit(id: Int64) {
         lock.lock()
         defer { lock.unlock() }
