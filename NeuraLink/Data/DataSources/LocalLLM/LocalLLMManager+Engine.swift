@@ -184,8 +184,13 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
                 let result = await AppFunctionExecutor.shared.execute(
                     name: tool.name, arguments: tool.arguments)
                 ChatTimelineStore.logToolCall(name: tool.name, result: result)
-                self.transcriptTypewriter.setImmediate(result)
-                self.speakChunk(result)
+                // Recall and fact-filing are bookkeeping: the raw result is
+                // for the model, not something to put on screen or read
+                // aloud. Every other tool still reports back.
+                if !ChatTimelineStore.isSilentTool(tool.name) {
+                    self.transcriptTypewriter.setImmediate(result)
+                    self.speakChunk(result)
+                }
                 if AppFunctionExecutor.shared.pendingUIAction != nil {
                     self.schedulePendingUIActionAfterSpeech()
                 }

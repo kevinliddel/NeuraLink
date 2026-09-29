@@ -15,8 +15,6 @@ struct MemoryTimelineView: View {
 
     @State private var snapshot = MemoryPageSnapshot()
     @State private var facts: [FactItem] = []
-    @State private var showAllFacts = false
-    @State private var showAllObservations = false
     @State private var isRefreshing = false
     @State private var editFact: FactItem?
     @State private var confirmClearAll = false
@@ -182,7 +180,24 @@ struct MemoryTimelineView: View {
                         }
                 }
                 if snapshot.observationUnits.count > collapsedLimit {
-                    showMoreButton(isExpanded: $showAllObservations, total: snapshot.observationUnits.count)
+                    showAllLink(total: snapshot.observationUnits.count) {
+                        MemoryBrowserView(
+                            title: "Insights", symbol: "sparkles", tint: .purple,
+                            items: snapshot.observationUnits.map { unit in
+                                MemoryBrowserItem(
+                                    // `mentionedAt` is when it last came up,
+                                    // which is what the inline row shows too.
+                                    id: "o\(unit.id)", text: unit.text, date: unit.mentionedAt,
+                                    detail: "\(unit.proofCount) source\(unit.proofCount == 1 ? "" : "s")",
+                                    detailSymbol: "link")
+                            },
+                            onDelete: { item in
+                                if let unit = snapshot.observationUnits.first(where: { "o\($0.id)" == item.id }) {
+                                    deleteObservation(unit)
+                                }
+                            },
+                            onEdit: nil)
+                    }
                 }
             }
         } header: {
@@ -212,7 +227,23 @@ struct MemoryTimelineView: View {
                         }
                 }
                 if facts.count > collapsedLimit {
-                    showMoreButton(isExpanded: $showAllFacts, total: facts.count)
+                    showAllLink(total: facts.count) {
+                        MemoryBrowserView(
+                            title: "Facts", symbol: "checkmark.seal", tint: .green,
+                            items: facts.map { fact in
+                                MemoryBrowserItem(
+                                    id: "f\(fact.id)", text: factDisplayText(fact),
+                                    date: fact.timestamp, detail: nil, detailSymbol: nil)
+                            },
+                            onDelete: { item in
+                                if let fact = facts.first(where: { "f\($0.id)" == item.id }) {
+                                    deleteFact(fact)
+                                }
+                            },
+                            onEdit: { item in
+                                editFact = facts.first { "f\($0.id)" == item.id }
+                            })
+                    }
                 }
             }
         } header: {
@@ -306,20 +337,20 @@ struct MemoryTimelineView: View {
         .textCase(nil)
     }
 
-    private func showMoreButton(isExpanded: Binding<Bool>, total: Int) -> some View {
-        Button {
-            withAnimation(.snappy) { isExpanded.wrappedValue.toggle() }
+    /// Opens the full list on its own screen rather than unfolding it here.
+    /// A hundred rows pushed into this page buries every setting under it.
+    private func showAllLink<Destination: View>(
+        total: Int, @ViewBuilder destination: () -> Destination
+    ) -> some View {
+        NavigationLink {
+            destination()
         } label: {
             HStack {
-                Spacer()
-                Text(isExpanded.wrappedValue ? "Show fewer" : "Show all \(total)")
+                Text("Show all \(total)")
                     .font(.subheadline.weight(.medium))
-                Image(systemName: isExpanded.wrappedValue ? "chevron.up" : "chevron.down")
-                    .font(.caption.weight(.semibold))
                 Spacer()
             }
         }
-        .buttonStyle(.borderless)
     }
 
     private func settingIcon(_ symbol: String, color: Color) -> some View {
@@ -331,11 +362,11 @@ struct MemoryTimelineView: View {
     }
 
     private var visibleObservations: [MemoryUnit] {
-        showAllObservations ? snapshot.observationUnits : Array(snapshot.observationUnits.prefix(collapsedLimit))
+        Array(snapshot.observationUnits.prefix(collapsedLimit))
     }
 
     private var visibleFacts: [FactItem] {
-        showAllFacts ? facts : Array(facts.prefix(collapsedLimit))
+        Array(facts.prefix(collapsedLimit))
     }
 
     private var precisionLabel: String {

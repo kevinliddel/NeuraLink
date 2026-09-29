@@ -73,6 +73,7 @@ final class MemoryRetain: @unchecked Sendable {
         }
         // Who the user is comes first: every other fact refers back to it.
         MemoryUserProfile.sync()
+        ChatTimelineStore.purgeSilentToolMessages()
         NotificationCenter.default.addObserver(
             forName: UserSettings.profileDidChange, object: nil, queue: .main
         ) { _ in
