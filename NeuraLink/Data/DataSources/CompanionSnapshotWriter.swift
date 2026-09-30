@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  Builds the widget snapshot from app state and writes it to the App
-//  Group (docs/PRESENCE_BEYOND_APP_PLAN.md §P3). Called after reflections,
+//  Group (docs/PRESENCE_BEYOND_APP.md). Called after reflections,
 //  relationship refreshes and character switches; debounced so a burst of
 //  messages produces one write. Honours the "Show companion widgets"
 //  privacy toggle (off → the snapshot is deleted).

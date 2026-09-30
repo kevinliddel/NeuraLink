@@ -2,7 +2,7 @@
 //  MemoryExportSheet.swift
 //  NeuraLink
 //
-//  "Export memory…" options + share sheet (docs/MEMORY_OWNERSHIP_PLAN.md §M2).
+//  "Export memory…" options + share sheet (docs/MEMORY_OWNERSHIP.md).
 //
 
 import SwiftUI

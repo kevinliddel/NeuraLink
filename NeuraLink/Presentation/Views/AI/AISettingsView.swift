@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+
 struct AISettingsView: View {
     @Bindable var settings = OpenAISettings.shared
     @Bindable var appearance = AppearanceSettings.shared
@@ -23,6 +24,7 @@ struct AISettingsView: View {
             Form {
                 openAISection
                 modelsSection
+                usageSection
                 interactionSection
                 personaSection
                 localSLMSection
@@ -79,10 +81,19 @@ struct AISettingsView: View {
         }
     }
 
+    /// Row into the Usage dashboard (docs/API_USAGE.md).
+    private var usageSection: some View {
+        Section("Usages") {
+            UsageNavigationRow()
+        }
+        .disabled(!settings.isEnabled)
+    }
+
     /// One-line status of the chosen models, shown under the row title.
     private var modelsSummary: String {
         guard settings.isEnabled else { return "Enable OpenAI to choose models" }
-        let usage = aiState.sessionUsage.responses > 0
+        let usage =
+            aiState.sessionUsage.responses > 0
             ? " · \(aiState.sessionUsage.summary)" : ""
         return "\(settings.realtimeModel) · \(settings.textModel)\(usage)"
     }
@@ -175,7 +186,7 @@ struct AISettingsView: View {
     }
 
     private var personaSection: some View {
-        _ = personaStore.lastUpdated // Observe changes
+        _ = personaStore.lastUpdated  // Observe changes
         let modelID = RealtimeChatState.shared.selectedCharacterName
         let persona = CharacterPersona.forCharacter(named: modelID)
         let avatarImage: UIImage? = VRMModelRegistry.shared.all
@@ -261,7 +272,8 @@ struct AISettingsView: View {
         if settings.isEnabled && settings.isProactiveVisionEnabled { active.append("Vision") }
         if presence.isPresenceEnabled { active.append("Presence") }
         if presence.isProactiveEngagementEnabled { active.append("Engagement") }
-        return active.isEmpty ? "Everything off — tap to configure" : active.joined(separator: " · ")
+        return active.isEmpty
+            ? "Everything off — tap to configure" : active.joined(separator: " · ")
     }
 
     // MARK: - Sub-views

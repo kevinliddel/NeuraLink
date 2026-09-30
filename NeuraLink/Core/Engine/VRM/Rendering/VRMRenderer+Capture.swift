@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  One-shot frame capture for the photoshoot share
-//  (docs/MEMORY_OWNERSHIP_PLAN.md §M2). The next presented frame is blitted
+//  (docs/MEMORY_OWNERSHIP.md). The next presented frame is blitted
 //  into a CPU-readable texture and converted to a UIImage on completion.
 //  Requires `mtkView.framebufferOnly = false` for that frame (set by
 //  `VRMMetalState.captureFrame`).

@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  Base-model snapshot + restore for part grafts (Tier B of
-//  docs/CHARACTER_CUSTOMIZATION_PLAN.md). A graft only ever APPENDS to the
+//  docs/CHARACTER_CUSTOMIZATION.md). A graft only ever APPENDS to the
 //  model's arrays and hides host primitives, so "undo everything" is
 //  truncating back to the snapshot and dropping the appended children off
 //  the host bones. Changing one part = restore + re-graft all active parts,

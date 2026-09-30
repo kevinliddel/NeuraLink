@@ -44,6 +44,10 @@ extension OpenAIRealtimeManager {
                 if state.status == .listening { state.status = .ready }
 
             case "conversation.item.input_audio_transcription.completed":
+                // Metered even when the transcript is noise below — it was billed.
+                if let usage = json["usage"] as? [String: Any] {
+                    UsageRecorder.record(.transcription(usage: usage, model: settings.transcriptionModel))
+                }
                 if let transcript = json["transcript"] as? String {
                     // Whisper returns "", "\n", or lone punctuation when
                     // server_vad opened a turn on noise rather than speech.
@@ -143,6 +147,7 @@ extension OpenAIRealtimeManager {
                 if let response = json["response"] as? [String: Any], let usage = response["usage"] as? [String: Any] {
                     usageMeter.add(usage: usage)
                     state.sessionUsage = usageMeter
+                    UsageRecorder.record(.realtimeResponse(usage: usage, model: settings.realtimeModel))
                 }
                 state.status = .ready
                 setMicGated(false, reason: .assistantSpeaking)

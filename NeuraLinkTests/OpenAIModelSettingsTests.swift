@@ -2,7 +2,7 @@
 //  OpenAIModelSettingsTests.swift
 //  NeuraLinkTests
 //
-//  Model selection + usage metering (docs/CHAT_LLM_IMPROVEMENT_PLAN.md §B3).
+//  Model selection + usage metering (docs/CHAT_LLM.md).
 //
 
 import Foundation
@@ -20,18 +20,46 @@ struct OpenAIModelSettingsTests {
         #expect(OpenAIModelCatalog.defaultID(for: .transcription) == "gpt-4o-transcribe")
         #expect(OpenAIModelCatalog.defaultID(for: .text) == "gpt-5.6-luna")
         #expect(OpenAIChatClient.defaultModel == "gpt-5.6-luna")
-        #expect(OpenAIModelCatalog.pickerItems(for: .text).last == OpenAIModelCatalog.customID)
+        #expect(OpenAIModelCatalog.pickerItems(for: .text).first == "gpt-5.6-luna")
     }
 
-    @Test("Model ids persist and blank falls back to the default")
+    @Test("Catalog ids are unique per role and there is no custom entry")
+    func catalogShape() {
+        for role in OpenAIModelCatalog.Role.allCases {
+            let ids = OpenAIModelCatalog.pickerItems(for: role)
+            #expect(Set(ids).count == ids.count)
+            #expect(!ids.contains("custom"))
+        }
+    }
+
+    @Test("Reasoning models get a low reasoning_effort; GPT-4 family gets none")
+    func reasoningEffort() {
+        #expect(OpenAIModelCatalog.reasoningEffort(forTextModel: "gpt-5.6-luna") == "none")
+        #expect(OpenAIModelCatalog.reasoningEffort(forTextModel: "gpt-5") == "minimal")
+        #expect(OpenAIModelCatalog.reasoningEffort(forTextModel: "gpt-4o-mini") == nil)
+        for entry in OpenAIModelCatalog.text where entry.id.hasPrefix("gpt-5") || entry.id.hasPrefix("gpt-6") {
+            #expect(entry.reasoningEffort != nil, "\(entry.id) needs an effort or short calls come back empty")
+        }
+    }
+
+    @Test("Transcription prompt is skipped for gpt-realtime-whisper only")
+    func transcriptionPrompt() {
+        #expect(!OpenAIModelCatalog.transcriptionSupportsPrompt("gpt-realtime-whisper"))
+        #expect(OpenAIModelCatalog.transcriptionSupportsPrompt("gpt-4o-transcribe"))
+    }
+
+    @Test("Model ids persist; blank or unlisted ids fall back to the default")
     func persistence() {
         let settings = OpenAISettings.shared
         let original = settings.textModel
         defer { settings.textModel = original }
 
-        settings.textModel = "  my-custom-model "
-        #expect(settings.textModel == "my-custom-model")
-        #expect(UserDefaults.standard.string(forKey: "com.neuralink.openai.model.text") == "my-custom-model")
+        settings.textModel = " gpt-4.1-mini "
+        #expect(settings.textModel == "gpt-4.1-mini")
+        #expect(UserDefaults.standard.string(forKey: "com.neuralink.openai.model.text") == "gpt-4.1-mini")
+
+        settings.textModel = "my-custom-model"
+        #expect(settings.textModel == OpenAIModelCatalog.defaultID(for: .text))
 
         settings.textModel = "   "
         #expect(settings.textModel == OpenAIModelCatalog.defaultID(for: .text))
@@ -56,9 +84,10 @@ struct OpenAIModelSettingsTests {
         #expect(meter.logLine.hasPrefix("[Cost] realtime responses=2"))
     }
 
-    @Test("Temperature is omitted for GPT-5 family models")
+    @Test("Temperature is omitted for GPT-5/6 family models")
     func temperatureSupport() {
         #expect(!OpenAIChatClient.supportsTemperature("gpt-5.6-luna"))
+        #expect(!OpenAIChatClient.supportsTemperature("gpt-6-luna"))
         #expect(OpenAIChatClient.supportsTemperature("gpt-4o-mini"))
     }
 }

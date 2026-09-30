@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  Auto-reconnect for the Realtime WebRTC session
-//  (docs/CHAT_LLM_IMPROVEMENT_PLAN.md §B1). ICE / peer-connection failures,
+//  (docs/CHAT_LLM.md). ICE / peer-connection failures,
 //  a closed data channel and a dead channel on foreground return schedule a
 //  reconnect with exponential backoff; once the new data channel opens the
 //  last few turns are replayed as conversation items so the model keeps the

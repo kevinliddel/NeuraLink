@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  Installs the curated tool grammar once per model load
-//  (docs/CHAT_LLM_IMPROVEMENT_PLAN.md §A1). The grammar is lazy — sampling
+//  (docs/CHAT_LLM.md). The grammar is lazy — sampling
 //  stays free until the model emits `<tool` — so the persona voice is
 //  untouched and there is no per-turn sampler swap.
 //

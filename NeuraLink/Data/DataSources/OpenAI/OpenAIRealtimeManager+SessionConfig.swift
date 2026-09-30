@@ -113,11 +113,7 @@ extension OpenAIRealtimeManager {
                             // while the AI acted correctly; gpt-4o-transcribe is far
                             // better on names/titles. Prompt biases vocabulary; no
                             // `language` pin so JP personas keep auto-detect.
-                            "transcription": [
-                                "model": settings.transcriptionModel,
-                                "prompt": "Casual voice chat with an AI companion. May include "
-                                    + "proper nouns: media/game/anime/song titles, app names, Japanese words."
-                            ],
+                            "transcription": transcriptionConfig(model: settings.transcriptionModel),
                             // Defaults (threshold 0.5, silence 500ms) are
                             // too trigger-happy for speaker-on use: room
                             // noise and echo residue were opening phantom
@@ -152,5 +148,16 @@ extension OpenAIRealtimeManager {
                 "[AI]: Sent initial session.update with \(AppFunctionTool.all.count) tools and instructions: \(finalInstructions.prefix(100))...",
                 level: .info)
         }
+    }
+
+    /// Input-transcription block. The prompt biases vocabulary toward proper
+    /// nouns; models that reject it (gpt-realtime-whisper) get none.
+    func transcriptionConfig(model: String) -> [String: Any] {
+        var config: [String: Any] = ["model": model]
+        if OpenAIModelCatalog.transcriptionSupportsPrompt(model) {
+            config["prompt"] = "Casual voice chat with an AI companion. May include "
+                + "proper nouns: media/game/anime/song titles, app names, Japanese words."
+        }
+        return config
     }
 }

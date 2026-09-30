@@ -2,7 +2,7 @@
 //  CompanionDepthTests.swift
 //  NeuraLinkTests
 //
-//  Follow-up planning/wording and photo-memory helpers (docs/COMPANION_DEPTH_PLAN.md).
+//  Follow-up planning/wording and photo-memory helpers (docs/COMPANION_DEPTH.md).
 //
 
 import Foundation
@@ -47,13 +47,30 @@ struct CompanionDepthTests {
         #expect(FollowUpPlanner.notificationDate(for: planned[0], now: now) == nil)
     }
 
-    @Test("Fallback wording is deterministic and per kind")
+    @Test("Follow-up prompt names the user and personalises the fact")
     func wording() {
         let followUp = FollowUp(unitID: 1, kind: .afterwards, factText: "User ran the Berlin marathon.", date: Date())
-        #expect(FollowUpWording.fallback(followUp) == "How did it go? User ran the Berlin marathon.")
-        let prompt = FollowUpWording.prompt(followUp, character: "sonya")
+        #expect(FollowUpWording.mentionHint(followUp, userName: "Kevin") == "Just happened, ask how it went: Kevin ran the Berlin marathon.")
+        let prompt = FollowUpWording.prompt(followUp, character: "sonya", userName: "Kevin")
         #expect(prompt.system.contains("Sonya"))
-        #expect(prompt.user.contains("Berlin"))
+        #expect(prompt.system.contains("Kevin"))
+        #expect(prompt.user == "FACT: Kevin ran the Berlin marathon.")
+    }
+
+    @Test("Notification copy: personalise facts, reject record-like lines")
+    func notificationCopy() {
+        #expect(CompanionNotificationCopy.personalize("The user's favorite light novel is Overlord.", userName: "Kevin")
+            == "Kevin's favorite light novel is Overlord.")
+        #expect(CompanionNotificationCopy.personalize("User prefers tea.", userName: "") == "User prefers tea.")
+
+        let fact = "The user's favorite light novel is Overlord."
+        #expect(!CompanionNotificationCopy.isConversational(fact, source: fact))
+        #expect(!CompanionNotificationCopy.isConversational("Kevin's favorite light novel is Overlord", source: "Kevin's favorite light novel is Overlord."))
+        #expect(!CompanionNotificationCopy.isConversational("I hope the user enjoyed it!"))
+        #expect(CompanionNotificationCopy.isConversational(
+            "Kevin, still thinking about Ainz? Tell me which volume you're on tonight!", source: fact))
+        #expect(CompanionNotificationCopy.firstLine("\n\"Hey you!\"\nsecond") == "Hey you!")
+        #expect(ReflectionManager.genericInvite(userName: "Kevin").hasPrefix("Kevin, "))
     }
 
     @Test("Photo memory fact is an experience about the user with entities and EXIF date")

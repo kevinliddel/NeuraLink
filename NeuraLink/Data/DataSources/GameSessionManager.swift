@@ -2,8 +2,8 @@
 //  GameSessionManager.swift
 //  NeuraLink
 //
-//  Mini-games state machine — Living Companion Phase 4b
-//  (docs/LIVING_COMPANION_PLAN.md §④). The rules live HERE, not in the
+//  Mini-games state machine — Living Companion
+//  (docs/LIVING_COMPANION.md). The rules live HERE, not in the
 //  model: the manager owns which game is running, the turn count, the
 //  turn-cap wrap-up nudge, and — critically for 20 Questions — the secret
 //  answer. A conversational LLM has no hidden state (everything it "thinks"

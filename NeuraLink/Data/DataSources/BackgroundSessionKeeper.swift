@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  Keeps a voice session alive when the app leaves the foreground
-//  (docs/PRESENCE_BEYOND_APP_PLAN.md §P1). `UIBackgroundModes = audio` lets
+//  (docs/PRESENCE_BEYOND_APP.md). `UIBackgroundModes = audio` lets
 //  the active audio session continue; this type decides whether it should
 //  (opt-in toggle + engine state + battery guards), runs the idle watchdog,
 //  posts the "still listening" notice, and reconnects on foreground return

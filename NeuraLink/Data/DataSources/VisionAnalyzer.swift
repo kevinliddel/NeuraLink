@@ -60,11 +60,17 @@ enum VisionAnalyzer {
                 "image_url": ["url": "data:image/jpeg;base64,\(base64Image)"]
             ]
         ]
-        return [
+        var body: [String: Any] = [
             "model": model,
             "messages": [["role": "user", "content": content]],
             "max_completion_tokens": maxTokens
         ]
+        // Same budget trap as OpenAIChatClient: default-effort reasoning can
+        // spend all 300 tokens before any description is written.
+        if let effort = OpenAIModelCatalog.reasoningEffort(forTextModel: model) {
+            body["reasoning_effort"] = effort
+        }
+        return body
     }
 
     private static func extractContent(from data: Data) -> String {
@@ -75,6 +81,9 @@ enum VisionAnalyzer {
             let content = message["content"] as? String
         else {
             return "Could not parse the vision response."
+        }
+        if let usage = json["usage"] as? [String: Any] {
+            UsageRecorder.record(.chatCompletions(usage: usage, source: .vision, model: model, purpose: "vision"))
         }
         return content
     }

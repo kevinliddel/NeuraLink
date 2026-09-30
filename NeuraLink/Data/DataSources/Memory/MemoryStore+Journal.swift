@@ -22,18 +22,22 @@ extension MemoryStore {
     // MARK: - Journal writes
 
     /// Inserts one reflection row and returns its rowid (or -1 on failure).
+    /// `lastMessageID` is the newest message the reflection covered — the
+    /// watermark `unreflectedUserTurns` counts from.
     func insertJournalEntry(
         character: String,
         conversationID: Int64,
         diary: String,
         opener: String,
-        notificationLine: String
+        notificationLine: String,
+        lastMessageID: Int64 = 0
     ) -> Int64 {
         lock.lock()
         defer { lock.unlock() }
         let query = """
-        INSERT INTO companion_journal (character, conversation_id, diary, opener, notification_line)
-        VALUES (?, ?, ?, ?, ?);
+        INSERT INTO companion_journal
+            (character, conversation_id, diary, opener, notification_line, last_message_id)
+        VALUES (?, ?, ?, ?, ?, ?);
         """
         var statement: OpaquePointer?
         var newID: Int64 = -1
@@ -43,6 +47,7 @@ extension MemoryStore {
             sqlite3_bind_text(statement, 3, (diary as NSString).utf8String, -1, nil)
             sqlite3_bind_text(statement, 4, (opener as NSString).utf8String, -1, nil)
             sqlite3_bind_text(statement, 5, (notificationLine as NSString).utf8String, -1, nil)
+            sqlite3_bind_int64(statement, 6, lastMessageID)
             if sqlite3_step(statement) == SQLITE_DONE {
                 newID = sqlite3_last_insert_rowid(db)
             } else {
@@ -124,21 +129,30 @@ extension MemoryStore {
         fetchJournal(where: "character = ?", bindText: character, limit: 1).first
     }
 
-    /// True when a conversation was already reflected on (dedupe guard).
-    func hasJournalEntry(conversationID: Int64) -> Bool {
+    /// Spoken user turns added since the conversation's latest reflection
+    /// (all of them when it has none) — reflection's ≥N-new-turns guard. A
+    /// session boundary never resets the active conversation, so a plain
+    /// "already reflected" flag would silence a long-lived chat for good.
+    func unreflectedUserTurns(conversationID: Int64) -> Int {
         lock.lock()
         defer { lock.unlock() }
-        let query = "SELECT COUNT(*) FROM companion_journal WHERE conversation_id = ?;"
+        let query = """
+        SELECT COUNT(*) FROM messages
+        WHERE conversation_id = ? AND role = 'user' AND kind = 'message'
+          AND id > (SELECT COALESCE(MAX(last_message_id), 0) FROM companion_journal
+                    WHERE conversation_id = ?);
+        """
         var statement: OpaquePointer?
         var count: Int32 = 0
         if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
             sqlite3_bind_int64(statement, 1, conversationID)
+            sqlite3_bind_int64(statement, 2, conversationID)
             if sqlite3_step(statement) == SQLITE_ROW {
                 count = sqlite3_column_int(statement, 0)
             }
         }
         sqlite3_finalize(statement)
-        return count > 0
+        return Int(count)
     }
 
     private func fetchJournal(where clause: String, bindText: String, limit: Int) -> [JournalEntry] {

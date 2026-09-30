@@ -271,6 +271,7 @@ final class MemoryStore {
             notification_line TEXT NOT NULL DEFAULT '',
             notified INTEGER NOT NULL DEFAULT 0,
             opener_used INTEGER NOT NULL DEFAULT 0,
+            last_message_id INTEGER NOT NULL DEFAULT 0,
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_journal_character ON companion_journal(character, id);
@@ -283,6 +284,20 @@ final class MemoryStore {
             updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_traits_character ON persona_traits(character, weight);
+        CREATE TABLE IF NOT EXISTS api_usage (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at REAL NOT NULL,
+            source TEXT NOT NULL,
+            model TEXT NOT NULL,
+            purpose TEXT NOT NULL DEFAULT '',
+            input_tokens INTEGER NOT NULL DEFAULT 0,
+            output_tokens INTEGER NOT NULL DEFAULT 0,
+            cached_input_tokens INTEGER NOT NULL DEFAULT 0,
+            audio_input_tokens INTEGER NOT NULL DEFAULT 0,
+            audio_output_tokens INTEGER NOT NULL DEFAULT 0,
+            audio_seconds REAL NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_api_usage_time ON api_usage(created_at);
         """
 
         // Enforce ON DELETE CASCADE for messages when a conversation is
@@ -308,6 +323,22 @@ final class MemoryStore {
             _ = sqlite3_exec(
                 db,
                 "ALTER TABLE memories ADD COLUMN pinned INTEGER DEFAULT 0;",
+                nil, nil, nil
+            )
+        }
+        // Reflection watermark: the newest message a journal entry covered,
+        // so a long-lived conversation is reflected on again once it grows.
+        // Backfilled to each conversation's current tail — upgrading must
+        // not re-reflect everything already written up.
+        if !columnExists(table: "companion_journal", column: "last_message_id") {
+            _ = sqlite3_exec(
+                db,
+                """
+                ALTER TABLE companion_journal ADD COLUMN last_message_id INTEGER NOT NULL DEFAULT 0;
+                UPDATE companion_journal SET last_message_id = (
+                    SELECT COALESCE(MAX(id), 0) FROM messages
+                    WHERE messages.conversation_id = companion_journal.conversation_id);
+                """,
                 nil, nil, nil
             )
         }

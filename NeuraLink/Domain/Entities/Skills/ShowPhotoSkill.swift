@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  `show_photo` tool — opens the photo picker so the user can show the
-//  companion a picture (docs/COMPANION_DEPTH_PLAN.md §D2).
+//  companion a picture (docs/COMPANION_DEPTH.md).
 //
 
 import Foundation

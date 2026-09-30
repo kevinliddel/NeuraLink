@@ -3,7 +3,7 @@
 //  NeuraLinkTests
 //
 //  Pure-logic tests for the Realtime auto-reconnect
-//  (docs/CHAT_LLM_IMPROVEMENT_PLAN.md §B1): backoff schedule and the
+//  (docs/CHAT_LLM.md): backoff schedule and the
 //  context replay events sent after a reconnect.
 //
 

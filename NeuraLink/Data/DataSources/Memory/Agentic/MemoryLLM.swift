@@ -48,7 +48,7 @@ struct LiveMemoryLLM: MemoryLLM {
         switch tier {
         case .cloud:
             return await OpenAIChatClient.complete(
-                system: system, user: user, maxTokens: maxTokens, temperature: 0.2)
+                system: system, user: user, maxTokens: maxTokens, temperature: 0.2, purpose: "memory")
         case .local:
             let text = await LocalLLMManager.shared.runSilentGeneration(
                 prompt: "\(system)\n\n\(user)", maxTokens: maxTokens)

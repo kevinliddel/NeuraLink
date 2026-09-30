@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  Starts, updates and ends the session Live Activity
-//  (docs/PRESENCE_BEYOND_APP_PLAN.md §P2). Driven by `RealtimeChatState`
+//  (docs/PRESENCE_BEYOND_APP.md). Driven by `RealtimeChatState`
 //  changes; only runs while "Keep talking in background" is on, because
 //  that is the only case where the session exists while the app is hidden.
 //  Updates are debounced to respect the activity budget.

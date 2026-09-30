@@ -32,7 +32,7 @@ struct MemoryRecallQuery {
     var bank: String?
 }
 
-/// Bank policy (docs/CHAT_LLM_IMPROVEMENT_PLAN.md §C4): facts about the user
+/// Bank policy (docs/CHAT_LLM.md): facts about the user
 /// are shared (""), while what a character did, believes or said lives in
 /// that character's bank.
 enum MemoryBanks {

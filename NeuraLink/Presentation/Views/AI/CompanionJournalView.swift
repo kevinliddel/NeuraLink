@@ -2,8 +2,8 @@
 //  CompanionJournalView.swift
 //  NeuraLink
 //
-//  The companion's journal — Living Companion Phase 2
-//  (docs/LIVING_COMPANION_PLAN.md §⑤). Everything the character "remembers
+//  The companion's journal — Living Companion
+//  (docs/LIVING_COMPANION.md). Everything the character "remembers
 //  and becomes" is visible and deletable here (trust + App Store safety):
 //  the relationship stage, distilled personality traits, and the diary the
 //  reflection pipeline writes after each session. Opened by tapping the

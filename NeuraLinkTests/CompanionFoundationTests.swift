@@ -2,7 +2,7 @@
 //  CompanionFoundationTests.swift
 //  NeuraLinkTests
 //
-//  Living Companion Phase 0: companion_journal / persona_traits CRUD and
+//  Living Companion: companion_journal / persona_traits CRUD and
 //  InteractionClock. Shares the app-host MemoryStore singleton like
 //  ImportedCharacterStoreTests — each test uses its own character namespace
 //  and cleans up after itself.
@@ -92,17 +92,35 @@ struct CompanionFoundationTests {
         #expect(MemoryStore.shared.latestJournalEntry(character: character) != nil)
     }
 
-    @Test("hasJournalEntry dedupes by conversation")
-    func reflectionDedupe() {
-        let character = "test_journal_dedupe"
+    @Test("A reflected conversation is reflected again only after new user turns")
+    func reflectionWatermark() {
+        let character = "test_journal_watermark"
         cleanup(character)
-        defer { cleanup(character) }
+        let convID = MemoryStore.shared.insertConversation(title: "test_journal_watermark")
+        #expect(convID > 0)
+        defer {
+            cleanup(character)
+            MemoryStore.shared.deleteConversation(id: convID)
+        }
+        func say(_ count: Int) {
+            for turn in 0..<count {
+                MemoryStore.shared.insertMessage(conversationID: convID, role: "user", kind: "message", content: "u\(turn)")
+                MemoryStore.shared.insertMessage(conversationID: convID, role: "assistant", kind: "message", content: "a\(turn)")
+            }
+        }
 
-        #expect(!MemoryStore.shared.hasJournalEntry(conversationID: 424_242))
+        say(4)
+        #expect(MemoryStore.shared.unreflectedUserTurns(conversationID: convID) == 4)
+
+        let tail = MemoryStore.shared.fetchMessages(conversationID: convID).map(\.id).max() ?? 0
         _ = MemoryStore.shared.insertJournalEntry(
-            character: character, conversationID: 424_242,
-            diary: "d", opener: "o", notificationLine: "n")
-        #expect(MemoryStore.shared.hasJournalEntry(conversationID: 424_242))
+            character: character, conversationID: convID,
+            diary: "d", opener: "o", notificationLine: "n", lastMessageID: tail)
+        #expect(MemoryStore.shared.unreflectedUserTurns(conversationID: convID) == 0)
+
+        // Same conversation keeps going after the app comes back.
+        say(ReflectionManager.minUserTurns)
+        #expect(MemoryStore.shared.unreflectedUserTurns(conversationID: convID) == ReflectionManager.minUserTurns)
     }
 
     // MARK: - Traits

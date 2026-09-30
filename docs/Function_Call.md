@@ -302,5 +302,5 @@ bypassed while a grammar is active.
 Opens the photo picker so the user can show the companion a picture. The
 image is described once by the configured text model (vision-capable), the
 companion reacts, and the moment is remembered as a dated experience with a
-small on-device thumbnail (docs/COMPANION_DEPTH_PLAN.md §D2).
+small on-device thumbnail (docs/COMPANION_DEPTH.md).
 

@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  User-owned export of everything the companion remembers
-//  (docs/MEMORY_OWNERSHIP_PLAN.md §M2): facts, memories, observations,
+//  (docs/MEMORY_OWNERSHIP.md): facts, memories, observations,
 //  mental models, journal and — optionally — conversations, as one JSON
 //  file handed to the share sheet. Vectors are left out (large,
 //  model-specific, meaningless outside the app).

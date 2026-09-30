@@ -2,8 +2,8 @@
 //  ProactivePresenceManager.swift
 //  NeuraLink
 //
-//  Time-based proactive engagement — Living Companion Phase 3
-//  (docs/LIVING_COMPANION_PLAN.md §⑥). The companion speaks first:
+//  Time-based proactive engagement — Living Companion
+//  (docs/LIVING_COMPANION.md). The companion speaks first:
 //    • Trigger A — absence greeting: back after ≥ N hours → greet, delivering
 //      the opener the reflection pipeline saved (Phase 1's payoff); falls
 //      back to a generic warm greeting when no opener exists.

@@ -2,7 +2,7 @@
 //  ReflectionTests.swift
 //  NeuraLinkTests
 //
-//  Living Companion Phase 1: the reflection output parser, quiet-hours
+//  Living Companion: the reflection output parser, quiet-hours
 //  notification clamp, transcript shaping, and the user-turn guard query.
 //
 

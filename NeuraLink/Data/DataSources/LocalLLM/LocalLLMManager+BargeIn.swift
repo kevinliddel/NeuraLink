@@ -2,7 +2,7 @@
 //  LocalLLMManager+BargeIn.swift
 //  NeuraLink
 //
-//  Barge-in for the local path (docs/CHAT_LLM_IMPROVEMENT_PLAN.md §A2).
+//  Barge-in for the local path (docs/CHAT_LLM.md).
 //  While the assistant speaks, mic frames now reach Silero; a voice-start
 //  event becomes an interruption only when, over a short confirmation
 //  window, the mic energy clearly exceeds the playback energy (echo of our

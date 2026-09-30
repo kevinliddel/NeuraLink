@@ -48,7 +48,6 @@ final class RealtimeChatState {
     var selectedCharacterName: String = ""
     /// Token usage of the live Realtime session and of the last one that ended.
     var sessionUsage = RealtimeUsageMeter()
-    var lastSessionUsage = RealtimeUsageMeter()
     var currentEmotion: String = "neutral"
     var emotionDuration: Float = 0
     private var lastParsedIndex: Int = 0

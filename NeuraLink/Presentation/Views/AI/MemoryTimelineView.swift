@@ -21,7 +21,7 @@ struct MemoryTimelineView: View {
     @State private var showExport = false
     @State private var recap: MentalModel?
 
-    private let collapsedLimit = 5
+    private let collapsedLimit = 3
 
     private var characterName: String {
         let name = RealtimeChatState.shared.selectedCharacterName

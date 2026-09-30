@@ -2,8 +2,8 @@
 //  SessionLifecycle.swift
 //  NeuraLink
 //
-//  Marks chat-session boundaries — Living Companion Phase 0
-//  (docs/LIVING_COMPANION_PLAN.md §0.1). The app previously had no lifecycle
+//  Marks chat-session boundaries — Living Companion
+//  (docs/LIVING_COMPANION.md). The app previously had no lifecycle
 //  seam at all: ConversationStore only knows `startNewChat()`, and nothing
 //  observed backgrounding except the Metal render-loop pause.
 //

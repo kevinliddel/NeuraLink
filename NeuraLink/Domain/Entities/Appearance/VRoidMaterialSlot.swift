@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  The stable "slot vocabulary" every VRoid Studio export carries in its
-//  material names (docs/CHARACTER_CUSTOMIZATION_PLAN.md). The numeric prefix
+//  material names (docs/CHARACTER_CUSTOMIZATION.md). The numeric prefix
 //  varies between VRoid generations (`N00_000_00_` in 2.x, `F00_`/`M00_` in
 //  1.x) and every name ends in a Unity " (Instance)" suffix, but the part
 //  tokens (`Face`, `Body`, `EyeIris`, `Tops`, …) do not change. Classifying by

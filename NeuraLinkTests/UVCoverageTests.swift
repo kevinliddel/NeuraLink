@@ -6,7 +6,7 @@
 //  may only be applied when it paints every atlas cell the target slot
 //  samples. Pure-function tests on the mask, plus a real-model pin: Sonya's
 //  face/eye-white/mouth textures cover Ekaterina's UVs (the VRoid atlas is
-//  shared — Phase 0 finding in docs/CHARACTER_CUSTOMIZATION_PLAN.md).
+//  shared — Phase 0 finding in docs/CHARACTER_CUSTOMIZATION.md).
 //
 
 import Testing

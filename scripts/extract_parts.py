@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Cut VRoid VRM/GLB models into standalone part files for the customization
-parts library (docs/CHARACTER_CUSTOMIZATION_PLAN.md).
+parts library (docs/CHARACTER_CUSTOMIZATION.md).
 
 For every input model it writes up to three minimal VRMs next to each other:
 

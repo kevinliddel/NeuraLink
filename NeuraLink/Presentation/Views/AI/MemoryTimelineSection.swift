@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  Dated facts on a month timeline with an "On this day" row
-//  (docs/MEMORY_OWNERSHIP_PLAN.md §M3). Hidden until enough dated units exist.
+//  (docs/MEMORY_OWNERSHIP.md). Hidden until enough dated units exist.
 //
 
 import SwiftUI

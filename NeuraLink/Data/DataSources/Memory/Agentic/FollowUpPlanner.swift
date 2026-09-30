@@ -83,27 +83,36 @@ nonisolated enum FollowUpPlanner {
 }
 
 nonisolated enum FollowUpWording {
-    /// Offline / no-LLM wording. `fact` is third person about the user.
-    static func fallback(_ followUp: FollowUp) -> String {
-        let fact = followUp.factText.trimmingCharacters(in: .whitespacesAndNewlines)
+    /// Session-prompt line when no LLM wording exists. It goes to the model
+    /// as a hint, never to a notification — raw facts read like records.
+    static func mentionHint(_ followUp: FollowUp, userName: String) -> String {
+        let fact = CompanionNotificationCopy.personalize(
+            followUp.factText.trimmingCharacters(in: .whitespacesAndNewlines), userName: userName)
         switch followUp.kind {
-        case .today: return "Today's the day — \(fact)"
+        case .today: return "Happening today: \(fact)"
         case .upcoming: return "Coming up soon: \(fact)"
-        case .afterwards: return "How did it go? \(fact)"
+        case .afterwards: return "Just happened, ask how it went: \(fact)"
         }
     }
 
-    static func prompt(_ followUp: FollowUp, character: String) -> (system: String, user: String) {
+    static func prompt(_ followUp: FollowUp, character: String, userName: String) -> (system: String, user: String) {
         let name = character.isEmpty ? "the user's AI companion" : character.capitalized
+        let user = userName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let recipient = user.isEmpty ? "them" : user
         let intent: String
         switch followUp.kind {
-        case .today: intent = "it is happening today"
-        case .upcoming: intent = "it is coming up in a day or two"
-        case .afterwards: intent = "it just happened; ask how it went"
+        case .today: intent = "it is happening today — cheer them on"
+        case .upcoming: intent = "it is coming up in a day or two — show you remembered"
+        case .afterwards: intent = "it just happened — ask how it went"
         }
-        let system = "You are \(name). Write ONE short, warm spoken sentence to the user (second person) about the fact below, "
-            + "given that \(intent). No preamble, no quotes, no emoji."
-        return (system, "FACT: \(followUp.factText)")
+        let system = """
+            You are \(name), sending \(user.isEmpty ? "your user" : user) a short phone notification. \
+            Using the fact below, write one or two short, warm, conversational sentences (25 words max) \
+            addressed directly to \(recipient), in your own voice, given that \(intent). \
+            Talk like a friend would — do not restate the fact, never say "the user", \
+            no preamble, no quotes, no emoji.
+            """
+        return (system, "FACT: \(CompanionNotificationCopy.personalize(followUp.factText, userName: user))")
     }
 }
 
@@ -153,16 +162,18 @@ final class FollowUpCoordinator {
             units: candidates(now: now), fired: store.firedFollowUps(), muted: store.mutedFollowUpUnits(), now: now)
         guard !planned.isEmpty else { return }
 
+        let userName = UserSettings.shared.name
         var notified = Self.notifiedToday(now: now)
         for followUp in planned {
-            let text = await wording(for: followUp, character: character)
+            let text = await wording(for: followUp, character: character, userName: userName)
             // In-conversation mention (today and upcoming), capped.
             if followUp.kind != .afterwards || pendingMentions.isEmpty, pendingMentions.count < Self.mentionLimit {
                 pendingMentions.append(followUp)
-                mentionTexts[followUp.id] = text
+                mentionTexts[followUp.id] = text ?? FollowUpWording.mentionHint(followUp, userName: userName)
             }
-            // At most one notification per day.
-            if !notified, PresenceSettings.shared.isNotificationsEnabled,
+            // At most one notification per day, and only with real wording —
+            // no LLM line means no notification rather than a raw fact.
+            if !notified, PresenceSettings.shared.isNotificationsEnabled, let text,
                let fireAt = FollowUpPlanner.notificationDate(for: followUp, now: now) {
                 let scheduled = await CompanionNotificationScheduler.scheduleFollowUp(
                     characterName: character, body: text, unitID: followUp.unitID, fireAt: fireAt)
@@ -185,15 +196,19 @@ final class FollowUpCoordinator {
         mentionTexts.removeAll()
     }
 
-    private func wording(for followUp: FollowUp, character: String) async -> String {
-        guard llm.tier != .none else { return FollowUpWording.fallback(followUp) }
-        let prompt = FollowUpWording.prompt(followUp, character: character)
-        guard let raw = await llm.complete(system: prompt.system, user: prompt.user, maxTokens: Self.maxTokens) else {
-            return FollowUpWording.fallback(followUp)
+    /// A conversational line written from the fact, or nil when no LLM is
+    /// available or its reply leaks record phrasing / echoes the fact.
+    private func wording(for followUp: FollowUp, character: String, userName: String) async -> String? {
+        guard llm.tier != .none else { return nil }
+        let prompt = FollowUpWording.prompt(followUp, character: character, userName: userName)
+        guard let raw = await llm.complete(system: prompt.system, user: prompt.user, maxTokens: Self.maxTokens)
+        else { return nil }
+        let line = CompanionNotificationCopy.firstLine(raw)
+        guard CompanionNotificationCopy.isConversational(line, source: followUp.factText) else {
+            nlLogSensitive("[FollowUp] rejected wording: \(line)", level: .info)
+            return nil
         }
-        let line = raw.split(whereSeparator: \.isNewline).first.map(String.init)?
-            .trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: "\""))) ?? ""
-        return (8...200).contains(line.count) ? line : FollowUpWording.fallback(followUp)
+        return line
     }
 
     private static func notifiedToday(now: Date) -> Bool {

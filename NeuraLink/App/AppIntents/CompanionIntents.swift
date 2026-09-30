@@ -2,7 +2,7 @@
 //  CompanionIntents.swift
 //  NeuraLink
 //
-//  Siri + App Shortcuts (docs/PRESENCE_BEYOND_APP_PLAN.md §P4): start a
+//  Siri + App Shortcuts (docs/PRESENCE_BEYOND_APP.md): start a
 //  conversation with a character, ask the companion's memory a question
 //  without opening the app, and store a fact by voice. Lives in the app
 //  target — no extension needed.

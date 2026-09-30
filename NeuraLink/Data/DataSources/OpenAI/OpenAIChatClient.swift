@@ -2,8 +2,8 @@
 //  OpenAIChatClient.swift
 //  NeuraLink
 //
-//  One-shot Chat Completions client — Living Companion Phase 0
-//  (docs/LIVING_COMPANION_PLAN.md §0.4). Consolidates the hand-rolled
+//  One-shot Chat Completions client — Living Companion
+//  (docs/LIVING_COMPANION.md). Consolidates the hand-rolled
 //  URLRequest copies (ConversationTitler, VisionAnalyzer, TTS callers) so
 //  background text calls (titling, reflection) share one implementation.
 //  The Realtime/WebRTC voice path is separate and unaffected.
@@ -22,10 +22,11 @@ enum OpenAIChatClient {
     /// AI Settings → Models; this is the catalog default.
     nonisolated static let defaultModel = OpenAIModelCatalog.defaultID(for: .text)
 
-    /// GPT-5-family models reject a non-default `temperature`; older models
-    /// accept it. Everything current accepts `max_completion_tokens`.
+    /// GPT-5/6 reasoning models reject a non-default `temperature`; older
+    /// models accept it. Everything current accepts `max_completion_tokens`.
     nonisolated static func supportsTemperature(_ model: String) -> Bool {
-        !model.lowercased().hasPrefix("gpt-5")
+        let id = model.lowercased()
+        return !id.hasPrefix("gpt-5") && !id.hasPrefix("gpt-6")
     }
 
     /// Sends one system+user exchange and returns the assistant's text, or
@@ -36,7 +37,8 @@ enum OpenAIChatClient {
         user: String,
         model explicitModel: String? = nil,
         maxTokens: Int,
-        temperature: Double = 0.3
+        temperature: Double = 0.3,
+        purpose: String = "background"
     ) async -> String? {
         let key = OpenAISettings.shared.apiKey
         let model = explicitModel ?? OpenAISettings.shared.textModel
@@ -54,6 +56,9 @@ enum OpenAIChatClient {
             ],
             "max_completion_tokens": maxTokens
         ]
+        if let effort = OpenAIModelCatalog.reasoningEffort(forTextModel: model) {
+            body["reasoning_effort"] = effort
+        }
         if supportsTemperature(model) { body["temperature"] = temperature }
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
@@ -73,9 +78,9 @@ enum OpenAIChatClient {
             let content = message["content"] as? String
         else { return nil }
         if let usage = json["usage"] as? [String: Any] {
-            let prompt = usage["prompt_tokens"] as? Int ?? 0
-            let completion = usage["completion_tokens"] as? Int ?? 0
-            nlLog("[Cost] text model=\(model) in=\(prompt) out=\(completion)", level: .info)
+            let record = UsageRecord.chatCompletions(usage: usage, source: .text, model: model, purpose: purpose)
+            nlLog("[Cost] text model=\(model) in=\(record.inputTokens) out=\(record.outputTokens)", level: .info)
+            UsageRecorder.record(record)
         }
         return content
     }

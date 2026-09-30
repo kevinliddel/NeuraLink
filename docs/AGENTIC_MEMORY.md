@@ -216,7 +216,7 @@ Two standing questions: a global **user profile** and a per-character **relation
 ### Weekly recap, export and timeline
 
 Three user-facing surfaces on top of the memory layer
-(docs/MEMORY_OWNERSHIP_PLAN.md): a **weekly recap** standing question
+(docs/MEMORY_OWNERSHIP.md): a **weekly recap** standing question
 (`weekly_recap`, refreshed when the ISO week changes, shown as a card with
 an "Ask about it" follow-up and injected as "This week" in the prompt block),
 a **JSON export** of everything remembered (`MemoryExporter`, vectors

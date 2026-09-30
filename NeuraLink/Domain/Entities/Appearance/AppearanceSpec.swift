@@ -2,7 +2,7 @@
 //  AppearanceSpec.swift
 //  NeuraLink
 //
-//  Per-character saved look (Tier A of docs/CHARACTER_CUSTOMIZATION_PLAN.md).
+//  Per-character saved look (Tier A of docs/CHARACTER_CUSTOMIZATION.md).
 //  Stored as JSON in the `character_appearance` table and re-applied by
 //  AppearanceApplier after every model load. Everything here is a
 //  non-destructive overlay on the VRM: nothing is written back to the model

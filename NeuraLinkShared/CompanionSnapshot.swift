@@ -4,7 +4,7 @@
 //
 //  The only companion data that leaves the protected sandbox: a small JSON
 //  snapshot in the App Group container that widgets and Live Activities
-//  read (docs/PRESENCE_BEYOND_APP_PLAN.md §P3). Deliberately holds no
+//  read (docs/PRESENCE_BEYOND_APP.md). Deliberately holds no
 //  transcript, facts or observations beyond one hand-picked line.
 //  Compiled into both targets, so Foundation only and explicitly
 //  nonisolated.

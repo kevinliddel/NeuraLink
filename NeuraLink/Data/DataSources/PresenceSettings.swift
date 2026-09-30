@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  Toggles for the Living Companion presence features (Phase 1,
-//  docs/LIVING_COMPANION_PLAN.md). Engine-agnostic, so they live outside
+//  docs/LIVING_COMPANION.md). Engine-agnostic, so they live outside
 //  OpenAISettings — but they follow its storage idiom exactly: explicit
 //  `_x` backing + `access`/`withMutation`, NEVER `didSet` (under
 //  SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor + @Observable, `didSet` fires
@@ -52,7 +52,7 @@ final class PresenceSettings {
         _followUpsEnabled = defaults.object(forKey: Self.followUpsKey) as? Bool ?? true
     }
 
-    /// Character-initiated follow-ups on dated plans (docs/COMPANION_DEPTH_PLAN.md §D1).
+    /// Character-initiated follow-ups on dated plans (docs/COMPANION_DEPTH.md).
     var followUpsEnabled: Bool {
         get {
             access(keyPath: \.followUpsEnabled)
@@ -83,7 +83,7 @@ final class PresenceSettings {
     }
 
     /// Keep an active voice session running with the screen off / in other
-    /// apps (docs/PRESENCE_BEYOND_APP_PLAN.md §P1). Opt-in: the mic stays on.
+    /// apps (docs/PRESENCE_BEYOND_APP.md). Opt-in: the mic stays on.
     var keepTalkingInBackground: Bool {
         get {
             access(keyPath: \.keepTalkingInBackground)

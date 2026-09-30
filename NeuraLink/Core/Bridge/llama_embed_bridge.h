@@ -2,7 +2,7 @@
 //  llama_embed_bridge.h
 //  NeuraLink
 //
-//  Pure-C API for sentence embeddings via llama.cpp (docs/CHAT_LLM_IMPROVEMENT_PLAN.md §C2).
+//  Pure-C API for sentence embeddings via llama.cpp (docs/CHAT_LLM.md).
 //  A separate, tiny context from the chat model: encoder-style GGUF (e5 / bge / gemma
 //  embedding) with mean pooling, returning L2-normalised vectors.
 //

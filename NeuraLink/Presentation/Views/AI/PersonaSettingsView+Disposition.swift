@@ -4,7 +4,7 @@
 //
 //  "Memory personality" section for a character: the Hindsight-style
 //  disposition traits that steer consolidation, mental models and reflect
-//  (docs/CHAT_LLM_IMPROVEMENT_PLAN.md §C4). Kept in its own file because
+//  (docs/CHAT_LLM.md). Kept in its own file because
 //  PersonaSettingsView sits at the file-length limit.
 //
 

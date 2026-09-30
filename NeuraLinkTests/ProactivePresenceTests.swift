@@ -2,7 +2,7 @@
 //  ProactivePresenceTests.swift
 //  NeuraLinkTests
 //
-//  Living Companion Phase 3: the proactive-engagement pure helpers —
+//  Living Companion: the proactive-engagement pure helpers —
 //  backoff math, time-of-day buckets, event builders, dedupe normalization.
 //  (The loop itself is a thin shell over these; timing is device territory.)
 //

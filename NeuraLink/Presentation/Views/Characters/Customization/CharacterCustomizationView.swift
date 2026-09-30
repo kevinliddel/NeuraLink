@@ -2,7 +2,7 @@
 //  CharacterCustomizationView.swift
 //  NeuraLink
 //
-//  Customization sheet (docs/CHARACTER_CUSTOMIZATION_PLAN.md). Sits over
+//  Customization sheet (docs/CHARACTER_CUSTOMIZATION.md). Sits over
 //  the live scene — the renderer *is* the preview — and reads like a
 //  character-creator catalogue: a category rail, a grid of picture tiles
 //  for the parts on offer, and colour underneath. Hair, Outfit and the

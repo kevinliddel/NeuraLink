@@ -2,7 +2,7 @@
 //  PhotoMemoryService.swift
 //  NeuraLink
 //
-//  Photo memories (docs/COMPANION_DEPTH_PLAN.md §D2): the user shows a
+//  Photo memories (docs/COMPANION_DEPTH.md): the user shows a
 //  photo, the vision model describes it once, the companion reacts, and an
 //  `experience` unit with a small on-device thumbnail is remembered. The
 //  photo itself is never copied.

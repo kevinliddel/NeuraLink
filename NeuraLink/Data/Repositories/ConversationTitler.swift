@@ -67,7 +67,8 @@ final class ConversationTitler: @unchecked Sendable {
         guard let content = await OpenAIChatClient.complete(
             system: systemInstruction,
             user: transcript,
-            maxTokens: 16)
+            maxTokens: 16,
+            purpose: "title")
         else { return nil }
         return clean(content)
     }

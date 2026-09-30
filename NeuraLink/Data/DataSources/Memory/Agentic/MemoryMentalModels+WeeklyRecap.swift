@@ -2,7 +2,7 @@
 //  MemoryMentalModels+WeeklyRecap.swift
 //  NeuraLink
 //
-//  The weekly recap standing question (docs/MEMORY_OWNERSHIP_PLAN.md §M1):
+//  The weekly recap standing question (docs/MEMORY_OWNERSHIP.md):
 //  a per-character summary of the last seven days built from dated facts,
 //  observations and journal entries, refreshed when the ISO week changes
 //  or new memories arrive, and surfaced as a card in the Memory page with

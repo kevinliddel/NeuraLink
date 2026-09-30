@@ -170,8 +170,8 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
         nlLog("[LocalLLM] Full AI response: \(fullText)", level: .debug)
 
         // Local tool calls are grammar-constrained to the curated set in
-        // `ToolGrammarBuilder.localToolNames` (docs/CHAT_LLM_IMPROVEMENT_PLAN.md
-        // §A1), so the JSON parses; anything outside that set is ignored and
+        // `ToolGrammarBuilder.localToolNames` (docs/CHAT_LLM.md), so the JSON
+        // parses; anything outside that set is ignored and
         // stripped from the transcript by `strippedText` below. Emotion stays
         // separate ([emotion:n] tags via tagBuffer).
         if let tool = LocalToolCallParser.firstToolCall(in: fullText),

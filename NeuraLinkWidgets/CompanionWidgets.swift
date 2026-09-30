@@ -3,7 +3,7 @@
 //  NeuraLinkWidgets
 //
 //  Home-screen and lock-screen widgets fed by the App Group snapshot
-//  (docs/PRESENCE_BEYOND_APP_PLAN.md §P3). No database access, no network;
+//  (docs/PRESENCE_BEYOND_APP.md). No database access, no network;
 //  everything comes from `CompanionSnapshotStore.load()`.
 //
 

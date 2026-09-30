@@ -5,7 +5,7 @@
 //  Turns the curated local tool set into (a) a GBNF grammar that constrains
 //  sampling once the model starts a `<tool` tag and (b) the one-line-per-tool
 //  prompt block, so prompt and grammar can never disagree
-//  (docs/CHAT_LLM_IMPROVEMENT_PLAN.md §A1). Supported property types:
+//  (docs/CHAT_LLM.md). Supported property types:
 //  string, string+enum, number, integer, boolean. Required keys in schema
 //  order; optional keys allowed after them.
 //

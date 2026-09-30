@@ -3,7 +3,7 @@
 //  NeuraLink (app + NeuraLinkWidgets)
 //
 //  Live Activity payload for an active voice session
-//  (docs/PRESENCE_BEYOND_APP_PLAN.md §P2). Static: who; dynamic: what the
+//  (docs/PRESENCE_BEYOND_APP.md). Static: who; dynamic: what the
 //  session is doing and the last line said. Compiled into both targets.
 //
 //  Created by Dedicatus on 27/09/2026.

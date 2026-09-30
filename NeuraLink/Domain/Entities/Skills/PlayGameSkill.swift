@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  Play a quick game together (20 Questions, Trivia, Word Chain) — Living
-//  Companion Phase 4b. The skill is a thin gate onto GameSessionManager,
+//  Companion. The skill is a thin gate onto GameSessionManager,
 //  which owns the rules, the turn count, and (for 20 Questions) the secret.
 //
 //  Created by Dedicatus on 09/09/2026.

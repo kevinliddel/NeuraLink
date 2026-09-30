@@ -212,7 +212,7 @@ struct ContentView: View {
                 }
             }
             .animation(.easeInOut(duration: 0.8), value: envLoad.isReady)
-            // Photo memories (docs/COMPANION_DEPTH_PLAN.md §D2): the picker
+            // Photo memories (docs/COMPANION_DEPTH.md): the picker
             // opens from the FAB or the `show_photo` tool.
             .photosPicker(isPresented: $showPhotoPicker, selection: $pickedPhoto, matching: .images)
             .onChange(of: pickedPhoto) { _, item in

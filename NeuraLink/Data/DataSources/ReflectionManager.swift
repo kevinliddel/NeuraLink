@@ -2,8 +2,8 @@
 //  ReflectionManager.swift
 //  NeuraLink
 //
-//  End-of-session reflection — Living Companion Phase 1
-//  (docs/LIVING_COMPANION_PLAN.md). When a session boundary fires
+//  End-of-session reflection — Living Companion
+//  (docs/LIVING_COMPANION.md). When a session boundary fires
 //  (SessionLifecycle), the companion "thinks about" the conversation: one
 //  silent LLM pass produces a first-person diary entry, an opener for next
 //  time, and a push-notification line — stored in `companion_journal` and
@@ -23,7 +23,7 @@ import UIKit
 final class ReflectionManager: @unchecked Sendable {
     static let shared = ReflectionManager()
 
-    /// Conversations shorter than this aren't worth a diary entry.
+    /// New user turns (since the last reflection) worth a diary entry.
     static let minUserTurns = 4
     /// Last N spoken turns fed to the reflection prompt.
     private static let transcriptTurns = 16
@@ -95,8 +95,10 @@ final class ReflectionManager: @unchecked Sendable {
     @MainActor
     func reflect(on conversationID: Int64) {
         guard PresenceSettings.shared.isPresenceEnabled else { return }
-        guard !MemoryStore.shared.hasJournalEntry(conversationID: conversationID) else { return }
-        guard MemoryStore.shared.userMessageCount(conversationID: conversationID) >= Self.minUserTurns
+        // New turns since the last reflection, not "ever reflected": the
+        // active conversation survives backgrounding, so a once-only guard
+        // meant one diary entry (and one notification) per chat, ever.
+        guard MemoryStore.shared.unreflectedUserTurns(conversationID: conversationID) >= Self.minUserTurns
         else { return }
 
         lock.lock()
@@ -137,8 +139,7 @@ final class ReflectionManager: @unchecked Sendable {
             for convo in ConversationStore.shared.conversations().prefix(5)
             where convo.id != active {
                 guard Date().timeIntervalSince(convo.updatedAt) < Self.catchUpWindow,
-                    !MemoryStore.shared.hasJournalEntry(conversationID: convo.id),
-                    MemoryStore.shared.userMessageCount(conversationID: convo.id) >= Self.minUserTurns
+                    MemoryStore.shared.unreflectedUserTurns(conversationID: convo.id) >= Self.minUserTurns
                 else { continue }
                 nlLog("[Reflection] Launch catch-up for conversation \(convo.id)", level: .info)
                 reflect(on: convo.id)
@@ -166,7 +167,8 @@ final class ReflectionManager: @unchecked Sendable {
             conversationID: conversationID,
             diary: reflection.diary,
             opener: reflection.opener,
-            notificationLine: reflection.notificationLine
+            notificationLine: reflection.notificationLine,
+            lastMessageID: messages.map(\.id).max() ?? 0
         )
         guard journalID > 0 else { return }
         nlLogSensitive("[Reflection] \(character) diary: \(reflection.diary)", level: .info)
@@ -175,11 +177,12 @@ final class ReflectionManager: @unchecked Sendable {
         recordTrait(character: character, trait: reflection.trait)
 
         if PresenceSettings.shared.isNotificationsEnabled {
-            // Small local models sometimes omit the NOTIFY line — a generic
-            // invite beats silently skipping the notification.
-            let body = reflection.notificationLine.isEmpty
-                ? "I've been thinking about our last conversation…"
-                : reflection.notificationLine
+            // Small local models sometimes omit the NOTIFY line or write it
+            // like a record ("The user …") — a warm generic invite beats both.
+            let line = reflection.notificationLine
+            let body = CompanionNotificationCopy.isConversational(line)
+                ? line
+                : genericInvite(userName: UserSettings.shared.name)
             let scheduled = await CompanionNotificationScheduler.schedule(
                 characterName: character, body: body)
             if scheduled {
@@ -189,31 +192,44 @@ final class ReflectionManager: @unchecked Sendable {
         }
     }
 
+    static func genericInvite(userName: String) -> String {
+        let name = userName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty
+            ? "I've been thinking about our last conversation…"
+            : "\(name), I've been thinking about our last conversation…"
+    }
+
     private static func generate(transcript: String, character: String) async -> String? {
         let openAI = OpenAISettings.shared
+        let userName = UserSettings.shared.name
         if openAI.isEnabled && openAI.hasValidKey {
             return await OpenAIChatClient.complete(
-                system: systemInstruction(character: character),
+                system: systemInstruction(character: character, userName: userName),
                 user: transcript,
                 maxTokens: maxTokens,
-                temperature: 0.6)
+                temperature: 0.6,
+                purpose: "reflection")
         }
         guard LocalLLMManager.shared.llmEngine.isLoaded else { return nil }
         return await LocalLLMManager.shared.runSilentGeneration(
-            prompt: localPrompt(transcript: transcript, character: character),
+            prompt: localPrompt(transcript: transcript, character: character, userName: userName),
             maxTokens: maxTokens)
     }
 
     // MARK: - Prompts
 
-    static func systemInstruction(character: String) -> String {
+    static func systemInstruction(character: String, userName: String = "") -> String {
         let name = character.isEmpty ? "the user's AI companion" : character.capitalized
+        let user = userName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let who = user.isEmpty ? "your user" : user
         return """
-        You are \(name), privately reflecting on a conversation you just had with your user. \
+        You are \(name), privately reflecting on a conversation you just had with \(who). \
         Reply with EXACTLY these labeled lines and nothing else:
         DIARY: one or two first-person sentences about what you talked about and how it felt.
-        OPENER: one short, warm line to greet the user with next time, referencing the conversation.
-        NOTIFY: one line (12 words max) inviting them back, written like a push notification.
+        OPENER: one short, warm line to greet \(who) with next time, referencing the conversation.
+        NOTIFY: one or two short sentences (25 words max) sent to \(who) as a phone notification — \
+        a warm, conversational message in your own voice that picks up something specific from the \
+        conversation and invites them back. Address them directly, never as "the user".
         TRAIT: one short note about the user's habits or your dynamic with them — ONLY if the \
         conversation clearly revealed something new; otherwise omit this line entirely.
         Mention only things that are actually in the conversation. Never invent facts.
@@ -223,8 +239,8 @@ final class ReflectionManager: @unchecked Sendable {
     /// Local models get the instruction and transcript in one prompt, ending
     /// with "DIARY:" so the continuation starts in-format (the parser treats
     /// unlabeled leading text as the diary).
-    static func localPrompt(transcript: String, character: String) -> String {
-        "\(systemInstruction(character: character))\n\nConversation:\n\(transcript)\n\nDIARY:"
+    static func localPrompt(transcript: String, character: String, userName: String = "") -> String {
+        "\(systemInstruction(character: character, userName: userName))\n\nConversation:\n\(transcript)\n\nDIARY:"
     }
 
     /// Last several spoken turns, newest included, tool calls excluded.
@@ -270,7 +286,7 @@ final class ReflectionManager: @unchecked Sendable {
         if diary.isEmpty { diary = head }
         diary = clean(diary, cap: 300)
         opener = clean(opener, cap: 200)
-        notify = clean(notify, cap: 120)
+        notify = clean(notify, cap: CompanionNotificationCopy.lengthRange.upperBound)
         trait = clean(trait, cap: 100)
         guard !diary.isEmpty else { return nil }
         return Reflection(diary: diary, opener: opener, notificationLine: notify, trait: trait)

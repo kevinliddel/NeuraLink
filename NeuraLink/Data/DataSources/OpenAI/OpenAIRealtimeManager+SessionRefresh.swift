@@ -2,7 +2,7 @@
 //  OpenAIRealtimeManager+SessionRefresh.swift
 //  NeuraLink
 //
-//  Mid-session instruction refresh (docs/CHAT_LLM_IMPROVEMENT_PLAN.md §B2).
+//  Mid-session instruction refresh (docs/CHAT_LLM.md).
 //  Instructions were assembled once at connect; now a persona edit, a
 //  mental-model refresh, a new fact or a settings change posts
 //  `.realtimeInstructionsDidChange`, and the manager re-sends

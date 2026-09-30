@@ -2,7 +2,7 @@
 //  CompanionSnapshotTests.swift
 //  NeuraLinkTests
 //
-//  Widget snapshot model (docs/PRESENCE_BEYOND_APP_PLAN.md §P3).
+//  Widget snapshot model (docs/PRESENCE_BEYOND_APP.md).
 //
 
 import Foundation

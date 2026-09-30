@@ -219,7 +219,7 @@ public struct VRMSceneView: View {
             // models) — the replacement task owns the scene now.
             guard !Task.isCancelled else { return }
             state.display(model)
-            // Saved customization (docs/CHARACTER_CUSTOMIZATION_PLAN.md) —
+            // Saved customization (docs/CHARACTER_CUSTOMIZATION.md) —
             // applied on top of the fresh model, never by reloading it, and
             // awaited before the scene is declared ready so the character is
             // never shown in its original clothes first.

@@ -2,8 +2,7 @@
 //  MemoryStore+Timeline.swift
 //  NeuraLink
 //
-//  Date-range queries for the Memory timeline (docs/MEMORY_OWNERSHIP_PLAN.md
-//  §M3) and pure month/day bucketing.
+//  Date-range queries for the Memory timeline (docs/MEMORY_OWNERSHIP.md) and pure month/day bucketing.
 //
 //  Created by Dedicatus on 27/09/2026.
 //

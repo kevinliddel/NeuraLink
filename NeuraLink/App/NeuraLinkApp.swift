@@ -14,7 +14,7 @@ struct NeuraLinkApp: App {
 
     init() {
         // Daily background refresh so a "tomorrow" follow-up is scheduled even
-        // when the app was not opened that day (docs/COMPANION_DEPTH_PLAN.md §D1).
+        // when the app was not opened that day (docs/COMPANION_DEPTH.md).
         BGTaskScheduler.shared.register(forTaskWithIdentifier: Self.followUpTaskID, using: nil) { task in
             Self.scheduleFollowUpRefresh()
             let work = Task { @MainActor in

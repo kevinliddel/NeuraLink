@@ -152,7 +152,6 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
     func teardown() {
         if usageMeter.responses > 0 {
             nlLog(usageMeter.logLine, level: .info)
-            state.lastSessionUsage = usageMeter
             usageMeter = RealtimeUsageMeter()
         }
         iceGatheringTimeout?.cancel()

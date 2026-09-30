@@ -51,7 +51,7 @@ struct AutonomySettingsView: View {
         }
     }
 
-    // MARK: - Background audio (docs/PRESENCE_BEYOND_APP_PLAN.md §P1)
+    // MARK: - Background audio (docs/PRESENCE_BEYOND_APP.md)
 
     private var backgroundSection: some View {
         Section {

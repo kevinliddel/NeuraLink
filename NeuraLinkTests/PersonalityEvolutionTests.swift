@@ -2,7 +2,7 @@
 //  PersonalityEvolutionTests.swift
 //  NeuraLinkTests
 //
-//  Living Companion Phase 2: the unified affinity curve, TRAIT parsing, and
+//  Living Companion: the unified affinity curve, TRAIT parsing, and
 //  the capped/decaying trait pool. Shares the app-host MemoryStore singleton;
 //  every test namespaces its character and cleans up.
 //

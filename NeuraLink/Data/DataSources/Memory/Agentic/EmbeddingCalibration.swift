@@ -2,7 +2,7 @@
 //  EmbeddingCalibration.swift
 //  NeuraLink
 //
-//  Per-backend cosine calibration (docs/CHAT_LLM_IMPROVEMENT_PLAN.md §C2).
+//  Per-backend cosine calibration (docs/CHAT_LLM.md).
 //  Different embedding models put "related" and "unrelated" at different
 //  cosine values, so the user-facing Memory Quality slider (0.3…0.7) and
 //  the internal link / dedup floors are expressed on a nominal scale and

@@ -2,7 +2,7 @@
 //  CoListeningTests.swift
 //  NeuraLinkTests
 //
-//  Living Companion Phase 4a: the co-listening session's pure helpers —
+//  Living Companion: the co-listening session's pure helpers —
 //  track dedupe, auto-stop guards, comment builder, and the widened
 //  identify_song tool schema.
 //

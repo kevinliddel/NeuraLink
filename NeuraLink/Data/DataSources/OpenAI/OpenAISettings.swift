@@ -103,14 +103,15 @@ final class OpenAISettings {
         _textModel = Self.storedModel(forKey: Self.textModelKey, role: .text)
     }
 
-    /// Unset or blank → the catalog default (an empty id would 400 at OpenAI).
+    /// Unset, blank or no-longer-listed (e.g. an old custom id) → the
+    /// catalog default.
     private static func storedModel(forKey key: String, role: OpenAIModelCatalog.Role) -> String {
         let stored = UserDefaults.standard.string(forKey: key)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return stored.isEmpty ? OpenAIModelCatalog.defaultID(for: role) : stored
+        return OpenAIModelCatalog.resolved(stored, role: role)
     }
 
     /// Local path: let the user interrupt the assistant mid-reply
-    /// (docs/CHAT_LLM_IMPROVEMENT_PLAN.md §A2).
+    /// (docs/CHAT_LLM.md).
     var isLocalBargeInEnabled: Bool {
         get { access(keyPath: \.isLocalBargeInEnabled); return _isLocalBargeInEnabled }
         set {
@@ -121,7 +122,7 @@ final class OpenAISettings {
         }
     }
 
-    // MARK: - Model selection (docs/CHAT_LLM_IMPROVEMENT_PLAN.md §B3)
+    // MARK: - Model selection (docs/CHAT_LLM.md)
 
     /// Realtime (voice) model minted into the session; a change applies on
     /// the next connect.
@@ -149,8 +150,8 @@ final class OpenAISettings {
         _ value: String, keyPath: KeyPath<OpenAISettings, String>,
         storage: ReferenceWritableKeyPath<OpenAISettings, String>, key: String, role: OpenAIModelCatalog.Role
     ) {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        let resolved = trimmed.isEmpty ? OpenAIModelCatalog.defaultID(for: role) : trimmed
+        let resolved = OpenAIModelCatalog.resolved(
+            value.trimmingCharacters(in: .whitespacesAndNewlines), role: role)
         withMutation(keyPath: keyPath) {
             self[keyPath: storage] = resolved
             UserDefaults.standard.set(resolved, forKey: key)

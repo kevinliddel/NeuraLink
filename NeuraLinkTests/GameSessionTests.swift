@@ -2,7 +2,7 @@
 //  GameSessionTests.swift
 //  NeuraLinkTests
 //
-//  Living Companion Phase 4b: the mini-games state machine — lifecycle,
+//  Living Companion: the mini-games state machine — lifecycle,
 //  the code-held 20 Questions secret, turn caps, and the tool schema.
 //  GameSessionManager is a singleton: every test stops any running game
 //  first and cleans up after itself.

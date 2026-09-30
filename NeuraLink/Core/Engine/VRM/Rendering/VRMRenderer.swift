@@ -67,7 +67,7 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
 
     /// Character-customization overlay (per-material recolour + texture
     /// overrides). Reset on every loadModel/clearModel; see
-    /// docs/CHARACTER_CUSTOMIZATION_PLAN.md.
+    /// docs/CHARACTER_CUSTOMIZATION.md.
     public let appearanceLayer = AppearanceMaterialLayer()
 
     /// Controls whether model geometry is drawn. False hides T-pose until first animation frame.
