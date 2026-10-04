@@ -70,6 +70,20 @@ final class VRMMetalState {
     static let randomAnimIntervalRange: ClosedRange<Float> = 8...20
     static let randomAnimDurationRange: ClosedRange<Float> = 5...12
 
+    // Occasional talking gestures (VRMMetalState+TalkingGesture.swift)
+    var talkingGestureEntries: [RandomAnimEntry] = []
+    var talkingGesturePolicy = TalkingGesturePolicy()
+    var isPlayingTalkingGesture = false
+    var talkingGestureElapsed: Float = 0
+    var talkingGestureDuration: Float = 0
+    var wasSpeakingLastFrame = false
+    /// A tool/photoshoot pose owns the body between playPose and stopPose.
+    var isPlayingPose = false
+    var poseStartedAt: Date?
+    /// A pose nobody stopped ends on its own after this — before, a missing
+    /// stop froze the body in the pose (idles and gestures paused) for good.
+    static let poseMaxHold: TimeInterval = 12
+
     // Drives fade-in of the Metal view so T-pose is never visible
     var modelAlpha: Double = 0
 
@@ -276,6 +290,12 @@ final class VRMMetalState {
         randomAnimTimer = -1
         randomAnimElapsed = 0
         randomAnimDuration = 0
+        talkingGestureEntries = []
+        talkingGesturePolicy = TalkingGesturePolicy()
+        isPlayingTalkingGesture = false
+        wasSpeakingLastFrame = false
+        isPlayingPose = false
+        poseStartedAt = nil
         currentExpressionWeights = [:]
         targetExpressionWeights = [:]
         lastAppliedEmotion = ""

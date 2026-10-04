@@ -44,7 +44,10 @@ final class SessionLifecycle: @unchecked Sendable {
             // live, the session survives and the boundary fires later, when
             // the keeper ends it (idle / battery guard) or the app is killed.
             Task { @MainActor in
-                if BackgroundSessionKeeper.shared.beginBackgroundIfAllowed() { return }
+                if BackgroundSessionKeeper.shared.beginBackgroundIfAllowed() {
+                    nlLog("[Presence] Return series deferred until the background session ends", level: .info)
+                    return
+                }
                 self.sessionEnded(reason: "background")
             }
         }

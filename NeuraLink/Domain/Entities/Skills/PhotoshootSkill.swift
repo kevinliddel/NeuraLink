@@ -34,6 +34,11 @@ final class PhotoshootSkill: Skill {
         DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
             RealtimeChatState.shared.isUIHidden = false
         }
+        // The pose ends with the photo window — without it the body stayed
+        // in the pose (idles and talking gestures paused) for the session.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6.0) {
+            NotificationCenter.default.post(name: Notification.Name("VRMStopPoseAnimation"), object: nil)
+        }
 
         return "Okay! Striking my \(pose.replacingOccurrences(of: "_", with: " ")) pose — smile!"
     }

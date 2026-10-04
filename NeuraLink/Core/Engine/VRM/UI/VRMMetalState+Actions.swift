@@ -34,7 +34,8 @@ extension VRMMetalState {
             return
         }
 
-        let randomPairs = Self.randomAnimNames.compactMap { name -> (String, URL)? in
+        // Idle clips and talking-gesture clips load together; split below.
+        let randomPairs = (Self.randomAnimNames + TalkingGesturePolicy.clipNames).compactMap { name -> (String, URL)? in
             guard let url = Self.findVRMA(named: name) else { return nil }
             return (name, url)
         }
@@ -59,11 +60,14 @@ extension VRMMetalState {
                 }
 
                 let loadedDefault = try await defaultTask
+                let gestureEntries = loadedEntries.filter { TalkingGesturePolicy.clipNames.contains($0.name) }
+                loadedEntries.removeAll { TalkingGesturePolicy.clipNames.contains($0.name) }
 
                 if let appearURL {
                     let appearClip = try await VRMAnimationLoader.loadVRMA(from: appearURL, model: model)
                     await MainActor.run {
                         self.randomAnimEntries = loadedEntries
+                        self.talkingGestureEntries = gestureEntries
                         self.defaultClip = loadedDefault
                         self.pendingDefaultClip = loadedDefault
                         self.isPlayingAppear = true
@@ -75,6 +79,7 @@ extension VRMMetalState {
                 } else {
                     await MainActor.run {
                         self.randomAnimEntries = loadedEntries
+                        self.talkingGestureEntries = gestureEntries
                         self.defaultClip = loadedDefault
                         self.animationPlayer.isLooping = true
                         self.animationPlayer.load(loadedDefault)
@@ -139,6 +144,15 @@ extension VRMMetalState {
                     nlLog("[RandomAnim] ▶ '\(entry.name)' — duration: \(String(format: "%.1f", randomAnimDuration))s")
                 }
             }
+        }
+
+        if isPlayingPose, let started = poseStartedAt, Date().timeIntervalSince(started) > Self.poseMaxHold {
+            nlLog("[Pose] expired after \(Int(Self.poseMaxHold))s without a stop", level: .info)
+            stopPose()
+        }
+
+        if !isPlayingAppear {
+            updateTalkingGesture(dt: dt, model: model)
         }
 
         // Look-back: always tick state machine (advances cooldown even while animating)
@@ -328,6 +342,9 @@ extension VRMMetalState {
             do {
                 let clip = try await VRMAnimationLoader.loadVRMA(from: url, model: model)
                 await MainActor.run {
+                    self.isPlayingPose = true
+                    self.poseStartedAt = Date()
+                    self.isPlayingTalkingGesture = false  // a pose outranks a gesture
                     self.isPlayingRandomAnim = false // Interrupt random idle
                     self.randomAnimTimer = -1  // Pause idles until stopPose re-arms
                     self.animationPlayer.isLooping = true
@@ -346,6 +363,8 @@ extension VRMMetalState {
     /// until the random-idle timer happens to fire.
     private func stopPose() {
         guard let model = currentModel, let clip = defaultClip else { return }
+        isPlayingPose = false
+        poseStartedAt = nil
         isPlayingRandomAnim = false
         randomAnimElapsed = 0
         animationPlayer.isLooping = true

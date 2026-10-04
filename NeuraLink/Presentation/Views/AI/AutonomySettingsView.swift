@@ -123,7 +123,7 @@ struct AutonomySettingsView: View {
                 Toggle(isOn: $presence.isNotificationsEnabled) {
                     InfoToggleLabel(
                         title: "\"Thinking of you\" notifications",
-                        info: "Hours after a conversation ends, a single gentle notification arrives with what the character has been thinking about. Never during quiet hours (22:00–09:00)."
+                        info: "An hour after your last message, if you haven't come back, the character sends a note about what they've been thinking about — then one every 2 hours for up to a day. Opening the app stops them. Never during quiet hours (22:00–09:00)."
                     )
                 }
             }

@@ -3,12 +3,13 @@
 //  NeuraLink
 //
 //  Local "your companion has been thinking of you" notifications — Living
-//  Companion (docs/LIVING_COMPANION.md). First UserNotifications
-//  usage in the app. Etiquette rules, enforced here:
-//    • at most ONE pending notification (same identifier → replace),
-//    • never delivered during quiet hours (22:00–09:00 local — clamped to
-//      the next 09:30),
-//    • cancelled the moment the user returns to the app.
+//  Companion (docs/LIVING_COMPANION.md). Rules, enforced here:
+//    • a return series: the first 1 h after the last exchange, then one
+//      every 2 h while the app stays closed, for at most 24 h — scheduled
+//      up front, because iOS cannot run the app to compose one later,
+//    • never delivered during quiet hours (22:00–09:00 local — a slot that
+//      lands there moves to the next 09:30 and the rhythm resumes from it),
+//    • the whole series is cancelled the moment the user returns.
 //
 //  Created by Dedicatus on 07/09/2026.
 //
@@ -60,7 +61,9 @@ final class CompanionNotificationPresenter: NSObject, UNUserNotificationCenterDe
 
 enum CompanionNotificationScheduler {
 
+    /// Series slots use "\(identifier).<seriesID>.<slot>".
     static let identifier = "com.neuralink.presence.reflection"
+    static let recapIdentifier = "com.neuralink.presence.recap"
     static let followUpIdentifier = "com.neuralink.presence.followup"
     static let followUpCategory = "NL_FOLLOWUP"
     static let followUpMuteAction = "NL_FOLLOWUP_MUTE"
@@ -100,8 +103,11 @@ enum CompanionNotificationScheduler {
         }
     }
 
-    /// Default delivery delay after a session ends.
-    static let defaultDelay: TimeInterval = 6 * 3600
+    /// Return series timing.
+    static let firstDelay: TimeInterval = 3600
+    static let repeatInterval: TimeInterval = 2 * 3600
+    static let seriesWindow: TimeInterval = 24 * 3600
+    static let maxSeriesCount = 12
 
     static let quietStartHour = 22
     static let quietEndHour = 9
@@ -120,21 +126,48 @@ enum CompanionNotificationScheduler {
     // MARK: - Scheduling
 
     /// Debug override (Xcode scheme launch argument
-    /// `-nl.debug.presenceNotifDelaySec 60`): delivery in N seconds with the
-    /// quiet-hours clamp bypassed, so the pipeline is testable without
-    /// staying away from the app for six real hours.
+    /// `-nl.debug.presenceNotifDelaySec 60`): first delivery in N seconds,
+    /// then every 2N, quiet hours bypassed — the series is testable without
+    /// waiting hours.
     static let debugDelayKey = "nl.debug.presenceNotifDelaySec"
 
-    /// (delay, whether quiet hours apply) — the debug override skips the clamp.
-    static func effectiveDelay(defaults: UserDefaults = .standard) -> (delay: TimeInterval, clampQuietHours: Bool) {
-        let override = defaults.double(forKey: debugDelayKey)
-        guard override > 0 else { return (defaultDelay, true) }
-        return (override, false)
+    struct Timing: Equatable {
+        var first: TimeInterval
+        var interval: TimeInterval
+        var clampQuietHours: Bool
     }
 
-    /// Schedules (replacing any pending) the reflection notification.
-    /// Returns false when not authorized or the add fails.
-    static func schedule(characterName: String, body: String) async -> Bool {
+    static func effectiveTiming(defaults: UserDefaults = .standard) -> Timing {
+        let override = defaults.double(forKey: debugDelayKey)
+        guard override > 0 else { return Timing(first: firstDelay, interval: repeatInterval, clampQuietHours: true) }
+        return Timing(first: override, interval: override * 2, clampQuietHours: false)
+    }
+
+    /// Fire dates for one return series anchored on the last exchange: the
+    /// first `timing.first` after it (never sooner than a minute from now),
+    /// then every `timing.interval`, each moved out of quiet hours, until
+    /// `seriesWindow` after the first or `maxSeriesCount` slots.
+    static func returnSeriesDates(
+        anchor: Date, now: Date, timing: Timing, calendar: Calendar = .current
+    ) -> [Date] {
+        let minimumLead: TimeInterval = timing.clampQuietHours ? 60 : 10
+        func place(_ date: Date) -> Date {
+            timing.clampQuietHours ? clampedFireDate(now: date, delay: 0, calendar: calendar) : date
+        }
+        var next = place(max(anchor.addingTimeInterval(timing.first), now.addingTimeInterval(minimumLead)))
+        let end = next.addingTimeInterval(seriesWindow)
+        var dates: [Date] = []
+        while next <= end, dates.count < maxSeriesCount {
+            dates.append(next)
+            next = place(next.addingTimeInterval(timing.interval))
+        }
+        return dates
+    }
+
+    /// Replaces any pending series with one built from `lines` (cycled when
+    /// the series is longer). Returns how many were scheduled — 0 when
+    /// permission is missing.
+    static func scheduleReturnSeries(characterName: String, lines: [String], anchor: Date) async -> Int {
         let center = UNUserNotificationCenter.current()
         let status = await center.notificationSettings().authorizationStatus
         guard status == .authorized || status == .provisional else {
@@ -145,31 +178,68 @@ enum CompanionNotificationScheduler {
                 "[Presence] NOT scheduling — notification permission missing (status=\(status.rawValue)). "
                     + "Check Settings → Notifications → NeuraLink.",
                 level: .warning)
-            return false
+            return 0
         }
+        guard !lines.isEmpty else { return 0 }
+        // Awaited removal + a fresh id per series: removals run
+        // asynchronously, so reusing ids let a late removal delete the
+        // requests just added.
+        await removePending(center: center)
 
-        center.removePendingNotificationRequests(withIdentifiers: [identifier])
+        let timing = effectiveTiming()
+        let dates = returnSeriesDates(anchor: anchor, now: Date(), timing: timing)
+        let name = characterName.trimmingCharacters(in: .whitespaces)
+        let avatar = name.isEmpty ? nil : avatarImageData(for: name)
+        let seriesID = Int(Date().timeIntervalSince1970)
+        var scheduled = 0
+        for (slot, fireDate) in dates.enumerated() {
+            let content = UNMutableNotificationContent()
+            content.title = name.isEmpty
+                ? "Your companion has been thinking of you"
+                : "\(name.capitalized) has been thinking of you"
+            content.body = lines[slot % lines.count]
+            content.sound = .default
+            content.threadIdentifier = identifier
+            let trigger = UNTimeIntervalNotificationTrigger(
+                timeInterval: max(1, fireDate.timeIntervalSinceNow), repeats: false)
+            let request = UNNotificationRequest(
+                identifier: "\(identifier).\(seriesID).\(slot)",
+                content: communicationContent(base: content, characterName: name, avatar: avatar), trigger: trigger)
+            do {
+                try await center.add(request)
+                scheduled += 1
+            } catch {
+                nlLog("[Presence] Failed to schedule slot \(slot): \(error)", level: .warning)
+            }
+        }
+        let first = dates.first.map { "\($0)" } ?? "none"
+        nlLog("[Presence] Return series: \(scheduled) scheduled, first \(first)\(timing.clampQuietHours ? "" : " (DEBUG timing)")",
+              level: .info)
+        return scheduled
+    }
+
+    /// One-off notification (the weekly recap), on its own identifier so it
+    /// never replaces the return series. Delivered after `firstDelay`, out
+    /// of quiet hours.
+    static func schedule(characterName: String, body: String) async -> Bool {
+        let center = UNUserNotificationCenter.current()
+        let status = await center.notificationSettings().authorizationStatus
+        guard status == .authorized || status == .provisional else { return false }
+        center.removePendingNotificationRequests(withIdentifiers: [recapIdentifier])
 
         let name = characterName.trimmingCharacters(in: .whitespaces)
         let content = UNMutableNotificationContent()
-        content.title = name.isEmpty
-            ? "Your companion has been thinking of you"
-            : "\(name.capitalized) has been thinking of you"
+        content.title = name.isEmpty ? "Your companion" : name.capitalized
         content.body = body
         content.sound = .default
-        let finalContent = communicationContent(base: content, characterName: name)
-
-        let (delay, clamp) = effectiveDelay()
-        let fireDate = clamp
-            ? clampedFireDate(now: Date(), delay: delay)
-            : Date().addingTimeInterval(delay)
-        let trigger = UNTimeIntervalNotificationTrigger(
-            timeInterval: max(clamp ? 60 : 10, fireDate.timeIntervalSinceNow), repeats: false)
-        let request = UNNotificationRequest(identifier: identifier, content: finalContent, trigger: trigger)
-
+        let timing = effectiveTiming()
+        let fireDate = returnSeriesDates(anchor: Date(), now: Date(), timing: timing).first
+            ?? Date().addingTimeInterval(timing.first)
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(10, fireDate.timeIntervalSinceNow), repeats: false)
         do {
-            try await center.add(request)
-            nlLog("[Presence] Notification scheduled for \(fireDate)\(clamp ? "" : " (DEBUG delay)")", level: .info)
+            try await center.add(UNNotificationRequest(
+                identifier: recapIdentifier,
+                content: communicationContent(base: content, characterName: name), trigger: trigger))
             return true
         } catch {
             nlLog("[Presence] Failed to schedule notification: \(error)", level: .warning)
@@ -180,7 +250,7 @@ enum CompanionNotificationScheduler {
     // NOTE: the settings-screen "Send test notification" button was removed
     // 2026-09-11 once delivery/avatar were verified on device. For future
     // pipeline testing, use the `-nl.debug.presenceNotifDelaySec 60` launch
-    // argument (see `effectiveDelay`) and end a ≥4-turn session.
+    // argument (see `effectiveTiming`) and background the app after a chat.
 
     /// One log line answering "what's the notification state right now":
     /// permission status + the pending fire date, if any. Called at launch
@@ -189,12 +259,13 @@ enum CompanionNotificationScheduler {
         Task {
             let center = UNUserNotificationCenter.current()
             let status = await center.notificationSettings().authorizationStatus
-            let pending = await center.pendingNotificationRequests()
-                .first { $0.identifier == identifier }
-                .flatMap { ($0.trigger as? UNTimeIntervalNotificationTrigger)?.nextTriggerDate() }
+            let series = await center.pendingNotificationRequests()
+                .filter { $0.identifier.hasPrefix(identifier) }
+                .compactMap { ($0.trigger as? UNTimeIntervalNotificationTrigger)?.nextTriggerDate() }
+                .sorted()
             nlLog(
                 "[Presence] Notification state (\(context)): permission=\(status.rawValue) "
-                    + "(2=denied, 3=authorized), pending=\(pending.map { "\($0)" } ?? "none")",
+                    + "(2=denied, 3=authorized), pending=\(series.count), next=\(series.first.map { "\($0)" } ?? "none")",
                 level: .info)
         }
     }
@@ -209,10 +280,10 @@ enum CompanionNotificationScheduler {
     /// falls back to the app icon. Returns `base` untouched when the
     /// character has no thumbnail or the intent rewrite fails.
     static func communicationContent(
-        base: UNMutableNotificationContent, characterName: String
+        base: UNMutableNotificationContent, characterName: String, avatar: Data? = nil
     ) -> UNNotificationContent {
         let name = characterName.trimmingCharacters(in: .whitespaces)
-        guard !name.isEmpty, let imageData = avatarImageData(for: name) else { return base }
+        guard !name.isEmpty, let imageData = avatar ?? avatarImageData(for: name) else { return base }
 
         let slug = name.lowercased()
         let sender = INPerson(
@@ -309,10 +380,19 @@ enum CompanionNotificationScheduler {
         return rendered.pngData()
     }
 
-    /// A pending "come back" is stale the moment the user is back.
+    /// The whole pending "come back" series (and recap) is stale the moment
+    /// the user is back. Matched by prefix, so every series id (and those
+    /// from older builds) goes.
     static func cancelPending() {
-        UNUserNotificationCenter.current()
-            .removePendingNotificationRequests(withIdentifiers: [identifier])
+        Task { await removePending(center: UNUserNotificationCenter.current()) }
+    }
+
+    private static func removePending(center: UNUserNotificationCenter) async {
+        let ids = await center.pendingNotificationRequests()
+            .map(\.identifier)
+            .filter { $0.hasPrefix(identifier) || $0 == recapIdentifier }
+        guard !ids.isEmpty else { return }
+        center.removePendingNotificationRequests(withIdentifiers: ids)
     }
 
     // MARK: - Quiet hours (pure, unit-tested)
@@ -330,54 +410,5 @@ enum CompanionNotificationScheduler {
             return calendar.date(bySettingHour: 9, minute: 30, second: 0, of: proposed) ?? proposed
         }
         return proposed
-    }
-}
-
-// MARK: - Notification copy (pure, unit-tested)
-
-/// Text rules shared by every companion notification: facts are fed to the
-/// model with the user's name in place of "the user" (facts extracted before
-/// a name was set still read "User …"), and a generated line only ships
-/// when it reads like a message rather than a memory-store record.
-nonisolated enum CompanionNotificationCopy {
-    static let lengthRange = 8...220
-
-    /// "The user's X" → "Kevin's X", "User likes Y" → "Kevin likes Y".
-    /// Unchanged when no name is set.
-    static func personalize(_ text: String, userName: String) -> String {
-        let name = userName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty else { return text }
-        var result = text
-        for (pattern, replacement) in [(#"\b(?:the )?user's\b"#, "\(name)'s"), (#"\b(?:the )?user\b"#, name)] {
-            result = result.replacingOccurrences(
-                of: pattern, with: replacement, options: [.regularExpression, .caseInsensitive])
-        }
-        return result
-    }
-
-    /// First non-empty line of a model reply, stripped of quotes.
-    static func firstLine(_ raw: String) -> String {
-        raw.split(whereSeparator: \.isNewline)
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: "\"“”"))) }
-            .first { !$0.isEmpty } ?? ""
-    }
-
-    /// True for a line fit to show: sane length, never "the user", and not
-    /// a restatement of `source` (the fact it was written from).
-    static func isConversational(_ line: String, source: String = "") -> Bool {
-        guard lengthRange.contains(line.count) else { return false }
-        let lowered = line.lowercased()
-        if lowered.contains("the user") || lowered.hasPrefix("user ") || lowered.hasPrefix("user's") { return false }
-        let normalizedSource = normalize(source)
-        guard !normalizedSource.isEmpty else { return true }
-        let normalizedLine = normalize(line)
-        return !normalizedLine.contains(normalizedSource) && !normalizedSource.contains(normalizedLine)
-    }
-
-    private static func normalize(_ text: String) -> String {
-        text.lowercased()
-            .components(separatedBy: CharacterSet.alphanumerics.inverted)
-            .filter { !$0.isEmpty }
-            .joined(separator: " ")
     }
 }

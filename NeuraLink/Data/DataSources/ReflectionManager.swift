@@ -29,7 +29,7 @@ final class ReflectionManager: @unchecked Sendable {
     private static let transcriptTurns = 16
     /// Small on purpose: jetsam-safe on 4 GB devices, fits the ~30 s
     /// backgrounding window.
-    private static let maxTokens = 160
+    private static let maxTokens = 240
     /// Catch-up ignores conversations older than this.
     private static let catchUpWindow: TimeInterval = 7 * 86_400
 
@@ -37,6 +37,8 @@ final class ReflectionManager: @unchecked Sendable {
         let diary: String
         let opener: String
         let notificationLine: String
+        /// NOTIFY2:/NOTIFY3: — later slots of the return series.
+        var extraNotificationLines: [String] = []
         /// Optional distilled personality note (Phase 2). Empty when the
         /// conversation revealed nothing new.
         let trait: String
@@ -69,7 +71,14 @@ final class ReflectionManager: @unchecked Sendable {
             forName: SessionLifecycle.sessionDidEnd, object: nil, queue: .main
         ) { note in
             guard let id = note.userInfo?["conversationID"] as? Int64 else { return }
-            Task { @MainActor in ReflectionManager.shared.reflect(on: id) }
+            Task { @MainActor in
+                // The series goes out right away with the generic lines —
+                // never hostage to the LLM reflection, which can fail or
+                // outlive the ~30 s background window. A finished
+                // reflection then re-schedules it with its own lines.
+                ReflectionManager.shared.scheduleSeriesNow(conversationID: id)
+                ReflectionManager.shared.reflect(on: id)
+            }
         }
 
         // The pending "come back" notification is stale the moment the user
@@ -159,6 +168,7 @@ final class ReflectionManager: @unchecked Sendable {
             let reflection = parse(raw)
         else {
             nlLog("[Reflection] Generation failed for conversation \(conversationID)", level: .info)
+            await scheduleReturnNotifications(conversationID: conversationID, reflection: nil)
             return
         }
 
@@ -176,27 +186,58 @@ final class ReflectionManager: @unchecked Sendable {
 
         recordTrait(character: character, trait: reflection.trait)
 
-        if PresenceSettings.shared.isNotificationsEnabled {
-            // Small local models sometimes omit the NOTIFY line or write it
-            // like a record ("The user …") — a warm generic invite beats both.
-            let line = reflection.notificationLine
-            let body = CompanionNotificationCopy.isConversational(line)
-                ? line
-                : genericInvite(userName: UserSettings.shared.name)
-            let scheduled = await CompanionNotificationScheduler.schedule(
-                characterName: character, body: body)
-            if scheduled {
-                MemoryStore.shared.markJournalNotified(id: journalID)
-                CompanionNotificationScheduler.logDiagnostics(context: "scheduled")
-            }
+        if await scheduleReturnNotifications(conversationID: conversationID, reflection: reflection) > 0 {
+            MemoryStore.shared.markJournalNotified(id: journalID)
         }
     }
 
-    static func genericInvite(userName: String) -> String {
-        let name = userName.trimmingCharacters(in: .whitespacesAndNewlines)
-        return name.isEmpty
-            ? "I've been thinking about our last conversation…"
-            : "\(name), I've been thinking about our last conversation…"
+    /// Generic-line series under its own background-task grace, so iOS
+    /// can't suspend the app before the requests are added.
+    @MainActor
+    func scheduleSeriesNow(conversationID: Int64) {
+        let bgTask = UIApplication.shared.beginBackgroundTask(withName: "CompanionReturnSeries")
+        Task {
+            await Self.scheduleReturnNotifications(conversationID: conversationID, reflection: nil)
+            if bgTask != .invalid { UIApplication.shared.endBackgroundTask(bgTask) }
+        }
+    }
+
+    /// Schedules the return series when the user has actually left (never
+    /// for launch catch-up while the app is open). Reflection lines lead,
+    /// generic ones fill the rest; anchored on the conversation's last
+    /// message. Returns how many notifications were scheduled.
+    @discardableResult
+    static func scheduleReturnNotifications(conversationID: Int64, reflection: Reflection?) async -> Int {
+        guard PresenceSettings.shared.isPresenceEnabled, PresenceSettings.shared.isNotificationsEnabled else { return 0 }
+        let isForeground = await MainActor.run { UIApplication.shared.applicationState == .active }
+        guard !isForeground else { return 0 }
+        let messages = MemoryStore.shared.fetchMessages(conversationID: conversationID)
+        guard let lastExchange = messages.last(where: { $0.kind == "message" })?.timestamp,
+              messages.contains(where: { $0.isUser && $0.kind == "message" })
+        else {
+            nlLog("[Presence] Return series skipped: no user messages in conversation \(conversationID)", level: .info)
+            return 0
+        }
+
+        let userName = UserSettings.shared.name
+        let lines = returnLines(reflection: reflection, userName: userName)
+        let count = await CompanionNotificationScheduler.scheduleReturnSeries(
+            characterName: RealtimeChatState.shared.selectedCharacterName, lines: lines, anchor: lastExchange)
+        if count > 0 { CompanionNotificationScheduler.logDiagnostics(context: "scheduled") }
+        return count
+    }
+
+    /// Conversational reflection lines first (deduped), then the generic pool.
+    static func returnLines(reflection: Reflection?, userName: String) -> [String] {
+        var lines: [String] = []
+        let candidates = reflection.map { [$0.notificationLine] + $0.extraNotificationLines } ?? []
+        for line in candidates where CompanionNotificationCopy.isConversational(line) && !lines.contains(line) {
+            lines.append(line)
+        }
+        for line in CompanionNotificationCopy.genericLines(userName: userName) where !lines.contains(line) {
+            lines.append(line)
+        }
+        return lines
     }
 
     private static func generate(transcript: String, character: String) async -> String? {
@@ -230,6 +271,9 @@ final class ReflectionManager: @unchecked Sendable {
         NOTIFY: one or two short sentences (25 words max) sent to \(who) as a phone notification — \
         a warm, conversational message in your own voice that picks up something specific from the \
         conversation and invites them back. Address them directly, never as "the user".
+        NOTIFY2: a different notification for two hours later if they still haven't come back — \
+        same rules, new angle, never repeating NOTIFY.
+        NOTIFY3: another one for later still — same rules, different again.
         TRAIT: one short note about the user's habits or your dynamic with them — ONLY if the \
         conversation clearly revealed something new; otherwise omit this line entirely.
         Mention only things that are actually in the conversation. Never invent facts.
@@ -259,7 +303,7 @@ final class ReflectionManager: @unchecked Sendable {
     /// with "DIARY:", so the label itself never appears in that output).
     /// Returns nil when no usable diary was produced.
     static func parse(_ raw: String) -> Reflection? {
-        var diary = "", opener = "", notify = "", trait = "", head = ""
+        var diary = "", opener = "", notify = "", notify2 = "", notify3 = "", trait = "", head = ""
         var current = ""
 
         for rawLine in raw.split(whereSeparator: \.isNewline) {
@@ -268,6 +312,10 @@ final class ReflectionManager: @unchecked Sendable {
                 current = "d"; diary = rest
             } else if let rest = strip(label: "OPENER:", from: line) {
                 current = "o"; opener = rest
+            } else if let rest = strip(label: "NOTIFY2:", from: line) {
+                current = "n2"; notify2 = rest
+            } else if let rest = strip(label: "NOTIFY3:", from: line) {
+                current = "n3"; notify3 = rest
             } else if let rest = strip(label: "NOTIFY:", from: line) {
                 current = "n"; notify = rest
             } else if let rest = strip(label: "TRAIT:", from: line) {
@@ -277,6 +325,8 @@ final class ReflectionManager: @unchecked Sendable {
                 case "d": diary += " " + line
                 case "o": opener += " " + line
                 case "n": notify += " " + line
+                case "n2": notify2 += " " + line
+                case "n3": notify3 += " " + line
                 case "t": trait += " " + line
                 default: head += (head.isEmpty ? "" : " ") + line
                 }
@@ -286,10 +336,13 @@ final class ReflectionManager: @unchecked Sendable {
         if diary.isEmpty { diary = head }
         diary = clean(diary, cap: 300)
         opener = clean(opener, cap: 200)
-        notify = clean(notify, cap: CompanionNotificationCopy.lengthRange.upperBound)
+        let notifyCap = CompanionNotificationCopy.lengthRange.upperBound
+        notify = clean(notify, cap: notifyCap)
+        let extras = [clean(notify2, cap: notifyCap), clean(notify3, cap: notifyCap)].filter { !$0.isEmpty }
         trait = clean(trait, cap: 100)
         guard !diary.isEmpty else { return nil }
-        return Reflection(diary: diary, opener: opener, notificationLine: notify, trait: trait)
+        return Reflection(
+            diary: diary, opener: opener, notificationLine: notify, extraNotificationLines: extras, trait: trait)
     }
 
     // MARK: - Trait pool (Phase 2)

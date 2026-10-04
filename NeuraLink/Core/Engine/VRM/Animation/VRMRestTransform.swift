@@ -52,6 +52,32 @@ func buildAnimationRestTransforms(document: GLTFDocument) -> [Int: RestTransform
     return Dictionary(uniqueKeysWithValues: nodes.enumerated().map { ($0.offset, RestTransform(node: $0.element)) })
 }
 
+/// World rest rotation of each animation node's PARENT, composed root →
+/// parent from the document's local rests. Identity for root nodes. Feeds
+/// the normalization step in makeRotationSampler.
+func buildAnimationParentWorldRotations(
+    document: GLTFDocument, rest: [Int: RestTransform]
+) -> [Int: simd_quatf] {
+    guard let nodes = document.nodes else { return [:] }
+    var parentOf: [Int: Int] = [:]
+    for (index, node) in nodes.enumerated() {
+        for child in node.children ?? [] { parentOf[child] = index }
+    }
+    var worldCache: [Int: simd_quatf] = [:]
+    func worldRotation(_ index: Int) -> simd_quatf {
+        if let cached = worldCache[index] { return cached }
+        let local = rest[index]?.rotation ?? simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
+        let world = parentOf[index].map { simd_normalize(worldRotation($0) * local) } ?? simd_normalize(local)
+        worldCache[index] = world
+        return world
+    }
+    var result: [Int: simd_quatf] = [:]
+    for index in nodes.indices {
+        result[index] = parentOf[index].map(worldRotation) ?? simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
+    }
+    return result
+}
+
 func buildModelRestTransforms(model: VRMModel?) -> [VRMHumanoidBone: RestTransform] {
     guard let model, let humanoid = model.humanoid, let gltfNodes = model.gltf.nodes else { return [:] }
     var map: [VRMHumanoidBone: RestTransform] = [:]

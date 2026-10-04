@@ -10,8 +10,17 @@ import simd
 
 // MARK: - Sampler Factories
 
-/// Builds a rotation sampler that applies delta-based retargeting from animation rest to model rest.
-/// VRM spec: delta = inv(animRest) * animRotation; result = modelRest * delta
+/// Builds a rotation sampler that retargets a VRMA track onto the model.
+///
+/// Step 1 — normalize (animation side). VRMC_vrm_animation requires the
+/// humanoid rest pose to be a T-pose but lets its nodes carry ANY rest
+/// rotation (Mixamo / FBX2glTF and UniGLTF exports do; VRoid / three-vrm
+/// exports are identity). The world-aligned rotation is
+///   normalized = animParentWorldRest · q · inv(animParentWorldRest · animRest)
+/// — three-vrm VRMAnimationLoaderPlugin. With identity rests it is just q.
+/// VRM 0.x targets flip the NORMALIZED rotation (x, z negated).
+///
+/// Step 2 — retarget (model side), see the formula below.
 ///
 /// For VRM 1.x thumbs: the metacarpal node's `rotation` in the GLTF already encodes the
 /// 45° T-pose spread, so `modelRest` captures it and the formula handles the delta naturally.
@@ -22,19 +31,21 @@ func makeRotationSampler(
     animRest: simd_quatf,
     modelRest: simd_quatf?,
     parentWorldRest: simd_quatf? = nil,
+    animParentWorldRest: simd_quatf? = nil,
     convertForVRM0: Bool = false
 ) -> (Float) -> simd_quatf {
-    let normalizedAnimRest  = simd_normalize(animRest)
+    let animParent = simd_normalize(animParentWorldRest ?? simd_quatf(ix: 0, iy: 0, iz: 0, r: 1))
+    let inverseAnimWorldRest = simd_inverse(simd_normalize(animParent * simd_normalize(animRest)))
     let normalizedModelRest = modelRest.map { simd_normalize($0) }
     let basis = parentWorldRest.map { simd_normalize($0) }
 
     return { t in
-        var q = sampleQuaternion(track, at: t)
+        var delta = simd_normalize(animParent * sampleQuaternion(track, at: t) * inverseAnimWorldRest)
         if convertForVRM0 {
-            q = convertRotationForVRM0(q)
+            delta = convertRotationForVRM0(delta)
         }
 
-        guard let modelRestNorm = normalizedModelRest else { return q }
+        guard let modelRestNorm = normalizedModelRest else { return delta }
 
         // Spec retarget (three-vrm humanoid rig / UniVRM control rig):
         //   rawLocal = inv(parentWorldRest) · delta · parentWorldRest · restLocal
@@ -44,7 +55,6 @@ func makeRotationSampler(
         // rotations (e.g. VRoid's ~45° thumb-metacarpal spread) from
         // re-rotating the delta — the old `restLocal · delta` order did
         // exactly that, which the ±25° VRoid thumb hack used to fight.
-        let delta = simd_normalize(simd_inverse(normalizedAnimRest) * q)
         let localDelta: simd_quatf
         if let basis {
             localDelta = simd_normalize(simd_inverse(basis) * delta * basis)
@@ -55,21 +65,29 @@ func makeRotationSampler(
     }
 }
 
+/// Hips translation: the offset from the animation's rest, expressed in
+/// world axes (rotated by the animation's parent world rest), flipped for
+/// VRM 0.x, scaled by the hips-height ratio and added to the model's rest.
 func makeTranslationSampler(
     track: KeyTrack,
     animRest: SIMD3<Float>,
     modelRest: SIMD3<Float>?,
+    animParentWorldRest: simd_quatf? = nil,
     convertForVRM0: Bool = false,
     deltaScale: Float = 1
 ) -> (Float) -> SIMD3<Float> {
+    let animParent = simd_normalize(animParentWorldRest ?? simd_quatf(ix: 0, iy: 0, iz: 0, r: 1))
     return { t in
-        var v = sampleVector3(track, at: t)
-        if convertForVRM0 { v = convertTranslationForVRM0(v) }
-        guard let modelRest else { return v }
+        let sample = sampleVector3(track, at: t)
+        guard let modelRest else {
+            return convertForVRM0 ? convertTranslationForVRM0(sample) : sample
+        }
+        var offset = animParent.act(sample - animRest)
+        if convertForVRM0 { offset = convertTranslationForVRM0(offset) }
         // deltaScale: VRMC_vrm_animation retargets hips translation by the
         // hips-height ratio between model and animation, so bob amplitude
         // and root-motion stride match the target's proportions.
-        return modelRest + (v - animRest) * deltaScale
+        return modelRest + offset * deltaScale
     }
 }
 

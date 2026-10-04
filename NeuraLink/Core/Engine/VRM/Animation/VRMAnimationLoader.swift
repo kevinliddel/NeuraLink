@@ -52,6 +52,8 @@ public enum VRMAnimationLoader {
         }
 
         let animRestTransforms  = buildAnimationRestTransforms(document: document)
+        let animParentWorldRotations = buildAnimationParentWorldRotations(
+            document: document, rest: animRestTransforms)
         let modelRestTransforms = buildModelRestTransforms(model: model)
         let convertForVRM0      = model?.isVRM0 ?? false
 
@@ -182,6 +184,7 @@ public enum VRMAnimationLoader {
                     animRest: animRest,
                     modelRest: effectiveModelRest,
                     parentWorldRest: parentWorldRestRotations[bone],
+                    animParentWorldRest: animParentWorldRotations[nodeIndex],
                     convertForVRM0: convertForVRM0,
                     translationDeltaScale: bone == .hips ? hipsTranslationScale : 1))
             } else {
@@ -230,6 +233,7 @@ private func makeJointTrack(
     animRest: RestTransform,
     modelRest: RestTransform?,
     parentWorldRest: simd_quatf? = nil,
+    animParentWorldRest: simd_quatf? = nil,
     convertForVRM0: Bool,
     translationDeltaScale: Float = 1
 ) -> JointTrack {
@@ -239,11 +243,14 @@ private func makeJointTrack(
             makeRotationSampler(track: $0, animRest: animRest.rotation,
                                 modelRest: modelRest?.rotation,
                                 parentWorldRest: parentWorldRest,
+                                animParentWorldRest: animParentWorldRest,
                                 convertForVRM0: convertForVRM0)
         },
         translationSampler: tracks["translation"].map {
             makeTranslationSampler(track: $0, animRest: animRest.translation,
-                                   modelRest: modelRest?.translation, convertForVRM0: convertForVRM0,
+                                   modelRest: modelRest?.translation,
+                                   animParentWorldRest: animParentWorldRest,
+                                   convertForVRM0: convertForVRM0,
                                    deltaScale: translationDeltaScale)
         },
         scaleSampler: tracks["scale"].map {

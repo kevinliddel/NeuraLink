@@ -70,7 +70,8 @@ struct CompanionDepthTests {
         #expect(CompanionNotificationCopy.isConversational(
             "Kevin, still thinking about Ainz? Tell me which volume you're on tonight!", source: fact))
         #expect(CompanionNotificationCopy.firstLine("\n\"Hey you!\"\nsecond") == "Hey you!")
-        #expect(ReflectionManager.genericInvite(userName: "Kevin").hasPrefix("Kevin, "))
+        #expect(CompanionNotificationCopy.genericLines(userName: "Kevin").first?.hasPrefix("Kevin, ") == true)
+        #expect(CompanionNotificationCopy.genericLines(userName: "").allSatisfy { !$0.contains("the user") })
     }
 
     @Test("Photo memory fact is an experience about the user with entities and EXIF date")

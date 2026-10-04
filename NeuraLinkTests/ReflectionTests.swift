@@ -28,6 +28,23 @@ struct ReflectionTests {
         #expect(reflection?.diary == "We talked about their trip to Kyoto. It made me happy.")
         #expect(reflection?.opener == "Welcome back! Did you sort out the Kyoto hotel?")
         #expect(reflection?.notificationLine == "Still curious about your Kyoto plans — come tell me!")
+        #expect(reflection?.extraNotificationLines.isEmpty == true)
+    }
+
+    @Test("Parses the extra series lines NOTIFY2 / NOTIFY3")
+    func parseSeriesLines() {
+        let raw = """
+        DIARY: We talked about Kyoto.
+        OPENER: Welcome back!
+        NOTIFY: Still curious about your Kyoto plans — come tell me!
+        NOTIFY2: Did the hotel ever write back?
+        NOTIFY3: I found myself wondering about the temples you mentioned.
+        """
+        let reflection = ReflectionManager.parse(raw)
+        #expect(reflection?.notificationLine == "Still curious about your Kyoto plans — come tell me!")
+        #expect(reflection?.extraNotificationLines == [
+            "Did the hotel ever write back?", "I found myself wondering about the temples you mentioned."
+        ])
     }
 
     @Test("Treats unlabeled leading text as the diary (local-prompt continuation)")
@@ -112,22 +129,78 @@ struct ReflectionTests {
         #expect(calendar.component(.day, from: fire) == 8)
     }
 
-    // MARK: - Debug delay override
+    // MARK: - Return series
 
-    @Test("Debug launch argument shortens delivery and skips quiet hours")
-    func debugDelayOverride() {
+    private var standardTiming: CompanionNotificationScheduler.Timing {
+        .init(first: 3600, interval: 7200, clampQuietHours: true)
+    }
+
+    @Test("Series: 1 h after the last exchange, then every 2 h")
+    func returnSeriesDaytime() {
+        let dates = CompanionNotificationScheduler.returnSeriesDates(
+            anchor: date(hour: 10), now: date(hour: 10, minute: 5), timing: standardTiming, calendar: calendar)
+        let hours = dates.prefix(6).map { calendar.component(.hour, from: $0) }
+        #expect(hours == [11, 13, 15, 17, 19, 21])
+        // 23:00 is quiet → next day 09:30, then the 2 h rhythm resumes.
+        #expect(calendar.component(.hour, from: dates[6]) == 9)
+        #expect(calendar.component(.minute, from: dates[6]) == 30)
+        #expect(calendar.component(.day, from: dates[6]) == 8)
+        // Bounded to 24 h after the first slot: 11:30 next day is past it.
+        #expect(dates.count == 7)
+        #expect(dates.last! <= dates.first!.addingTimeInterval(CompanionNotificationScheduler.seriesWindow))
+        #expect(dates.count <= CompanionNotificationScheduler.maxSeriesCount)
+    }
+
+    @Test("Series: a first slot already in the past fires shortly")
+    func returnSeriesLateBackground() {
+        // Last message at 10:00, app only backgrounded at 12:00.
+        let now = date(hour: 12)
+        let dates = CompanionNotificationScheduler.returnSeriesDates(
+            anchor: date(hour: 10), now: now, timing: standardTiming, calendar: calendar)
+        #expect(dates.first! >= now.addingTimeInterval(60))
+        #expect(dates.first! < now.addingTimeInterval(120))
+    }
+
+    @Test("Series: a late-night exchange starts at 09:30")
+    func returnSeriesNight() {
+        let dates = CompanionNotificationScheduler.returnSeriesDates(
+            anchor: date(hour: 22, minute: 30), now: date(hour: 22, minute: 31), timing: standardTiming, calendar: calendar)
+        #expect(calendar.component(.hour, from: dates[0]) == 9)
+        #expect(calendar.component(.day, from: dates[0]) == 8)
+        #expect(calendar.component(.hour, from: dates[1]) == 11)
+    }
+
+    @Test("Debug launch argument shortens the series and skips quiet hours")
+    func debugTimingOverride() {
         let defaults = UserDefaults.standard
         defaults.removeObject(forKey: CompanionNotificationScheduler.debugDelayKey)
         defer { defaults.removeObject(forKey: CompanionNotificationScheduler.debugDelayKey) }
 
-        let normal = CompanionNotificationScheduler.effectiveDelay(defaults: defaults)
-        #expect(normal.delay == CompanionNotificationScheduler.defaultDelay)
-        #expect(normal.clampQuietHours)
+        #expect(CompanionNotificationScheduler.effectiveTiming(defaults: defaults) == standardTiming)
 
         defaults.set(60.0, forKey: CompanionNotificationScheduler.debugDelayKey)
-        let debug = CompanionNotificationScheduler.effectiveDelay(defaults: defaults)
-        #expect(debug.delay == 60)
-        #expect(!debug.clampQuietHours)
+        let debug = CompanionNotificationScheduler.effectiveTiming(defaults: defaults)
+        #expect(debug == .init(first: 60, interval: 120, clampQuietHours: false))
+        let night = CompanionNotificationScheduler.returnSeriesDates(
+            anchor: date(hour: 23), now: date(hour: 23), timing: debug, calendar: calendar)
+        #expect(calendar.component(.hour, from: night[0]) == 23)
+    }
+
+    @Test("Series lines: reflection lines first, record-like ones dropped, generic fill")
+    func returnLines() {
+        let reflection = ReflectionManager.Reflection(
+            diary: "d", opener: "o",
+            notificationLine: "Kevin, still thinking about Ainz? Tell me which volume you're on!",
+            extraNotificationLines: ["The user's favorite light novel is Overlord.", "Did you get to the next chapter yet?"],
+            trait: "")
+        let lines = ReflectionManager.returnLines(reflection: reflection, userName: "Kevin")
+        #expect(lines.first == "Kevin, still thinking about Ainz? Tell me which volume you're on!")
+        #expect(lines[1] == "Did you get to the next chapter yet?")
+        #expect(!lines.contains { $0.contains("The user") })
+        #expect(lines.count == 2 + CompanionNotificationCopy.genericLines(userName: "Kevin").count)
+
+        let generic = ReflectionManager.returnLines(reflection: nil, userName: "")
+        #expect(generic == CompanionNotificationCopy.genericLines(userName: ""))
     }
 
     // MARK: - Transcript shaping

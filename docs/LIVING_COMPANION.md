@@ -118,23 +118,35 @@ prompt forbids inventing facts.
   and a freshly enabled feature. Only one conversation is caught up per
   launch, and its entry is credited to the currently selected character.
 - **Output**: a `companion_journal` row, a widget snapshot refresh, the trait
-  pool update (see Personality evolution), and, if notifications are on, a scheduled
-  notification. When one is scheduled, the row is marked `notified`.
+  pool update (see Personality evolution), and, if notifications are on, the
+  return series below. When it is scheduled, the row is marked `notified`.
+  The reply also carries `NOTIFY2:` / `NOTIFY3:`, two more notification lines
+  for the later slots.
 
 ### Notifications
 
-`CompanionNotificationScheduler` enforces the notification rules:
+When the user leaves mid-chat, `CompanionNotificationScheduler` schedules a
+**return series**:
 
-- **One pending max**: a fixed identifier means a new notification replaces
-  the old one instead of stacking.
-- **Delay**: 6 h after the session ends.
-- **Quiet hours**: 22:00–09:00 local. A fire time inside that window moves
-  to the next **09:30**.
-- **Cancelled on return**: the pending notification is removed on every
-  foreground return and on cold launch.
-- **Content**: the title is "‹Name› has been thinking of you" and the body is
-  the `NOTIFY` line. If the model left `NOTIFY` out, a generic line is used
-  instead.
+- **Timing**: the first notification **1 h after the last message** in the
+  conversation, then **one every 2 h**, for up to 24 h after the first (at
+  most 12). iOS cannot run the app to compose a notification later, so the
+  whole series is scheduled up front, one identifier per slot
+  (`com.neuralink.presence.reflection.N`).
+- **Quiet hours**: 22:00–09:00 local. A slot inside that window moves to the
+  next **09:30**, and the 2 h rhythm resumes from there.
+- **Cancelled on return**: the whole series is removed on every foreground
+  return and on cold launch. It is never scheduled while the app is in the
+  foreground (launch catch-up reflects silently).
+- **Content**: the title is "‹Name› has been thinking of you". Bodies cycle
+  through the reflection's `NOTIFY`, `NOTIFY2` and `NOTIFY3` lines, then a
+  pool of warm generic lines that use the user's name
+  (`CompanionNotificationCopy.genericLines`). Lines that read like a memory
+  record ("the user …") are dropped.
+- **Short chats**: a conversation with fewer than 4 new user turns isn't
+  reflected on, but the series still goes out with the generic lines.
+- **Weekly recap**: a one-off on its own identifier
+  (`com.neuralink.presence.recap`), so it never replaces the series.
 
 The notification is rewritten as a **communication notification**
 (`INSendMessageIntent` with the character as sender). iOS then shows the
@@ -298,26 +310,28 @@ flowchart TD
     BOUND["🌙 sessionDidEnd<br/>or launch catch-up"] --> ON{"Companion Presence<br/>enabled?"}
     ON --> D1["no"] --> SKIP["skip"]
     ON --> D2["yes"] --> TURNS{"≥ 4 user turns since<br/>latest journal entry?"}
-    TURNS --> D3["no"] --> SKIP
+    TURNS --> D3["no"] --> GENERIC["generic lines<br/>(user's name)"]
     TURNS --> D4["yes"] --> BGT["beginBackgroundTask<br/>detached .background"]
 
     BGT --> ENG{"OpenAI enabled<br/>+ valid key?"}
-    ENG --> D5["yes"] --> OAI["OpenAIChatClient<br/>160 tok, low reasoning_effort"]
+    ENG --> D5["yes"] --> OAI["OpenAIChatClient<br/>240 tok, low reasoning_effort"]
     ENG --> D6["no"] --> LOCAL["runSilentGeneration<br/>(model must be loaded)"]
 
-    OAI --> PARSE["parse DIARY / OPENER /<br/>NOTIFY / TRAIT"]
+    OAI --> PARSE["parse DIARY / OPENER /<br/>NOTIFY 1–3 / TRAIT"]
     LOCAL --> PARSE
     PARSE --> STORE["insertJournalEntry<br/>(last_message_id watermark)"]
     STORE --> TRAIT["recordTrait<br/>decay · bump · evict"]
-    STORE --> NT{"Notifications toggle<br/>+ iOS permission?"}
-    NT --> D7["yes"] --> SCHED["schedule +6 h<br/>quiet hours → 09:30"]
-    SCHED --> D8["app foregrounded"] --> CANCEL["cancelPending()"]
+    STORE --> LINES["reflection lines first,<br/>generic fill"]
+    GENERIC --> NT
+    LINES --> NT{"left the app + toggle<br/>+ iOS permission?"}
+    NT --> D7["yes"] --> SCHED["return series<br/>+1 h, then every 2 h ≤ 24 h<br/>quiet hours → 09:30"]
+    SCHED --> D8["app foregrounded"] --> CANCEL["cancelPending()<br/>whole series"]
 
     %% Styles
     classDef core fill:#0f172a,stroke:#7c3aed,color:#a78bfa
     classDef decision fill:#1e293b,stroke:#94a3b8,color:#e2e8f0
 
-    class BGT,OAI,LOCAL,PARSE,STORE,TRAIT,SCHED,CANCEL,SKIP core
+    class BGT,OAI,LOCAL,PARSE,STORE,TRAIT,LINES,GENERIC,SCHED,CANCEL,SKIP core
     class ON,TURNS,ENG,NT decision
 
     %% Data nodes (consistent system-wide)
@@ -417,21 +431,23 @@ flowchart TD
 
 | Cause | Detail |
 |---|---|
-| Too early | Delivery is **6 h** after the session ends |
-| Quiet hours | A fire time in 22:00–09:00 local is moved to the next **09:30** |
-| User came back | The pending notification is **cancelled every time the app returns to the foreground** (and on cold launch) |
+| Too early | The first one is **1 h after the last message**, then every 2 h |
+| Quiet hours | A slot in 22:00–09:00 local is moved to the next **09:30** |
+| User came back | The whole series is **cancelled every time the app returns to the foreground** (and on cold launch) |
+| Series over | It stops 24 h after the first notification; the next chat starts a new one |
 | Switches off | Needs **both** the Companion Presence master switch **and** the notification toggle |
 | iOS permission | Missing or revoked permission logs `[Presence] NOT scheduling — notification permission missing`; check Settings → Notifications → NeuraLink |
-| Too few new turns | Needs **≥ 4 spoken user turns since the conversation's latest journal entry**. A long chat is reflected on again each time it gains 4 or more new turns. |
+| Generic text only | Fewer than **4 new user turns** since the latest journal entry means no reflection, so the series uses the generic lines. A long chat is reflected on again each time it gains 4 or more new turns. |
 | Empty OpenAI reply | GPT-5-family reasoning models at the default "medium" effort used the whole 160-token budget on reasoning. `OpenAIChatClient` sends a low `reasoning_effort`. A reply with no diary logs `[Reflection] Generation failed` and nothing is stored. |
 | Local model not loaded | Local-only setups skip the pass. Launch catch-up retries on the next launch. |
 | Background window missed | The ~30 s `beginBackgroundTask` window ran out. Launch catch-up retries on the next launch. |
 
-**Testing without waiting 6 h**: add the Xcode scheme launch argument
-`-nl.debug.presenceNotifDelaySec 60`. The notification then arrives after N
-seconds, and quiet hours are skipped. End a session with ≥ 4 new turns, then
-background the app. The logs `[Presence] Notification state (launch|foreground|scheduled)`
-show the permission status and the pending fire date.
+**Testing without waiting hours**: add the Xcode scheme launch argument
+`-nl.debug.presenceNotifDelaySec 60`. The first notification then arrives N
+seconds after the last message and the rest every 2N, with quiet hours skipped.
+Chat, then background the app. `[Presence] Return series: …` logs how many were
+scheduled, and `[Presence] Notification state (launch|foreground|scheduled)`
+shows the permission status, the pending count and the next fire date.
 
 ## Known device-test items
 
