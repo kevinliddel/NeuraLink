@@ -26,6 +26,9 @@ final class VRMPartThumbnailRenderer {
         case shoes
         /// Just the eyes themselves — no face behind them.
         case eyes
+        /// The whole character, head and shoulders, as currently dressed —
+        /// the companion widget's picture.
+        case portrait
 
         var visibleSlots: Set<VRoidMaterialSlot> {
             switch self {
@@ -43,6 +46,8 @@ final class VRMPartThumbnailRenderer {
                 return AppearancePartKind.shoes.slots.union([.bodySkin])
             case .eyes:
                 return [.eyeIris, .eyeWhite, .eyeHighlight, .eyeExtra, .eyeline, .eyelash]
+            case .portrait:
+                return Set(VRoidMaterialSlot.allCases)
             }
         }
 
@@ -52,7 +57,7 @@ final class VRMPartThumbnailRenderer {
         var hidesHead: Bool {
             switch self {
             case .outfit, .tops, .bottoms, .shoes: return true
-            case .hair, .eyes: return false
+            case .hair, .eyes, .portrait: return false
             }
         }
 
@@ -65,6 +70,7 @@ final class VRMPartThumbnailRenderer {
             case .shoes: return 0.55
             case .bottoms: return 0.16
             case .hair, .outfit, .tops, .eyes: return 0.08
+            case .portrait: return 0.04
             }
         }
 
@@ -76,7 +82,7 @@ final class VRMPartThumbnailRenderer {
             case .tops: return AppearancePartKind.tops.slots
             case .bottoms: return AppearancePartKind.bottoms.slots
             case .shoes: return AppearancePartKind.shoes.slots
-            case .hair, .outfit, .eyes: return nil
+            case .hair, .outfit, .eyes, .portrait: return nil
             }
         }
 
@@ -88,7 +94,7 @@ final class VRMPartThumbnailRenderer {
             switch self {
             case .outfit: return AppearancePartKind.outfit.slots
             case .tops, .bottoms, .shoes: return framingSlots
-            case .hair, .eyes: return nil
+            case .hair, .eyes, .portrait: return nil
             }
         }
     }
@@ -107,6 +113,20 @@ final class VRMPartThumbnailRenderer {
         renderer.terrainRenderer = nil
         renderer.environmentRenderer = nil
         renderer.enableSpringBone = false
+    }
+
+    /// Portrait of the LIVE model: grafted parts and texture overrides live
+    /// on the model already; recolours live on the scene renderer's layer,
+    /// so they are mirrored onto this renderer's for the one draw.
+    func renderPortrait(of model: VRMModel, recolorsFrom liveLayer: AppearanceMaterialLayer?) -> UIImage? {
+        let layer = renderer.appearanceLayer
+        defer { layer.clearRecolors() }
+        if let liveLayer {
+            for index in model.materials.indices {
+                layer.setRecolor(liveLayer.recolor(forMaterial: index), materialIndex: index)
+            }
+        }
+        return render(model: model, subject: .portrait)
     }
 
     /// Renders `subject` of `model`. The model's hidden-primitive set and
@@ -338,6 +358,11 @@ final class VRMPartThumbnailRenderer {
             target = worldPosition(.head) ?? SIMD3<Float>(0, height * 0.9, 0)
             target.y += height * 0.025
             distance = height * 0.22
+        case .portrait:
+            // Head and shoulders, the face a little above centre.
+            target = worldPosition(.head) ?? SIMD3<Float>(0, height * 0.9, 0)
+            target.y -= height * 0.045
+            distance = height * 0.36
         case .outfit, .tops, .bottoms, .shoes:
             let hips = worldPosition(.hips) ?? SIMD3<Float>(0, height * 0.5, 0)
             let neck = worldPosition(.neck) ?? SIMD3<Float>(0, height * 0.85, 0)

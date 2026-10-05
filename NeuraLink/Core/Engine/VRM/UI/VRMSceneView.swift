@@ -226,6 +226,8 @@ public struct VRMSceneView: View {
             await AppearanceApplier.shared.applyStoredAndWait(
                 slug: characterName.lowercased(), to: state)
             EnvironmentLoadState.shared.markBaseSceneReady()
+            // Widget follows the character on screen, dressed as it is.
+            CompanionSnapshotWriter.shared.refreshPortrait(from: state)
         } catch {
             // A cancelled load surfaces as CancellationError from the
             // loader's checkpoints — that's a model switch, not a failure,
@@ -243,6 +245,7 @@ public struct VRMSceneView: View {
                     await AppearanceApplier.shared.applyStoredAndWait(
                         slug: defaultEntry.name.lowercased(), to: state)
                     EnvironmentLoadState.shared.markBaseSceneReady()
+                    CompanionSnapshotWriter.shared.refreshPortrait(from: state)
                     toastMessage = "Couldn't load that avatar — using the default"
                 } catch {
                     nlLog("[VRMSceneView] Fallback model load failed: \(error.localizedDescription)", level: .error)

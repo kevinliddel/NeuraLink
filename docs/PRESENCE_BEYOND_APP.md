@@ -79,15 +79,32 @@ database. It reads a **snapshot** instead: a small JSON file in the App Group
 
 - **Snapshot** (`CompanionSnapshot`, version 1): character + display name,
   relationship label and score 0…1 (`CompanionAffinity`), the next unused
-  opener, one "memory of the day", last chat date, thumbnail file, and
-  `updatedAt`. It holds no transcript and no facts.
-  - The memory of the day is an observation of ≤ 140 characters, rotated by
-    day index.
+  opener, one memory line with its source (`memoryTitle`), the number of
+  remembered facts and days talked, last chat date, thumbnail file, and
+  `updatedAt`. It holds no transcript. Fields added later are optional, so
+  older snapshots still decode.
+  - The memory line is the first sentence of the memory summary ("Between
+    you", then "About you" mental model), cut at a word boundary to 150
+    characters. Without a summary it falls back to an observation of ≤ 140
+    characters rotated by day index ("Remembered").
   - The last chat date is the last user speech, else `lastSeenAt`.
-- **Writes** (`CompanionSnapshotWriter`, **5 s** debounce): triggered after
-  `CompanionStateStore.refresh()` (which runs on relationship changes and
-  character switches), after each reflection, and when the widgets toggle
-  changes. Every write calls `WidgetCenter.reloadAllTimelines()`.
+- **Live portrait**: after a character loads (and its saved look is
+  applied) and after every customization change or reset,
+  `refreshPortrait(from:)` waits for the model to settle into its idle,
+  then `VRMPartThumbnailRenderer.renderPortrait` draws the live model head
+  and shoulders, with its grafted parts, texture overrides and the scene's
+  recolours, into `<character>_live.png`. The stock thumbnail is the
+  fallback until then.
+- **Writes** (`CompanionSnapshotWriter`, **5 s** debounce) are triggered by:
+  - every logged message (`CompanionStateStore.refresh()`),
+  - each reflection,
+  - each memory-summary (mental model) update,
+  - a character switch or look change (immediately, with the new portrait),
+  - the widgets toggle.
+
+  A pending write is flushed when the app backgrounds; otherwise the
+  debounce task would be suspended with the app and never land. Every
+  write calls `WidgetCenter.reloadAllTimelines()`.
 - **Privacy switch**: **Autonomy → Presence → "Companion widgets"**
   (`PresenceSettings.showWidgets`). Turning it off deletes the snapshot and
   thumbnails, and the widgets fall back to an empty state.
@@ -95,11 +112,13 @@ database. It reads a **snapshot** instead: a small JSON file in the App Group
 
   | Widget | Families | Shows |
   |---|---|---|
-  | **Companion** | `systemSmall`, `systemMedium` | Thumbnail, relationship bar, opener (or the memory of the day), time since last chat |
-  | **Come back** | `accessoryCircular`, `accessoryRectangular` | Relationship gauge, time since last chat, opener |
+  | **Companion** | `systemSmall`, `systemMedium` | Live portrait on the brand gradient, heart-ring relationship meter, the opener ("Coming up next time") or memory line in a frosted card, chips for last chat · memories · days together |
+  | **Come back** | `accessoryCircular`, `accessoryRectangular`, `accessoryInline` | Relationship gauge, name · stage, time since last chat, the featured line |
 
-- **Timeline**: four entries 6 h apart with `.atEnd`, so "3 h ago" stays
-  current without the app writing anything.
+  On a tinted home screen (accented / vibrant rendering) the gradient is
+  dropped and the heart ring and gauge are marked `widgetAccentable`.
+- **Timeline**: entries at +0, 1, 2, 3, 6, 12, 18 and 24 h with `.atEnd`, so
+  "3 h ago" stays current without the app writing anything.
 
 ## Siri and App Shortcuts
 
@@ -177,19 +196,21 @@ flowchart TD
     START --> ISLAND["Lock screen + Dynamic Island"]
     UPDATE --> ISLAND
 
-    REFL["🧠 reflection · relationship refresh<br/>· widgets toggle"] --> WRITER["CompanionSnapshotWriter<br/>5 s debounce"]
+    REFL["🧠 message · reflection · memory summary<br/>· widgets toggle"] --> WRITER["CompanionSnapshotWriter<br/>5 s debounce · flush on background"]
+    MODEL["🧍 character switch · look change"] --> PORTRAIT["refreshPortrait<br/>idle pose → live portrait PNG"]
+    PORTRAIT --> WRITER
     WRITER --> TOGGLE{"Companion widgets on?"}
     TOGGLE --> D5["no"] --> CLEAR["CompanionSnapshotStore.clear()"]
     TOGGLE --> D6["yes"] --> SNAP["companion-snapshot.json<br/>+ thumbnails (App Group)"]
     SNAP --> RELOAD["WidgetCenter.reloadAllTimelines()"]
     CLEAR --> RELOAD
-    RELOAD --> WIDGETS["Companion · Come back widgets<br/>6 h timeline"]
+    RELOAD --> WIDGETS["Companion · Come back widgets<br/>hourly → 6-hourly timeline"]
 
     %% Styles
     classDef core fill:#0f172a,stroke:#7c3aed,color:#a78bfa
     classDef decision fill:#1e293b,stroke:#94a3b8,color:#e2e8f0
 
-    class POLL,START,UPDATE,ENDACT,ISLAND,WRITER,SNAP,CLEAR,RELOAD,WIDGETS core
+    class POLL,START,UPDATE,ENDACT,ISLAND,WRITER,PORTRAIT,SNAP,CLEAR,RELOAD,WIDGETS core
     class LIVE,EXISTS,TOGGLE decision
 
     %% Data nodes (consistent system-wide)
@@ -238,9 +259,10 @@ flowchart TD
 | `Data/DataSources/CompanionActivityController.swift` | Starts, updates and ends the Live Activity |
 | `../NeuraLinkShared/CompanionActivityAttributes.swift` | Activity payload (app + extension) |
 | `../NeuraLinkShared/CompanionSnapshot.swift` | `CompanionSnapshot` + `CompanionSnapshotStore` (App Group JSON, thumbnails) |
-| `Data/DataSources/CompanionSnapshotWriter.swift` | Builds and writes the snapshot, memory of the day, reloads widgets |
+| `Data/DataSources/CompanionSnapshotWriter.swift` | Builds and writes the snapshot (memory-summary line, stats, live portrait), background flush, reloads widgets |
+| `Core/Engine/VRM/Appearance/VRMPartThumbnailRenderer.swift` | `.portrait` subject + `renderPortrait(of:recolorsFrom:)` for the widget picture |
 | `../NeuraLinkWidgets/NeuraLinkWidgetsBundle.swift` | Extension entry point |
-| `../NeuraLinkWidgets/CompanionWidgets.swift` | Companion + Come back widgets, 6 h timeline provider |
+| `../NeuraLinkWidgets/CompanionWidgets.swift` | Companion + Come back widgets (gradient, portrait, heart ring, chips), timeline provider |
 | `../NeuraLinkWidgets/CompanionLiveActivity.swift` | Lock-screen banner + Dynamic Island views |
 | `App/AppIntents/CompanionIntents.swift` | Intents, `CharacterEntity`, `IntentTimeout`, `NeuraLinkShortcuts` |
 | `App/ContentView.swift` | Consumes `AppIntentRequests.pendingCharacter` |
@@ -277,5 +299,6 @@ flowchart TD
 - Live Activity: it appears on lock, phase changes show within about a
   second, "Reconnecting…" shows during a reconnect, and the activity ends on
   disconnect. It never appears with background talking off.
-- Widgets: add each one, end a session, and confirm the opener updates
-  within seconds.
+- Widgets: add each one; switch character, change an outfit, and end a
+  session, and confirm the portrait, memory line and meter update within
+  seconds. Check the tinted home-screen style too.

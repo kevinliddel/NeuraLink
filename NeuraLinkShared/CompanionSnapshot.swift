@@ -26,8 +26,15 @@ nonisolated struct CompanionSnapshot: Codable, Equatable, Sendable {
     var relationshipScore: Double
     /// Greeting prepared for the next conversation (may be empty).
     var opener: String
-    /// One short thing the companion remembers, rotated daily (may be empty).
+    /// One short thing the companion remembers (may be empty): the opening
+    /// of the memory summary when there is one, else an observation.
     var memoryLine: String
+    /// Where `memoryLine` comes from ("Between you", "About you",
+    /// "Remembered"); nil in snapshots written by older builds.
+    var memoryTitle: String?
+    /// Things the companion remembers / days the user has talked with them.
+    var factCount: Int?
+    var daysTogether: Int?
     /// Last time the user talked with the companion.
     var lastChatAt: Date?
     /// Thumbnail file name inside the group container's `thumbnails/` dir.

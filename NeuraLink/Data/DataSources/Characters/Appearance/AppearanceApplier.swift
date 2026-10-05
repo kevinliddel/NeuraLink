@@ -69,7 +69,12 @@ final class AppearanceApplier {
     /// Applies `spec` to the model currently displayed by `state`.
     func apply(_ spec: AppearanceSpec, to state: VRMMetalState) {
         guard let plan = beginApplying(spec, to: state) else { return }
-        Task { [weak self] in await self?.finishApplying(plan) }
+        Task { [weak self] in
+            await self?.finishApplying(plan)
+            // The widget portrait follows the new look (debounced inside —
+            // a slider drag re-renders once it settles).
+            CompanionSnapshotWriter.shared.refreshPortrait(from: state)
+        }
     }
 
     /// What one application needs, captured before any awaiting so a model
@@ -120,6 +125,7 @@ final class AppearanceApplier {
                 renderer.refreshModelStructure()
             }
         }
+        CompanionSnapshotWriter.shared.refreshPortrait(from: state)
     }
 
     /// Frees the cached donor models (panel closed).

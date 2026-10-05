@@ -115,6 +115,8 @@ final class MemoryMentalModels: @unchecked Sendable {
         nlLogSensitive("[MentalModel] \(model.slug): \(answer)", level: .info)
         if answer != model.content {
             OpenAIRealtimeManager.postInstructionsChanged(reason: "mental model \(model.slug)")
+            // The widget shows the opening of this summary.
+            await MainActor.run { CompanionSnapshotWriter.shared.scheduleRefresh() }
             if model.slug == Self.weeklyRecapSlug, !answer.isEmpty, PresenceSettings.shared.isNotificationsEnabled,
                model.lastRefreshed.map({ Self.weekKey(for: $0) != Self.weekKey(for: Date()) }) ?? true {
                 let name = character.isEmpty ? "Your companion" : character.capitalized
