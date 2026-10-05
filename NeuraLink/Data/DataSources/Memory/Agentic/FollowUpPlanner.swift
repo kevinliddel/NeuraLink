@@ -96,7 +96,7 @@ nonisolated enum FollowUpWording {
     }
 
     static func prompt(_ followUp: FollowUp, character: String, userName: String) -> (system: String, user: String) {
-        let name = character.isEmpty ? "the user's AI companion" : character.capitalized
+        let name = character.isEmpty ? "the user's AI companion" : RealtimeChatState.displayName(for: character)
         let user = userName.trimmingCharacters(in: .whitespacesAndNewlines)
         let recipient = user.isEmpty ? "them" : user
         let intent: String

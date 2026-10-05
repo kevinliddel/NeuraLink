@@ -73,7 +73,7 @@ final class MemoryReflect: @unchecked Sendable {
     func reflect(question: String, character: String) async -> String? {
         let evidence = evidence(for: question, character: character, tokenBudget: 800)
         guard !evidence.isEmpty, llm.tier != .none else { return nil }
-        let name = character.isEmpty ? "the user's AI companion" : character.capitalized
+        let name = character.isEmpty ? "the user's AI companion" : RealtimeChatState.displayName(for: character)
         var system = """
         You are \(name). Answer the question about your user using ONLY the evidence below. \
         Cite nothing that is not in the evidence; say what you do not know. Two sentences at most.

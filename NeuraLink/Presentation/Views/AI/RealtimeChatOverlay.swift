@@ -64,7 +64,7 @@ struct RealtimeChatOverlay: View {
         case .listening:
             // Named, so it reads as the companion hearing you rather than a
             // device state.
-            let name = aiState.selectedCharacterName.capitalized
+            let name = aiState.characterDisplayName.capitalized
             return (name.isEmpty ? "Listening" : "\(name) is listening", "waveform", false, nil)
 
         case .ready, .disconnected:

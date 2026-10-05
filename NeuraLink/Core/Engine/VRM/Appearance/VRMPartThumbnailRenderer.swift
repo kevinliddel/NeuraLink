@@ -20,6 +20,9 @@ final class VRMPartThumbnailRenderer {
 
     enum Subject {
         case hair
+        /// Hair AND the face it sits on, so a scalp showing through reads as
+        /// what it is. Diagnostics only — no tile uses it.
+        case head
         case outfit
         case tops
         case bottoms
@@ -36,6 +39,8 @@ final class VRMPartThumbnailRenderer {
                 // Hair alone: a part file holds nothing else, and a whole
                 // character used as a donor must look the same on the tile.
                 return [.hair, .hairBack]
+            case .head:
+                return [.hair, .hairBack, .faceSkin, .eyeIris, .eyeWhite, .brow, .eyeline, .mouth]
             case .outfit:
                 return AppearancePartKind.outfit.slots
             case .tops:
@@ -57,7 +62,7 @@ final class VRMPartThumbnailRenderer {
         var hidesHead: Bool {
             switch self {
             case .outfit, .tops, .bottoms, .shoes: return true
-            case .hair, .eyes, .portrait: return false
+            case .hair, .head, .eyes, .portrait: return false
             }
         }
 
@@ -69,7 +74,7 @@ final class VRMPartThumbnailRenderer {
             switch self {
             case .shoes: return 0.55
             case .bottoms: return 0.16
-            case .hair, .outfit, .tops, .eyes: return 0.08
+            case .hair, .head, .outfit, .tops, .eyes: return 0.08
             case .portrait: return 0.04
             }
         }
@@ -82,7 +87,7 @@ final class VRMPartThumbnailRenderer {
             case .tops: return AppearancePartKind.tops.slots
             case .bottoms: return AppearancePartKind.bottoms.slots
             case .shoes: return AppearancePartKind.shoes.slots
-            case .hair, .outfit, .eyes, .portrait: return nil
+            case .hair, .head, .outfit, .eyes, .portrait: return nil
             }
         }
 
@@ -94,7 +99,7 @@ final class VRMPartThumbnailRenderer {
             switch self {
             case .outfit: return AppearancePartKind.outfit.slots
             case .tops, .bottoms, .shoes: return framingSlots
-            case .hair, .eyes, .portrait: return nil
+            case .hair, .head, .eyes, .portrait: return nil
             }
         }
     }
@@ -350,7 +355,7 @@ final class VRMPartThumbnailRenderer {
         var target: SIMD3<Float>
         var distance: Float
         switch subject {
-        case .hair:
+        case .hair, .head:
             target = worldPosition(.head) ?? SIMD3<Float>(0, height * 0.9, 0)
             target.y += height * 0.03
             distance = height * 0.42

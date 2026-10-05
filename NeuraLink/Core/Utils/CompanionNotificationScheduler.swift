@@ -84,7 +84,7 @@ enum CompanionNotificationScheduler {
         guard status == .authorized || status == .provisional else { return false }
         center.removePendingNotificationRequests(withIdentifiers: [followUpIdentifier])
 
-        let name = characterName.trimmingCharacters(in: .whitespaces)
+        let name = RealtimeChatState.displayName(for: characterName.trimmingCharacters(in: .whitespaces))
         let content = UNMutableNotificationContent()
         content.title = name.isEmpty ? "Your companion" : name.capitalized
         content.body = body
@@ -188,7 +188,7 @@ enum CompanionNotificationScheduler {
 
         let timing = effectiveTiming()
         let dates = returnSeriesDates(anchor: anchor, now: Date(), timing: timing)
-        let name = characterName.trimmingCharacters(in: .whitespaces)
+        let name = RealtimeChatState.displayName(for: characterName.trimmingCharacters(in: .whitespaces))
         let avatar = name.isEmpty ? nil : avatarImageData(for: name)
         let seriesID = Int(Date().timeIntervalSince1970)
         var scheduled = 0
@@ -227,7 +227,7 @@ enum CompanionNotificationScheduler {
         guard status == .authorized || status == .provisional else { return false }
         center.removePendingNotificationRequests(withIdentifiers: [recapIdentifier])
 
-        let name = characterName.trimmingCharacters(in: .whitespaces)
+        let name = RealtimeChatState.displayName(for: characterName.trimmingCharacters(in: .whitespaces))
         let content = UNMutableNotificationContent()
         content.title = name.isEmpty ? "Your companion" : name.capitalized
         content.body = body
@@ -282,7 +282,7 @@ enum CompanionNotificationScheduler {
     static func communicationContent(
         base: UNMutableNotificationContent, characterName: String, avatar: Data? = nil
     ) -> UNNotificationContent {
-        let name = characterName.trimmingCharacters(in: .whitespaces)
+        let name = RealtimeChatState.displayName(for: characterName.trimmingCharacters(in: .whitespaces))
         guard !name.isEmpty, let imageData = avatar ?? avatarImageData(for: name) else { return base }
 
         let slug = name.lowercased()

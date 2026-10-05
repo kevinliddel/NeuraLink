@@ -24,7 +24,9 @@ struct MemoryTimelineView: View {
     private let collapsedLimit = 3
 
     private var characterName: String {
-        let name = RealtimeChatState.shared.selectedCharacterName
+        // The DISPLAY name: an imported model keeps the file stem it was
+        // imported under, so a rename only shows up here.
+        let name = RealtimeChatState.shared.characterDisplayName
         return name.isEmpty ? "Your companion" : name.capitalized
     }
 

@@ -40,7 +40,7 @@ final class MemoryMentalModels: @unchecked Sendable {
     }
 
     static func relationshipQuestion(character: String) -> String {
-        "What is the state of the relationship between \(character.capitalized) and the user, and what should \(character.capitalized) keep in mind next time they talk?"
+        "What is the state of the relationship between \(RealtimeChatState.displayName(for: character)) and the user, and what should \(RealtimeChatState.displayName(for: character)) keep in mind next time they talk?"
     }
 
     /// Creates the standing rows for `character` if missing.
@@ -60,7 +60,7 @@ final class MemoryMentalModels: @unchecked Sendable {
     func promptBlock(character: String, compact: Bool = false) -> String {
         let models = store.fetchMentalModels(character: character).filter { !$0.content.isEmpty }
         guard !models.isEmpty else { return "" }
-        var out = "\n[What \(character.isEmpty ? "the assistant" : character.capitalized) knows]\n"
+        var out = "\n[What \(character.isEmpty ? "the assistant" : RealtimeChatState.displayName(for: character)) knows]\n"
         for model in models {
             if model.slug == Self.weeklyRecapSlug {
                 let line = Self.recapPromptLine(model.content)
@@ -119,7 +119,7 @@ final class MemoryMentalModels: @unchecked Sendable {
             await MainActor.run { CompanionSnapshotWriter.shared.scheduleRefresh() }
             if model.slug == Self.weeklyRecapSlug, !answer.isEmpty, PresenceSettings.shared.isNotificationsEnabled,
                model.lastRefreshed.map({ Self.weekKey(for: $0) != Self.weekKey(for: Date()) }) ?? true {
-                let name = character.isEmpty ? "Your companion" : character.capitalized
+                let name = character.isEmpty ? "Your companion" : RealtimeChatState.displayName(for: character)
                 _ = await CompanionNotificationScheduler.schedule(characterName: character, body: "\(name) wrote up your week.")
             }
         }
@@ -152,7 +152,7 @@ final class MemoryMentalModels: @unchecked Sendable {
     }
 
     static func systemPrompt(character: String, disposition: MemoryDisposition) -> String {
-        let name = character.isEmpty ? "the user's AI companion" : character.capitalized
+        let name = character.isEmpty ? "the user's AI companion" : RealtimeChatState.displayName(for: character)
         var text = """
         You are \(name), privately updating what you know. Answer the QUESTION in at most 90 words, \
         using ONLY the EVIDENCE. Prefer newer evidence when facts conflict. Never invent details. \

@@ -45,7 +45,44 @@ final class RealtimeChatState {
     var userTranscript: String = ""
     var aiTranscript: String = ""
     var audioLevel: Float = 0.0  // 0.0 to 1.0
+    /// Identity key: the model's file stem. Memory banks, mental models and
+    /// saved looks are filed under it, so it must stay stable.
     var selectedCharacterName: String = ""
+    /// What to CALL the character. An imported model can be renamed, and
+    /// its file stem keeps the name it was imported under — which is how
+    /// "Othinus" ended up remembered as "Dedicatus_2". Falls back to the
+    /// file stem when nothing else is set.
+    var selectedCharacterDisplayName: String = ""
+
+    /// The name to use in prompts and anything the user reads.
+    var characterDisplayName: String {
+        selectedCharacterDisplayName.isEmpty ? selectedCharacterName : selectedCharacterDisplayName
+    }
+
+    /// File stem → display name, mirrored out of the registry so prompt
+    /// builders can resolve a name without hopping to the main actor. The
+    /// registry itself is MainActor-isolated and these run wherever memory
+    /// work happens.
+    nonisolated(unsafe) private static var displayNames: [String: String] = [:]
+
+    /// Refreshes that mirror. The entries are passed in rather than read
+    /// back from `VRMModelRegistry.shared`: the registry calls this from its
+    /// own refresh, and reaching for `shared` there re-enters it while it is
+    /// still initialising.
+    nonisolated static func refreshDisplayNames(_ entries: [(name: String, displayName: String)]) {
+        displayNames = Dictionary(
+            entries.map { ($0.name.lowercased(), $0.displayName) },
+            uniquingKeysWith: { first, _ in first })
+    }
+
+    /// Display name for a stored character key. Memory banks, mental models
+    /// and follow-ups all carry the file stem, so anything turning one into
+    /// prompt text has to resolve it — otherwise a renamed import is
+    /// addressed by the name it was imported under.
+    nonisolated static func displayName(for character: String) -> String {
+        guard !character.isEmpty else { return "" }
+        return (displayNames[character.lowercased()] ?? character).capitalized
+    }
     /// Token usage of the live Realtime session and of the last one that ended.
     var sessionUsage = RealtimeUsageMeter()
     var currentEmotion: String = "neutral"

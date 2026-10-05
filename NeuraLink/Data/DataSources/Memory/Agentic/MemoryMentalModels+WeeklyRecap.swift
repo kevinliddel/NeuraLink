@@ -20,7 +20,7 @@ extension MemoryMentalModels {
     nonisolated static let recapAskMarker = "ASK:"
 
     static func weeklyRecapQuestion(character: String) -> String {
-        "Summarise the past 7 days with the user as \(character.capitalized): what you talked about, what changed in their life, "
+        "Summarise the past 7 days with the user as \(RealtimeChatState.displayName(for: character)): what you talked about, what changed in their life, "
             + "in two or three short sentences. Then on a final line starting with \"\(recapAskMarker)\" write one question worth asking them next time."
     }
 

@@ -48,6 +48,7 @@ final class VRMModelRegistry {
         var seen = Set<String>()
         all = (Self.namedEntries() + Self.folderEntries() + Self.importedEntries())
             .filter { seen.insert($0.name.lowercased()).inserted }
+        RealtimeChatState.refreshDisplayNames(all.map { ($0.name, $0.displayName) })
     }
 
     /// Factory default: Ekaterina, else the first bundled model, else anything.
