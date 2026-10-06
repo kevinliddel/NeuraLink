@@ -201,6 +201,8 @@ struct PhoneWidgetTests {
         _ = await executor.execute(
             name: AppFunctionTool.searchWeb, arguments: ["query": "phone widget test"])
         #expect(executor.pendingUIAction != nil)
+        // The call also opened a phone episode; not under test here.
+        await MainActor.run { PhoneEpisode.end(reason: "test cleanup") }
 
         // Firing the deferred action (what happens after speech ends) must
         // raise the phone, not open Safari.

@@ -191,7 +191,9 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
                     self.transcriptTypewriter.setImmediate(result)
                     self.speakChunk(result)
                 }
-                if AppFunctionExecutor.shared.pendingUIAction != nil {
+                // Also for an active phone episode with nothing to open
+                // (reminders): the drain is what puts the phone away.
+                if AppFunctionExecutor.shared.pendingUIAction != nil || PhoneEpisode.isActive {
                     self.schedulePendingUIActionAfterSpeech()
                 }
             }

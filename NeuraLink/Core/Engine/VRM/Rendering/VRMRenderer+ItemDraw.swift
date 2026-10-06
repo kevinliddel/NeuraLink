@@ -266,8 +266,10 @@ extension VRMRenderer {
             mtoonUniforms.roughnessFactor = material.roughnessFactor
             mtoonUniforms.emissiveFactor = material.emissiveFactor
 
-            // LIGHTING FIX: Zero out emissive to prevent washout
-            mtoonUniforms.emissiveFactor = SIMD3<Float>(0, 0, 0)
+            // LIGHTING FIX: Zero out emissive to prevent washout (props keep theirs)
+            if !material.preservesEmissive {
+                mtoonUniforms.emissiveFactor = SIMD3<Float>(0, 0, 0)
+            }
 
             // Force face materials to render with full brightness
             if isFaceMaterial {

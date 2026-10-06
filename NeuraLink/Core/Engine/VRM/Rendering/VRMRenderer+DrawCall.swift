@@ -48,12 +48,17 @@ extension VRMRenderer {
         if isSkinned {
             uniforms.modelMatrix = vrmRotation
             uniforms.normalMatrix = vrmRotation
+            uniformsBuffer.contents().copyMemory(
+                from: &uniforms, byteCount: MemoryLayout<Uniforms>.size)
         } else {
+            // A rigid item (a hand-held prop) has matrices of its own. The
+            // ring buffer is bound by reference and read by the GPU after the
+            // whole frame is encoded, so writing them there would hand every
+            // draw the last item's matrices — they go in as bytes per draw
+            // instead, and the buffer keeps the skinned items' values.
             uniforms.modelMatrix = simd_mul(vrmRotation, item.node.worldMatrix)
             uniforms.normalMatrix = uniforms.modelMatrix.inverse.transpose
         }
-        uniformsBuffer.contents().copyMemory(
-            from: &uniforms, byteCount: MemoryLayout<Uniforms>.size)
 
         guard let vertexBuffer = primitive.vertexBuffer else { return }
 
@@ -85,7 +90,11 @@ extension VRMRenderer {
                 index: ResourceIndices.hasMorphedPositionsFlag)
         }
 
-        encoder.setVertexBuffer(uniformsBuffer, offset: 0, index: ResourceIndices.uniformsBuffer)
+        if isSkinned {
+            encoder.setVertexBuffer(uniformsBuffer, offset: 0, index: ResourceIndices.uniformsBuffer)
+        } else {
+            encoder.setVertexBytes(&uniforms, length: MemoryLayout<Uniforms>.size, index: ResourceIndices.uniformsBuffer)
+        }
 
         // Skinning joint buffer
         if hasSkinning && (item.node.skin != nil || meshUsesSkinning) {
@@ -261,7 +270,11 @@ extension VRMRenderer {
                 &mtoonUniforms, length: MemoryLayout<MToonMaterialUniforms>.stride, index: 8)
             encoder.setFragmentBytes(
                 &mtoonUniforms, length: MemoryLayout<MToonMaterialUniforms>.stride, index: 8)
-            encoder.setFragmentBuffer(uniformsBuffer, offset: 0, index: 1)
+            if isSkinned {
+                encoder.setFragmentBuffer(uniformsBuffer, offset: 0, index: 1)
+            } else {
+                encoder.setFragmentBytes(&uniforms, length: MemoryLayout<Uniforms>.size, index: 1)
+            }
 
             // Matrix slice validation
             if isSkinned,

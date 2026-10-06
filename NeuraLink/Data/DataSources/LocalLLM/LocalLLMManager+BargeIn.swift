@@ -152,6 +152,7 @@ extension LocalLLMManager {
         tagBuffer = ""
         pendingUIActionTask?.cancel()
         pendingUIActionTask = nil
+        PhoneEpisode.end(reason: "barge-in")
         speakingStartedUptime = nil
         transcriptTypewriter.endGeneration()
         if !state.aiTranscript.isEmpty { state.aiTranscript += " —" }

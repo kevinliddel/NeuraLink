@@ -55,6 +55,10 @@ public class VRMMaterial {
     /// (its `name` may be a generic "VRM/MToon" on older VRoid exports).
     public var slotHint: VRoidMaterialSlot?
 
+    /// The renderer zeroes emissive on every character material to avoid
+    /// washout; a prop (the phone's lit screen) opts out.
+    public var preservesEmissive = false
+
     /// Computed property: Is this material transparent but should write to depth?
     /// Used for proper layering of overlapping transparent materials (e.g., eyebrows over face skin)
     public var isTransparentWithZWrite: Bool {
@@ -98,6 +102,7 @@ public class VRMMaterial {
         zWriteEnabled = other.zWriteEnabled
         blendMode = other.blendMode
         slotHint = other.slotHint
+        preservesEmissive = other.preservesEmissive
     }
 
     public init(

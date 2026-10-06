@@ -21,8 +21,10 @@ extension VRMModel {
         var maxBounds = SIMD3<Float>(-Float.infinity, -Float.infinity, -Float.infinity)
         var foundAnyVertex = false
 
-        // Iterate through all meshes and primitives
-        for (meshIndex, mesh) in meshes.enumerated() {
+        // Iterate through all meshes and primitives — props excepted, their
+        // vertices are in the file's units and would swallow the figure.
+        let propMeshes = propMeshIDs
+        for (meshIndex, mesh) in meshes.enumerated() where !propMeshes.contains(ObjectIdentifier(mesh)) {
             for primitive in mesh.primitives {
                 // Try to read vertex positions from the Metal buffer
                 guard let vertexBuffer = primitive.vertexBuffer,

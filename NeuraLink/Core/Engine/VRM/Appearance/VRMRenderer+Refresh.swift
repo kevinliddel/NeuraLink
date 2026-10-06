@@ -13,6 +13,14 @@ import Metal
 
 extension VRMRenderer {
 
+    /// Rebuilds the render-item list on the next frame and nothing else —
+    /// for showing or hiding a prop's node, where `refreshModelStructure`'s
+    /// spring-bone reset would make the hair jump.
+    public func invalidateRenderItems() {
+        cacheNeedsRebuild = true
+        cachedRenderItems = nil
+    }
+
     /// Call after `VRMPartGrafter.graft` / `restoreBaseComposition`.
     public func refreshModelStructure() {
         guard let model else { return }

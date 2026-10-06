@@ -34,8 +34,9 @@ extension VRMMetalState {
             return
         }
 
-        // Idle clips and talking-gesture clips load together; split below.
-        let randomPairs = (Self.randomAnimNames + TalkingGesturePolicy.clipNames).compactMap { name -> (String, URL)? in
+        // Idle, talking-gesture and phone-episode clips load together; split below.
+        let clipNames = Self.randomAnimNames + TalkingGesturePolicy.clipNames + [PhoneEpisodePolicy.clipName]
+        let randomPairs = clipNames.compactMap { name -> (String, URL)? in
             guard let url = Self.findVRMA(named: name) else { return nil }
             return (name, url)
         }
@@ -62,12 +63,15 @@ extension VRMMetalState {
                 let loadedDefault = try await defaultTask
                 let gestureEntries = loadedEntries.filter { TalkingGesturePolicy.clipNames.contains($0.name) }
                 loadedEntries.removeAll { TalkingGesturePolicy.clipNames.contains($0.name) }
+                let phoneClip = loadedEntries.first { $0.name == PhoneEpisodePolicy.clipName }?.clip
+                loadedEntries.removeAll { $0.name == PhoneEpisodePolicy.clipName }
 
                 if let appearURL {
                     let appearClip = try await VRMAnimationLoader.loadVRMA(from: appearURL, model: model)
                     await MainActor.run {
                         self.randomAnimEntries = loadedEntries
                         self.talkingGestureEntries = gestureEntries
+                        self.phoneEpisodeClip = phoneClip
                         self.defaultClip = loadedDefault
                         self.pendingDefaultClip = loadedDefault
                         self.isPlayingAppear = true
@@ -80,6 +84,7 @@ extension VRMMetalState {
                     await MainActor.run {
                         self.randomAnimEntries = loadedEntries
                         self.talkingGestureEntries = gestureEntries
+                        self.phoneEpisodeClip = phoneClip
                         self.defaultClip = loadedDefault
                         self.animationPlayer.isLooping = true
                         self.animationPlayer.load(loadedDefault)
@@ -120,8 +125,8 @@ extension VRMMetalState {
             }
         }
 
-        // Random idle animation controller
-        if !isPlayingAppear {
+        // Random idle animation controller (the phone episode owns the body meanwhile)
+        if !isPlayingAppear && !phoneEpisode.isActive {
             if isPlayingRandomAnim {
                 randomAnimElapsed += dt
                 if randomAnimElapsed >= randomAnimDuration {
@@ -151,6 +156,8 @@ extension VRMMetalState {
             stopPose()
         }
 
+        updatePhoneEpisode(dt: dt)
+
         if !isPlayingAppear {
             updateTalkingGesture(dt: dt, model: model)
         }
@@ -159,7 +166,9 @@ extension VRMMetalState {
         let lookBackTrigger = lookBackController.update(orbitYaw: orbitYaw, deltaTime: dt)
 
         // Look-back: trigger — stores peak-rotation clip, never interrupts main animation
-        if let side = lookBackTrigger, !isPlayingLookBack, !isPlayingAppear {
+        // (not while she is on her phone: the head is the clip's, and the
+        // interaction event would interleave with the tool call).
+        if let side = lookBackTrigger, !isPlayingLookBack, !isPlayingAppear, !phoneEpisode.isActive {
             lookBackClip = VRMLookBackAnimationBuilder.makeClip(side: side)
             lookBackTime = 0
             isPlayingLookBack = true
@@ -345,6 +354,7 @@ extension VRMMetalState {
                     self.isPlayingPose = true
                     self.poseStartedAt = Date()
                     self.isPlayingTalkingGesture = false  // a pose outranks a gesture
+                    self.isPlayingPhoneEpisodeClip = false  // …and the phone clip (it resumes after)
                     self.isPlayingRandomAnim = false // Interrupt random idle
                     self.randomAnimTimer = -1  // Pause idles until stopPose re-arms
                     self.animationPlayer.isLooping = true
