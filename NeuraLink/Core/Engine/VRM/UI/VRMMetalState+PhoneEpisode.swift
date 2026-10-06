@@ -30,16 +30,21 @@ extension VRMMetalState {
 
     /// Where the phone sits in the right hand, in the VRM 1.0 hand frame
     /// (T-pose: fingers −X, thumb +Z, palm −Y). Derived by
-    /// CheckingPhoneClipDiagnostic at the clip's hold pose, the usual way
-    /// one holds a phone: portrait, the screen (the file's −Z after the
-    /// loader's chain; +Z is the camera bump) aimed between her face and the
-    /// viewer, the long axis "up" within the screen plane, the bottom edge
-    /// resting in the palm so the centre sits half a phone up from it; 85%
-    /// of life size so the hand closes around it. Re-run the diagnostic to
-    /// re-derive if the clip or the prop file changes.
+    /// CheckingPhoneClipDiagnostic at the clip's hold pose to match the
+    /// reference hold: the phone upright in the fist, top up (the file's +Y
+    /// after the chain points to the home-indicator end, so the long axis
+    /// is the top direction negated) and rolled about 12° toward the
+    /// fingertips, the screen (the file's −Z after the loader's chain; +Z is
+    /// the camera bump) facing the viewer and tilted a
+    /// little back toward her face, its lower third inside the curl of the
+    /// fingers with the back on the palm — centre 2.2 cm up from the palm's
+    /// centre and 1 cm behind the fingertips. 85% of life size so the hand
+    /// closes around it. Re-run the diagnostic to re-derive if the clip or
+    /// the prop file changes; it renders derived vs shipped from both
+    /// cameras, and NL_PHONE_GRIP_VARIANTS renders refinement variants.
     static let phoneGrip = VRMPropGrip(
-        translation: SIMD3<Float>(0.001, -0.052, -0.010),
-        rotation: simd_quatf(ix: 0.8456, iy: 0.2805, iz: 0.3870, r: -0.2378),
+        translation: SIMD3<Float>(-0.024, -0.019, -0.004),
+        rotation: simd_quatf(ix: 0.0537, iy: -0.9195, iz: -0.0851, r: -0.3801),
         scale: 0.85)
 
     /// Loads the phone GLB once, off the main thread, and attaches it to

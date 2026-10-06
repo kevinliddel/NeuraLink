@@ -132,10 +132,13 @@ struct VRMPropTests {
         guard let device = MTLCreateSystemDefaultDevice(), let thumbnails = VRMPartThumbnailRenderer(size: 256) else { return }
         let prop = try await Self.loadProp(device)
         let model = try await Self.loadModel("Sonya", device)
-        let attachment = try model.attachProp(prop, to: .rightHand, grip: VRMMetalState.phoneGrip)
-        // Hold the phone out in front so it cannot hide behind the body in a
-        // T-pose: a flat grip straight ahead of the hand.
-        _ = attachment
+        // A grip chosen for visibility, not the shipped one: in the T-pose this
+        // renders, the shipped grip lays the phone flat along the outstretched
+        // arm and the level camera sees only its edge. Upright, 10 cm below
+        // the hand, it stands clear of the body as a full rectangle.
+        let visibleGrip = VRMPropGrip(
+            translation: SIMD3<Float>(0, -0.1, 0), rotation: simd_quatf(ix: 0, iy: 0, iz: 0, r: 1))
+        let attachment = try model.attachProp(prop, to: .rightHand, grip: visibleGrip)
         let before = try #require(thumbnails.render(model: model, subject: .figure)?.cgImage)
         model.setProp(attachment, visible: true)
         let after = try #require(thumbnails.render(model: model, subject: .figure)?.cgImage)

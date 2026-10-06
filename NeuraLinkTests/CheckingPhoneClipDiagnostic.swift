@@ -129,7 +129,9 @@ struct CheckingPhoneClipDiagnostic {
     /// face with the long axis along the thumb — expressed in the VRM 1.0
     /// hand frame the constant in VRMMetalState+PhoneEpisode uses, so both
     /// characters should print nearly the same numbers.
-    private func suggestedGrip(_ model: VRMModel, mirror: Bool) -> (String, VRMPropGrip) {
+    private func suggestedGrip(
+        _ model: VRMModel, mirror: Bool, upFromPalm: Float = 0.022, towardScreen: Float = -0.010, rollTowardFingers: Float = 12
+    ) -> (String, VRMPropGrip) {
         let fallback = VRMMetalState.phoneGrip
         guard let handIndex = model.humanoid?.getBoneNode(.rightHand),
             let head = worldPosition(model, .head), let hand = worldPosition(model, .rightHand),
@@ -144,32 +146,42 @@ struct CheckingPhoneClipDiagnostic {
         let handRotation = simd_normalize(yaw * simd_quatf(handBasis))  // render space
         let toFace = simd_normalize(yaw.act(head - hand))
         let thumbDirection = simd_normalize(yaw.act(thumb - hand))
-        // Screen between the face and the viewer: aimed only at the face it
-        // lies flat (the hand is almost straight below the head) and a
-        // chest-height camera sees its edge. After the loader's chain the
-        // file's +Z is the phone's BACK (the camera bump), so the frame's +Z
-        // is the screen direction negated. Long axis = thumb direction
-        // flattened onto the screen plane; width completes the frame.
+        // The reference hold: phone upright in the fist, top up, screen facing
+        // the viewer with a slight tilt back toward her face, the lower third
+        // gripped. After the loader's chain the file's +Z is the phone's BACK
+        // (the camera bump), so the frame's +Z is the screen direction
+        // negated. Long axis = world up within the screen plane (portrait,
+        // top up); width completes the frame.
         let towardViewer = simd_normalize(SIMD3<Float>(0, 0.35, 1))
-        let screen = simd_normalize(toFace + towardViewer)
+        let screen = simd_normalize(towardViewer + 0.35 * toFace)
         let normal = -screen
-        // Portrait hold: the long axis is "up" within the screen plane (along
-        // the thumb it comes out landscape — this clip's thumb points sideways).
         let up = SIMD3<Float>(0, 1, 0)
-        var long = up - simd_dot(up, normal) * normal
-        long = simd_normalize(long)
+        var top = simd_normalize(up - simd_dot(up, normal) * normal)
+        // A relaxed hold rolls the top a little toward the fingertips.
+        let middleWorld = worldPosition(model, .rightMiddleProximal) ?? hand
+        let fingers = simd_normalize(yaw.act(middleWorld - hand))
+        let fingersInPlane = simd_normalize(fingers - simd_dot(fingers, normal) * normal)
+        let roll = rollTowardFingers * .pi / 180
+        top = simd_normalize(cos(roll) * top + sin(roll) * fingersInPlane)
+        // The file's +Y (after the loader's chain) runs from the top of the
+        // phone down to its home-indicator end, so the long axis is the top
+        // direction negated — otherwise the phone stands on its head.
+        let long = -top
         let width = simd_normalize(simd_cross(long, normal))
         let phoneWorld = simd_quatf(float3x3(width, long, normal))  // file +X, +Y, +Z after the loader's chain
         // Hand-local in this rig's own frame; a 0.x rig's frame is the 1.0
         // frame yawed, so express it as the 1.0-frame constant resolved() expects.
         let local = simd_normalize(handRotation.inverse * phoneWorld)
         let grip = mirror ? simd_normalize(VRMModel.vrmVersionYaw * local) : local
-        // Centre: the bottom edge rests at the palm, so the centre sits half
-        // a phone up the long axis from a point on the palm.
-        let palm = SIMD3<Float>(-0.035, -0.012, 0)  // 1.0 hand frame
-        let longLocal = handRotation.inverse.act(long)
-        let longInFrame = mirror ? VRMModel.vrmVersionYaw.act(longLocal) : longLocal
-        let centre = palm + 0.055 * longInFrame
+        // Centre: the lower third sits in the fist — a little up the long axis
+        // from the palm's centre and a touch toward the screen side, so the
+        // fingers wrap the edges and the back rests on the palm.
+        let middle = worldPosition(model, .rightMiddleProximal) ?? hand
+        let palmCentre = hand + 0.5 * (middle - hand) + 0.3 * (thumb - hand)
+        let renderYaw: simd_quatf = mirror ? VRMModel.vrmVersionYaw.inverse : simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
+        let centreWorld = palmCentre + upFromPalm * renderYaw.act(top) + towardScreen * renderYaw.act(screen)
+        let centreLocal = handRotation.inverse.act(yaw.act(centreWorld - hand))
+        let centre = mirror ? VRMModel.vrmVersionYaw.act(centreLocal) : centreLocal
         _ = thumbDirection
         let current = VRMMetalState.phoneGrip.rotation
         let currentScreen = handRotation.act(current.act(SIMD3<Float>(0, 0, -1)))
@@ -184,7 +196,69 @@ struct CheckingPhoneClipDiagnostic {
                 + "   suggested grip translation: (%.4f, %.4f, %.4f)\n",
             axes, offAngle, grip.imag.x, grip.imag.y, grip.imag.z, grip.real,
             grip.angle * 180 / .pi, grip.axis.x, grip.axis.y, grip.axis.z, centre.x, centre.y, centre.z)
-        return (text, VRMPropGrip(translation: centre, rotation: grip, scale: fallback.scale))
+        let text2 = text + String(format: "   (up %.3f, toward screen %.3f, roll %.0f°)\n", upFromPalm, towardScreen, rollTowardFingers)
+        return (text2, VRMPropGrip(translation: centre, rotation: grip, scale: fallback.scale))
+    }
+
+    // MARK: - Grip candidates contact sheet
+
+    /// Named holds to choose between, all 85% size, centre on the palm.
+    private static let gripCandidates: [(String, VRMPropGrip)] = [
+        ("A_along_fingers_screen_up", VRMPropGrip(
+            translation: SIMD3<Float>(-0.045, -0.012, 0.008), rotation: simd_quatf(ix: -0.5, iy: 0.5, iz: 0.5, r: 0.5), scale: 0.85)),
+        ("B_along_thumb_screen_up", VRMPropGrip(
+            translation: SIMD3<Float>(-0.035, -0.012, 0.015), rotation: simd_quatf(ix: 0, iy: 0.7071068, iz: 0.7071068, r: 0), scale: 0.85)),
+        ("C_along_thumb_screen_to_viewer", VRMPropGrip(
+            translation: SIMD3<Float>(-0.040, -0.007, 0.013), rotation: simd_quatf(ix: 0.4978, iy: 0.7388, iz: 0.4516, r: 0.0483), scale: 0.85)),
+        ("D_upright_in_hollow", VRMPropGrip(
+            translation: SIMD3<Float>(-0.016, -0.043, 0.006), rotation: simd_quatf(ix: 0.8995, iy: 0.1770, iz: 0.3856, r: -0.1044), scale: 0.85)),
+        ("E_along_fingers_screen_to_palm_first_build", VRMPropGrip(
+            translation: SIMD3<Float>(-0.045, -0.012, 0.008),
+            rotation: simd_quatf(angle: .pi / 2, axis: SIMD3<Float>(1, 0, 0)) * simd_quatf(angle: .pi / 2, axis: SIMD3<Float>(0, 0, 1)),
+            scale: 0.85)),
+        ("F_along_fingers_standing_screen_to_viewer", VRMPropGrip(
+            translation: SIMD3<Float>(-0.045, -0.030, 0.008), rotation: simd_quatf(ix: 0, iy: 0.7071068, iz: 0, r: 0.7071068), scale: 0.85))
+    ]
+
+    @Test("Render the grip candidates when NL_PHONE_GRIP_SHEET_DIR is set")
+    func gripSheet() async throws {
+        guard let path = ProcessInfo.processInfo.environment["NL_PHONE_GRIP_SHEET_DIR"], !path.isEmpty,
+            let device = MTLCreateSystemDefaultDevice(),
+            let thumbnails = VRMPartThumbnailRenderer(size: 768)
+        else { return }
+        let outputDir = URL(fileURLWithPath: path, isDirectory: true)
+        try FileManager.default.createDirectory(at: outputDir, withIntermediateDirectories: true)
+        let clipURL = try #require(Bundle.main.url(forResource: Self.clipName, withExtension: "vrma"))
+        let propURL = try #require(Bundle.main.url(forResource: VRMMetalState.phonePropName, withExtension: "glb"))
+        let prop = try await VRMPropLoader.load(url: propURL, device: device, maxTextureSize: 512)
+        for character in ["Sonya", "Ekaterina"] {
+            let modelURL = try #require(Bundle.main.url(forResource: character, withExtension: "vrm"))
+            let model = try await VRMModel.load(from: modelURL, device: device)
+            let clip = try VRMAnimationLoader.loadVRMA(from: clipURL, model: model)
+            pose(model, with: clip, at: 4)
+            // Variants of the reference hold: (up from palm, toward screen, roll°).
+            let variants: [(String, Float, Float, Float)] = [
+                ("G1_lower_behind_fingers", 0.022, -0.010, 0), ("G2_lower_behind_roll12", 0.022, -0.010, 12),
+                ("G3_deeper_roll12", 0.015, -0.012, 12), ("G4_lower_behind_roll20", 0.020, -0.008, 20)
+            ]
+            let candidates: [(String, VRMPropGrip)] = ProcessInfo.processInfo.environment["NL_PHONE_GRIP_VARIANTS"] == nil
+                ? Self.gripCandidates
+                : variants.map { ($0.0, suggestedGrip(model, mirror: model.isVRM0, upFromPalm: $0.1, towardScreen: $0.2, rollTowardFingers: $0.3).1) }
+            let attachments = try candidates.map { try model.attachProp(prop, to: .rightHand, grip: $0.1) }
+            let numbers = candidates.map { name, grip -> String in
+                String(format: "%@ %@: t(%.4f, %.4f, %.4f) q(%.4f, %.4f, %.4f, %.4f) s%.2f", character, name,
+                       grip.translation.x, grip.translation.y, grip.translation.z,
+                       grip.rotation.imag.x, grip.rotation.imag.y, grip.rotation.imag.z, grip.rotation.real, grip.scale)
+            }.joined(separator: "\n") + "\n"
+            try numbers.write(to: outputDir.appendingPathComponent("grips_\(character.lowercased()).txt"), atomically: true, encoding: .utf8)
+            for (index, (name, _)) in candidates.enumerated() {
+                for attachment in attachments { model.setProp(attachment, visible: false) }
+                model.setProp(attachments[index], visible: true)
+                let stem = "\(character.lowercased())_\(name)"
+                try write(thumbnails.render(model: model, subject: .figure), to: outputDir, name: stem + "_scene")
+                try write(thumbnails.render(model: model, subject: .portrait), to: outputDir, name: stem + "_above")
+            }
+        }
     }
 
     // MARK: - Measurements
