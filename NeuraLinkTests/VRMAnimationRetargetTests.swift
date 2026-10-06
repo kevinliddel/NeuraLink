@@ -99,7 +99,7 @@ struct VRMAnimationRetargetTests {
 }
 
 /// The VRMA's own skeleton, posed by forward kinematics from its raw tracks.
-private struct ReferenceSkeleton {
+struct ReferenceSkeleton {
     let document: GLTFDocument
     let parentOf: [Int: Int]
     let boneNodes: [VRMHumanoidBone: Int]
