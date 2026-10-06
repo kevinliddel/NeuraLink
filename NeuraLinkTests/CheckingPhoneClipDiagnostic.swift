@@ -50,7 +50,7 @@ struct CheckingPhoneClipDiagnostic {
     func measureAndRender() async throws {
         guard let path = ProcessInfo.processInfo.environment["NL_PHONE_CLIP_DIAG_DIR"], !path.isEmpty,
             let device = MTLCreateSystemDefaultDevice(),
-            let thumbnails = VRMPartThumbnailRenderer(size: 768)
+            let thumbnails = VRMPartThumbnailRenderer(size: 1536)
         else { return }
         let outputDir = URL(fileURLWithPath: path, isDirectory: true)
         try FileManager.default.createDirectory(at: outputDir, withIntermediateDirectories: true)
@@ -58,7 +58,8 @@ struct CheckingPhoneClipDiagnostic {
         let clipURL = try #require(Bundle.main.url(forResource: Self.clipName, withExtension: "vrma"))
         let reference = try ReferenceSkeleton(url: clipURL)
         let propURL = try #require(Bundle.main.url(forResource: VRMMetalState.phonePropName, withExtension: "glb"))
-        let prop = try await VRMPropLoader.load(url: propURL, device: device, maxTextureSize: 512)
+        let prop = try await VRMPropLoader.load(
+            url: propURL, device: device, maxTextureSize: 512, rotatedMaterials: VRMMetalState.phonePropUpsideDownTextureMaterials)
         var report = ""
 
         for character in ["Sonya", "Ekaterina"] {
@@ -130,7 +131,8 @@ struct CheckingPhoneClipDiagnostic {
     /// hand frame the constant in VRMMetalState+PhoneEpisode uses, so both
     /// characters should print nearly the same numbers.
     private func suggestedGrip(
-        _ model: VRMModel, mirror: Bool, upFromPalm: Float = 0.022, towardScreen: Float = -0.010, rollTowardFingers: Float = 12
+        _ model: VRMModel, mirror: Bool, upFromPalm: Float = 0.008, towardScreen: Float = 0.010, rollTowardFingers: Float = 12,
+        tiltForward: Float = 45
     ) -> (String, VRMPropGrip) {
         let fallback = VRMMetalState.phoneGrip
         guard let handIndex = model.humanoid?.getBoneNode(.rightHand),
@@ -152,9 +154,18 @@ struct CheckingPhoneClipDiagnostic {
         // (the camera bump), so the frame's +Z is the screen direction
         // negated. Long axis = world up within the screen plane (portrait,
         // top up); width completes the frame.
-        let towardViewer = simd_normalize(SIMD3<Float>(0, 0.35, 1))
-        let screen = simd_normalize(towardViewer + 0.35 * toFace)
+        // She is the one reading it: the screen faces up and back toward her
+        // eyes, so the top of the phone leans AWAY from her, toward the
+        // viewer, by `tiltForward` degrees from vertical (45° ≈ the screen
+        // square to a gaze coming down at 45°). The viewer sees its back.
+        let tilt = tiltForward * .pi / 180
+        let screen = simd_normalize(SIMD3<Float>(0, cos(tilt), -sin(tilt)))
+        // The file's −Z (after the loader's chain) is the screen side — the
+        // camera module shows on +Z — and its +Y runs toward the BOTTOM of
+        // the phone (verified on a 1536 px render: camera module at the top
+        // end, back facing the camera, before the long axis was negated).
         let normal = -screen
+        _ = toFace
         let up = SIMD3<Float>(0, 1, 0)
         var top = simd_normalize(up - simd_dot(up, normal) * normal)
         // A relaxed hold rolls the top a little toward the fingertips.
@@ -163,9 +174,8 @@ struct CheckingPhoneClipDiagnostic {
         let fingersInPlane = simd_normalize(fingers - simd_dot(fingers, normal) * normal)
         let roll = rollTowardFingers * .pi / 180
         top = simd_normalize(cos(roll) * top + sin(roll) * fingersInPlane)
-        // The file's +Y (after the loader's chain) runs from the top of the
-        // phone down to its home-indicator end, so the long axis is the top
-        // direction negated — otherwise the phone stands on its head.
+        // The file's +Y (after the loader's chain) runs toward the BOTTOM of
+        // the phone, so the long axis is the top direction negated.
         let long = -top
         let width = simd_normalize(simd_cross(long, normal))
         let phoneWorld = simd_quatf(float3x3(width, long, normal))  // file +X, +Y, +Z after the loader's chain
@@ -196,7 +206,8 @@ struct CheckingPhoneClipDiagnostic {
                 + "   suggested grip translation: (%.4f, %.4f, %.4f)\n",
             axes, offAngle, grip.imag.x, grip.imag.y, grip.imag.z, grip.real,
             grip.angle * 180 / .pi, grip.axis.x, grip.axis.y, grip.axis.z, centre.x, centre.y, centre.z)
-        let text2 = text + String(format: "   (up %.3f, toward screen %.3f, roll %.0f°)\n", upFromPalm, towardScreen, rollTowardFingers)
+        let text2 = text + String(format: "   (up %.3f, toward screen %.3f, roll %.0f°, tilt forward %.0f°)\n",
+                                  upFromPalm, towardScreen, rollTowardFingers, tiltForward)
         return (text2, VRMPropGrip(translation: centre, rotation: grip, scale: fallback.scale))
     }
 
@@ -230,7 +241,8 @@ struct CheckingPhoneClipDiagnostic {
         try FileManager.default.createDirectory(at: outputDir, withIntermediateDirectories: true)
         let clipURL = try #require(Bundle.main.url(forResource: Self.clipName, withExtension: "vrma"))
         let propURL = try #require(Bundle.main.url(forResource: VRMMetalState.phonePropName, withExtension: "glb"))
-        let prop = try await VRMPropLoader.load(url: propURL, device: device, maxTextureSize: 512)
+        let prop = try await VRMPropLoader.load(
+            url: propURL, device: device, maxTextureSize: 512, rotatedMaterials: VRMMetalState.phonePropUpsideDownTextureMaterials)
         for character in ["Sonya", "Ekaterina"] {
             let modelURL = try #require(Bundle.main.url(forResource: character, withExtension: "vrm"))
             let model = try await VRMModel.load(from: modelURL, device: device)

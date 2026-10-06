@@ -148,7 +148,14 @@ nonisolated enum VRMPropTextureDecoder {
 /// (`VRMPropTextureDecoder`), the small geometry/material part on it.
 public enum VRMPropLoader {
 
-    public static func load(url: URL, device: MTLDevice, maxTextureSize: Int = 1024) async throws -> VRMProp {
+    /// `rotatedMaterials`: materials whose picture is painted upside down
+    /// relative to the geometry (the phone's screen); their primitives'
+    /// texture coordinates are turned 180° about their own bounds so the
+    /// picture and the body agree. (The textures are atlases, so turning the
+    /// image itself would move the picture off the island the mesh samples.)
+    public static func load(
+        url: URL, device: MTLDevice, maxTextureSize: Int = 1024, rotatedMaterials: Set<String> = []
+    ) async throws -> VRMProp {
         let data = try Data(contentsOf: url)
         let (document, binary) = try GLTFParser().parse(data: data)
         let baseURL = url.deletingPathExtension().deletingLastPathComponent()
@@ -175,6 +182,13 @@ public enum VRMPropLoader {
         for (meshIndex, chain) in instances {
             guard let gltfMesh = document.meshes?[safe: meshIndex] else { continue }
             let mesh = try await VRMMesh.load(from: gltfMesh, document: document, device: device, bufferLoader: bufferLoader)
+            for primitive in mesh.primitives {
+                guard let materialIndex = primitive.materialIndex,
+                    let materialName = document.materials?[safe: materialIndex]?.name,
+                    rotatedMaterials.contains(materialName)
+                else { continue }
+                rotateTextureCoordinates(of: primitive)
+            }
             parts.append(.init(mesh: mesh, chain: chain))
             for primitive in mesh.primitives {
                 let (low, high) = transformedBounds(of: primitive, chain: chain)
@@ -215,6 +229,24 @@ public enum VRMPropLoader {
             textures.append(texture)
         }
         return textures
+    }
+
+    /// Turns a primitive's texture coordinates 180° about their own bounding
+    /// box: a picture painted upside down inside its atlas island then reads
+    /// the right way up, and every sample stays inside the island.
+    private static func rotateTextureCoordinates(of primitive: VRMPrimitive) {
+        guard let buffer = primitive.vertexBuffer, primitive.vertexCount > 0 else { return }
+        let vertices = buffer.contents().bindMemory(to: VRMVertex.self, capacity: primitive.vertexCount)
+        var low = SIMD2<Float>(repeating: .greatestFiniteMagnitude)
+        var high = SIMD2<Float>(repeating: -.greatestFiniteMagnitude)
+        for index in 0..<primitive.vertexCount {
+            low = min(low, vertices[index].texCoord)
+            high = max(high, vertices[index].texCoord)
+        }
+        let sum = low + high
+        for index in 0..<primitive.vertexCount {
+            vertices[index].texCoord = sum - vertices[index].texCoord
+        }
     }
 
     /// The encoded image behind a texture: a slice of the GLB's binary chunk

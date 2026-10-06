@@ -27,24 +27,27 @@ extension VRMMetalState {
     static let phonePropName = "mobile_phone"
     /// A 15 cm object never needs the 4096² maps the file ships.
     static let phonePropTextureCap = 1024
+    /// Materials whose picture is painted upside down relative to the body.
+    /// None for this file: the picture only looked inverted while the body
+    /// itself was held the wrong way round.
+    static let phonePropUpsideDownTextureMaterials: Set<String> = []
 
     /// Where the phone sits in the right hand, in the VRM 1.0 hand frame
     /// (T-pose: fingers −X, thumb +Z, palm −Y). Derived by
-    /// CheckingPhoneClipDiagnostic at the clip's hold pose to match the
-    /// reference hold: the phone upright in the fist, top up (the file's +Y
-    /// after the chain points to the home-indicator end, so the long axis
-    /// is the top direction negated) and rolled about 12° toward the
-    /// fingertips, the screen (the file's −Z after the loader's chain; +Z is
-    /// the camera bump) facing the viewer and tilted a
-    /// little back toward her face, its lower third inside the curl of the
-    /// fingers with the back on the palm — centre 2.2 cm up from the palm's
-    /// centre and 1 cm behind the fingertips. 85% of life size so the hand
-    /// closes around it. Re-run the diagnostic to re-derive if the clip or
-    /// the prop file changes; it renders derived vs shipped from both
-    /// cameras, and NL_PHONE_GRIP_VARIANTS renders refinement variants.
+    /// CheckingPhoneClipDiagnostic at the clip's hold pose: SHE is reading
+    /// it, so the screen (the file's −Z after the loader's chain; +Z carries
+    /// the camera module) faces up and back into her eyes and the top of the
+    /// phone (the file's −Y end — +Y runs toward the bottom) leans 45° away
+    /// from her toward the viewer, who sees its back. Rolled about 12°
+    /// toward the fingertips, the back resting on the upturned palm — centre
+    /// just above the palm's centre, 1 cm toward the screen side — the fist
+    /// closed around its lower half. 85% of life size. Re-run the diagnostic
+    /// to re-derive if the clip or the prop file changes; it renders derived
+    /// vs shipped from both cameras, and NL_PHONE_GRIP_VARIANTS renders
+    /// refinement variants.
     static let phoneGrip = VRMPropGrip(
-        translation: SIMD3<Float>(-0.024, -0.019, -0.004),
-        rotation: simd_quatf(ix: 0.0537, iy: -0.9195, iz: -0.0851, r: -0.3801),
+        translation: SIMD3<Float>(-0.037, -0.011, 0.010),
+        rotation: simd_quatf(ix: -0.5507, iy: -0.3996, iz: -0.1957, r: 0.7062),
         scale: 0.85)
 
     /// Loads the phone GLB once, off the main thread, and attaches it to
@@ -55,7 +58,9 @@ extension VRMMetalState {
         else { return }
         Task.detached(priority: .utility) { [weak self] in
             do {
-                let prop = try await VRMPropLoader.load(url: url, device: device, maxTextureSize: Self.phonePropTextureCap)
+                let prop = try await VRMPropLoader.load(
+                    url: url, device: device, maxTextureSize: Self.phonePropTextureCap,
+                    rotatedMaterials: Self.phonePropUpsideDownTextureMaterials)
                 await MainActor.run {
                     guard let self else { return }
                     self.phoneProp = prop
