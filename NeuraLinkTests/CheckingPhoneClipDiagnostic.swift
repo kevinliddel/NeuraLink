@@ -99,14 +99,28 @@ struct CheckingPhoneClipDiagnostic {
             model.setProp(derivedAttachment, visible: true)
             #expect(worstBody < 12, "\(character): body segments drift \(worstBody)°")
 
+            // Current grip: portrait and scene-camera framings at each render
+            // time; derived grip: the same at the hold.
+            model.setProp(derivedAttachment, visible: false)
+            model.setProp(attachment, visible: true)
             for time in Self.renderTimes {
                 pose(model, with: clip, at: time)
-                guard let image = thumbnails.render(model: model, subject: .portrait), let png = image.pngData() else { continue }
-                let name = "\(character.lowercased())_t\(String(format: "%04.1f", time).replacingOccurrences(of: ".", with: "_")).png"
-                try png.write(to: outputDir.appendingPathComponent(name), options: .atomic)
+                let stem = "\(character.lowercased())_t\(String(format: "%04.1f", time).replacingOccurrences(of: ".", with: "_"))"
+                try write(thumbnails.render(model: model, subject: .portrait), to: outputDir, name: stem)
+                try write(thumbnails.render(model: model, subject: .figure), to: outputDir, name: stem + "_scene")
             }
+            model.setProp(attachment, visible: false)
+            model.setProp(derivedAttachment, visible: true)
+            pose(model, with: clip, at: 4)
+            try write(thumbnails.render(model: model, subject: .portrait), to: outputDir, name: "\(character.lowercased())_t04_0_derived")
+            try write(thumbnails.render(model: model, subject: .figure), to: outputDir, name: "\(character.lowercased())_t04_0_derived_scene")
         }
         try report.write(to: outputDir.appendingPathComponent("report.txt"), atomically: true, encoding: .utf8)
+    }
+
+    private func write(_ image: UIImage?, to directory: URL, name: String) throws {
+        guard let png = image?.pngData() else { return }
+        try png.write(to: directory.appendingPathComponent("\(name).png"), options: .atomic)
     }
 
     // MARK: - Grip derivation
@@ -130,13 +144,19 @@ struct CheckingPhoneClipDiagnostic {
         let handRotation = simd_normalize(yaw * simd_quatf(handBasis))  // render space
         let toFace = simd_normalize(yaw.act(head - hand))
         let thumbDirection = simd_normalize(yaw.act(thumb - hand))
-        // Screen normal between the face and the viewer: aimed only at the
-        // face it lies flat (the hand is almost straight below the head) and
-        // a chest-height camera sees its edge. Long axis = thumb direction
+        // Screen between the face and the viewer: aimed only at the face it
+        // lies flat (the hand is almost straight below the head) and a
+        // chest-height camera sees its edge. After the loader's chain the
+        // file's +Z is the phone's BACK (the camera bump), so the frame's +Z
+        // is the screen direction negated. Long axis = thumb direction
         // flattened onto the screen plane; width completes the frame.
         let towardViewer = simd_normalize(SIMD3<Float>(0, 0.35, 1))
-        let normal = simd_normalize(toFace + towardViewer)
-        var long = thumbDirection - simd_dot(thumbDirection, normal) * normal
+        let screen = simd_normalize(toFace + towardViewer)
+        let normal = -screen
+        // Portrait hold: the long axis is "up" within the screen plane (along
+        // the thumb it comes out landscape — this clip's thumb points sideways).
+        let up = SIMD3<Float>(0, 1, 0)
+        var long = up - simd_dot(up, normal) * normal
         long = simd_normalize(long)
         let width = simd_normalize(simd_cross(long, normal))
         let phoneWorld = simd_quatf(float3x3(width, long, normal))  // file +X, +Y, +Z after the loader's chain
@@ -144,19 +164,27 @@ struct CheckingPhoneClipDiagnostic {
         // frame yawed, so express it as the 1.0-frame constant resolved() expects.
         let local = simd_normalize(handRotation.inverse * phoneWorld)
         let grip = mirror ? simd_normalize(VRMModel.vrmVersionYaw * local) : local
+        // Centre: the bottom edge rests at the palm, so the centre sits half
+        // a phone up the long axis from a point on the palm.
+        let palm = SIMD3<Float>(-0.035, -0.012, 0)  // 1.0 hand frame
+        let longLocal = handRotation.inverse.act(long)
+        let longInFrame = mirror ? VRMModel.vrmVersionYaw.act(longLocal) : longLocal
+        let centre = palm + 0.055 * longInFrame
+        _ = thumbDirection
         let current = VRMMetalState.phoneGrip.rotation
-        let currentNormal = handRotation.act(current.act(SIMD3<Float>(0, 0, 1)))
-        let offAngle = acos(min(1, max(-1, simd_dot(currentNormal, toFace)))) * 180 / .pi
+        let currentScreen = handRotation.act(current.act(SIMD3<Float>(0, 0, -1)))
+        let offAngle = acos(min(1, max(-1, simd_dot(currentScreen, toFace)))) * 180 / .pi
         let axes = ["X", "Y", "Z"].enumerated().map { index, name -> String in
             let axis = handRotation.act(SIMD3<Float>(index == 0 ? 1 : 0, index == 1 ? 1 : 0, index == 2 ? 1 : 0))
             return String(format: "%@(%.2f, %.2f, %.2f)", name, axis.x, axis.y, axis.z)
         }.joined(separator: " ")
         let text = String(
             format: "   hand axes in render space @4s: %@\n   current screen normal is %.0f° off the face\n"
-                + "   suggested grip rotation (ix, iy, iz, r): (%.4f, %.4f, %.4f, %.4f)  angle %.1f° about (%.2f, %.2f, %.2f)\n",
+                + "   suggested grip rotation (ix, iy, iz, r): (%.4f, %.4f, %.4f, %.4f)  angle %.1f° about (%.2f, %.2f, %.2f)\n"
+                + "   suggested grip translation: (%.4f, %.4f, %.4f)\n",
             axes, offAngle, grip.imag.x, grip.imag.y, grip.imag.z, grip.real,
-            grip.angle * 180 / .pi, grip.axis.x, grip.axis.y, grip.axis.z)
-        return (text, VRMPropGrip(translation: fallback.translation, rotation: grip))
+            grip.angle * 180 / .pi, grip.axis.x, grip.axis.y, grip.axis.z, centre.x, centre.y, centre.z)
+        return (text, VRMPropGrip(translation: centre, rotation: grip, scale: fallback.scale))
     }
 
     // MARK: - Measurements

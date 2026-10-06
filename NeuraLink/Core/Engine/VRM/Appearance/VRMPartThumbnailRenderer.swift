@@ -32,6 +32,10 @@ final class VRMPartThumbnailRenderer {
         /// The whole character, head and shoulders, as currently dressed —
         /// the companion widget's picture.
         case portrait
+        /// The whole figure from the live scene camera's vantage (level, at
+        /// about chest height, the orbit camera's default distance), so a
+        /// render shows what the user actually sees. Diagnostics only.
+        case figure
 
         var visibleSlots: Set<VRoidMaterialSlot> {
             switch self {
@@ -51,7 +55,7 @@ final class VRMPartThumbnailRenderer {
                 return AppearancePartKind.shoes.slots.union([.bodySkin])
             case .eyes:
                 return [.eyeIris, .eyeWhite, .eyeHighlight, .eyeExtra, .eyeline, .eyelash]
-            case .portrait:
+            case .portrait, .figure:
                 return Set(VRoidMaterialSlot.allCases)
             }
         }
@@ -62,7 +66,7 @@ final class VRMPartThumbnailRenderer {
         var hidesHead: Bool {
             switch self {
             case .outfit, .tops, .bottoms, .shoes: return true
-            case .hair, .head, .eyes, .portrait: return false
+            case .hair, .head, .eyes, .portrait, .figure: return false
             }
         }
 
@@ -76,6 +80,7 @@ final class VRMPartThumbnailRenderer {
             case .bottoms: return 0.16
             case .hair, .head, .outfit, .tops, .eyes: return 0.08
             case .portrait: return 0.04
+            case .figure: return 0
             }
         }
 
@@ -87,7 +92,7 @@ final class VRMPartThumbnailRenderer {
             case .tops: return AppearancePartKind.tops.slots
             case .bottoms: return AppearancePartKind.bottoms.slots
             case .shoes: return AppearancePartKind.shoes.slots
-            case .hair, .head, .outfit, .eyes, .portrait: return nil
+            case .hair, .head, .outfit, .eyes, .portrait, .figure: return nil
             }
         }
 
@@ -99,7 +104,7 @@ final class VRMPartThumbnailRenderer {
             switch self {
             case .outfit: return AppearancePartKind.outfit.slots
             case .tops, .bottoms, .shoes: return framingSlots
-            case .hair, .head, .eyes, .portrait: return nil
+            case .hair, .head, .eyes, .portrait, .figure: return nil
             }
         }
     }
@@ -374,6 +379,11 @@ final class VRMPartThumbnailRenderer {
             target = (hips + neck) * 0.5
             target.y -= height * 0.03
             distance = height * 0.85
+        case .figure:
+            // Same framing as VRMMetalState.setupCamera.
+            let centre = (bounds.min + bounds.max) * 0.5
+            target = SIMD3<Float>(centre.x, centre.y + height * 0.1, centre.z)
+            distance = (height * 0.60) / tan(Float.pi / 6) + 0.3
         }
         setCamera(target: target, distance: distance, elevation: subject.elevation)
     }

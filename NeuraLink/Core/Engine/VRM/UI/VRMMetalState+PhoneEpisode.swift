@@ -17,6 +17,10 @@ import simd
 extension VRMMetalState {
 
     private static let phoneEpisodeCrossfade: Float = 0.5
+    /// The clip lowers the arm over its last second; the phone goes away as
+    /// that starts, and the body hands back just before the clip's end so
+    /// it never shows the loop seam — the clip plays once.
+    private static let phoneEpisodeLowerLead: Float = 1.1
 
     // MARK: - The phone itself
 
@@ -25,16 +29,18 @@ extension VRMMetalState {
     static let phonePropTextureCap = 1024
 
     /// Where the phone sits in the right hand, in the VRM 1.0 hand frame
-    /// (T-pose: fingers −X, thumb +Z, palm −Y). A texting grip: the long
-    /// axis runs along the thumb's direction so the phone sticks up past
-    /// the thumb toward the face, the fingers wrap around its width, the
-    /// screen faces the palm's way and so meets the eyes when the clip turns
-    /// the palm up. The file's +Y long axis / +Z screen become +Z / −Y with
-    /// one +90° turn about X; the centre sits just off the palm, between
-    /// the finger bases and the thumb.
+    /// (T-pose: fingers −X, thumb +Z, palm −Y). Derived by
+    /// CheckingPhoneClipDiagnostic at the clip's hold pose, the usual way
+    /// one holds a phone: portrait, the screen (the file's −Z after the
+    /// loader's chain; +Z is the camera bump) aimed between her face and the
+    /// viewer, the long axis "up" within the screen plane, the bottom edge
+    /// resting in the palm so the centre sits half a phone up from it; 85%
+    /// of life size so the hand closes around it. Re-run the diagnostic to
+    /// re-derive if the clip or the prop file changes.
     static let phoneGrip = VRMPropGrip(
-        translation: SIMD3<Float>(-0.035, -0.015, 0.03),
-        rotation: simd_quatf(angle: .pi / 2, axis: SIMD3<Float>(1, 0, 0)))
+        translation: SIMD3<Float>(0.001, -0.052, -0.010),
+        rotation: simd_quatf(ix: 0.8456, iy: 0.2805, iz: 0.3870, r: -0.2378),
+        scale: 0.85)
 
     /// Loads the phone GLB once, off the main thread, and attaches it to
     /// whatever character is on screen by the time it is in.
@@ -123,9 +129,20 @@ extension VRMMetalState {
         }
         if isPlayingPhoneEpisodeClip {
             phoneEpisodeClipElapsed += dt
-            // The hand reaches the pose over the crossfade; the phone appears
-            // once it is there rather than popping into a hand at her side.
-            if phoneEpisodeClipElapsed >= Self.phoneEpisodeCrossfade { setPhonePropVisible(true) }
+            let duration = phoneEpisodeClip?.duration ?? .greatestFiniteMagnitude
+            // Once is enough: when the clip has played through, the episode
+            // is over even if the spoken result is still going.
+            if phoneEpisodeClipElapsed >= duration - Self.phoneEpisodeCrossfade {
+                nlLog("[PhoneEpisode] clip finished")
+                endPhoneEpisode()
+                PhoneEpisode.end(reason: "clip finished")
+                return
+            }
+            // The hand reaches the pose over the crossfade and lowers over the
+            // last second; the phone is in it only in between.
+            let holding = phoneEpisodeClipElapsed >= Self.phoneEpisodeCrossfade
+                && phoneEpisodeClipElapsed < duration - Self.phoneEpisodeLowerLead
+            setPhonePropVisible(holding)
         } else {
             setPhonePropVisible(false)  // a pose took the body, or the clip has not started
             startPhoneEpisodeClipIfPossible()

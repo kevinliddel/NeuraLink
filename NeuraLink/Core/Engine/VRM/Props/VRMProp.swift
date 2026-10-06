@@ -12,7 +12,9 @@
 //  Created by Dedicatus on 06/10/2026.
 //
 
+import CoreGraphics
 import Foundation
+import ImageIO
 import Metal
 import simd
 
@@ -68,16 +70,73 @@ public final class VRMProp {
 public struct VRMPropGrip: Equatable {
     public var translation: SIMD3<Float>
     public var rotation: simd_quatf
+    /// Uniform size multiplier on top of the file's own scale: 1 is life
+    /// size, which anime-proportioned hands cannot quite close around.
+    public var scale: Float
 
-    public init(translation: SIMD3<Float>, rotation: simd_quatf) {
+    public init(translation: SIMD3<Float>, rotation: simd_quatf, scale: Float = 1) {
         self.translation = translation
         self.rotation = rotation
+        self.scale = scale
     }
 
     func resolved(forVRM0 isVRM0: Bool) -> VRMPropGrip {
         guard isVRM0 else { return self }
         let yawInverse = VRMModel.vrmVersionYaw.inverse
-        return VRMPropGrip(translation: yawInverse.act(translation), rotation: simd_normalize(yawInverse * rotation))
+        return VRMPropGrip(
+            translation: yawInverse.act(translation), rotation: simd_normalize(yawInverse * rotation), scale: scale)
+    }
+}
+
+/// Decodes one of a prop's images into a capped, mipmapped texture. Off
+/// the main actor: the project's default isolation is MainActor, so the
+/// glTF loaders (and anything else unannotated) run there even from a
+/// detached task — and tens of megabytes of PNG decode on the main thread
+/// at launch would stall the loading screen. Pure CoreGraphics + Metal, no
+/// shared state.
+nonisolated enum VRMPropTextureDecoder {
+
+    @concurrent
+    static func decode(_ data: Data, sRGB: Bool, maxSize: Int, device: MTLDevice) async -> MTLTexture? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+            let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
+        else { return nil }
+        let scale = min(1.0, Double(maxSize) / Double(max(image.width, image.height)))
+        let width = max(1, Int((Double(image.width) * scale).rounded()))
+        let height = max(1, Int((Double(image.height) * scale).rounded()))
+        let bytesPerRow = width * 4
+        var pixels = [UInt8](repeating: 0, count: bytesPerRow * height)
+        let drawn = pixels.withUnsafeMutableBytes { buffer -> Bool in
+            guard let context = CGContext(
+                data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8,
+                bytesPerRow: bytesPerRow, space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+            else { return false }
+            context.interpolationQuality = .high
+            context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return true
+        }
+        guard drawn else { return nil }
+
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: sRGB ? .rgba8Unorm_srgb : .rgba8Unorm, width: width, height: height, mipmapped: true)
+        descriptor.usage = [.shaderRead]
+        descriptor.storageMode = .shared
+        guard let texture = device.makeTexture(descriptor: descriptor) else { return nil }
+        pixels.withUnsafeBytes { buffer in
+            if let base = buffer.baseAddress {
+                texture.replace(
+                    region: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0, withBytes: base, bytesPerRow: bytesPerRow)
+            }
+        }
+        if texture.mipmapLevelCount > 1, let queue = device.makeCommandQueue(),
+            let commands = queue.makeCommandBuffer(), let blit = commands.makeBlitCommandEncoder() {
+            blit.generateMipmaps(for: texture)
+            blit.endEncoding()
+            commands.commit()
+            commands.waitUntilCompleted()
+        }
+        return texture
     }
 }
 
@@ -85,18 +144,18 @@ public struct VRMPropGrip: Equatable {
 /// file without a VRM extension, so this drives the lower-level loaders
 /// directly. Textures are capped — a 15 cm object never needs the 4096²
 /// maps a Sketchfab export ships — and mipmapped, since the prop covers a
-/// hundred-odd pixels on screen.
+/// hundred-odd pixels on screen; their decode runs off the main actor
+/// (`VRMPropTextureDecoder`), the small geometry/material part on it.
 public enum VRMPropLoader {
 
     public static func load(url: URL, device: MTLDevice, maxTextureSize: Int = 1024) async throws -> VRMProp {
         let data = try Data(contentsOf: url)
         let (document, binary) = try GLTFParser().parse(data: data)
-        let baseURL = url.deletingLastPathComponent()
+        let baseURL = url.deletingPathExtension().deletingLastPathComponent()
         let bufferLoader = BufferLoader(document: document, binaryData: binary, baseURL: baseURL)
-        let textureLoader = TextureLoader(device: device, bufferLoader: bufferLoader, document: document, baseURL: baseURL)
         let name = url.deletingPathExtension().lastPathComponent
 
-        let textures = try await loadTextures(document: document, loader: textureLoader, maxSize: maxTextureSize)
+        let textures = try await loadTextures(document: document, binary: binary, device: device, maxSize: maxTextureSize)
         let materials = (document.materials ?? []).map { gltfMaterial -> VRMMaterial in
             // Built as VRM 1.0 whatever the host is: under 0.x rules a BLEND
             // material would be promoted to the depth-writing path.
@@ -137,7 +196,7 @@ public enum VRMPropLoader {
     /// Only the maps the MToon path samples (base colour, normal, emissive);
     /// occlusion and metallic-roughness are never bound, so they stay on disk.
     /// Unused slots keep a placeholder so material indices line up.
-    private static func loadTextures(document: GLTFDocument, loader: TextureLoader, maxSize: Int) async throws -> [VRMTexture] {
+    private static func loadTextures(document: GLTFDocument, binary: Data?, device: MTLDevice, maxSize: Int) async throws -> [VRMTexture] {
         var colourIndices = Set<Int>()
         var linearIndices = Set<Int>()
         for material in document.materials ?? [] {
@@ -148,13 +207,28 @@ public enum VRMPropLoader {
         var textures: [VRMTexture] = []
         for index in 0..<(document.textures?.count ?? 0) {
             let texture = VRMTexture(name: "texture_\(index)")
-            if colourIndices.contains(index) || linearIndices.contains(index) {
-                texture.mtlTexture = try await loader.loadTexture(
-                    at: index, sRGB: colourIndices.contains(index), maxSize: maxSize, withMipmaps: true)
+            if colourIndices.contains(index) || linearIndices.contains(index),
+                let bytes = imageBytes(textureIndex: index, document: document, binary: binary) {
+                texture.mtlTexture = await VRMPropTextureDecoder.decode(
+                    bytes, sRGB: colourIndices.contains(index), maxSize: maxSize, device: device)
             }
             textures.append(texture)
         }
         return textures
+    }
+
+    /// The encoded image behind a texture: a slice of the GLB's binary chunk
+    /// (a prop is a self-contained .glb; external image URIs are not used).
+    private static func imageBytes(textureIndex: Int, document: GLTFDocument, binary: Data?) -> Data? {
+        guard let sourceIndex = document.textures?[safe: textureIndex]?.source,
+            let image = document.images?[safe: sourceIndex],
+            let viewIndex = image.bufferView,
+            let view = document.bufferViews?[safe: viewIndex],
+            let binary
+        else { return nil }
+        let start = view.byteOffset ?? 0
+        guard start >= 0, start + view.byteLength <= binary.count else { return nil }
+        return binary.subdata(in: start..<(start + view.byteLength))
     }
 
     private static func collectMeshInstances(

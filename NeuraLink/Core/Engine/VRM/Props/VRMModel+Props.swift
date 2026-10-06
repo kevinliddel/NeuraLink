@@ -83,6 +83,18 @@ extension VRMModel {
         }
     }
 
+    /// World rest rotation of a node: its bind-pose rotations composed from
+    /// the root down (identity on every VRoid humanoid bone).
+    private func restWorldRotation(of node: VRMNode) -> simd_quatf {
+        var rotation = node.initialRotation
+        var ancestor = node.parent
+        while let parent = ancestor {
+            rotation = parent.initialRotation * rotation
+            ancestor = parent.parent
+        }
+        return simd_normalize(rotation)
+    }
+
     private func append(_ attachment: VRMPropAttachment, under bone: VRMNode) {
         attachment.nodes.removeAll()
         attachment.meshes.removeAll()
@@ -90,7 +102,16 @@ extension VRMModel {
         let materialBase = materials.count
         textures.append(contentsOf: attachment.prop.textures)
         materials.append(contentsOf: attachment.prop.materials)
-        let grip = attachment.grip.resolved(forVRM0: isVRM0)
+        // The grip is authored in the world-aligned T-pose hand frame. A
+        // VRoid hand has an identity rest rotation, so that IS its local
+        // frame; a rig with a baked rest rotation (some imported models)
+        // needs the grip brought into its local frame first.
+        let resolved = attachment.grip.resolved(forVRM0: isVRM0)
+        let restInverse = restWorldRotation(of: bone).inverse
+        let grip = VRMPropGrip(
+            translation: restInverse.act(resolved.translation),
+            rotation: simd_normalize(restInverse * resolved.rotation),
+            scale: resolved.scale)
         for part in attachment.prop.parts {
             let mesh = VRMMesh(name: part.mesh.name)
             for primitive in part.mesh.primitives {
@@ -104,9 +125,9 @@ extension VRMModel {
             // along and the grip is authored for a life-size, upright prop.
             let node = VRMNode(
                 index: nodes.count, name: "\(attachment.prop.name)_prop",
-                translation: grip.translation + grip.rotation.act(part.chain.translation),
+                translation: grip.translation + grip.rotation.act(part.chain.translation * grip.scale),
                 rotation: simd_normalize(grip.rotation * part.chain.rotation),
-                scale: part.chain.scale,
+                scale: part.chain.scale * grip.scale,
                 mesh: attachment.isVisible ? meshIndex : nil)
             nodes.append(node)
             node.parent = bone

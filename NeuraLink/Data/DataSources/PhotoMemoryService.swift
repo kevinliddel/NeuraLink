@@ -31,14 +31,32 @@ final class PhotoMemoryService {
 
     // MARK: - Entry
 
-    /// Handles a picked image: describe, react, remember.
+    /// Handles a picked image: she takes her phone out to look at it (the
+    /// checking-phone episode, with the picture on the phone widget's
+    /// screen), then describe, react, remember.
     func handlePicked(data: Data, userWords: String) async {
         guard let image = UIImage(data: data) else { return }
         let takenAt = Self.captureDate(from: data) ?? Date()
         let scaled = Self.downscale(image, maxPixels: Self.maxPixels)
+        showOnHerPhone(scaled)
         let description = await describe(scaled, userWords: userWords)
+        // The reaction is the "spoken result" that puts the phone away.
+        PhoneEpisode.toolFinished()
         react(description: description, userWords: userWords)
         remember(image: scaled, description: description, userWords: userWords, takenAt: takenAt)
+    }
+
+    /// Begins the phone episode and presents the picture on the widget right
+    /// away — the photo is the thing she is looking at, unlike a search whose
+    /// card waits for the spoken result.
+    private func showOnHerPhone(_ image: UIImage) {
+        PhoneEpisode.begin(tool: AppFunctionTool.showPhoto)
+        let preview = Self.downscale(image, maxPixels: 512).jpegData(compressionQuality: 0.8)
+        PhoneWidgetManager.shared.present(
+            card: ToolActionCard(
+                kind: .photo, appName: "Photos", systemImage: "photo.fill",
+                title: "Your photo", detail: "", imageData: preview),
+            action: nil)
     }
 
     /// Cloud vision when available; otherwise the user's own words.

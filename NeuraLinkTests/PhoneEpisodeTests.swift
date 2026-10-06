@@ -141,6 +141,41 @@ struct PhoneEpisodeTests {
     }
 
     @MainActor
+    @Test("The clip plays once; the phone is in hand only while it is held up")
+    func playsOnce() async throws {
+        guard let device = MTLCreateSystemDefaultDevice(), let state = try await loadedScene() else { return }
+        defer { PhoneEpisode.end(reason: "test cleanup") }
+        let propURL = try #require(Bundle.main.url(forResource: VRMMetalState.phonePropName, withExtension: "glb"))
+        state.phoneProp = try await VRMPropLoader.load(url: propURL, device: device, maxTextureSize: 128)
+        let model = try #require(state.currentModel)
+        state.attachPhoneProp(to: model)
+        let attachment = try #require(state.phonePropAttachment)
+        let duration = try #require(state.phoneEpisodeClip?.duration)
+
+        PhoneEpisode.begin(tool: AppFunctionTool.searchWeb)
+        var frames = 0
+        func advance(to seconds: Float) {
+            let target = Int((seconds * 30).rounded())
+            tick(state, frames: max(0, target - frames))
+            frames = max(frames, target)
+        }
+        advance(to: 0.1)  // hand still rising
+        #expect(state.isPlayingPhoneEpisodeClip)
+        #expect(!attachment.isVisible, "no phone until the hand is up")
+        advance(to: 1.1)  // holding
+        #expect(attachment.isVisible)
+        advance(to: duration - 0.8)  // arm lowering, clip not yet over
+        #expect(!attachment.isVisible, "the phone goes away as the arm lowers")
+        #expect(state.phoneEpisode.isActive, "the body is still the clip's until it ends")
+        advance(to: duration + 1.5)  // past the end: played once, no replay
+        #expect(!state.isPlayingPhoneEpisodeClip)
+        #expect(!state.phoneEpisode.isActive)
+        #expect(!PhoneEpisode.isActive)
+        #expect(state.randomAnimTimer >= 0)
+        #expect(state.renderer?.lookAtController?.enabled == true)
+    }
+
+    @MainActor
     @Test("A lost stop ends at the safety cap")
     func lostStop() async throws {
         guard let state = try await loadedScene() else { return }

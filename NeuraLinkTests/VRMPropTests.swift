@@ -8,9 +8,11 @@
 //  restore whichever side of the snapshot it was attached on.
 //
 
+import CoreGraphics
 import Foundation
 import Metal
 import Testing
+import UIKit
 import simd
 
 @testable import NeuraLink
@@ -70,26 +72,36 @@ struct VRMPropTests {
             let shown = model.calculateBoundingBox()
             #expect(simd_length(shown.max - before.max) < 1e-5, "\(character): prop vertices never count towards the figure")
 
-            // Life-size in the hand: transform the raw vertices by the node's
-            // world matrix and measure.
+            // Sized for the hand: transform the raw vertices by the node's
+            // world matrix and measure along the phone's own axes (the grip
+            // tilts it obliquely, so a world-aligned box would not do).
             model.updateNodeTransforms()
             var low = SIMD3<Float>(repeating: .greatestFiniteMagnitude)
             var high = SIMD3<Float>(repeating: -.greatestFiniteMagnitude)
+            var worldLow = low, worldHigh = high
             for (node, mesh) in zip(attachment.nodes, attachment.meshes) {
+                let m = node.worldMatrix
+                let axes = [m.columns.0, m.columns.1, m.columns.2].map { simd_normalize(SIMD3($0.x, $0.y, $0.z)) }
+                let origin = SIMD3(m.columns.3.x, m.columns.3.y, m.columns.3.z)
                 for primitive in mesh.primitives {
                     guard let buffer = primitive.vertexBuffer else { continue }
                     let vertices = buffer.contents().bindMemory(to: VRMVertex.self, capacity: primitive.vertexCount)
                     for index in 0..<primitive.vertexCount {
                         let p = vertices[index].position
-                        let world = node.worldMatrix * SIMD4<Float>(p.x, p.y, p.z, 1)
-                        low = min(low, SIMD3(world.x, world.y, world.z))
-                        high = max(high, SIMD3(world.x, world.y, world.z))
+                        let world4 = m * SIMD4<Float>(p.x, p.y, p.z, 1)
+                        let world = SIMD3(world4.x, world4.y, world4.z)
+                        worldLow = min(worldLow, world)
+                        worldHigh = max(worldHigh, world)
+                        let local = SIMD3(simd_dot(world - origin, axes[0]), simd_dot(world - origin, axes[1]), simd_dot(world - origin, axes[2]))
+                        low = min(low, local)
+                        high = max(high, local)
                     }
                 }
             }
             let longest = (high - low).max()
-            #expect(abs(longest - 0.147) < 0.004, "\(character): longest side in hand \(longest) m")
-            let centre = (low + high) * 0.5
+            let expected = 0.147 * VRMMetalState.phoneGrip.scale
+            #expect(abs(longest - expected) < 0.004, "\(character): longest side in hand \(longest) m, expected \(expected)")
+            let centre = (worldLow + worldHigh) * 0.5
             #expect(simd_length(centre - hand.worldPosition) < 0.12, "\(character): the phone sits at the hand, not across the room")
         }
     }
@@ -113,6 +125,47 @@ struct VRMPropTests {
         #expect(items.count == prop.parts.reduce(0) { $0 + $1.mesh.primitives.count })
         #expect(items.allSatisfy { $0.node.skin == nil && !$0.primitive.hasJoints }, "no skin, no joints → rigid branch")
         #expect(items.allSatisfy { !$0.isFaceMaterial && !$0.isEyeMaterial }, "phone names must not trip the face heuristics")
+    }
+
+    @Test("Shown, the phone is actually drawn through the rigid path; hidden, the frame is unchanged")
+    func drawsThroughRigidPath() async throws {
+        guard let device = MTLCreateSystemDefaultDevice(), let thumbnails = VRMPartThumbnailRenderer(size: 256) else { return }
+        let prop = try await Self.loadProp(device)
+        let model = try await Self.loadModel("Sonya", device)
+        let attachment = try model.attachProp(prop, to: .rightHand, grip: VRMMetalState.phoneGrip)
+        // Hold the phone out in front so it cannot hide behind the body in a
+        // T-pose: a flat grip straight ahead of the hand.
+        _ = attachment
+        let before = try #require(thumbnails.render(model: model, subject: .figure)?.cgImage)
+        model.setProp(attachment, visible: true)
+        let after = try #require(thumbnails.render(model: model, subject: .figure)?.cgImage)
+        #expect(before.width == after.width && before.height == after.height)
+        let changed = Self.differingPixels(before, after)
+        #expect(changed > 40, "a visible phone must change pixels — got \(changed)")
+    }
+
+    private static func differingPixels(_ a: CGImage, _ b: CGImage) -> Int {
+        func bytes(_ image: CGImage) -> [UInt8] {
+            var out = [UInt8](repeating: 0, count: image.width * image.height * 4)
+            out.withUnsafeMutableBytes { buffer in
+                guard let context = CGContext(
+                    data: buffer.baseAddress, width: image.width, height: image.height, bitsPerComponent: 8,
+                    bytesPerRow: image.width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+                else { return }
+                context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+            }
+            return out
+        }
+        let first = bytes(a), second = bytes(b)
+        guard first.count == second.count else { return Int.max }
+        var count = 0
+        for pixel in stride(from: 0, to: first.count, by: 4) {
+            let delta = abs(Int(first[pixel]) - Int(second[pixel])) + abs(Int(first[pixel + 1]) - Int(second[pixel + 1]))
+                + abs(Int(first[pixel + 2]) - Int(second[pixel + 2])) + abs(Int(first[pixel + 3]) - Int(second[pixel + 3]))
+            if delta > 24 { count += 1 }
+        }
+        return count
     }
 
     @Test("The grip lands the same way on VRM 0.x and 1.x once the renderer's yaw is applied")
@@ -147,12 +200,19 @@ struct VRMPropTests {
         guard let device = MTLCreateSystemDefaultDevice() else { return }
         let prop = try await Self.loadProp(device)
 
-        // Attached before the snapshot: part of the base, untouched by restore.
+        // Attached before the snapshot: part of the base, untouched by restore
+        // — and not appended a second time.
         let early = try await Self.loadModel("Sonya", device)
         let earlyAttachment = try early.attachProp(prop, to: .rightHand, grip: VRMMetalState.phoneGrip)
+        let earlyNodes = earlyAttachment.nodes
+        let earlyHand = early.nodes[try #require(early.humanoid?.getBoneNode(.rightHand))]
+        let counts = (early.nodes.count, early.meshes.count, early.materials.count, earlyHand.children.count)
         early.beginComposition()
         early.restoreBaseComposition()
+        #expect(earlyAttachment.nodes.elementsEqual(earlyNodes, by: ===), "the same nodes, not fresh ones")
         #expect(earlyAttachment.nodes.allSatisfy { node in early.nodes.contains { $0 === node } })
+        #expect((early.nodes.count, early.meshes.count, early.materials.count, earlyHand.children.count) == counts,
+                "nothing appended twice")
 
         // Attached after the snapshot: truncated with the grafts, put back.
         let late = try await Self.loadModel("Ekaterina", device)
