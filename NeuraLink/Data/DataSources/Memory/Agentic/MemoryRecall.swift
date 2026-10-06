@@ -347,7 +347,7 @@ final class MemoryRecall {
                 prefix += "[×\(unit.proofCount)] "
             }
             if PhotoMemoryService.isPhoto(unit) { prefix += "(photo) " }
-            return "- \(prefix)\(unit.text)"
+            return "- \(prefix)\(RealtimeChatState.humanizingCharacterNames(unit.text))"
         }
     }
 }

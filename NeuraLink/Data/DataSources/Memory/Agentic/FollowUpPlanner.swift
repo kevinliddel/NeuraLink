@@ -112,7 +112,8 @@ nonisolated enum FollowUpWording {
             Talk like a friend would — do not restate the fact, never say "the user", \
             no preamble, no quotes, no emoji.
             """
-        return (system, "FACT: \(CompanionNotificationCopy.personalize(followUp.factText, userName: user))")
+        let fact = RealtimeChatState.humanizingCharacterNames(followUp.factText)
+        return (system, "FACT: \(CompanionNotificationCopy.personalize(fact, userName: user))")
     }
 }
 

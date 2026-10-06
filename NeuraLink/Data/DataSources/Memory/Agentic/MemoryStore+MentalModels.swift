@@ -32,6 +32,40 @@ extension MemoryStore {
         sqlite3_finalize(statement)
     }
 
+    /// Rewrites a stored standing question when it changed (the character
+    /// was renamed: questions embed its name). The model is then forced
+    /// stale with no watermark, so the next refresh regenerates it under the
+    /// new name instead of waiting for new memories.
+    func refreshMentalModelQuestion(character: String, slug: String, question: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        let query = """
+        UPDATE mental_models SET question = ?, is_stale = 1, last_memory_id = 0
+        WHERE character = ? AND slug = ? AND question != ?;
+        """
+        var statement: OpaquePointer?
+        if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
+            sqlite3_bind_text(statement, 1, (question as NSString).utf8String, -1, nil)
+            sqlite3_bind_text(statement, 2, (character as NSString).utf8String, -1, nil)
+            sqlite3_bind_text(statement, 3, (slug as NSString).utf8String, -1, nil)
+            sqlite3_bind_text(statement, 4, (question as NSString).utf8String, -1, nil)
+            _ = sqlite3_step(statement)
+        }
+        sqlite3_finalize(statement)
+    }
+
+    /// Removes every standing model filed under `character`.
+    func deleteMentalModels(character: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        var statement: OpaquePointer?
+        if sqlite3_prepare_v2(db, "DELETE FROM mental_models WHERE character = ?;", -1, &statement, nil) == SQLITE_OK {
+            sqlite3_bind_text(statement, 1, (character as NSString).utf8String, -1, nil)
+            _ = sqlite3_step(statement)
+        }
+        sqlite3_finalize(statement)
+    }
+
     func fetchMentalModel(character: String, slug: String) -> MentalModel? {
         lock.lock()
         defer { lock.unlock() }

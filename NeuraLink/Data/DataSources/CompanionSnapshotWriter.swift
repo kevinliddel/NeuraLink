@@ -133,7 +133,7 @@ final class CompanionSnapshotWriter: @unchecked Sendable {
             relationshipLabel: affinity.label,
             relationshipScore: affinity.score,
             opener: opener,
-            memoryLine: memory.line,
+            memoryLine: RealtimeChatState.humanizingCharacterNames(memory.line),
             memoryTitle: memory.title,
             factCount: store.fetchAllFacts().count,
             daysTogether: store.distinctUserMessageDays(),

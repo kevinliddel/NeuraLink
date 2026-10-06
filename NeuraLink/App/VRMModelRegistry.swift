@@ -128,9 +128,23 @@ final class VRMModelRegistry {
                   FileManager.default.fileExists(atPath: url.path) else { return nil }
             return Entry(
                 name: character.slug,
-                displayName: character.displayName,
+                displayName: resolvedDisplayName(of: character),
                 url: url,
                 isImported: true)
         }
+    }
+
+    /// An imported character's name lives twice — `imported_characters`
+    /// (registry, widget, prompts) and its persona row (persona page, nav
+    /// titles). When they disagree the persona name is the one the user
+    /// typed last, so it wins and the row is repaired.
+    private static func resolvedDisplayName(of character: ImportedCharacter) -> String {
+        let persona = MemoryStore.shared.personaName(
+            character: character.slug, engine: MemoryStore.PersonaEngine.openai)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !persona.isEmpty, persona != character.displayName else { return character.displayName }
+        MemoryStore.shared.updateImportedCharacterDisplayName(slug: character.slug, displayName: persona)
+        nlLog("[VRMModelRegistry] '\(character.slug)' display name healed: '\(character.displayName)' → '\(persona)'", level: .info)
+        return persona
     }
 }

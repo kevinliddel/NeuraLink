@@ -74,7 +74,7 @@ struct MemoryTimelineView: View {
     // MARK: - Sections
 
     @ViewBuilder private var recapSection: some View {
-        if let recap, !recap.content.isEmpty, !MemoryRecapCard.Dismissal.isDismissed() {
+        if let recap, MemoryMentalModels.isRecapVisible(recap), !MemoryRecapCard.Dismissal.isDismissed() {
             Section {
                 MemoryRecapCard(
                     characterName: characterName, content: recap.content,

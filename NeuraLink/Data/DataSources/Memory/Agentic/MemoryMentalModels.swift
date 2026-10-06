@@ -47,10 +47,13 @@ final class MemoryMentalModels: @unchecked Sendable {
     func ensureDefaults(character: String) {
         store.ensureMentalModel(character: "", slug: Self.userProfileSlug, question: Self.userProfileQuestion())
         guard !character.isEmpty else { return }
-        store.ensureMentalModel(
-            character: character, slug: Self.relationshipSlug, question: Self.relationshipQuestion(character: character))
-        store.ensureMentalModel(
-            character: character, slug: Self.weeklyRecapSlug, question: Self.weeklyRecapQuestion(character: character))
+        // Questions embed the character's name: rows created before a
+        // rename kept asking about "Dedicatus_2", and the answers followed.
+        for (slug, question) in [(Self.relationshipSlug, Self.relationshipQuestion(character: character)),
+                                 (Self.weeklyRecapSlug, Self.weeklyRecapQuestion(character: character))] {
+            store.ensureMentalModel(character: character, slug: slug, question: question)
+            store.refreshMentalModelQuestion(character: character, slug: slug, question: question)
+        }
     }
 
     // MARK: - Read (zero-LLM)
@@ -63,12 +66,14 @@ final class MemoryMentalModels: @unchecked Sendable {
         var out = "\n[What \(character.isEmpty ? "the assistant" : RealtimeChatState.displayName(for: character)) knows]\n"
         for model in models {
             if model.slug == Self.weeklyRecapSlug {
+                guard Self.isRecapVisible(model) else { continue }
                 let line = Self.recapPromptLine(model.content)
                 if !line.isEmpty { out += "- This week: \(line)\n" }
                 continue
             }
             let label = model.slug == Self.userProfileSlug ? "About the user" : "Relationship"
-            let content = compact ? String(model.content.prefix(240)) : model.content
+            let healed = RealtimeChatState.humanizingCharacterNames(model.content)
+            let content = compact ? String(healed.prefix(240)) : healed
             out += "- \(label): \(content)\n"
         }
         return out
@@ -166,7 +171,7 @@ final class MemoryMentalModels: @unchecked Sendable {
 
     /// Strips label echoes and the UNKNOWN sentinel.
     static func cleanAnswer(_ raw: String) -> String {
-        var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        var text = RealtimeChatState.humanizingCharacterNames(raw.trimmingCharacters(in: .whitespacesAndNewlines))
         if text.uppercased().hasPrefix("ANSWER:") { text = String(text.dropFirst(7)).trimmingCharacters(in: .whitespaces) }
         if text.uppercased().hasPrefix("UNKNOWN") || text.count < 8 { return "" }
         return String(text.prefix(600))

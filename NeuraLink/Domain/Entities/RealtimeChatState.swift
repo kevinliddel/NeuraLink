@@ -83,6 +83,23 @@ final class RealtimeChatState {
         guard !character.isEmpty else { return "" }
         return (displayNames[character.lowercased()] ?? character).capitalized
     }
+
+    /// Replaces any character's file stem ("Dedicatus_2") with its display
+    /// name ("Othinus") in memory text. Facts, observations and summaries
+    /// written before a rename — or before names were resolved at all —
+    /// still carry the stem; this heals them wherever they are shown or fed
+    /// back to a model. Whole-word, case-insensitive; no-op when every
+    /// display name equals its stem.
+    nonisolated static func humanizingCharacterNames(_ text: String) -> String {
+        var result = text
+        for (key, name) in displayNames where !name.isEmpty && name.lowercased() != key && result.localizedCaseInsensitiveContains(key) {
+            let pattern = "\\b" + NSRegularExpression.escapedPattern(for: key) + "\\b"
+            result = result.replacingOccurrences(
+                of: pattern, with: NSRegularExpression.escapedTemplate(for: name),
+                options: [.regularExpression, .caseInsensitive])
+        }
+        return result
+    }
     /// Token usage of the live Realtime session and of the last one that ended.
     var sessionUsage = RealtimeUsageMeter()
     var currentEmotion: String = "neutral"
