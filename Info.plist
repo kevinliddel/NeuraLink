@@ -6,6 +6,17 @@
 	<array>
 		<string>com.dedicatus.NeuraLink.followups</string>
 	</array>
+	<key>INAlternativeAppNames</key>
+	<array>
+		<dict>
+			<key>INAlternativeAppName</key>
+			<string>NeuraLink</string>
+		</dict>
+		<dict>
+			<key>INAlternativeAppName</key>
+			<string>Anima</string>
+		</dict>
+	</array>
 	<key>CFBundleDocumentTypes</key>
 	<array/>
 	<key>LSApplicationQueriesSchemes</key>

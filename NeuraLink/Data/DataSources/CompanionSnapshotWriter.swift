@@ -127,7 +127,9 @@ final class CompanionSnapshotWriter: @unchecked Sendable {
         }
         let snapshot = CompanionSnapshot(
             character: character.lowercased(),
-            displayName: VRMModelRegistry.shared.entry(named: character)?.displayName ?? character.capitalized,
+            // Same resolver as prompts and notifications: a renamed import
+            // shows its new name, not the file stem it was imported under.
+            displayName: RealtimeChatState.displayName(for: character),
             relationshipLabel: affinity.label,
             relationshipScore: affinity.score,
             opener: opener,

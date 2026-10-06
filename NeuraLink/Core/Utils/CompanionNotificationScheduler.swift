@@ -84,14 +84,15 @@ enum CompanionNotificationScheduler {
         guard status == .authorized || status == .provisional else { return false }
         center.removePendingNotificationRequests(withIdentifiers: [followUpIdentifier])
 
-        let name = RealtimeChatState.displayName(for: characterName.trimmingCharacters(in: .whitespaces))
+        let key = characterName.trimmingCharacters(in: .whitespaces)
+        let name = RealtimeChatState.displayName(for: key)
         let content = UNMutableNotificationContent()
-        content.title = name.isEmpty ? "Your companion" : name.capitalized
+        content.title = name.isEmpty ? "Your companion" : name
         content.body = body
         content.sound = .default
         content.categoryIdentifier = followUpCategory
         content.userInfo = [followUpUnitKey: unitID]
-        let finalContent = communicationContent(base: content, characterName: name)
+        let finalContent = communicationContent(base: content, characterName: key)
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(60, fireAt.timeIntervalSinceNow), repeats: false)
         do {
             try await center.add(UNNotificationRequest(identifier: followUpIdentifier, content: finalContent, trigger: trigger))
@@ -188,15 +189,20 @@ enum CompanionNotificationScheduler {
 
         let timing = effectiveTiming()
         let dates = returnSeriesDates(anchor: anchor, now: Date(), timing: timing)
-        let name = RealtimeChatState.displayName(for: characterName.trimmingCharacters(in: .whitespaces))
-        let avatar = name.isEmpty ? nil : avatarImageData(for: name)
+        // `key` is the identity (file stem / import slug) — the avatar is
+        // looked up by it; `name` is only what the user reads. A renamed
+        // import ("Othinus" filed as "dedicatus_2") lost its avatar when the
+        // display name was used for the lookup.
+        let key = characterName.trimmingCharacters(in: .whitespaces)
+        let name = RealtimeChatState.displayName(for: key)
+        let avatar = key.isEmpty ? nil : avatarImageData(for: key)
         let seriesID = Int(Date().timeIntervalSince1970)
         var scheduled = 0
         for (slot, fireDate) in dates.enumerated() {
             let content = UNMutableNotificationContent()
             content.title = name.isEmpty
                 ? "Your companion has been thinking of you"
-                : "\(name.capitalized) has been thinking of you"
+                : "\(name) has been thinking of you"
             content.body = lines[slot % lines.count]
             content.sound = .default
             content.threadIdentifier = identifier
@@ -204,7 +210,7 @@ enum CompanionNotificationScheduler {
                 timeInterval: max(1, fireDate.timeIntervalSinceNow), repeats: false)
             let request = UNNotificationRequest(
                 identifier: "\(identifier).\(seriesID).\(slot)",
-                content: communicationContent(base: content, characterName: name, avatar: avatar), trigger: trigger)
+                content: communicationContent(base: content, characterName: key, avatar: avatar), trigger: trigger)
             do {
                 try await center.add(request)
                 scheduled += 1
@@ -227,9 +233,10 @@ enum CompanionNotificationScheduler {
         guard status == .authorized || status == .provisional else { return false }
         center.removePendingNotificationRequests(withIdentifiers: [recapIdentifier])
 
-        let name = RealtimeChatState.displayName(for: characterName.trimmingCharacters(in: .whitespaces))
+        let key = characterName.trimmingCharacters(in: .whitespaces)
+        let name = RealtimeChatState.displayName(for: key)
         let content = UNMutableNotificationContent()
-        content.title = name.isEmpty ? "Your companion" : name.capitalized
+        content.title = name.isEmpty ? "Your companion" : name
         content.body = body
         content.sound = .default
         let timing = effectiveTiming()
@@ -239,7 +246,7 @@ enum CompanionNotificationScheduler {
         do {
             try await center.add(UNNotificationRequest(
                 identifier: recapIdentifier,
-                content: communicationContent(base: content, characterName: name), trigger: trigger))
+                content: communicationContent(base: content, characterName: key), trigger: trigger))
             return true
         } catch {
             nlLog("[Presence] Failed to schedule notification: \(error)", level: .warning)
@@ -282,14 +289,16 @@ enum CompanionNotificationScheduler {
     static func communicationContent(
         base: UNMutableNotificationContent, characterName: String, avatar: Data? = nil
     ) -> UNNotificationContent {
-        let name = RealtimeChatState.displayName(for: characterName.trimmingCharacters(in: .whitespaces))
-        guard !name.isEmpty, let imageData = avatar ?? avatarImageData(for: name) else { return base }
+        // `characterName` is the identity key: the avatar and the stable
+        // conversation id come from it, the sender's name from its display name.
+        let key = characterName.trimmingCharacters(in: .whitespaces)
+        guard !key.isEmpty, let imageData = avatar ?? avatarImageData(for: key) else { return base }
 
-        let slug = name.lowercased()
+        let slug = key.lowercased()
         let sender = INPerson(
             personHandle: INPersonHandle(value: "neuralink-companion-\(slug)", type: .unknown),
             nameComponents: nil,
-            displayName: name.capitalized,
+            displayName: RealtimeChatState.displayName(for: key),
             image: INImage(imageData: imageData),
             contactIdentifier: nil,
             customIdentifier: "neuralink-companion-\(slug)"
@@ -324,8 +333,11 @@ enum CompanionNotificationScheduler {
     /// The character's thumbnail PNG — same next-to-model convention as the
     /// settings persona row.
     static func characterThumbnailData(for characterName: String) -> Data? {
-        guard let entry = VRMModelRegistry.shared.all
-            .first(where: { $0.name.lowercased() == characterName.lowercased() })
+        let wanted = characterName.lowercased()
+        // Match the identity key first; a display name still resolves, so a
+        // caller passing the wrong one gets the right picture regardless.
+        guard let entry = VRMModelRegistry.shared.all.first(where: { $0.name.lowercased() == wanted })
+            ?? VRMModelRegistry.shared.all.first(where: { $0.displayName.lowercased() == wanted })
         else { return nil }
         let png = entry.url.deletingPathExtension().appendingPathExtension("png")
         return try? Data(contentsOf: png)

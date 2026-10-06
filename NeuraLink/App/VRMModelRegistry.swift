@@ -49,6 +49,21 @@ final class VRMModelRegistry {
         all = (Self.namedEntries() + Self.folderEntries() + Self.importedEntries())
             .filter { seen.insert($0.name.lowercased()).inserted }
         RealtimeChatState.refreshDisplayNames(all.map { ($0.name, $0.displayName) })
+        syncSelectedDisplayName()
+    }
+
+    /// A rename lands here (refresh follows every import / rename /
+    /// quarantine): the character on screen takes the new name right away,
+    /// and the widget is rewritten — otherwise both kept the old name until
+    /// the next character switch or chat.
+    private func syncSelectedDisplayName() {
+        let state = RealtimeChatState.shared
+        let key = state.selectedCharacterName
+        guard !key.isEmpty, let entry = all.first(where: { $0.name.lowercased() == key.lowercased() }),
+              entry.displayName != state.selectedCharacterDisplayName
+        else { return }
+        state.selectedCharacterDisplayName = entry.displayName
+        CompanionSnapshotWriter.shared.scheduleRefresh()
     }
 
     /// Factory default: Ekaterina, else the first bundled model, else anything.
