@@ -64,7 +64,7 @@ extension VRMMetalState {
         // A pose or the entrance owns the body; the reply still counts.
         let roll = Double.random(in: 0..<1)
         guard talkingGesturePolicy.shouldGesture(roll: roll) else { return }
-        guard !isPlayingAppear, !isPlayingPose, !phoneEpisode.isActive,
+        guard !isPlayingAppear, !isPlayingPose, !phoneEpisode.isActive, !listeningEpisode.isActive,
               let entry = talkingGestureEntries.randomElement() else { return }
 
         isPlayingRandomAnim = false

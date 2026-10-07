@@ -96,6 +96,13 @@ final class VRMMetalState {
     var phoneProp: VRMProp?
     var phonePropAttachment: VRMPropAttachment?
 
+    // The "listening to music" episode (VRMMetalState+ListeningEpisode.swift)
+    var listeningEpisode = ListeningEpisodePolicy()
+    var listeningEpisodeClip: AnimationClip?
+    /// True while the loop owns the body — false while a pose or the phone
+    /// episode has borrowed it.
+    var isPlayingListeningClip = false
+
     // Drives fade-in of the Metal view so T-pose is never visible
     var modelAlpha: Double = 0
 
@@ -155,6 +162,7 @@ final class VRMMetalState {
             setupBackgroundObservers()
             setupPoseObserver()
             setupPhoneEpisodeObservers()
+            setupListeningEpisodeObservers()
             return
         }
         #endif
@@ -162,6 +170,7 @@ final class VRMMetalState {
         setupBackgroundObservers()
         setupPoseObserver()
         setupPhoneEpisodeObservers()
+        setupListeningEpisodeObservers()
         startRenderRateObservation()
     }
 
@@ -317,6 +326,10 @@ final class VRMMetalState {
         isPlayingPhoneEpisodeClip = false
         phoneEpisodeClipElapsed = 0
         phonePropAttachment = nil  // belonged to the model that just left
+        ListeningEpisode.end(reason: "scene cleared")
+        listeningEpisode = ListeningEpisodePolicy()
+        listeningEpisodeClip = nil
+        isPlayingListeningClip = false
         currentExpressionWeights = [:]
         targetExpressionWeights = [:]
         lastAppliedEmotion = ""

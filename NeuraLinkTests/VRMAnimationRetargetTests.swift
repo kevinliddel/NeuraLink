@@ -39,7 +39,7 @@ struct VRMAnimationRetargetTests {
 
     @Test(
         "Limbs follow the clip on both VRM versions",
-        arguments: ["talking", "speaking", "checking_phone", "stretch", "neutral", "peace_sign"])
+        arguments: ["talking", "speaking", "checking_phone", "listen_to_music", "stretch", "neutral", "peace_sign"])
     func limbsFollowClip(clipName: String) async throws {
         guard let device = MTLCreateSystemDefaultDevice() else { return }
         let clipURL = try #require(Bundle.main.url(forResource: clipName, withExtension: "vrma"))

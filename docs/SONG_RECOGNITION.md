@@ -26,11 +26,11 @@ flowchart TD
     TOOL["🛠 identify_song tool call<br/>(persona request)"] --> RUN
 
     RUN["SongRecognitionManager.run()"] --> GATE["LocalLLMManager.gateMicCapture()<br/>VAD ignores music"]
-    RUN --> DANCE["startListeningDance()<br/>random VRMA<br/>(idle suppressed)"]
+    RUN --> DANCE["ListeningEpisode.begin()<br/>listen_to_music.vrma loops<br/>(idles, gestures, look-back wait)"]
     RUN --> CAPSULE["phase = listening<br/>overlay capsule"]
     RUN --> SHZ["SHManagedSession<br/>record + match (≤18s)"]
 
-    SHZ --> CLEANUP["stopListeningDance()<br/>mic release (0.8s)"]
+    SHZ --> CLEANUP["ListeningEpisode.end()<br/>mic release (0.8s)"]
 
     CLEANUP --> D1["match"] --> SONG["phase = matched<br/>artwork + links"]
     CLEANUP --> D2["no match / timeout"] --> NOMATCH["phase = noMatch"]
@@ -61,7 +61,7 @@ flowchart TD
 | `Domain/Entities/RecognizedSong.swift` | Framework-free entity; builds Apple Music / YouTube links |
 | `Data/DataSources/SongRecognitionManager.swift` | `@Observable` singleton; ShazamKit session, phase machine, persona-reaction injection |
 | `Presentation/Views/AI/SongRecognitionOverlay.swift` | Nav-bar principal capsule: pulsing listening state → artwork + link pills |
-| `Core/Engine/VRM/UI/VRMMetalState+Actions.swift` | `startListeningDance()` / `stopListeningDance()` (listening-dance extension) |
+| `Domain/Entities/ListeningEpisode.swift` | App-wide switch: the body loops `listen_to_music.vrma` (Mixamo → VRMA via `scripts/fbx_to_vrma.py`) during a recognition and for a whole co-listening session; `VRMMetalState+ListeningEpisode.swift` is the scene side |
 | `Domain/Entities/Skills/IdentifySongSkill.swift` | `identify_song` tool (awaits the result and returns it to the AI) |
 | `Data/DataSources/AppFunctionTool.swift` | `identifySongTool` schema |
 

@@ -49,6 +49,7 @@ extension SongRecognitionManager {
         sessionFailureStreak = 0
         UIDevice.current.isBatteryMonitoringEnabled = true
         installSessionObservers()
+        ListeningEpisode.begin(reason: "co-listening session")  // the body listens along for the whole session
         nlLog("[SongID] Co-listening session started.", level: .info)
         sessionTask = Task { [weak self] in await self?.runSession() }
     }
@@ -64,6 +65,7 @@ extension SongRecognitionManager {
         UIDevice.current.isBatteryMonitoringEnabled = false
         sessionStartedAt = nil
         setPhase(.idle)
+        ListeningEpisode.end(reason: "session stopped: \(reason)")
         nlLog("[SongID] Co-listening session stopped (\(reason)).", level: .info)
     }
 

@@ -120,7 +120,9 @@ extension VRMMetalState {
         renderer?.lookAtController?.enabled = true
         let wasPlaying = isPlayingPhoneEpisodeClip
         isPlayingPhoneEpisodeClip = false
-        guard wasPlaying, let model = currentModel, let clip = defaultClip, !isPlayingPose else { return }
+        // The listening loop, if running, takes the body back on its own.
+        guard wasPlaying, let model = currentModel, let clip = defaultClip, !isPlayingPose, !listeningEpisode.isActive
+        else { return }
         animationPlayer.isLooping = true
         animationPlayer.crossfade(to: clip, duration: Self.phoneEpisodeCrossfade, from: model)
         scheduleNextRandomAnim()
@@ -163,6 +165,7 @@ extension VRMMetalState {
         guard let model = currentModel, let clip = phoneEpisodeClip, !isPlayingAppear, !isPlayingPose else { return }
         isPlayingPhoneEpisodeClip = true
         phoneEpisodeClipElapsed = 0
+        isPlayingListeningClip = false  // the phone outranks the music loop; it resumes after
         isPlayingRandomAnim = false
         randomAnimElapsed = 0
         randomAnimTimer = -1  // idles wait until the episode hands back
