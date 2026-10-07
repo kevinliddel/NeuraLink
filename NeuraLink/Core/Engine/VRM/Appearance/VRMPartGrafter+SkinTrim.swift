@@ -124,7 +124,13 @@ extension VRMPartGrafter {
         switch kind {
         case .hair:
             if let a = donor.referenceHeadSize, let b = host.referenceHeadSize {
-                pair = (simd_length(a), simd_length(b))
+                // Height and depth only. Face WIDTH is unreliable: one model
+                // measures 0.39 across where every other sits near 0.21,
+                // because stray geometry rides in its face material. That
+                // inflated its head size, the fit shrank its hair to 0.74,
+                // and the style vanished into the skull — a bald head.
+                // Height and depth stay within a few percent across the set.
+                pair = (simd_length(SIMD2(a.y, a.z)), simd_length(SIMD2(b.y, b.z)))
             } else {
                 pair = nil
             }

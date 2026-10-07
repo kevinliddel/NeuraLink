@@ -107,7 +107,7 @@ struct MemoryTimelineSection: View {
                 if let prefix {
                     Text(prefix).font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
                 }
-                Text(unit.text).font(.subheadline)
+                Text(RealtimeChatState.humanizingCharacterNames(unit.text)).font(.subheadline)
             }
         }
         .padding(.vertical, 2)

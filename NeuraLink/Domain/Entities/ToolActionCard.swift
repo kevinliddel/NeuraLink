@@ -21,6 +21,8 @@ struct ToolActionCard: Equatable {
         /// Display-only: the phone screen shows the forecast itself — there
         /// is no app to open on tap.
         case weather
+        /// Display-only: the photo the user just showed her, on her screen.
+        case photo
     }
 
     let kind: Kind
@@ -33,4 +35,6 @@ struct ToolActionCard: Equatable {
     let title: String
     /// The query / note title / detail line.
     let detail: String
+    /// Encoded picture for `.photo` cards; nil for every other kind.
+    var imageData: Data?
 }

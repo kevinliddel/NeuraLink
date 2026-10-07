@@ -3,7 +3,7 @@
 The agentic memory layer ([AGENTIC_MEMORY.md](AGENTIC_MEMORY.md)) shows up
 for the user as three things beyond a list of facts:
 
-- a **weekly recap** card the companion writes about the last seven days,
+- a **weekly recap** card the companion writes at the weekend about the week,
 - a **timeline** of dated memories,
 - **ownership**: memory exports as one JSON file, and transcripts and
   photoshoot pictures go to the share sheet.
@@ -15,33 +15,41 @@ Nothing leaves the device unless the user exports or shares it.
 A third standing mental-model question, slug `weekly_recap`, exists per
 character next to the user profile and the relationship
 (`MemoryMentalModels.ensureDefaults`). It asks for two or three short
-sentences on the past seven days. A final line `ASK: <question>` carries one
+sentences on **this week, Monday until today**. A final line `ASK: <question>` carries one
 thing worth asking next time. `recapParts` splits the answer into summary and
 ask.
 
-- **Evidence** (`weeklyEvidence`): units with an occurred date or mention in
-  the last 7 days (`fetchUnits(occurringBetween:…, includeUndated: true)`,
+- **Weekend only**: the recap is written and shown on **Saturday and
+  Sunday** (`isWeekend`, local time). On weekdays it is never refreshed, the
+  card is hidden and the prompt leaves it out (`isRecapVisible`: weekend and
+  written this ISO week), so last week's recap never shows on a Tuesday.
+- **Evidence** (`weeklyEvidence`): units with an occurred date or mention
+  since Monday 00:00 of the ISO week (`weekStart`; `fetchUnits(occurringBetween:…, includeUndated: true)`,
   `raw` excluded, capped at 16). Observations are preferred over the facts
   they already cover. Up to 5 diary entries from the week are added. An empty
   week clears the recap instead of calling the LLM.
-- **Refresh**: `refreshStale` treats the recap as due when the **ISO week
-  changed** since `lastRefreshed` (`weekKey`, e.g. `2026-W39`). It is also due
-  under the usual rule: stale, with memories newer than `lastMemoryID`. It
+- **Refresh**: on a weekend, `refreshStale` treats the recap as due when
+  this week has none yet (`weekKey`, e.g. `2026-W39`, differs from
+  `lastRefreshed`'s). It is also due under the usual rule: stale, with
+  memories newer than `lastMemoryID`. It
   runs with the other mental models, after consolidation and at launch. It
   needs an LLM tier other than `.none`.
-- **Notification**: on the first refresh of a new week that changes the
-  content, with Presence → Notifications on, the user gets "<Name> wrote up
+- **Notification**: on the first weekend refresh that changes the content, with Presence → Notifications on, the user gets "<Name> wrote up
   your week" through `CompanionNotificationScheduler.schedule`.
 - **Card** (`MemoryRecapCard`): "This week with <character>" sits above the
-  hero card on the Memory page. It shows the summary, an **Ask about it**
+  hero card on the Memory page, on the weekend only. It shows the summary, an **Ask about it**
   button when an `ASK:` line exists, and a close button that dismisses it for
   the current ISO week (`UserDefaults`).
 - **Ask about it** (`askAboutRecap`): during a live session
   (`ready/listening/thinking/speaking`), the question goes in through
   `ProactivePresenceManager.engage`. Otherwise it is saved as a journal entry
   whose `opener` is the question, so the next session's greeting uses it.
-- **Prompt**: `promptBlock` adds the summary as `- This week: …` (≤ 240
-  chars), and the reflect ladder labels it "This week". The companion can
+- **Prompt**: while visible, `promptBlock` adds the summary as
+  `- This week: …` (≤ 240 chars), and the reflect ladder labels it "This week".
+- **Names**: the standing questions embed the character's display name and
+  are rewritten when it changes (`refreshMentalModelQuestion`, which forces
+  a regeneration). Text written under an old name is healed on display and
+  in prompts by `RealtimeChatState.humanizingCharacterNames`. The companion can
   therefore refer to it in conversation. The Insights list leaves the recap
   out, because the card shows it.
 
@@ -118,9 +126,11 @@ day" hit exists.
 
 ```mermaid
 flowchart TD
-    CONS["🧠 consolidation / launch<br/>refreshStale(character:)"] --> DUE{"ISO week changed<br/>or stale + new memories?"}
+    CONS["🧠 consolidation / launch<br/>refreshStale(character:)"] --> WKND{"Saturday or Sunday?"}
+    WKND --> D7["no"] --> KEEP
+    WKND --> D8["yes"] --> DUE{"no recap this week<br/>or stale + new memories?"}
     DUE --> D1["no"] --> KEEP["keep current recap"]
-    DUE --> D2["yes"] --> EVID["weeklyEvidence()<br/>7-day units + diaries"]
+    DUE --> D2["yes"] --> EVID["weeklyEvidence()<br/>Monday → now units + diaries"]
 
     EVID --> EMPTY{"anything this week?"}
     EMPTY --> D3["no"] --> CLEARED["content = empty"]
@@ -128,8 +138,8 @@ flowchart TD
 
     LLM --> STORE["mental_models<br/>weekly_recap"]
     STORE --> PROMPT["promptBlock()<br/>- This week: …"]
-    STORE --> NOTIF["first refresh of the week<br/>'wrote up your week'"]
-    STORE --> CARD["MemoryRecapCard<br/>This week with …"]
+    STORE --> NOTIF["first weekend refresh<br/>'wrote up your week'"]
+    STORE --> CARD["MemoryRecapCard<br/>This week with … (weekend)"]
 
     CARD --> ASK["👆 Ask about it<br/>askAboutRecap()"]
     ASK --> LIVE{"session live?"}
@@ -141,11 +151,11 @@ flowchart TD
     classDef decision fill:#1e293b,stroke:#94a3b8,color:#e2e8f0
 
     class EVID,LLM,STORE,PROMPT,NOTIF,CARD,ENGAGE,OPENER core
-    class DUE,EMPTY,LIVE decision
+    class WKND,DUE,EMPTY,LIVE decision
 
     %% Data nodes (consistent system-wide)
     classDef data fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
-    class D1,D2,D3,D4,D5,D6 data
+    class D1,D2,D3,D4,D5,D6,D7,D8 data
 ```
 
 ### Export and photoshoot share

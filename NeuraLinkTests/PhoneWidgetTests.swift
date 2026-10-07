@@ -190,6 +190,24 @@ struct PhoneWidgetTests {
 
     // MARK: - Executor wrapping
 
+    @Test("A photo card is display-only and carries the picture")
+    @MainActor
+    func photoCardIsDisplayOnly() {
+        let manager = PhoneWidgetManager.shared
+        manager.dismiss()
+        defer { manager.dismiss() }
+        let picture = Data([0xFF, 0xD8, 0xFF, 0xE0])
+        let card = ToolActionCard(
+            kind: .photo, appName: "Photos", systemImage: "photo.fill",
+            title: "Your photo", detail: "", imageData: picture)
+        manager.present(card: card, action: nil)
+        #expect(manager.card == card)
+        #expect(manager.card?.imageData == picture)
+        #expect(!manager.canOpen, "the picture is the payload; nothing opens on tap")
+        #expect(PhoneWidgetManager.card(for: AppFunctionTool.showPhoto, arguments: [:], result: "") == nil,
+                "the tool call itself has no card — the picked picture presents it")
+    }
+
     @Test("A card-mapped tool's deferred action presents the phone instead of opening")
     @MainActor
     func executorWrapsIntoWidget() async {
@@ -201,6 +219,8 @@ struct PhoneWidgetTests {
         _ = await executor.execute(
             name: AppFunctionTool.searchWeb, arguments: ["query": "phone widget test"])
         #expect(executor.pendingUIAction != nil)
+        // The call also opened a phone episode; not under test here.
+        await MainActor.run { PhoneEpisode.end(reason: "test cleanup") }
 
         // Firing the deferred action (what happens after speech ends) must
         // raise the phone, not open Safari.

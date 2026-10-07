@@ -81,6 +81,8 @@ struct AppFunctionTests {
         // and returns the expected confirmation string.
         let result = await executor.execute(
             name: AppFunctionTool.searchWeb, arguments: ["query": "Swift Testing"])
+        // The call also opened a phone episode; not under test here.
+        await MainActor.run { PhoneEpisode.end(reason: "test cleanup") }
         #expect(result.contains("Safari"))
         #expect(result.contains("Swift Testing"))
     }

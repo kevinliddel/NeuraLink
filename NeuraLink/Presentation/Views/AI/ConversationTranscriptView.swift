@@ -66,7 +66,7 @@ struct ConversationTranscriptView: View {
     /// Plain-text rendering for the share sheet ("You:" / character name,
     /// dated; tool calls excluded).
     static func transcriptText(title: String, messages: [ConversationMessage]) -> String {
-        let name = RealtimeChatState.shared.selectedCharacterName
+        let name = RealtimeChatState.shared.characterDisplayName
         let speaker = name.isEmpty ? "AI" : name.capitalized
         let formatter = DateFormatter()
         formatter.dateStyle = .medium

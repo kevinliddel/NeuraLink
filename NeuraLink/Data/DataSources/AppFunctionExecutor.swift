@@ -57,7 +57,16 @@ final class AppFunctionExecutor {
         // Reset skill state before execution
         skill.pendingUIAction = nil
 
+        // Phone-worthy tools start the "checking my phone" episode before the
+        // skill runs; it ends when the spoken result finishes (PhoneEpisode.swift).
+        if PhoneEpisodePolicy.involvesPhone(name) {
+            PhoneEpisode.begin(tool: name)
+        }
+
         let result = await skill.execute(arguments: arguments)
+        if PhoneEpisodePolicy.involvesPhone(name) {
+            PhoneEpisode.toolFinished()
+        }
 
         // Capture any deferred UI action (e.g., opening an app). Tools with
         // a phone card don't auto-open anymore: after the AI finishes

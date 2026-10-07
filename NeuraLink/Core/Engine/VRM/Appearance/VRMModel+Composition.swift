@@ -95,6 +95,7 @@ extension VRMModel {
         composition.grafts.removeAll()
         buildNodeLookupTable()
         updateNodeTransforms()
+        reattachProps()
     }
 
     /// True when any part is currently grafted.

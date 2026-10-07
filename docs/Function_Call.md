@@ -302,5 +302,33 @@ bypassed while a grammar is active.
 Opens the photo picker so the user can show the companion a picture. The
 image is described once by the configured text model (vision-capable), the
 companion reacts, and the moment is remembered as a dated experience with a
-small on-device thumbnail (docs/COMPANION_DEPTH.md).
+small on-device thumbnail (docs/COMPANION_DEPTH.md). When the picture is
+picked she takes her phone out — the phone episode below plays — and the
+phone widget shows the picture itself on its screen right away (display-only,
+`ToolActionCard.Kind.photo`); her spoken reaction puts the phone away.
 
+## Phone episode (2026-10-06)
+
+While a phone-worthy tool runs — `search_web`, `play_music`, `open_app`,
+`create_note`, `get_weather`, `create_reminder` — the companion "checks her
+phone": the body crossfades into the looping `checking_phone.vrma` (a Mixamo
+clip converted with `scripts/fbx_to_vrma.py`) and gaze tracking switches
+off so the clip's head-down tilt toward the hand shows. Idles, talking
+gestures and look-back wait. The episode begins in `AppFunctionExecutor`
+before the skill runs and ends when the spoken result finishes — the same
+moment the 2D phone widget slides in — or on barge-in, teardown, engine
+stop, character switch, or a 45 s safety cap. Emotion, camera, photoshoot,
+song recognition and the memory tools are not phone moments and never
+trigger it. `PhoneEpisodePolicy` (allowlist, cap) is unit-tested in
+`PhoneEpisodeTests`; `PhoneEpisode` is the app-wide switch the scene state
+observes. The clip plays once: when it has run through, the episode ends
+even if the spoken result is still going.
+
+The phone itself is a 3D prop: `mobile_phone.glb` (Sketchfab, CC-BY-4.0 by
+Rescue3D Assets) loaded once by `VRMPropLoader` with its textures capped,
+and hung off the right-hand bone of every displayed character as a rigid
+node (`VRMModel+Props`, drawn by the renderer's non-skinned path with its
+own per-draw matrices). It stays hidden until the hand has reached the pose
+and goes away as the arm lowers. Its grip (`VRMMetalState.phoneGrip`) was
+derived from the clip's hold pose by `CheckingPhoneClipDiagnostic`, which
+also renders both characters holding it.

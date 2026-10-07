@@ -182,7 +182,7 @@ final class BackgroundSessionKeeper: @unchecked Sendable {
     static func postListeningNotice(characterName: String) {
         let content = UNMutableNotificationContent()
         let name = characterName.isEmpty ? "NeuraLink" : characterName.capitalized
-        content.title = "\(name) is still listening"
+        content.title = "\(RealtimeChatState.displayName(for: name)) is still listening"
         content.body = "The conversation continues in the background. Tap to return, or lock the mic from Autonomy settings."
         content.sound = nil
         let request = UNNotificationRequest(

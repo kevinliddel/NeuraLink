@@ -376,6 +376,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             ttsGenerationDone = false
             inFlightSynthesis = 0
             state.status = .ready
+            PhoneEpisode.end(reason: "local engine stopped")
         }
     }
 
@@ -397,6 +398,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             ttsGenerationDone = false
             inFlightSynthesis = 0
             state.status = .disconnected
+            PhoneEpisode.end(reason: "local engine restarted")
             startListening()
         }
     }
@@ -423,6 +425,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             ttsGenerationDone = false
             inFlightSynthesis = 0
             state.status = .disconnected
+            PhoneEpisode.end(reason: "local engine unloaded")
         }
         nlLog("[LocalLLM] Manager unloaded — all models freed.", level: .info)
     }
@@ -442,6 +445,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     @MainActor
     func schedulePendingUIActionAfterSpeech() {
         pendingUIActionTask?.cancel()
+        let episodeGeneration = PhoneEpisode.generation
         pendingUIActionTask = Task { [weak self] in
             guard let self else { return }
             // Wait until the queued TTS buffers drain and no engine.speak() is in flight.
@@ -455,6 +459,7 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
             let action = AppFunctionExecutor.shared.pendingUIAction
             AppFunctionExecutor.shared.pendingUIAction = nil
             action?()
+            PhoneEpisode.end(reason: "spoken result finished", generation: episodeGeneration)
         }
     }
 }

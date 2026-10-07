@@ -139,10 +139,12 @@ final class SongRecognitionManager {
 
         phase = .listening
         nlLog("[SongID] Listening for a match (source: \(source))…", level: .info)
+        ListeningEpisode.begin(reason: "recognition")  // the body listens along
 
         let suspendedLocalCapture = beginCaptureWindow()
         let outcome = await listenOnce()
         endCaptureWindow(suspendedLocalCapture: suspendedLocalCapture)
+        ListeningEpisode.end(reason: "recognition finished")
 
         // If the user cancelled while we were listening, phase is already
         // .idle — don't overwrite it with a stale result.

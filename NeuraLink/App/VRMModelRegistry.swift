@@ -48,6 +48,22 @@ final class VRMModelRegistry {
         var seen = Set<String>()
         all = (Self.namedEntries() + Self.folderEntries() + Self.importedEntries())
             .filter { seen.insert($0.name.lowercased()).inserted }
+        RealtimeChatState.refreshDisplayNames(all.map { ($0.name, $0.displayName) })
+        syncSelectedDisplayName()
+    }
+
+    /// A rename lands here (refresh follows every import / rename /
+    /// quarantine): the character on screen takes the new name right away,
+    /// and the widget is rewritten — otherwise both kept the old name until
+    /// the next character switch or chat.
+    private func syncSelectedDisplayName() {
+        let state = RealtimeChatState.shared
+        let key = state.selectedCharacterName
+        guard !key.isEmpty, let entry = all.first(where: { $0.name.lowercased() == key.lowercased() }),
+              entry.displayName != state.selectedCharacterDisplayName
+        else { return }
+        state.selectedCharacterDisplayName = entry.displayName
+        CompanionSnapshotWriter.shared.scheduleRefresh()
     }
 
     /// Factory default: Ekaterina, else the first bundled model, else anything.
@@ -112,9 +128,23 @@ final class VRMModelRegistry {
                   FileManager.default.fileExists(atPath: url.path) else { return nil }
             return Entry(
                 name: character.slug,
-                displayName: character.displayName,
+                displayName: resolvedDisplayName(of: character),
                 url: url,
                 isImported: true)
         }
+    }
+
+    /// An imported character's name lives twice — `imported_characters`
+    /// (registry, widget, prompts) and its persona row (persona page, nav
+    /// titles). When they disagree the persona name is the one the user
+    /// typed last, so it wins and the row is repaired.
+    private static func resolvedDisplayName(of character: ImportedCharacter) -> String {
+        let persona = MemoryStore.shared.personaName(
+            character: character.slug, engine: MemoryStore.PersonaEngine.openai)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !persona.isEmpty, persona != character.displayName else { return character.displayName }
+        MemoryStore.shared.updateImportedCharacterDisplayName(slug: character.slug, displayName: persona)
+        nlLog("[VRMModelRegistry] '\(character.slug)' display name healed: '\(character.displayName)' → '\(persona)'", level: .info)
+        return persona
     }
 }

@@ -46,7 +46,7 @@ struct MemoryOwnershipTests {
         #expect(MemoryExporter.fileURL(for: Date()).lastPathComponent.hasPrefix("NeuraLink-memory-"))
     }
 
-    @Test("Recap parts split the summary from the ASK line; weeks drive staleness")
+    @Test("Recap parts split the summary from the ASK line; written and shown on weekends only")
     func recap() {
         let parts = MemoryMentalModels.recapParts("We talked about Kyoto.\nYou booked the train.\nASK: Did the trip happen?")
         #expect(parts.summary == "We talked about Kyoto. You booked the train.")
@@ -59,10 +59,30 @@ struct MemoryOwnershipTests {
             MentalModel(id: 1, character: "sonya", slug: MemoryMentalModels.weeklyRecapSlug, question: "",
                         content: "x", isStale: stale, lastRefreshed: refreshed, lastMemoryID: lastID)
         }
-        #expect(MemoryMentalModels.isRecapDue(model(refreshed: nil, stale: false, lastID: 0), latestMemoryID: 0, now: now))
-        #expect(MemoryMentalModels.isRecapDue(model(refreshed: now.addingTimeInterval(-8 * 86_400), stale: false, lastID: 5), latestMemoryID: 5, now: now))
-        #expect(!MemoryMentalModels.isRecapDue(model(refreshed: now.addingTimeInterval(-3_600), stale: false, lastID: 5), latestMemoryID: 9, now: now))
-        #expect(MemoryMentalModels.isRecapDue(model(refreshed: now.addingTimeInterval(-3_600), stale: true, lastID: 5), latestMemoryID: 9, now: now))
+        // `now` is a Friday: never due on a weekday.
+        #expect(!MemoryMentalModels.isWeekend(now))
+        #expect(!MemoryMentalModels.isRecapDue(model(refreshed: nil, stale: false, lastID: 0), latestMemoryID: 0, now: now))
+
+        let saturday = ISO8601DateFormatter().date(from: "2026-09-26T12:00:00Z")!
+        #expect(MemoryMentalModels.isWeekend(saturday))
+        #expect(MemoryMentalModels.isRecapDue(model(refreshed: nil, stale: false, lastID: 0), latestMemoryID: 0, now: saturday))
+        #expect(MemoryMentalModels.isRecapDue(
+            model(refreshed: saturday.addingTimeInterval(-8 * 86_400), stale: false, lastID: 5), latestMemoryID: 5, now: saturday))
+        #expect(!MemoryMentalModels.isRecapDue(
+            model(refreshed: saturday.addingTimeInterval(-3_600), stale: false, lastID: 5), latestMemoryID: 9, now: saturday))
+        #expect(MemoryMentalModels.isRecapDue(
+            model(refreshed: saturday.addingTimeInterval(-3_600), stale: true, lastID: 5), latestMemoryID: 9, now: saturday))
+
+        // Visible only on the weekend it was written for.
+        let written = model(refreshed: saturday.addingTimeInterval(-3_600), stale: false, lastID: 5)
+        #expect(MemoryMentalModels.isRecapVisible(written, now: saturday))
+        #expect(MemoryMentalModels.isRecapVisible(written, now: saturday.addingTimeInterval(86_400)))  // Sunday
+        #expect(!MemoryMentalModels.isRecapVisible(written, now: saturday.addingTimeInterval(3 * 86_400)))  // Tuesday
+        #expect(!MemoryMentalModels.isRecapVisible(written, now: saturday.addingTimeInterval(7 * 86_400)))  // next Saturday
+
+        // The week runs from Monday.
+        let monday = MemoryTimelineModel.calendar.component(.weekday, from: MemoryMentalModels.weekStart(for: saturday))
+        #expect(monday == 2)
         #expect(MemoryMentalModels.recapPromptLine("Short.\nASK: q") == "Short.")
     }
 
@@ -126,5 +146,35 @@ struct PhotoshootCaptureTests {
         #expect(image.scale == 2)
         #expect(FrameImageConverter.image(bgraBytes: [0, 0, 0], width: 4, height: 3) == nil)
         #expect(FrameImageConverter.image(bgraBytes: bytes, width: 0, height: 3) == nil)
+    }
+
+    @Test("A renamed character's stem is replaced by its display name in memory text")
+    @MainActor
+    func humanizesRenamedCharacter() {
+        defer { VRMModelRegistry.shared.refresh() }
+        RealtimeChatState.refreshDisplayNames([("dedicatus_2", "Othinus"), ("sonya", "Sonya")])
+        #expect(RealtimeChatState.humanizingCharacterNames("Dedicatus_2 and Kevin talk about novels.")
+            == "Othinus and Kevin talk about novels.")
+        #expect(RealtimeChatState.humanizingCharacterNames("the user told dedicatus_2 a secret")
+            == "the user told Othinus a secret")
+        // Whole words only, and names equal to their stem are left alone.
+        #expect(RealtimeChatState.humanizingCharacterNames("dedicatus_23 stays") == "dedicatus_23 stays")
+        #expect(RealtimeChatState.humanizingCharacterNames("Sonya smiled.") == "Sonya smiled.")
+    }
+
+    @Test("A stored standing question is rewritten after a rename and forced stale")
+    @MainActor
+    func questionRefresh() {
+        let store = MemoryStore.shared
+        let character = "test_rename_question"
+        store.ensureMentalModel(character: character, slug: "relationship", question: "between Dedicatus_2 and the user")
+        store.updateMentalModel(
+            id: store.fetchMentalModel(character: character, slug: "relationship")!.id, content: "old", lastMemoryID: 42)
+        store.refreshMentalModelQuestion(character: character, slug: "relationship", question: "between Othinus and the user")
+        let refreshed = store.fetchMentalModel(character: character, slug: "relationship")
+        #expect(refreshed?.question == "between Othinus and the user")
+        #expect(refreshed?.isStale == true)
+        #expect(refreshed?.lastMemoryID == 0)
+        store.deleteMentalModels(character: character)
     }
 }

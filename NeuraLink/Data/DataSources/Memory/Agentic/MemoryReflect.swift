@@ -41,14 +41,15 @@ final class MemoryReflect: @unchecked Sendable {
 
         // Rung 1: fresh mental models (a DB read).
         for model in store.fetchMentalModels(character: character)
-        where !model.isStale && !model.content.isEmpty {
+        where !model.isStale && !model.content.isEmpty
+            && (model.slug != MemoryMentalModels.weeklyRecapSlug || MemoryMentalModels.isRecapVisible(model)) {
             let label: String
             switch model.slug {
             case MemoryMentalModels.userProfileSlug: label = "About the user"
             case MemoryMentalModels.weeklyRecapSlug: label = "This week"
             default: label = "Relationship"
             }
-            lines.append("- \(label): \(model.content)")
+            lines.append("- \(label): \(RealtimeChatState.humanizingCharacterNames(model.content))")
         }
 
         // Rung 2: observations.
@@ -73,7 +74,7 @@ final class MemoryReflect: @unchecked Sendable {
     func reflect(question: String, character: String) async -> String? {
         let evidence = evidence(for: question, character: character, tokenBudget: 800)
         guard !evidence.isEmpty, llm.tier != .none else { return nil }
-        let name = character.isEmpty ? "the user's AI companion" : character.capitalized
+        let name = character.isEmpty ? "the user's AI companion" : RealtimeChatState.displayName(for: character)
         var system = """
         You are \(name). Answer the question about your user using ONLY the evidence below. \
         Cite nothing that is not in the evidence; say what you do not know. Two sentences at most.

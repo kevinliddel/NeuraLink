@@ -96,7 +96,7 @@ nonisolated enum FollowUpWording {
     }
 
     static func prompt(_ followUp: FollowUp, character: String, userName: String) -> (system: String, user: String) {
-        let name = character.isEmpty ? "the user's AI companion" : character.capitalized
+        let name = character.isEmpty ? "the user's AI companion" : RealtimeChatState.displayName(for: character)
         let user = userName.trimmingCharacters(in: .whitespacesAndNewlines)
         let recipient = user.isEmpty ? "them" : user
         let intent: String
@@ -112,7 +112,8 @@ nonisolated enum FollowUpWording {
             Talk like a friend would — do not restate the fact, never say "the user", \
             no preamble, no quotes, no emoji.
             """
-        return (system, "FACT: \(CompanionNotificationCopy.personalize(followUp.factText, userName: user))")
+        let fact = RealtimeChatState.humanizingCharacterNames(followUp.factText)
+        return (system, "FACT: \(CompanionNotificationCopy.personalize(fact, userName: user))")
     }
 }
 

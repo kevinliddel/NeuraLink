@@ -89,7 +89,7 @@ struct MemoryHeroCard: View {
                     ForEach(snapshot.upcoming) { item in
                         HStack(spacing: 6) {
                             Image(systemName: "calendar.badge.clock").font(.caption2)
-                            Text(item.factText).font(.caption).lineLimit(1)
+                            Text(RealtimeChatState.humanizingCharacterNames(item.factText)).font(.caption).lineLimit(1)
                             Spacer(minLength: 0)
                             Text(item.date, format: .dateTime.day().month(.abbreviated)).font(.caption2)
                         }
@@ -137,7 +137,7 @@ struct MemoryHeroCard: View {
                             Text(model.slug == MemoryMentalModels.userProfileSlug ? "About you" : "Between you")
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(.white.opacity(0.7))
-                            Text(model.content)
+                            Text(RealtimeChatState.humanizingCharacterNames(model.content))
                                 .font(.subheadline)
                                 .foregroundStyle(.white)
                         }
@@ -204,7 +204,7 @@ struct MemoryObservationRow: View {
                 .background(Color.purple.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
 
             VStack(alignment: .leading, spacing: 5) {
-                Text(unit.text)
+                Text(RealtimeChatState.humanizingCharacterNames(unit.text))
                     .font(.subheadline)
                     .fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 8) {

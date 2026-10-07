@@ -194,7 +194,7 @@ final class MemoryRetain: @unchecked Sendable {
 
     func extract(from turns: [MemoryFactExtraction.Turn]) async -> [ExtractedFact] {
         guard !turns.isEmpty else { return [] }
-        let assistant = RealtimeChatState.shared.selectedCharacterName.capitalized
+        let assistant = RealtimeChatState.shared.characterDisplayName.capitalized
         let userName = UserSettings.shared.name.trimmingCharacters(in: .whitespacesAndNewlines)
         switch llm.tier {
         case .cloud:

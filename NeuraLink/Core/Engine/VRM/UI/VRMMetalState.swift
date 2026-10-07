@@ -84,6 +84,25 @@ final class VRMMetalState {
     /// stop froze the body in the pose (idles and gestures paused) for good.
     static let poseMaxHold: TimeInterval = 12
 
+    // The "checking my phone" episode (VRMMetalState+PhoneEpisode.swift)
+    var phoneEpisode = PhoneEpisodePolicy()
+    var phoneEpisodeClip: AnimationClip?
+    /// True while the episode's clip owns the body — false when a pose or
+    /// the entrance clip has it, or the clip has not loaded yet.
+    var isPlayingPhoneEpisodeClip = false
+    var phoneEpisodeClipElapsed: Float = 0
+    /// The companion's phone: loaded once per scene state, attached hidden to
+    /// every displayed character, shown while the episode's clip holds it up.
+    var phoneProp: VRMProp?
+    var phonePropAttachment: VRMPropAttachment?
+
+    // The "listening to music" episode (VRMMetalState+ListeningEpisode.swift)
+    var listeningEpisode = ListeningEpisodePolicy()
+    var listeningEpisodeClip: AnimationClip?
+    /// True while the loop owns the body — false while a pose or the phone
+    /// episode has borrowed it.
+    var isPlayingListeningClip = false
+
     // Drives fade-in of the Metal view so T-pose is never visible
     var modelAlpha: Double = 0
 
@@ -129,6 +148,7 @@ final class VRMMetalState {
         renderer = VRMRenderer(device: device, config: config)
         mtkView.delegate = renderer
         mtkView.preferredFramesPerSecond = 60
+        loadPhoneProp()
         #if DEBUG
         // GPU-contention A/B (`-nl.debug.pauseAvatar YES`): freeze the avatar's
         // 60fps Metal render loop so it stops competing with llama.cpp's
@@ -141,12 +161,16 @@ final class VRMMetalState {
             nlLog("[VRM] DEBUG nl.debug.pauseAvatar=YES — avatar render loop frozen (GPU A/B).", level: .info)
             setupBackgroundObservers()
             setupPoseObserver()
+            setupPhoneEpisodeObservers()
+            setupListeningEpisodeObservers()
             return
         }
         #endif
         startSkyTicker()
         setupBackgroundObservers()
         setupPoseObserver()
+        setupPhoneEpisodeObservers()
+        setupListeningEpisodeObservers()
         startRenderRateObservation()
     }
 
@@ -296,6 +320,16 @@ final class VRMMetalState {
         wasSpeakingLastFrame = false
         isPlayingPose = false
         poseStartedAt = nil
+        PhoneEpisode.end(reason: "scene cleared")
+        phoneEpisode = PhoneEpisodePolicy()
+        phoneEpisodeClip = nil
+        isPlayingPhoneEpisodeClip = false
+        phoneEpisodeClipElapsed = 0
+        phonePropAttachment = nil  // belonged to the model that just left
+        ListeningEpisode.end(reason: "scene cleared")
+        listeningEpisode = ListeningEpisodePolicy()
+        listeningEpisodeClip = nil
+        isPlayingListeningClip = false
         currentExpressionWeights = [:]
         targetExpressionWeights = [:]
         lastAppliedEmotion = ""
@@ -304,6 +338,9 @@ final class VRMMetalState {
     func display(_ model: VRMModel) {
         currentModel = model
         renderer?.loadModel(model)
+        // Before the saved customization grafts, so the phone is part of
+        // the composition snapshot (VRMModel+Props).
+        attachPhoneProp(to: model)
 
         // Enable spring bone physics (hair only — chest/breast filtered in writeBonesToNodes)
         renderer?.enableSpringBone = model.springBone != nil

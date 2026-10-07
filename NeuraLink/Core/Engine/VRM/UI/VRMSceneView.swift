@@ -196,6 +196,10 @@ public struct VRMSceneView: View {
 
         let characterName = url.deletingPathExtension().lastPathComponent
         RealtimeChatState.shared.selectedCharacterName = characterName
+        // An imported model keeps the file stem it arrived with, so a rename
+        // only shows up in the registry's display name.
+        RealtimeChatState.shared.selectedCharacterDisplayName =
+            VRMModelRegistry.shared.entry(named: characterName)?.displayName ?? characterName
 
         // Stop any active AI before switching characters.
         OpenAIRealtimeManager.shared.disconnect()

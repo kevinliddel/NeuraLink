@@ -93,7 +93,7 @@ struct MemoryBrowserView: View {
                 .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
 
             VStack(alignment: .leading, spacing: 6) {
-                Text(item.text)
+                Text(RealtimeChatState.humanizingCharacterNames(item.text))
                     .font(.subheadline)
                     .fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 10) {

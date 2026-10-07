@@ -34,8 +34,10 @@ extension VRMMetalState {
             return
         }
 
-        // Idle clips and talking-gesture clips load together; split below.
-        let randomPairs = (Self.randomAnimNames + TalkingGesturePolicy.clipNames).compactMap { name -> (String, URL)? in
+        // Idle, talking-gesture and episode clips load together; split below.
+        let clipNames = Self.randomAnimNames + TalkingGesturePolicy.clipNames
+            + [PhoneEpisodePolicy.clipName, ListeningEpisodePolicy.clipName]
+        let randomPairs = clipNames.compactMap { name -> (String, URL)? in
             guard let url = Self.findVRMA(named: name) else { return nil }
             return (name, url)
         }
@@ -62,12 +64,17 @@ extension VRMMetalState {
                 let loadedDefault = try await defaultTask
                 let gestureEntries = loadedEntries.filter { TalkingGesturePolicy.clipNames.contains($0.name) }
                 loadedEntries.removeAll { TalkingGesturePolicy.clipNames.contains($0.name) }
+                let phoneClip = loadedEntries.first { $0.name == PhoneEpisodePolicy.clipName }?.clip
+                let listeningClip = loadedEntries.first { $0.name == ListeningEpisodePolicy.clipName }?.clip
+                loadedEntries.removeAll { $0.name == PhoneEpisodePolicy.clipName || $0.name == ListeningEpisodePolicy.clipName }
 
                 if let appearURL {
                     let appearClip = try await VRMAnimationLoader.loadVRMA(from: appearURL, model: model)
                     await MainActor.run {
                         self.randomAnimEntries = loadedEntries
                         self.talkingGestureEntries = gestureEntries
+                        self.phoneEpisodeClip = phoneClip
+                        self.listeningEpisodeClip = listeningClip
                         self.defaultClip = loadedDefault
                         self.pendingDefaultClip = loadedDefault
                         self.isPlayingAppear = true
@@ -80,6 +87,8 @@ extension VRMMetalState {
                     await MainActor.run {
                         self.randomAnimEntries = loadedEntries
                         self.talkingGestureEntries = gestureEntries
+                        self.phoneEpisodeClip = phoneClip
+                        self.listeningEpisodeClip = listeningClip
                         self.defaultClip = loadedDefault
                         self.animationPlayer.isLooping = true
                         self.animationPlayer.load(loadedDefault)
@@ -120,8 +129,8 @@ extension VRMMetalState {
             }
         }
 
-        // Random idle animation controller
-        if !isPlayingAppear {
+        // Random idle animation controller (an episode owns the body meanwhile)
+        if !isPlayingAppear && !phoneEpisode.isActive && !listeningEpisode.isActive {
             if isPlayingRandomAnim {
                 randomAnimElapsed += dt
                 if randomAnimElapsed >= randomAnimDuration {
@@ -151,6 +160,9 @@ extension VRMMetalState {
             stopPose()
         }
 
+        updatePhoneEpisode(dt: dt)
+        updateListeningEpisode(dt: dt)
+
         if !isPlayingAppear {
             updateTalkingGesture(dt: dt, model: model)
         }
@@ -159,7 +171,10 @@ extension VRMMetalState {
         let lookBackTrigger = lookBackController.update(orbitYaw: orbitYaw, deltaTime: dt)
 
         // Look-back: trigger — stores peak-rotation clip, never interrupts main animation
-        if let side = lookBackTrigger, !isPlayingLookBack, !isPlayingAppear {
+        // (not while she is on her phone: the head is the clip's, and the
+        // interaction event would interleave with the tool call).
+        if let side = lookBackTrigger, !isPlayingLookBack, !isPlayingAppear,
+           !phoneEpisode.isActive, !listeningEpisode.isActive {
             lookBackClip = VRMLookBackAnimationBuilder.makeClip(side: side)
             lookBackTime = 0
             isPlayingLookBack = true
@@ -345,6 +360,8 @@ extension VRMMetalState {
                     self.isPlayingPose = true
                     self.poseStartedAt = Date()
                     self.isPlayingTalkingGesture = false  // a pose outranks a gesture
+                    self.isPlayingPhoneEpisodeClip = false  // …and the episode clips (they resume after)
+                    self.isPlayingListeningClip = false
                     self.isPlayingRandomAnim = false // Interrupt random idle
                     self.randomAnimTimer = -1  // Pause idles until stopPose re-arms
                     self.animationPlayer.isLooping = true
@@ -359,14 +376,18 @@ extension VRMMetalState {
 
     /// Crossfades back to the neutral idle and re-arms the random-idle timer.
     /// Counterpart to `playPose` for callers whose pose has a defined end
-    /// (e.g. song recognition's listening dance) — without this a pose loops
-    /// until the random-idle timer happens to fire.
+    /// (the photoshoot) — without this a pose loops until the random-idle
+    /// timer happens to fire. A running episode takes the body back instead.
     private func stopPose() {
         guard let model = currentModel, let clip = defaultClip else { return }
         isPlayingPose = false
         poseStartedAt = nil
         isPlayingRandomAnim = false
         randomAnimElapsed = 0
+        if phoneEpisode.isActive || listeningEpisode.isActive {
+            nlLog("[Pose] ↩ episode resumes")
+            return  // its update restarts the clip next tick
+        }
         animationPlayer.isLooping = true
         animationPlayer.crossfade(to: clip, duration: 0.5, from: model)
         scheduleNextRandomAnim()

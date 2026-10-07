@@ -40,17 +40,20 @@ final class MemoryMentalModels: @unchecked Sendable {
     }
 
     static func relationshipQuestion(character: String) -> String {
-        "What is the state of the relationship between \(character.capitalized) and the user, and what should \(character.capitalized) keep in mind next time they talk?"
+        "What is the state of the relationship between \(RealtimeChatState.displayName(for: character)) and the user, and what should \(RealtimeChatState.displayName(for: character)) keep in mind next time they talk?"
     }
 
     /// Creates the standing rows for `character` if missing.
     func ensureDefaults(character: String) {
         store.ensureMentalModel(character: "", slug: Self.userProfileSlug, question: Self.userProfileQuestion())
         guard !character.isEmpty else { return }
-        store.ensureMentalModel(
-            character: character, slug: Self.relationshipSlug, question: Self.relationshipQuestion(character: character))
-        store.ensureMentalModel(
-            character: character, slug: Self.weeklyRecapSlug, question: Self.weeklyRecapQuestion(character: character))
+        // Questions embed the character's name: rows created before a
+        // rename kept asking about "Dedicatus_2", and the answers followed.
+        for (slug, question) in [(Self.relationshipSlug, Self.relationshipQuestion(character: character)),
+                                 (Self.weeklyRecapSlug, Self.weeklyRecapQuestion(character: character))] {
+            store.ensureMentalModel(character: character, slug: slug, question: question)
+            store.refreshMentalModelQuestion(character: character, slug: slug, question: question)
+        }
     }
 
     // MARK: - Read (zero-LLM)
@@ -60,15 +63,17 @@ final class MemoryMentalModels: @unchecked Sendable {
     func promptBlock(character: String, compact: Bool = false) -> String {
         let models = store.fetchMentalModels(character: character).filter { !$0.content.isEmpty }
         guard !models.isEmpty else { return "" }
-        var out = "\n[What \(character.isEmpty ? "the assistant" : character.capitalized) knows]\n"
+        var out = "\n[What \(character.isEmpty ? "the assistant" : RealtimeChatState.displayName(for: character)) knows]\n"
         for model in models {
             if model.slug == Self.weeklyRecapSlug {
+                guard Self.isRecapVisible(model) else { continue }
                 let line = Self.recapPromptLine(model.content)
                 if !line.isEmpty { out += "- This week: \(line)\n" }
                 continue
             }
             let label = model.slug == Self.userProfileSlug ? "About the user" : "Relationship"
-            let content = compact ? String(model.content.prefix(240)) : model.content
+            let healed = RealtimeChatState.humanizingCharacterNames(model.content)
+            let content = compact ? String(healed.prefix(240)) : healed
             out += "- \(label): \(content)\n"
         }
         return out
@@ -119,7 +124,7 @@ final class MemoryMentalModels: @unchecked Sendable {
             await MainActor.run { CompanionSnapshotWriter.shared.scheduleRefresh() }
             if model.slug == Self.weeklyRecapSlug, !answer.isEmpty, PresenceSettings.shared.isNotificationsEnabled,
                model.lastRefreshed.map({ Self.weekKey(for: $0) != Self.weekKey(for: Date()) }) ?? true {
-                let name = character.isEmpty ? "Your companion" : character.capitalized
+                let name = character.isEmpty ? "Your companion" : RealtimeChatState.displayName(for: character)
                 _ = await CompanionNotificationScheduler.schedule(characterName: character, body: "\(name) wrote up your week.")
             }
         }
@@ -152,7 +157,7 @@ final class MemoryMentalModels: @unchecked Sendable {
     }
 
     static func systemPrompt(character: String, disposition: MemoryDisposition) -> String {
-        let name = character.isEmpty ? "the user's AI companion" : character.capitalized
+        let name = character.isEmpty ? "the user's AI companion" : RealtimeChatState.displayName(for: character)
         var text = """
         You are \(name), privately updating what you know. Answer the QUESTION in at most 90 words, \
         using ONLY the EVIDENCE. Prefer newer evidence when facts conflict. Never invent details. \
@@ -166,7 +171,7 @@ final class MemoryMentalModels: @unchecked Sendable {
 
     /// Strips label echoes and the UNKNOWN sentinel.
     static func cleanAnswer(_ raw: String) -> String {
-        var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        var text = RealtimeChatState.humanizingCharacterNames(raw.trimmingCharacters(in: .whitespacesAndNewlines))
         if text.uppercased().hasPrefix("ANSWER:") { text = String(text.dropFirst(7)).trimmingCharacters(in: .whitespaces) }
         if text.uppercased().hasPrefix("UNKNOWN") || text.count < 8 { return "" }
         return String(text.prefix(600))

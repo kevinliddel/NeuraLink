@@ -165,6 +165,7 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
         speakingStartTime = nil
         transcriptDoneTime = nil
         AppFunctionExecutor.shared.pendingUIAction = nil
+        PhoneEpisode.end(reason: "session torn down")
         micGateReasons.removeAll()
         sileroVAD.stop()
         ProactiveVisionManager.shared.stop()

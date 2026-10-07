@@ -38,6 +38,11 @@ extension OpenAIRealtimeManager {
             // nothing ever moved the status off `.ready` and the capsule sat
             // on "Start talking" for the whole conversation.
             case "input_audio_buffer.speech_started":
+                // Speech while she is speaking is a barge-in (the mic is gated
+                // until Silero hears real near-field speech): the server
+                // truncates the reply, so she puts the phone away now — like
+                // LocalLLMManager.interruptForBargeIn does.
+                if state.status == .speaking { PhoneEpisode.end(reason: "barge-in") }
                 if state.status == .ready { state.status = .listening }
 
             case "input_audio_buffer.speech_stopped":
@@ -178,10 +183,24 @@ extension OpenAIRealtimeManager {
                         name: deferred.name, arguments: args)
                     ChatTimelineStore.logToolCall(name: deferred.name, result: result)
                     sendFunctionResult(callId: deferred.id, result: result)
-                } else if AppFunctionExecutor.shared.pendingUIAction != nil {
+                } else {
+                    // A barge-in truncates the reply server-side: that response.done
+                    // is not a spoken result, so she puts the phone away right now
+                    // instead of after the audio estimate for words never heard.
+                    let responseStatus = (json["response"] as? [String: Any])?["status"] as? String
+                    if responseStatus == "cancelled" {
+                        PhoneEpisode.end(reason: "response cancelled")
+                    }
                     // The AI just finished speaking the result of a previous function call.
-                    // Wait for this audio to finish, then fire the deferred app-open.
-                    schedulePendingUIAction()
+                    // Wait for this audio to finish, then fire the deferred app-open and
+                    // put the phone away. The episode flag matters on its own: a
+                    // reminder queues no app-open, so nothing else would end it. Not
+                    // while the tool is still executing, though — a response that ends
+                    // in that window is some other turn, not the result.
+                    let episodeAwaitsResult = PhoneEpisode.isActive && !PhoneEpisode.isRunningTool
+                    if AppFunctionExecutor.shared.pendingUIAction != nil || episodeAwaitsResult {
+                        schedulePendingUIAction()
+                    }
                 }
 
             // Surface server-side errors verbatim. Without this, a rejected
@@ -237,6 +256,9 @@ extension OpenAIRealtimeManager {
         speakingStartTime = nil
         transcriptDoneTime = nil
 
+        // The episode this timer belongs to: a newer tool call bumps the
+        // generation, and this timer must then leave its episode alone.
+        let episodeGeneration = PhoneEpisode.generation
         audioPlaybackMonitorTask = Task { @MainActor in
             if let start = startTime {
                 let estimatedDuration = max(Double(charCount) / 15.0, 1.0)
@@ -246,7 +268,7 @@ extension OpenAIRealtimeManager {
                 let remaining = target.timeIntervalSinceNow
                 if remaining > 0 {
                     nlLog(
-                        "[AI Tools]: Waiting \(String(format: "%.2f", remaining))s for audio before opening app",
+                        "[AI Tools]: Waiting \(String(format: "%.2f", remaining))s for audio before the phone hand-off",
                         level: .info)
                     try? await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000))
                     if Task.isCancelled { return }
@@ -256,7 +278,10 @@ extension OpenAIRealtimeManager {
             let action = AppFunctionExecutor.shared.pendingUIAction
             AppFunctionExecutor.shared.pendingUIAction = nil
             action?()
-            nlLog("[AI Tools]: App opened after audio finished", level: .info)
+            PhoneEpisode.end(reason: "spoken result finished", generation: episodeGeneration)
+            if action != nil {
+                nlLog("[AI Tools]: App opened after audio finished", level: .info)
+            }
         }
     }
 

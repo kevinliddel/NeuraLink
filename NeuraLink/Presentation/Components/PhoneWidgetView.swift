@@ -33,6 +33,7 @@ struct PhoneWidgetView: View {
         case .app: return .cyan
         case .note: return .yellow
         case .weather: return .teal
+        case .photo: return .purple
         }
     }
 
@@ -119,11 +120,58 @@ struct PhoneWidgetView: View {
                 )
                 .padding(5)
 
-            screenContent
-                .padding(.horizontal, 12)
-                .padding(.vertical, 14)
+            Group {
+                if card.kind == .photo, let data = card.imageData, let photo = UIImage(data: data) {
+                    photoScreen(photo)
+                } else {
+                    screenContent
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 14)
         }
         .frame(width: 148, height: 272)
+    }
+
+    /// The user's picture, as if she had just received it.
+    private func photoScreen(_ photo: UIImage) -> some View {
+        VStack(spacing: 0) {
+            statusBar
+            Spacer(minLength: 8)
+            Image(uiImage: photo)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 116, height: 168)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.18), lineWidth: 0.5))
+                .shadow(color: tint.opacity(0.35), radius: 8)
+            Text(card.title)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.white.opacity(0.85))
+                .padding(.top, 8)
+            Spacer(minLength: 6)
+            homeIndicator
+        }
+    }
+
+    private var statusBar: some View {
+        VStack(spacing: 0) {
+            Capsule()
+                .fill(.black)
+                .overlay(Capsule().strokeBorder(.white.opacity(0.15), lineWidth: 0.5))
+                .frame(width: 44, height: 12)
+            Text(Date.now, format: .dateTime.hour().minute())
+                .font(.system(size: 9, weight: .medium, design: .rounded))
+                .foregroundStyle(.white.opacity(0.55))
+                .padding(.top, 6)
+        }
+    }
+
+    private var homeIndicator: some View {
+        Capsule()
+            .fill(.white.opacity(0.35))
+            .frame(width: 36, height: 3)
+            .padding(.top, 10)
     }
 
     private var screenContent: some View {

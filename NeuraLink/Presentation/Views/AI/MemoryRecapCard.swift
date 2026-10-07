@@ -14,7 +14,7 @@ struct MemoryRecapCard: View {
     let onAsk: () -> Void
     let onDismiss: () -> Void
 
-    private var parts: (summary: String, ask: String) { MemoryMentalModels.recapParts(content) }
+    private var parts: (summary: String, ask: String) { MemoryMentalModels.recapParts(RealtimeChatState.humanizingCharacterNames(content)) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {

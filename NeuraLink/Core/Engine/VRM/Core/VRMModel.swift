@@ -110,6 +110,9 @@ public class VRMModel: @unchecked Sendable {
     /// Base-model snapshot + active grafts (see VRMModel+Composition).
     public var composition: VRMCompositionState?
 
+    /// Rigid props hanging off humanoid bones (see VRMModel+Props).
+    public var props: [VRMPropAttachment] = []
+
     // MARK: - Runtime State
 
     /// Base URL for resolving relative resource paths (set during loading).
