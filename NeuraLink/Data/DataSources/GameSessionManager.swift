@@ -86,6 +86,7 @@ final class GameSessionManager: @unchecked Sendable {
             _secret = game == .twentyQuestions ? chosenSecret : ""
         }
         nlLog("[Game] Started \(game.displayName).", level: .info)
+        CompanionMilestoneTracker.note(.firstGame)
         return Self.rulesBrief(for: game, secret: chosenSecret)
     }
 

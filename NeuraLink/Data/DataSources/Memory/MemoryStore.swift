@@ -284,6 +284,13 @@ final class MemoryStore {
             updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_traits_character ON persona_traits(character, weight);
+        CREATE TABLE IF NOT EXISTS companion_milestones (
+            character TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            achieved_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            celebrated_at DATETIME,
+            PRIMARY KEY (character, kind)
+        );
         CREATE TABLE IF NOT EXISTS api_usage (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             created_at REAL NOT NULL,

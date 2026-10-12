@@ -34,10 +34,13 @@ final class CompanionStateManager {
         let tone = Self.recentTone(from: events)
         let traits = store.traits(character: characterName, limit: compact ? 2 : 3)
         let carryOver = carryOverLine(characterName: characterName)
+        // Fresh keepsakes: the first build stamps them celebrated and the line
+        // holds for the session (stable block), then it disappears for good.
+        let keepsake = CompanionMilestoneTracker.celebrationLine(character: characterName, store: store)
 
         // If nothing meaningful is known, don't inject noise.
         if preferenceLines.isEmpty && relationship == nil && tone == nil
-            && traits.isEmpty && carryOver == nil {
+            && traits.isEmpty && carryOver == nil && keepsake == nil {
             return ""
         }
 
@@ -58,6 +61,7 @@ final class CompanionStateManager {
             }
         }
         if let carryOver { out += "- \(carryOver)\n" }
+        if let keepsake { out += "- \(keepsake)\n" }
         out += """
         - Behavior guidance: Keep personality consistent across turns. Use known preferences naturally when relevant. \
         Pick up threads from your last conversation naturally when relevant — never act like a stranger. \

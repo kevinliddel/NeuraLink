@@ -28,6 +28,9 @@ final class CompanionStateStore {
         let state = CompanionAffinity.compute(store: store)
         score = state.score
         label = state.label
+        // Count-based keepsakes (first hello, shared days) read the same
+        // totals, so they unlock the moment the meter would move.
+        CompanionMilestoneTracker.refreshDerived()
         CompanionSnapshotWriter.shared.scheduleRefresh()
     }
 }

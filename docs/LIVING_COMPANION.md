@@ -44,14 +44,16 @@ values are UTC strings, and they are never mixed into this arithmetic.
 
 ## Storage
 
-`MemoryStore`'s single `createTableQuery` creates two tables. Their CRUD lives
-in `MemoryStore+Journal.swift`.
+`MemoryStore`'s single `createTableQuery` creates three tables. Journal and
+trait CRUD lives in `MemoryStore+Journal.swift`, keepsakes in
+`MemoryStore+Milestones.swift`.
 
 ```sql
 companion_journal (id, character, conversation_id, diary, opener,
                    notification_line, notified, opener_used,
                    last_message_id, created_at)
 persona_traits    (id, character, trait, weight, created_at, updated_at)
+companion_milestones (character, kind, achieved_at, celebrated_at)   -- PK (character, kind)
 ```
 
 `companion_journal.conversation_id` deliberately has no foreign key.
@@ -59,7 +61,8 @@ persona_traits    (id, character, trait, weight, created_at, updated_at)
 the **reflection watermark** (see End-of-session reflection). When the column is added during an
 upgrade, it is backfilled to each conversation's current last message. This
 stops the upgrade from re-reflecting conversations that already have entries.
-Swift entities: `JournalEntry`, `PersonaTrait` (`Domain/Entities/CompanionJournal.swift`).
+Swift entities: `JournalEntry`, `PersonaTrait` (`Domain/Entities/CompanionJournal.swift`);
+`MilestoneKind`, `CompanionMilestone`, `MilestoneRules` (`Domain/Entities/CompanionMilestone.swift`).
 
 ## Background text client
 
@@ -253,6 +256,43 @@ and a wrap-up nudge at the soft cap (20 / 10 / 15 turns). Game turns get
 `maxTokens = 120` instead of the usual 60. Five turns past the soft cap, the
 session ends itself.
 
+## Keepsake milestones
+
+Shared "firsts" the user and the character collect, shown as badges in the
+journal's **Keepsakes** section (dimmed until reached) and mentioned once by
+the persona. Eight kinds (`MilestoneKind`; raw values are the stored keys):
+
+| Keepsake | Unlocks when |
+|---|---|
+| First hello | the user has spoken at least once |
+| One week / 30 days / 100 days together | `distinctUserMessageDays()` reaches 7 / 30 / 100 (the same totals the affinity curve reads) |
+| First shared song | the first `SongRecognitionManager.presentMatch` |
+| First game together | the first `GameSessionManager.start` (the model decides who won, so a "win" badge is not knowable) |
+| First photo shared | the first `PhotoMemoryService.handlePicked` |
+| First diary entry | the first reflection row written for that character |
+
+`CompanionMilestoneTracker` is stateless. Event keepsakes are noted where they
+happen; count-based ones are re-derived in `CompanionStateStore.refresh()`
+(every user turn) and again when the Keepsakes section appears. Rows are keyed
+by `RealtimeChatState.selectedCharacterName`, the identity key the journal
+uses, so each character has its own set. `INSERT OR IGNORE` on the
+`(character, kind)` primary key makes every call idempotent, and rows with a
+kind an older build doesn't know are skipped, never deleted.
+
+**Celebration.** `CompanionStateManager.promptContext` asks the tracker for a
+`celebrationLine`: keepsakes reached in the last 7 days and never mentioned
+yield one `[Companion State]` line ("Keepsake to celebrate together, once and
+naturally: 30 days together…"). The first call stamps `celebrated_at`; the line
+then stays for two hours (`MilestoneRules.celebrationHold`) so the block is
+identical on every turn of that session (the local path rebuilds the system
+content per turn and reuses the KV prefix; Realtime re-sends instructions
+mid-session), and it is gone from the next session on. Older keepsakes are
+history, not news, and are never announced.
+
+**Reset.** "Reset Personality" keeps keepsakes: they are shared history like
+the chat log, not a learned trait. `deleteMilestones(character:)` exists for
+character removal and tests.
+
 ## Cross-session carry-over
 
 `CompanionStateManager.carryOverLine` adds one line to the Companion State
@@ -387,7 +427,11 @@ flowchart TD
 | `Data/DataSources/PresenceSettings.swift` | All presence toggles/thresholds (explicit-backing `@Observable`) |
 | `Data/DataSources/Memory/CompanionAffinity.swift` | The single relationship curve + stage guidance |
 | `Data/DataSources/Memory/CompanionStateManager.swift` | `[Companion State]` prompt block + carry-over line |
-| `Presentation/Views/AI/CompanionJournalView.swift` | Journal sheet: relationship, traits, diary, reset |
+| `Presentation/Views/AI/CompanionJournalView.swift` | Journal sheet: relationship, keepsakes, traits, diary, reset |
+| `Domain/Entities/CompanionMilestone.swift` | `MilestoneKind` (titles, symbols, day thresholds), `CompanionMilestone`, pure `MilestoneRules` |
+| `Data/DataSources/Memory/MemoryStore+Milestones.swift` | `companion_milestones` CRUD (`INSERT OR IGNORE` record, oldest-first read, celebrated flag) |
+| `Data/DataSources/Memory/CompanionMilestoneTracker.swift` | `note` / `refreshDerived` / once-only `celebrationLine` |
+| `Presentation/Views/AI/CompanionKeepsakesSection.swift` | Badge grid in the journal; dims keepsakes not yet reached |
 | `Presentation/Views/AI/RelationshipMeterBarOverlay.swift` | Meter overlay; tap opens the Journal |
 | `Data/DataSources/ProactivePresenceManager.swift` | Absence greeting + silence small talk loop; shared `engage(with:)` |
 | `Presentation/Views/AI/AutonomySettingsView.swift` | Companion Presence / Proactive Engagement settings sections |

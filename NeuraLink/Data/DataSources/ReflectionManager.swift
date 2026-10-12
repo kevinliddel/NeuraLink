@@ -181,6 +181,7 @@ final class ReflectionManager: @unchecked Sendable {
             lastMessageID: messages.map(\.id).max() ?? 0
         )
         guard journalID > 0 else { return }
+        CompanionMilestoneTracker.note(.firstDiary, character: character)
         nlLogSensitive("[Reflection] \(character) diary: \(reflection.diary)", level: .info)
         await MainActor.run { CompanionSnapshotWriter.shared.scheduleRefresh() }
 

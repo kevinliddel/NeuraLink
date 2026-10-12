@@ -31,6 +31,7 @@ struct CompanionJournalView: View {
         NavigationStack {
             Form {
                 relationshipSection
+                CompanionKeepsakesSection(character: character)
                 personalitySection
                 journalSection
                 resetSection
