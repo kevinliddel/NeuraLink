@@ -184,22 +184,42 @@ time the notification toggle is switched on.
   is the one hook shared by both engines: local `buildSystemContent` and the
   OpenAI session instructions. Its `[Companion State]` block holds:
   - relationship stage + guidance,
+  - the time-apart line (see Time apart),
   - recent tone,
   - known preferences (up to 6),
   - up to 3 traits,
-  - the carry-over line (see Cross-session carry-over).
+  - the carry-over line (see Cross-session carry-over),
+  - the keepsake celebration line (see Keepsake milestones).
 
   On `.llama1b` it is compact: 3 preferences and 2 traits. The JP (`llmJp3`)
   path leaves it out. When nothing is known, it returns `""`. It sits in the
   system prompt rather than in `LocalLLMPromptStore.effectivePrompt`, so it
   never overwrites a prompt the user has saved.
 - **Journal UI**: tapping the relationship meter (`RelationshipMeterBarOverlay`)
-  opens `CompanionJournalView`. It has four sections:
-  - **Relationship**
-  - **Personality**: traits, swipe to delete
-  - **Diary**: newest first, swipe to delete
+  opens `CompanionJournalView`, an inset-grouped list:
+  - **Relationship**: stage label and meter.
+  - **Together**: a month calendar (`JournalCalendarView`). Each day carries
+    up to three dots: grey when you talked, pink for a diary entry, purple
+    for a keepsake. Today is outlined; future days are dimmed. Tap a day to
+    filter the section below to it, tap again (or "All days") to clear;
+    chevrons or a horizontal swipe change month and a "Today" button jumps
+    back. The header line summarises the month ("Talked on 9 days · 3 diary
+    entries · 1 keepsake").
+  - **Day / This month** (`JournalDaySection`): with a day selected, the
+    conversations you had that day (tap to open the read-only transcript as
+    a sheet, with your message count), its diary entries (swipe to delete)
+    and the keepsakes reached; "Nothing on this day." or "Not yet."
+    otherwise. With no day selected, the month's diary entries and keepsakes
+    newest first. Day grouping uses the device calendar and time zone
+    (`JournalCalendarModel`), so a late-night chat lands on the day you
+    lived it, not the UTC day SQLite stored.
+  - **Keepsakes**: the badge grid (see Keepsake milestones).
+  - **Personality**: traits, swipe to delete.
   - **Reset Personality**: after a confirmation, deletes the diary and all
-    traits. Chat history and facts are kept.
+    traits. Chat history, keepsakes and facts are kept.
+
+  Turns are read per visible month (`MemoryStore.userTurnStamps(between:and:)`);
+  the diary and keepsakes are loaded once per open.
 
 ## Proactive engagement
 
@@ -307,6 +327,34 @@ The guidance line tells the persona to "pick up threads… never act like a
 stranger". The block is built when the session starts. That keeps it stable
 within a session. The saved cross-launch KV cache misses whenever the diary
 has changed, and warm-up then re-prefills.
+
+## Time apart
+
+The persona should know when the user has been gone a day or two, not only
+at the moment of the absence greeting (which needs Proactive Engagement on).
+`CompanionStateManager` adds a **time-apart line** to the `[Companion State]`
+block: "Time apart: you last talked 3 days ago (Friday evening); it's Tuesday
+morning now. If the gap feels notable, acknowledge it naturally — glad to see
+them, curious what they've been up to — without guilt-tripping or counting
+days at them." The wording is `CompanionAbsence` (pure, unit-tested);
+`.llama1b` gets the compact form.
+
+Two rules keep it honest and stable:
+
+- **Measured from before this visit.** The gap runs from the last user turn
+  strictly before `InteractionClock.foregroundAt` (launch, or the last return
+  from the background; `MemoryStore.lastUserMessageAt(before:)`), so the
+  turns of the current visit never shrink it to "a minute ago".
+- **Frozen per visit.** The first block built in a visit snapshots that turn
+  and the current time; every later build in the visit formats the same
+  values, so the local KV prefix and the Realtime instruction refreshes see
+  an identical block.
+
+Wording: under an hour, nothing; same day, "earlier today, about N hours
+ago"; then "yesterday (Monday evening)", "N days ago (…)", "about a week ago
+(…)", "N weeks ago", "about a month ago", "about N months ago". Day names
+are English whatever the device locale; the time zone and week are the
+user's.
 
 ## Flow
 
@@ -417,7 +465,7 @@ flowchart TD
 | File | Role |
 |---|---|
 | `Data/DataSources/SessionLifecycle.swift` | Session boundaries; posts `sessionDidEnd` |
-| `Core/Utils/InteractionClock.swift` | `lastUserSpeechAt` (per launch) + persisted `lastSeenAt` |
+| `Core/Utils/InteractionClock.swift` | `lastUserSpeechAt` (per launch), persisted `lastSeenAt`, `foregroundAt` (visit start) |
 | `Domain/Entities/CompanionJournal.swift` | `JournalEntry` / `PersonaTrait` entities |
 | `Data/DataSources/Memory/MemoryStore+Journal.swift` | Journal + trait CRUD, `unreflectedUserTurns` watermark count |
 | `Data/DataSources/Memory/MemoryStore.swift` | Table DDL + `last_message_id` migration/backfill |
@@ -426,8 +474,13 @@ flowchart TD
 | `Core/Utils/CompanionNotificationScheduler.swift` | Scheduling, quiet hours, communication-style avatar, foreground presenter |
 | `Data/DataSources/PresenceSettings.swift` | All presence toggles/thresholds (explicit-backing `@Observable`) |
 | `Data/DataSources/Memory/CompanionAffinity.swift` | The single relationship curve + stage guidance |
-| `Data/DataSources/Memory/CompanionStateManager.swift` | `[Companion State]` prompt block + carry-over line |
-| `Presentation/Views/AI/CompanionJournalView.swift` | Journal sheet: relationship, keepsakes, traits, diary, reset |
+| `Data/DataSources/Memory/CompanionStateManager.swift` | `[Companion State]` prompt block; time-apart (frozen per visit), carry-over and keepsake lines |
+| `Presentation/Views/AI/CompanionJournalView.swift` | Journal sheet: relationship, calendar, day / month list, keepsakes, traits, reset |
+| `Domain/Entities/JournalCalendar.swift` | `JournalCalendarModel` month grid + local-day `JournalDayActivity` grouping |
+| `Domain/Entities/CompanionAbsence.swift` | Time-apart wording (pure) |
+| `Data/DataSources/Memory/MemoryStore+JournalCalendar.swift` | `userTurnStamps(between:and:)`, `lastUserMessageAt(before:)` |
+| `Presentation/Views/AI/JournalCalendarView.swift` | Month grid, activity dots, swipe / chevrons, Today |
+| `Presentation/Views/AI/JournalDaySection.swift` | Selected-day or month list under the calendar; opens transcripts as sheets |
 | `Domain/Entities/CompanionMilestone.swift` | `MilestoneKind` (titles, symbols, day thresholds), `CompanionMilestone`, pure `MilestoneRules` |
 | `Data/DataSources/Memory/MemoryStore+Milestones.swift` | `companion_milestones` CRUD (`INSERT OR IGNORE` record, oldest-first read, celebrated flag) |
 | `Data/DataSources/Memory/CompanionMilestoneTracker.swift` | `note` / `refreshDerived` / once-only `celebrationLine` |
@@ -502,3 +555,7 @@ shows the permission status, the pending count and the next fire date.
   devices when running on the local model.
 - Check that a long-running conversation produces a second diary entry and a
   second notification after 4 or more new turns.
+- Check the journal calendar on device: horizontal month swipe inside the
+  list, day selection and clearing, and the transcript sheet from a day row.
+- Check that the time-apart line reads the same on every turn of a session
+  and names the right day after a real overnight gap.

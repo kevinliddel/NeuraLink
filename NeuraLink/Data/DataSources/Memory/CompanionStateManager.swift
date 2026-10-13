@@ -14,6 +14,10 @@ final class CompanionStateManager {
     private let store = MemoryStore.shared
     private let memorySettings = MemorySettings.shared
 
+    /// Frozen per foreground visit (see `absenceLine`): the last user turn
+    /// before the visit began, and when the visit's first block was built.
+    private var absenceSnapshot: (foregroundAt: Date, lastTalkedAt: Date?, now: Date)?
+
     private init() {}
 
     /// The single prompt hook shared by both engines (local buildSystemContent
@@ -32,6 +36,7 @@ final class CompanionStateManager {
         let relationship = affinity.userTurns > 0
             ? "\(affinity.label). \(CompanionAffinity.stageGuidance(for: affinity.label))" : nil
         let tone = Self.recentTone(from: events)
+        let absence = absenceLine(compact: compact)
         let traits = store.traits(character: characterName, limit: compact ? 2 : 3)
         let carryOver = carryOverLine(characterName: characterName)
         // Fresh keepsakes: the first build stamps them celebrated and the line
@@ -39,7 +44,7 @@ final class CompanionStateManager {
         let keepsake = CompanionMilestoneTracker.celebrationLine(character: characterName, store: store)
 
         // If nothing meaningful is known, don't inject noise.
-        if preferenceLines.isEmpty && relationship == nil && tone == nil
+        if preferenceLines.isEmpty && relationship == nil && tone == nil && absence == nil
             && traits.isEmpty && carryOver == nil && keepsake == nil {
             return ""
         }
@@ -47,6 +52,7 @@ final class CompanionStateManager {
         var out = "\n[Companion State]\n"
         out += "- Character: \(characterName)\n"
         if let relationship { out += "- Relationship: \(relationship)\n" }
+        if let absence { out += "- \(absence)\n" }
         if let tone { out += "- Recent tone: \(tone)\n" }
         if !preferenceLines.isEmpty {
             out += "- Known preferences:\n"
@@ -69,6 +75,26 @@ final class CompanionStateManager {
         [End Companion State]\n
         """
         return out
+    }
+
+    // MARK: - Time apart
+
+    /// "You last talked 3 days ago (Friday evening)…", measured from the last
+    /// user turn BEFORE this foreground visit began and frozen for the visit,
+    /// so the block reads the same on every turn of a session (local KV
+    /// prefix, Realtime instruction refreshes) while new turns keep landing
+    /// in the database. Nil on the first ever chat and for gaps under an hour.
+    private func absenceLine(compact: Bool) -> String? {
+        let foregroundAt = InteractionClock.shared.foregroundAt
+        if absenceSnapshot?.foregroundAt != foregroundAt {
+            absenceSnapshot = (foregroundAt, store.lastUserMessageAt(before: foregroundAt), Date())
+        }
+        guard let snapshot = absenceSnapshot, let lastTalkedAt = snapshot.lastTalkedAt else { return nil }
+        // The user's time zone and week, but English day names: the block is English.
+        var calendar = Calendar.current
+        calendar.locale = Locale(identifier: "en_US_POSIX")
+        return CompanionAbsence.line(
+            lastTalkedAt: lastTalkedAt, now: snapshot.now, calendar: calendar, compact: compact)
     }
 
     // MARK: - Cross-session carry-over (Phase 6 ②)

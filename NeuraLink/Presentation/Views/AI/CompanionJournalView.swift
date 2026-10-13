@@ -2,14 +2,14 @@
 //  CompanionJournalView.swift
 //  NeuraLink
 //
-//  The companion's journal — Living Companion
-//  (docs/LIVING_COMPANION.md). Everything the character "remembers
-//  and becomes" is visible and deletable here (trust + App Store safety):
-//  the relationship stage, distilled personality traits, and the diary the
-//  reflection pipeline writes after each session. Opened by tapping the
+//  The companion's journal — Living Companion (docs/LIVING_COMPANION.md).
+//  Everything the character "remembers and becomes" is visible and
+//  deletable here (trust + App Store safety): the relationship stage, a
+//  calendar of the days you talked with the diary and keepsakes on them,
+//  distilled personality traits, and a reset. Opened by tapping the
 //  relationship meter capsule.
 //
-//  Created by Dedicatus on 08/09/2026.
+//  Created by Dedicatus on 08/09/2026. Calendar redesign 13/10/2026.
 //
 
 import SwiftUI
@@ -19,9 +19,16 @@ struct CompanionJournalView: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var companion = CompanionStateStore.shared
+    @State private var month = JournalCalendarModel.month(containing: Date(), calendar: .current)
+    @State private var selectedDay: Date?
+    @State private var activity: [Date: JournalDayActivity] = [:]
     @State private var entries: [JournalEntry] = []
+    @State private var milestones: [CompanionMilestone] = []
+    @State private var conversations: [Int64: Conversation] = [:]
     @State private var traits: [PersonaTrait] = []
     @State private var confirmReset = false
+
+    private let calendar = Calendar.current
 
     private var displayName: String {
         character.isEmpty ? "Companion" : character.capitalized
@@ -29,13 +36,24 @@ struct CompanionJournalView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            List {
                 relationshipSection
+                calendarSection
+                JournalDaySection(
+                    selectedDay: selectedDay,
+                    month: month,
+                    activity: activity,
+                    conversations: conversations,
+                    calendar: calendar,
+                    onClear: { withAnimation(.snappy) { selectedDay = nil } },
+                    onOpenConversation: openTranscript,
+                    onDelete: deleteEntry
+                )
                 CompanionKeepsakesSection(character: character)
                 personalitySection
-                journalSection
                 resetSection
             }
+            .listStyle(.insetGrouped)
             .scrollIndicators(.hidden)
             .navigationTitle("\(displayName)'s Journal")
             .navigationBarTitleDisplayMode(.inline)
@@ -51,16 +69,29 @@ struct CompanionJournalView: View {
             ) {
                 Button("Reset Personality", role: .destructive) { performReset() }
             } message: {
-                Text("Deletes the diary and every learned personality note. Chat history and remembered facts are kept.")
+                Text("Deletes the diary and every learned personality note. Chat history, keepsakes and remembered facts are kept.")
             }
             .onAppear { reload() }
+            .onChange(of: month) { _, _ in reloadMonth() }
+        }
+    }
+
+    /// Transcripts open through ContentView's full-screen cover (the same
+    /// path as the chat-history sidebar, with its Close / New Chat
+    /// handlers). The journal is itself a sheet, so it dismisses first and
+    /// hands over once that animation has had time to finish.
+    private func openTranscript(_ conversationID: Int64) {
+        dismiss()
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(450))
+            RealtimeChatState.shared.viewingConversationID = conversationID
         }
     }
 
     // MARK: - Sections
 
     private var relationshipSection: some View {
-        Section("Relationship") {
+        Section {
             HStack(spacing: 10) {
                 Image(systemName: "suit.heart.fill")
                     .foregroundStyle(.pink)
@@ -71,6 +102,23 @@ struct CompanionJournalView: View {
                         .tint(.pink)
                 }
             }
+        } header: {
+            Text("Relationship")
+        }
+    }
+
+    private var calendarSection: some View {
+        Section {
+            JournalCalendarView(
+                month: $month,
+                selectedDay: $selectedDay,
+                activity: activity,
+                calendar: calendar
+            )
+        } header: {
+            Text("Together")
+        } footer: {
+            Text("Tap a day to see its conversations, diary and keepsakes. Swipe to change month.")
         }
     }
 
@@ -96,35 +144,12 @@ struct CompanionJournalView: View {
         }
     }
 
-    private var journalSection: some View {
-        Section {
-            if entries.isEmpty {
-                Text("No reflections yet — finish a conversation with Companion Presence enabled.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(entries) { entry in
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(entry.createdAt, format: .dateTime.day().month().hour().minute())
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                        Text(entry.diary)
-                            .font(.subheadline)
-                    }
-                    .padding(.vertical, 2)
-                }
-                .onDelete(perform: deleteEntries)
-            }
-        } header: {
-            Text("Diary")
-        }
-    }
-
     private var resetSection: some View {
         Section {
             Button("Reset Personality", role: .destructive) {
                 confirmReset = true
             }
+            .buttonStyle(.borderless)
             .disabled(entries.isEmpty && traits.isEmpty)
         }
     }
@@ -133,14 +158,25 @@ struct CompanionJournalView: View {
 
     private func reload() {
         companion.refresh()
-        entries = MemoryStore.shared.journalEntries(character: character)
-        traits = MemoryStore.shared.traits(character: character)
+        let store = MemoryStore.shared
+        entries = store.journalEntries(character: character, limit: 2_000)
+        milestones = store.milestones(character: character)
+        traits = store.traits(character: character)
+        conversations = Dictionary(uniqueKeysWithValues: store.fetchConversations().map { ($0.id, $0) })
+        reloadMonth()
     }
 
-    private func deleteEntries(at offsets: IndexSet) {
-        for index in offsets {
-            MemoryStore.shared.deleteJournalEntry(id: entries[index].id)
-        }
+    /// Turns are read per visible month (the only unbounded table); diary
+    /// and keepsakes are already in memory.
+    private func reloadMonth() {
+        let turns = MemoryStore.shared.userTurnStamps(
+            between: JournalCalendarModel.start(of: month, calendar: calendar),
+            and: JournalCalendarModel.end(of: month, calendar: calendar))
+        activity = JournalCalendarModel.activity(turns: turns, entries: entries, keepsakes: milestones, calendar: calendar)
+    }
+
+    private func deleteEntry(_ entry: JournalEntry) {
+        MemoryStore.shared.deleteJournalEntry(id: entry.id)
         reload()
     }
 

@@ -14,7 +14,7 @@ import Foundation
 
 /// One reflection over one conversation: what the companion "thought" about
 /// it, how it wants to open next time, and the push-notification line.
-struct JournalEntry: Identifiable, Equatable {
+struct JournalEntry: Identifiable, Equatable, Sendable {
     let id: Int64
     let character: String
     let conversationID: Int64
@@ -28,7 +28,7 @@ struct JournalEntry: Identifiable, Equatable {
 
 /// A distilled personality trait the companion has picked up ("teases the
 /// user about coffee"). Capped per character; weight decays when unused.
-struct PersonaTrait: Identifiable, Equatable {
+struct PersonaTrait: Identifiable, Equatable, Sendable {
     let id: Int64
     let character: String
     let trait: String
