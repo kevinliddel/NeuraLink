@@ -133,14 +133,11 @@ struct MemoryHeroCard: View {
                         .foregroundStyle(.white.opacity(0.85))
                 } else {
                     ForEach(snapshot.models) { model in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(model.slug == MemoryMentalModels.userProfileSlug ? "About you" : "Between you")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.white.opacity(0.7))
-                            Text(RealtimeChatState.humanizingCharacterNames(model.content))
-                                .font(.subheadline)
-                                .foregroundStyle(.white)
-                        }
+                        let isProfile = model.slug == MemoryMentalModels.userProfileSlug
+                        MemoryModelTile(
+                            title: isProfile ? "About you" : "Between you",
+                            symbol: isProfile ? "person.crop.circle" : "person.2.fill",
+                            text: RealtimeChatState.humanizingCharacterNames(model.content))
                     }
                 }
             }

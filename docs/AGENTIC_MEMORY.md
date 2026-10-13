@@ -40,6 +40,7 @@ All under `NeuraLink/Data/DataSources/Memory/Agentic/` unless noted.
 | `../RAGManager.swift` | facade over retain + recall |
 | `Domain/Entities/Skills/SearchMemorySkill.swift` | the `search_memory` tool |
 | `Presentation/Views/AI/MemoryInsightsSection.swift` | "What X knows" + observations in the Memory sheet |
+| `Presentation/Views/AI/MemoryModelTile.swift` | One "About you" / "Between you" summary on the hero card: clamped to 3 lines, tap to expand; "More" only when the text is really cut off |
 
 ## Schema
 
