@@ -94,7 +94,8 @@ enum TutorialScript {
             icon: "suit.heart.fill",
             title: "Acquaintances",
             body:
-                "Your bond meter. It grows the more you talk. Tap the meter itself to open your companion's journal — their private notes about you.",
+                "Your bond meter. It grows the more you talk. Tap the meter itself to open your companion's journal: "
+                + "a calendar of the days you talked, their diary notes about you, and the keepsakes you collect together.",
             anchor: .fabRelationship,
             menu: .primary),
 
