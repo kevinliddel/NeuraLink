@@ -197,7 +197,9 @@ time the notification toggle is switched on.
   never overwrites a prompt the user has saved.
 - **Journal UI**: tapping the relationship meter (`RelationshipMeterBarOverlay`)
   opens `CompanionJournalView`, an inset-grouped list:
-  - **Relationship**: stage label and meter.
+  - **Relationship**: the character's portrait (`CompanionPortrait`: the
+    live render the widget pipeline keeps, else the model's thumbnail),
+    stage label, meter and "N days together".
   - **Together**: a month calendar (`JournalCalendarView`). Each day carries
     up to three dots: grey when you talked, pink for a diary entry, purple
     for a keepsake. Today is outlined; future days are dimmed. Tap a day to
@@ -308,6 +310,14 @@ identical on every turn of that session (the local path rebuilds the system
 content per turn and reuses the KV prefix; Realtime re-sends instructions
 mid-session), and it is gone from the next session on. Older keepsakes are
 history, not news, and are never announced.
+
+**The moment.** A newly recorded keepsake is handed to
+`KeepsakeUnlockController`, and `KeepsakeUnlockCapsule` (in the HUD layer,
+same placement and glass as the photoshoot capsule) rises from the bottom of
+the scene with the badge, the title and its one-line meaning, plays a
+success haptic, and leaves after 5 s or on tap. Unlocks queue and show one
+at a time; a repeat record never shows anything, because only the first
+`INSERT` succeeds.
 
 **Reset.** "Reset Personality" keeps keepsakes: they are shared history like
 the chat log, not a learned trait. `deleteMilestones(character:)` exists for
@@ -481,6 +491,9 @@ flowchart TD
 | `Data/DataSources/Memory/MemoryStore+JournalCalendar.swift` | `userTurnStamps(between:and:)`, `lastUserMessageAt(before:)` |
 | `Presentation/Views/AI/JournalCalendarView.swift` | Month grid, activity dots, swipe / chevrons, Today |
 | `Presentation/Views/AI/JournalDaySection.swift` | Selected-day or month list under the calendar; opens transcripts as sheets |
+| `Data/DataSources/CompanionPortrait.swift` | Character face for the journal and Memory hero card (live portrait, else bundled thumbnail) |
+| `Data/DataSources/KeepsakeUnlockController.swift` | Queue + lifetime for the "Keepsake collected" capsule |
+| `Presentation/Views/AI/KeepsakeUnlockCapsule.swift` | The capsule itself: badge, title, haptic, tap or 5 s to dismiss |
 | `Domain/Entities/CompanionMilestone.swift` | `MilestoneKind` (titles, symbols, day thresholds), `CompanionMilestone`, pure `MilestoneRules` |
 | `Data/DataSources/Memory/MemoryStore+Milestones.swift` | `companion_milestones` CRUD (`INSERT OR IGNORE` record, oldest-first read, celebrated flag) |
 | `Data/DataSources/Memory/CompanionMilestoneTracker.swift` | `note` / `refreshDerived` / once-only `celebrationLine` |
@@ -557,5 +570,7 @@ shows the permission status, the pending count and the next fire date.
   second notification after 4 or more new turns.
 - Check the journal calendar on device: horizontal month swipe inside the
   list, day selection and clearing, and the transcript sheet from a day row.
+- Check the keepsake capsule on device: it should rise once with a haptic
+  when a first song / game / photo lands, and never again for the same one.
 - Check that the time-apart line reads the same on every turn of a session
   and names the right day after a real overnight gap.

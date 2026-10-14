@@ -47,15 +47,12 @@ struct MemoryHeroCard: View {
     let onRefresh: () -> Void
 
     @State private var companion = CompanionStateStore.shared
+    @State private var portrait: UIImage?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .center, spacing: 12) {
-                Image(systemName: "brain")
-                    .font(.system(size: 26, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 52, height: 52)
-                    .background(.white.opacity(0.18), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                heroIcon
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text("\(characterName)'s memory")
@@ -151,7 +148,31 @@ struct MemoryHeroCard: View {
             in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(.white.opacity(0.15), lineWidth: 1))
         .shadow(color: .purple.opacity(0.25), radius: 14, y: 6)
-        .onAppear { companion.refresh() }
+        .onAppear {
+            companion.refresh()
+            portrait = CompanionPortrait.image(for: characterName)
+        }
+    }
+
+    /// The character's face when a portrait exists, else the brain mark.
+    @ViewBuilder
+    private var heroIcon: some View {
+        if let portrait {
+            Image(uiImage: portrait)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 52, height: 52)
+                .background(.white.opacity(0.18))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(.white.opacity(0.35), lineWidth: 1))
+                .accessibilityLabel("\(characterName)'s portrait")
+        } else {
+            Image(systemName: "brain")
+                .font(.system(size: 26, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 52, height: 52)
+                .background(.white.opacity(0.18), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
     }
 }
 

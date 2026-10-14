@@ -39,6 +39,7 @@ struct ContentView: View {
                     RealtimeChatOverlay()
                     CameraOverlayView()
                     PhotoshootShareCapsule()
+                    KeepsakeUnlockCapsule()
                 }
 
                 if showModelSelection {

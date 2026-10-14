@@ -26,12 +26,14 @@ struct CompanionJournalView: View {
     @State private var milestones: [CompanionMilestone] = []
     @State private var conversations: [Int64: Conversation] = [:]
     @State private var traits: [PersonaTrait] = []
+    @State private var portrait: UIImage?
+    @State private var daysTogether = 0
     @State private var confirmReset = false
 
     private let calendar = Calendar.current
 
     private var displayName: String {
-        character.isEmpty ? "Companion" : character.capitalized
+        character.isEmpty ? "Companion" : RealtimeChatState.displayName(for: character)
     }
 
     var body: some View {
@@ -92,18 +94,47 @@ struct CompanionJournalView: View {
 
     private var relationshipSection: some View {
         Section {
-            HStack(spacing: 10) {
-                Image(systemName: "suit.heart.fill")
-                    .foregroundStyle(.pink)
+            HStack(spacing: 12) {
+                portraitView
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(companion.label)
-                        .font(.subheadline.weight(.semibold))
+                    HStack(spacing: 6) {
+                        Image(systemName: "suit.heart.fill")
+                            .font(.caption)
+                            .foregroundStyle(.pink)
+                        Text(companion.label)
+                            .font(.subheadline.weight(.semibold))
+                    }
                     ProgressView(value: companion.score)
                         .tint(.pink)
+                    Text(daysTogether == 1 ? "1 day together" : "\(daysTogether) days together")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
                 }
             }
+            .padding(.vertical, 2)
         } header: {
             Text("Relationship")
+        }
+    }
+
+    /// Her face, from the live render when the widget pipeline has one,
+    /// else the model's thumbnail; a heart when neither exists.
+    @ViewBuilder
+    private var portraitView: some View {
+        if let portrait {
+            Image(uiImage: portrait)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 52, height: 52)
+                .clipShape(Circle())
+                .overlay(Circle().strokeBorder(Color.pink.opacity(0.5), lineWidth: 1.5))
+                .accessibilityLabel("\(displayName)'s portrait")
+        } else {
+            Image(systemName: "suit.heart.fill")
+                .font(.title3)
+                .foregroundStyle(.pink)
+                .frame(width: 52, height: 52)
+                .background(Color.pink.opacity(0.12), in: Circle())
         }
     }
 
@@ -163,6 +194,8 @@ struct CompanionJournalView: View {
         milestones = store.milestones(character: character)
         traits = store.traits(character: character)
         conversations = Dictionary(uniqueKeysWithValues: store.fetchConversations().map { ($0.id, $0) })
+        daysTogether = store.distinctUserMessageDays()
+        portrait = CompanionPortrait.image(for: character)
         reloadMonth()
     }
 

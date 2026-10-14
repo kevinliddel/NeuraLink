@@ -21,6 +21,8 @@ enum CompanionMilestoneTracker {
         guard !key.isEmpty else { return }
         if store.recordMilestone(character: key, kind: kind) {
             nlLog("[Milestone] \(key) collected \(kind.rawValue)", level: .info)
+            KeepsakeUnlockController.shared.present(
+                CompanionMilestone(kind: kind, character: key, achievedAt: Date(), celebratedAt: nil))
         }
     }
 
