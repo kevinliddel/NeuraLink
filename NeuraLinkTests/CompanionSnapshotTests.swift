@@ -99,6 +99,15 @@ struct CompanionSnapshotTests {
             + ". Kevin loves rainy evenings!"
         #expect(CompanionSnapshotWriter.leadingSentence(of: longFirst) == "Kevin loves rainy evenings!")
         #expect(CompanionSnapshotWriter.sentences(of: "A? B. C") == ["A?", "B.", "C"])
+        // A sentence that leans on the previous one is passed over for one that stands alone.
+        let leaning = longFirst + " She also clarified that her guild is Albion. Kevin plays bass on Fridays."
+        #expect(CompanionSnapshotWriter.leadingSentence(of: leaning) == "Kevin loves rainy evenings!")
+        let onlyLeaning = String(repeating: "word ", count: 40).trimmingCharacters(in: .whitespaces)
+            + ". Also, she prefers tea."
+        #expect(CompanionSnapshotWriter.leadingSentence(of: onlyLeaning) == "Also, she prefers tea.")
+        #expect(CompanionSnapshotWriter.isContinuation("She also clarified that."))
+        #expect(CompanionSnapshotWriter.isContinuation("And then it rained."))
+        #expect(!CompanionSnapshotWriter.isContinuation("Kevin plays bass on Fridays."))
         #expect(!cut.contains("wor…"))
     }
 

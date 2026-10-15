@@ -48,8 +48,8 @@ enum AppTheme {
         /// Clear-sky blue, shared with the home-screen widget's palette.
         static let memory = LinearGradient(
             colors: [
-                Color(red: 0.42, green: 0.72, blue: 0.98), Color(red: 0.25, green: 0.55, blue: 0.93),
-                Color(red: 0.13, green: 0.38, blue: 0.80)
+                Color(red: 0.30, green: 0.58, blue: 0.92), Color(red: 0.17, green: 0.42, blue: 0.84),
+                Color(red: 0.09, green: 0.28, blue: 0.66)
             ],
             startPoint: .topLeading, endPoint: .bottomTrailing)
         static let usage = LinearGradient(

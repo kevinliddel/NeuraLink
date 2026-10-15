@@ -27,8 +27,14 @@ final class CompanionSnapshotWriter: @unchecked Sendable {
     static let debounce: Duration = .seconds(5)
     /// Memory-line length the widget can show without truncating badly.
     /// Longest memory line the widgets quote in full: three lines of the
-    /// medium widget's quote card, two of the small widget at reduced scale.
-    static let memoryLineLimit = 110
+    /// medium widget's quote card at footnote size.
+    static let memoryLineLimit = 100
+
+    /// Openers that only make sense after the sentence before them; a
+    /// widget quoting "She also clarified…" on its own reads as noise.
+    nonisolated static let continuationOpeners: Set<String> = [
+        "also", "and", "but", "so", "then", "however", "still", "yet", "meanwhile", "besides", "plus"
+    ]
 
     private var pending: Task<Void, Never>?
     private var portraitTask: Task<Void, Never>?
@@ -167,16 +173,30 @@ final class CompanionSnapshotWriter: @unchecked Sendable {
     }
 
     /// One whole sentence of `text` for the widget: the first that fits
-    /// `memoryLineLimit`, so the widget shows a complete thought rather
-    /// than the opening of a long one. Only when no sentence fits is the
-    /// first one cut at a word boundary.
+    /// `memoryLineLimit` and stands on its own, else the first that fits,
+    /// so the widget shows a complete thought rather than the opening of a
+    /// long one. Only when no sentence fits is the first cut at a word
+    /// boundary.
     nonisolated static func leadingSentence(of text: String) -> String? {
         let sentences = self.sentences(of: text)
         guard let first = sentences.first else { return nil }
-        if let whole = sentences.first(where: { $0.count <= memoryLineLimit }) { return whole }
+        let fitting = sentences.filter { $0.count <= memoryLineLimit }
+        if let standalone = fitting.first(where: { !isContinuation($0) }) { return standalone }
+        if let whole = fitting.first { return whole }
         let cut = first.prefix(memoryLineLimit)
         let words = cut.split(separator: " ").dropLast()
         return words.joined(separator: " ") + "…"
+    }
+
+    /// "Also, …", "And she…", "She also…": a sentence that leans on the one
+    /// before it.
+    nonisolated static func isContinuation(_ sentence: String) -> Bool {
+        let words = sentence.lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }
+        guard let head = words.first else { return false }
+        if continuationOpeners.contains(head) { return true }
+        return words.count > 1 && (words[1] == "also" || words[1] == "too")
     }
 
     /// `text` split at sentence ends, trimmed, empties dropped.

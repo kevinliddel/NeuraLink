@@ -66,9 +66,9 @@ extension CompanionSnapshot {
 /// A clear-sky blue, the way the Weather app paints a fine day: light at
 /// the top, deeper at the bottom, so white text reads everywhere.
 enum WidgetPalette {
-    static let top = Color(red: 0.42, green: 0.72, blue: 0.98)
-    static let middle = Color(red: 0.25, green: 0.55, blue: 0.93)
-    static let bottom = Color(red: 0.13, green: 0.38, blue: 0.80)
+    static let top = Color(red: 0.30, green: 0.58, blue: 0.92)
+    static let middle = Color(red: 0.17, green: 0.42, blue: 0.84)
+    static let bottom = Color(red: 0.09, green: 0.28, blue: 0.66)
     static let heart = Color(red: 1.00, green: 0.47, blue: 0.62)
 
     static var background: LinearGradient {
@@ -181,22 +181,39 @@ struct HeartRing: View {
     }
 }
 
-/// Relationship label with its ring, e.g. ♥ Friends · 62 %.
+/// Relationship label with its ring, e.g. ♥ Friends · 62 %. `compact`
+/// puts label and score on one line where vertical space is the quote's.
 struct RelationshipBadge: View {
     let snapshot: CompanionSnapshot
     var ring: CGFloat = 26
+    var compact = false
+
+    private var percent: String { "\(Int((snapshot.relationshipScore * 100).rounded())) %" }
 
     var body: some View {
         HStack(spacing: 7) {
             HeartRing(score: snapshot.relationshipScore, size: ring)
-            VStack(alignment: .leading, spacing: 0) {
-                Text(snapshot.relationshipLabel)
-                    .font(.system(.caption, design: .rounded).weight(.bold))
-                    .foregroundStyle(.white)
-                Text("\(Int((snapshot.relationshipScore * 100).rounded())) %")
-                    .font(.system(size: 10, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.7))
-                    .monospacedDigit()
+            if compact {
+                HStack(spacing: 4) {
+                    Text(snapshot.relationshipLabel)
+                        .font(.system(.caption2, design: .rounded).weight(.bold))
+                        .foregroundStyle(.white)
+                    Text("· \(percent)")
+                        .font(.system(.caption2, design: .rounded).weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.7))
+                        .monospacedDigit()
+                }
+                .lineLimit(1)
+            } else {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(snapshot.relationshipLabel)
+                        .font(.system(.caption, design: .rounded).weight(.bold))
+                        .foregroundStyle(.white)
+                    Text(percent)
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.7))
+                        .monospacedDigit()
+                }
             }
         }
     }
@@ -285,9 +302,10 @@ struct CompanionWidgetView: View {
                     Text(featured.text)
                         .font(.system(.caption, design: .rounded).weight(.medium))
                         .foregroundStyle(.white.opacity(0.92))
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.8)
+                        .lineLimit(3)
+                        .minimumScaleFactor(0.75)
                         .padding(.trailing, snapshot.hasLivePortrait ? 52 : 36)
+                        .layoutPriority(1)
                 }
                 Spacer(minLength: 0)
                 StatChip(symbol: "bubble.left.fill", text: snapshot.lastChatDescription(now: entry.date))
@@ -305,16 +323,20 @@ struct CompanionWidgetView: View {
                 .frame(maxHeight: .infinity, alignment: snapshot.hasLivePortrait ? .bottom : .center)
                 .offset(y: snapshot.hasLivePortrait ? 18 : 0)
 
-            VStack(alignment: .leading, spacing: 8) {
+            // Vertical budget (≈158 pt): name row 20, chips 20, spacings 18,
+            // paddings 22 — the rest is the quote card, enough for three
+            // lines of footnote. The name and badge are kept compact for it.
+            VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .center) {
                     Text(snapshot.displayName)
-                        .font(.system(.title3, design: .rounded).weight(.bold))
+                        .font(.system(.headline, design: .rounded).weight(.bold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     Spacer(minLength: 4)
-                    RelationshipBadge(snapshot: snapshot, ring: 24)
+                    RelationshipBadge(snapshot: snapshot, ring: 20, compact: true)
                 }
                 quoteCard(snapshot)
+                    .layoutPriority(1)
                 Spacer(minLength: 0)
                 HStack(spacing: 5) {
                     StatChip(symbol: "bubble.left.fill", text: snapshot.lastChatDescription(now: entry.date))
@@ -326,7 +348,8 @@ struct CompanionWidgetView: View {
                     }
                 }
             }
-            .padding(.vertical, 14)
+            .padding(.top, 12)
+            .padding(.bottom, 10)
             .padding(.trailing, 14)
         }
     }
@@ -339,10 +362,10 @@ struct CompanionWidgetView: View {
                     .tracking(0.6)
                     .foregroundStyle(.white.opacity(0.65))
                 Text(featured.text)
-                    .font(.system(.subheadline, design: .rounded).weight(.medium))
+                    .font(.system(.footnote, design: .rounded).weight(.medium))
                     .foregroundStyle(.white)
                     .lineLimit(3)
-                    .minimumScaleFactor(0.85)
+                    .minimumScaleFactor(0.75)
             } else {
                 Text("Say hi — \(snapshot.displayName) is waiting.")
                     .font(.system(.subheadline, design: .rounded).weight(.medium))
@@ -351,7 +374,7 @@ struct CompanionWidgetView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.vertical, 6)
         .background(.white.opacity(0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)

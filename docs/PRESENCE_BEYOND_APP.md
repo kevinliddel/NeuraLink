@@ -85,10 +85,14 @@ database. It reads a **snapshot** instead: a small JSON file in the App Group
   older snapshots still decode.
   - The memory line is one **whole** sentence of the memory summary
     ("Between you", then "About you" mental model): the first sentence that
-    fits 110 characters, so the widget shows a complete thought. Only when
-    no sentence fits is the first one cut at a word boundary. Without a
-    summary it falls back to an observation of ≤ 110 characters rotated by
-    day index ("Remembered").
+    fits 100 characters and stands on its own (one opening with "also",
+    "and", "but", "she also"… is passed over for the next), so the widget
+    shows a complete thought. Only when no sentence fits is the first one
+    cut at a word boundary. Without a summary it falls back to an
+    observation of ≤ 100 characters rotated by day index ("Remembered").
+    The medium widget keeps its name row and badge compact so the quote
+    card gets three lines of footnote; both widgets scale the quote down
+    (to 75 %) before truncating.
   - The last chat date is the last user speech, else `lastSeenAt`.
 - **Live portrait**: after a character loads (and its saved look is
   applied) and after every customization change or reset,
