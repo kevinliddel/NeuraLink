@@ -63,6 +63,15 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
     /// duplicated the previous reply in the chat history.
     var hasFreshAITranscript = false
 
+    /// Server-VAD segment timing per conversation item, so a transcript can
+    /// be judged against how long the "speech" really lasted
+    /// (`PhantomTranscriptFilter`). Entries are consumed on transcription.
+    var speechStartMsByItem: [String: Int] = [:]
+    var speechMsByItem: [String: Int] = [:]
+    /// Set when the active response was cancelled because its user turn was
+    /// a phantom: that response's `response.done` must not be logged.
+    var phantomResponseCancelled = false
+
     // Post-audio execution: function waits until the AI's spoken audio finishes
     var audioPlaybackMonitorTask: Task<Void, Never>?
     // Set when the audio output item starts; anchors the speaking-duration estimate

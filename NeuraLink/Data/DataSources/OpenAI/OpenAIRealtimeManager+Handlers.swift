@@ -44,9 +44,16 @@ extension OpenAIRealtimeManager {
                 // LocalLLMManager.interruptForBargeIn does.
                 if state.status == .speaking { PhoneEpisode.end(reason: "barge-in") }
                 if state.status == .ready { state.status = .listening }
+                if let itemID = json["item_id"] as? String, let start = json["audio_start_ms"] as? Int {
+                    speechStartMsByItem[itemID] = start
+                }
 
             case "input_audio_buffer.speech_stopped":
                 if state.status == .listening { state.status = .ready }
+                if let itemID = json["item_id"] as? String, let end = json["audio_end_ms"] as? Int,
+                   let start = speechStartMsByItem.removeValue(forKey: itemID) {
+                    speechMsByItem[itemID] = max(0, end - start)
+                }
 
             case "conversation.item.input_audio_transcription.completed":
                 // Metered even when the transcript is noise below — it was billed.
@@ -54,14 +61,20 @@ extension OpenAIRealtimeManager {
                     UsageRecorder.record(.transcription(usage: usage, model: settings.transcriptionModel))
                 }
                 if let transcript = json["transcript"] as? String {
-                    // Whisper returns "", "\n", or lone punctuation when
-                    // server_vad opened a turn on noise rather than speech.
-                    // Don't let those pollute the visible history or the
-                    // RAG store (phantom entries were resurfacing later as
-                    // remembered "user" statements).
+                    // server_vad opens turns on noise, and the transcription
+                    // model then hallucinates: its own prompt, "ね。", "That's…".
+                    // A phantom turn must not reach the history, the memory
+                    // store, or the model's context, and the reply it already
+                    // triggered is cancelled (PhantomTranscriptFilter).
+                    let itemID = json["item_id"] as? String
+                    let speechMs = itemID.flatMap { speechMsByItem.removeValue(forKey: $0) }
                     let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard trimmed.rangeOfCharacter(from: .alphanumerics) != nil else {
-                        nlLogSensitive("[User Transcript]: dropped empty/noise transcript: \"\(transcript)\"", level: .info)
+                    if let reason = PhantomTranscriptFilter.reason(
+                        transcript: trimmed, speechMs: speechMs, prompt: Self.transcriptionPrompt) {
+                        nlLogSensitive(
+                            "[User Transcript]: dropped phantom (\(reason.rawValue), \(speechMs.map { "\($0) ms" } ?? "no timing")): \"\(transcript)\"",
+                            level: .info)
+                        discardPhantomTurn(itemID: itemID)
                         break
                     }
                     nlLogSensitive("[User Transcript]: \(trimmed)", level: .info)
@@ -149,6 +162,12 @@ extension OpenAIRealtimeManager {
             // Response lifecycle
             case "response.done":
                 nlLogSensitive("[OpenAI] Full response: \(state.aiTranscript)", level: .info)
+                if phantomResponseCancelled {
+                    // The reply to a phantom turn: never shown or stored.
+                    phantomResponseCancelled = false
+                    hasFreshAITranscript = false
+                    state.aiTranscript = ""
+                }
                 if let response = json["response"] as? [String: Any], let usage = response["usage"] as? [String: Any] {
                     usageMeter.add(usage: usage)
                     state.sessionUsage = usageMeter
@@ -426,5 +445,19 @@ extension OpenAIRealtimeManager: RTCDataChannelDelegate {
         }
 
         handleIncomingJSON(json)
+    }
+
+    /// A phantom user turn: cancel the reply it triggered (the user hears at
+    /// most a word) and delete the item so the model's context never held
+    /// words the user did not say.
+    func discardPhantomTurn(itemID: String?) {
+        if state.status == .speaking || state.status == .thinking {
+            phantomResponseCancelled = true
+            _ = send(["type": "response.cancel"])
+            nlLog("[AI]: reply to a phantom turn cancelled", level: .info)
+        }
+        if let itemID {
+            _ = send(["type": "conversation.item.delete", "item_id": itemID])
+        }
     }
 }

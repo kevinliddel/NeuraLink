@@ -150,13 +150,18 @@ extension OpenAIRealtimeManager {
         }
     }
 
+    /// Vocabulary hint for the transcription model. On silence the model
+    /// sometimes returns this text as the "speech"; `PhantomTranscriptFilter`
+    /// compares against it.
+    static let transcriptionPrompt = "Casual voice chat with an AI companion. May include "
+        + "proper nouns: media/game/anime/song titles, app names, Japanese words."
+
     /// Input-transcription block. The prompt biases vocabulary toward proper
     /// nouns; models that reject it (gpt-realtime-whisper) get none.
     func transcriptionConfig(model: String) -> [String: Any] {
         var config: [String: Any] = ["model": model]
         if OpenAIModelCatalog.transcriptionSupportsPrompt(model) {
-            config["prompt"] = "Casual voice chat with an AI companion. May include "
-                + "proper nouns: media/game/anime/song titles, app names, Japanese words."
+            config["prompt"] = Self.transcriptionPrompt
         }
         return config
     }
