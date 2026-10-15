@@ -15,6 +15,7 @@ import SwiftUI
 struct AutonomySettingsView: View {
     @Bindable var settings = OpenAISettings.shared
     @Bindable var presence = PresenceSettings.shared
+    @Bindable var grounding = GroundingSettings.shared
 
     var body: some View {
         Form {
@@ -22,6 +23,7 @@ struct AutonomySettingsView: View {
             backgroundSection
             visionSection
             presenceSection
+            groundingSection
             engagementSection
         }
         .scrollIndicators(.hidden)
@@ -141,6 +143,52 @@ struct AutonomySettingsView: View {
                     info: "Home and lock-screen widgets show the character's greeting, how close you are and how long since you talked. They read a small summary stored outside the encrypted memory database — never your conversations or facts. Off removes it."
                 )
             }
+        }
+    }
+
+    // MARK: - Daily grounding
+
+    /// Opt-in real-world context for the persona (docs/LIVING_COMPANION.md).
+    /// Turning a toggle on asks for the permission; a denial turns it back off.
+    private var groundingSection: some View {
+        Section {
+            Toggle(isOn: $grounding.isCalendarEnabled) {
+                InfoToggleLabel(
+                    title: "Know my day",
+                    info: "The character sees what is on your calendar in the next 12 hours — titles and times only — so it can wish you luck before a meeting or ask how it went. Read-only; nothing leaves the prompt."
+                )
+            }
+            .onChange(of: grounding.isCalendarEnabled) { _, enabled in
+                guard enabled else { return DailyGroundingProvider.shared.invalidate() }
+                Task { @MainActor in
+                    if await CalendarGrounding.shared.requestAccess() {
+                        DailyGroundingProvider.shared.invalidate()
+                    } else {
+                        grounding.isCalendarEnabled = false
+                    }
+                }
+            }
+
+            if SleepGrounding.isAvailable {
+                Toggle(isOn: $grounding.isSleepEnabled) {
+                    InfoToggleLabel(
+                        title: "Know how I slept",
+                        info: "After a short night the character goes gentle. It reads last night's sleep from Health; stages need an Apple Watch or a sleep app, the iPhone alone records time in bed. Read-only, mentioned only when the night was short."
+                    )
+                }
+                .onChange(of: grounding.isSleepEnabled) { _, enabled in
+                    guard enabled else { return DailyGroundingProvider.shared.invalidate() }
+                    Task { @MainActor in
+                        if await SleepGrounding.shared.requestAccess() {
+                            DailyGroundingProvider.shared.invalidate()
+                        } else {
+                            grounding.isSleepEnabled = false
+                        }
+                    }
+                }
+            }
+        } header: {
+            Text("Daily grounding")
         }
     }
 

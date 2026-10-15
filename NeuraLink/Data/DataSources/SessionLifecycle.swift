@@ -35,6 +35,7 @@ final class SessionLifecycle: @unchecked Sendable {
         guard !started else { return }
         started = true
         InteractionClock.shared.markForeground()
+        DailyGroundingProvider.shared.refreshIfNeeded()
         NotificationCenter.default.addObserver(
             forName: UIApplication.didEnterBackgroundNotification,
             object: nil, queue: .main
@@ -57,6 +58,7 @@ final class SessionLifecycle: @unchecked Sendable {
             object: nil, queue: .main
         ) { _ in
             InteractionClock.shared.markForeground()
+            DailyGroundingProvider.shared.refreshIfNeeded()
             Task { @MainActor in BackgroundSessionKeeper.shared.didEnterForeground() }
         }
     }

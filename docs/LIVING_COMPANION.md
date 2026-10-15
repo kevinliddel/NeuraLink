@@ -366,6 +366,36 @@ ago"; then "yesterday (Monday evening)", "N days ago (…)", "about a week ago
 are English whatever the device locale; the time zone and week are the
 user's.
 
+## Daily grounding
+
+Two opt-in lines of real-world context in the `[Companion State]` block
+(AI Settings → Autonomy → **Daily grounding**), so the persona knows what
+the user's day holds without being told. Both are read-only and, like the
+time-apart line, fetched once per foreground visit by
+`DailyGroundingProvider` and held for the visit, so the block is stable
+within a session. A fetch that lands after the first block was built posts
+`realtimeInstructionsDidChange`, which refreshes the Realtime instructions.
+
+- **Know my day** (`CalendarGrounding`, EventKit full access): events under
+  way or starting within 12 hours, soonest first, at most three: "Today's
+  schedule: Ana's birthday (all day); Standup (now); Presentation at
+  2:00 PM. Wish them luck or ask how it went when it fits naturally; never
+  recite the list." Untitled events are skipped. Its store is separate from
+  `ReminderSkill`'s, which only holds reminders access.
+- **Know how I slept** (`SleepGrounding`, HealthKit sleep analysis, last 24
+  h): "asleep" samples (stages, from a Watch or a sleep app) are summed as
+  a union of intervals, so two sources recording the same night count once;
+  "in bed" samples (what the iPhone alone records) likewise. The line only
+  appears when the night was short — under 5.5 h asleep, or under 6 h in
+  bed when there are no stages — and tells the persona to go gentle and not
+  lecture. A normal night says nothing. HealthKit never reveals a denied
+  read; it simply returns no samples.
+
+Turning a toggle on asks for the permission and turns itself back off on a
+denial (`AutonomySettingsView.groundingSection`). The `.llama1b` tier gets
+compact forms ("Today: …", "Sleep: about 4.5 h last night (short)."). The
+wording and arithmetic are `DailyGrounding` (pure, unit-tested).
+
 ## Flow
 
 ### Architecture
@@ -489,6 +519,11 @@ flowchart TD
 | `Domain/Entities/JournalCalendar.swift` | `JournalCalendarModel` month grid + local-day `JournalDayActivity` grouping |
 | `Domain/Entities/CompanionAbsence.swift` | Time-apart wording (pure) |
 | `Data/DataSources/Memory/MemoryStore+JournalCalendar.swift` | `userTurnStamps(between:and:)`, `lastUserMessageAt(before:)` |
+| `Domain/Entities/DailyGrounding.swift` | `GroundingEvent`, `SleepSummary`, schedule / sleep line wording, interval union |
+| `Data/DataSources/Grounding/GroundingSettings.swift` | The two opt-in toggles (explicit-backing `@Observable`) |
+| `Data/DataSources/Grounding/CalendarGrounding.swift` | EventKit full-access request + 12 h event read |
+| `Data/DataSources/Grounding/SleepGrounding.swift` | HealthKit sleep-analysis request + last-night read |
+| `Data/DataSources/Grounding/DailyGroundingProvider.swift` | Once-per-visit fetch held for the Companion State block |
 | `Presentation/Views/AI/JournalCalendarView.swift` | Month grid, activity dots, swipe / chevrons, Today |
 | `Presentation/Views/AI/JournalDaySection.swift` | Selected-day or month list under the calendar; opens transcripts as sheets |
 | `Data/DataSources/CompanionPortrait.swift` | Character face for the journal and Memory hero card (live portrait, else bundled thumbnail) |
@@ -574,3 +609,8 @@ shows the permission status, the pending count and the next fire date.
   when a first song / game / photo lands, and never again for the same one.
 - Check that the time-apart line reads the same on every turn of a session
   and names the right day after a real overnight gap.
+- Daily grounding: the HealthKit entitlement needs **HealthKit enabled on
+  the App ID** (Signing & Capabilities, or the developer portal) before a
+  device build signs. Check the calendar prompt appears once, that a denied
+  permission turns the toggle back off, and that a short night from a Watch
+  produces the sleep line while a normal night produces nothing.

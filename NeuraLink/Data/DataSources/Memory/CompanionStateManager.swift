@@ -37,6 +37,8 @@ final class CompanionStateManager {
             ? "\(affinity.label). \(CompanionAffinity.stageGuidance(for: affinity.label))" : nil
         let tone = Self.recentTone(from: events)
         let absence = absenceLine(compact: compact)
+        DailyGroundingProvider.shared.refreshIfNeeded()
+        let grounding = DailyGroundingProvider.shared.lines(compact: compact)
         let traits = store.traits(character: characterName, limit: compact ? 2 : 3)
         let carryOver = carryOverLine(characterName: characterName)
         // Fresh keepsakes: the first build stamps them celebrated and the line
@@ -45,7 +47,7 @@ final class CompanionStateManager {
 
         // If nothing meaningful is known, don't inject noise.
         if preferenceLines.isEmpty && relationship == nil && tone == nil && absence == nil
-            && traits.isEmpty && carryOver == nil && keepsake == nil {
+            && grounding.isEmpty && traits.isEmpty && carryOver == nil && keepsake == nil {
             return ""
         }
 
@@ -53,6 +55,7 @@ final class CompanionStateManager {
         out += "- Character: \(characterName)\n"
         if let relationship { out += "- Relationship: \(relationship)\n" }
         if let absence { out += "- \(absence)\n" }
+        for line in grounding { out += "- \(line)\n" }
         if let tone { out += "- Recent tone: \(tone)\n" }
         if !preferenceLines.isEmpty {
             out += "- Known preferences:\n"
