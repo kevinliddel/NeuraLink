@@ -94,7 +94,7 @@ struct ExpandableFABMenu: View {
                     }
                 } label: {
                     Image(systemName: isSecondaryExpanded ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.white)
                         .frame(width: 44, height: 44)
                         .background(.black.opacity(0.5))
@@ -154,7 +154,7 @@ private struct FABButton: View {
             Button(action: action) {
                 icon
                     .symbolRenderingMode(.monochrome)
-                    .font(.system(size: 17, weight: .regular))
+                    .font(.body.weight(.regular))
                     .imageScale(.large)
                     .foregroundStyle(.white)
                     .frame(width: 44, height: 44)

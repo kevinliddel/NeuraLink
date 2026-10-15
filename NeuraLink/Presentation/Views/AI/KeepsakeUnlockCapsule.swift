@@ -15,7 +15,7 @@ import SwiftUI
 struct KeepsakeUnlockCapsule: View {
     @State private var controller = KeepsakeUnlockController.shared
 
-    private let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
+    private let shape = RoundedRectangle(cornerRadius: AppTheme.Radius.large, style: .continuous)
 
     var body: some View {
         // The ZStack always exists, so the insertion and removal of the card
@@ -71,8 +71,7 @@ struct KeepsakeUnlockCapsule: View {
         .tint(.white)
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(.black.opacity(0.55), in: shape)
-        .overlay(shape.strokeBorder(.white.opacity(0.18), lineWidth: 1))
+        .hudGlass(shape, opacity: 0.55)
         .contentShape(shape)
         .onTapGesture { controller.dismiss() }
         .accessibilityElement(children: .combine)

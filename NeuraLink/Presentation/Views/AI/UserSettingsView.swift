@@ -129,7 +129,7 @@ struct UserSettingsView: View {
 
                     // Add / change affordance.
                     Image(systemName: "camera.fill")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.footnote.weight(.semibold))
                         .foregroundStyle(.white)
                         .frame(width: 32, height: 32)
                         .background(Color.accentColor, in: Circle())
@@ -145,7 +145,7 @@ struct UserSettingsView: View {
                     photoItem = nil
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 26))
+                        .font(.title)
                         .symbolRenderingMode(.palette)
                         .foregroundStyle(.white, .red)
                 }
@@ -237,12 +237,12 @@ struct EnvironmentOptionView: View {
                 .padding(.bottom, 10)
             }
             .frame(width: 150, height: 150)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.medium))
             .overlay(
-                RoundedRectangle(cornerRadius: 12)
+                RoundedRectangle(cornerRadius: AppTheme.Radius.medium)
                     .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 3)
             )
-            .contentShape(RoundedRectangle(cornerRadius: 12))
+            .contentShape(RoundedRectangle(cornerRadius: AppTheme.Radius.medium))
             .clipped()
         }
         .buttonStyle(.plain)

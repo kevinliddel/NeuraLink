@@ -150,7 +150,7 @@ struct ChatHistorySidebar: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: AppTheme.Radius.small, style: .continuous))
         .padding(.horizontal, 12)
         .padding(.bottom, 6)
         .onChange(of: searchText) { _, _ in scheduleSearch() }
@@ -224,9 +224,9 @@ struct ChatHistorySidebar: View {
             .padding(.vertical, 10)
             .background(
                 Color.black.opacity(0.3),
-                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                in: RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
             )
-            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous))
         }
         .buttonStyle(.plain)
     }

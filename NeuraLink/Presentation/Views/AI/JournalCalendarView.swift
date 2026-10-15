@@ -177,14 +177,14 @@ private struct JournalDayCell: View {
                 dots
             }
             .frame(maxWidth: .infinity, minHeight: Self.height)
-            .background(background, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .background(background, in: RoundedRectangle(cornerRadius: AppTheme.Radius.small, style: .continuous))
             .overlay {
                 if isToday && !isSelected {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.pink, lineWidth: 1.5)
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.small, style: .continuous).strokeBorder(Color.pink, lineWidth: 1.5)
                 }
             }
             .foregroundStyle(foreground)
-            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: AppTheme.Radius.small, style: .continuous))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(accessibilityText)

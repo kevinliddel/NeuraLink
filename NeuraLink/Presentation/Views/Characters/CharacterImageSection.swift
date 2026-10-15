@@ -38,9 +38,9 @@ struct CharacterImageSection: View {
                         .scaledToFill()
                         .frame(width: 60, height: 60)
                         .clipped()
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.small))
                 } else {
-                    RoundedRectangle(cornerRadius: 10)
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.small)
                         .fill(Color.secondary.opacity(0.15))
                         .frame(width: 60, height: 60)
                         .overlay(Image(systemName: "person.fill").foregroundStyle(.secondary))

@@ -96,7 +96,7 @@ struct MemoryTimelineSection: View {
                     .resizable()
                     .scaledToFill()
                     .frame(width: 36, height: 36)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.chip, style: .continuous))
             } else {
                 Image(systemName: symbol(for: unit.factType))
                     .font(.caption)

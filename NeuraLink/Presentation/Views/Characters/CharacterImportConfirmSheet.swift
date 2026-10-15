@@ -100,9 +100,9 @@ struct CharacterImportConfirmSheet: View {
                         .scaledToFill()
                         .frame(width: 72, height: 72)
                         .clipped()
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.medium))
                 } else {
-                    RoundedRectangle(cornerRadius: 12)
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.medium)
                         .fill(Color.secondary.opacity(0.15))
                         .frame(width: 72, height: 72)
                         .overlay(Image(systemName: "person.fill").foregroundStyle(.secondary))

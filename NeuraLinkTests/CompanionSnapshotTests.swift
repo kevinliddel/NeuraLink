@@ -86,7 +86,7 @@ struct CompanionSnapshotTests {
         #expect(none.title == nil)
     }
 
-    @Test("Leading sentence is cut at a word boundary to fit the widget")
+    @Test("Leading sentence is the first whole sentence that fits; only an unbreakable one is cut")
     func leadingSentence() {
         #expect(CompanionSnapshotWriter.leadingSentence(of: "One. Two.") == "One.")
         #expect(CompanionSnapshotWriter.leadingSentence(of: "   ") == nil)
@@ -94,6 +94,11 @@ struct CompanionSnapshotTests {
         let cut = CompanionSnapshotWriter.leadingSentence(of: long) ?? ""
         #expect(cut.hasSuffix("…"))
         #expect(cut.count <= CompanionSnapshotWriter.memoryLineLimit + 1)
+        // A long opening sentence followed by a short one: the widget gets the whole short one.
+        let longFirst = String(repeating: "word ", count: 40).trimmingCharacters(in: .whitespaces)
+            + ". Kevin loves rainy evenings!"
+        #expect(CompanionSnapshotWriter.leadingSentence(of: longFirst) == "Kevin loves rainy evenings!")
+        #expect(CompanionSnapshotWriter.sentences(of: "A? B. C") == ["A?", "B.", "C"])
         #expect(!cut.contains("wor…"))
     }
 

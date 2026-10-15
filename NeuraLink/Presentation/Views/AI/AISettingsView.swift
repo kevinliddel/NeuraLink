@@ -62,7 +62,7 @@ struct AISettingsView: View {
                         .frame(width: 44, height: 44)
                         .overlay(
                             Image(systemName: "cpu")
-                                .font(.system(size: 18, weight: .semibold))
+                                .font(.headline.weight(.semibold))
                                 .foregroundStyle(.white)
                         )
                         .overlay(Circle().stroke(Color.primary.opacity(0.15), lineWidth: 1))
@@ -247,7 +247,7 @@ struct AISettingsView: View {
                         .frame(width: 44, height: 44)
                         .overlay(
                             Image(systemName: "wand.and.stars")
-                                .font(.system(size: 18, weight: .semibold))
+                                .font(.headline.weight(.semibold))
                                 .foregroundStyle(.white)
                         )
                         .overlay(Circle().stroke(Color.primary.opacity(0.15), lineWidth: 1))

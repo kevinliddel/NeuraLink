@@ -52,8 +52,8 @@ struct MemoryModelTile: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(.white.opacity(0.12), in: RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous))
         .onTapGesture {
             guard canToggle else { return }
             withAnimation(.snappy) { isExpanded.toggle() }

@@ -86,7 +86,7 @@ struct ConversationTranscriptView: View {
                 Text(message.content)
                     .padding(10)
                     .background(
-                        Color.accentColor.opacity(0.9), in: RoundedRectangle(cornerRadius: 14)
+                        Color.accentColor.opacity(0.9), in: RoundedRectangle(cornerRadius: AppTheme.Radius.medium)
                     )
                     .foregroundStyle(.white)
             } else {
@@ -99,7 +99,7 @@ struct ConversationTranscriptView: View {
                     }
                 }
                 .padding(10)
-                .background(Color.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 14))
+                .background(Color.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: AppTheme.Radius.medium))
                 .foregroundStyle(.primary)
                 Spacer(minLength: 40)
             }
@@ -126,11 +126,11 @@ struct ConversationTranscriptView: View {
                         .scaleEffect(0.6)
                 case .playing:
                     Image(systemName: "stop.fill")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.caption2.weight(.semibold))
                         .foregroundStyle(.red)
                 case .idle:
                     Image(systemName: "speaker.wave.2.fill")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.caption2.weight(.semibold))
                         .foregroundStyle(.blue)
                 }
             }

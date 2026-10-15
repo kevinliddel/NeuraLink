@@ -47,10 +47,12 @@ extension CompanionSnapshot {
         factCount: 24, daysTogether: 12,
         lastChatAt: Date().addingTimeInterval(-3 * 3_600), thumbnailFile: nil, updatedAt: Date())
 
-    /// The line the medium widget quotes, with what it is.
+    /// The line the widgets quote, with what it is: something remembered
+    /// first, so every widget carries one sentence of memory; the saved
+    /// opener only when nothing is remembered yet.
     var featuredLine: (title: String, text: String)? {
-        if !opener.isEmpty { return ("Coming up next time", opener) }
         if !memoryLine.isEmpty { return (memoryTitle ?? "Remembered", memoryLine) }
+        if !opener.isEmpty { return ("Coming up next time", opener) }
         return nil
     }
 
@@ -61,10 +63,12 @@ extension CompanionSnapshot {
 
 // MARK: - Palette
 
+/// A clear-sky blue, the way the Weather app paints a fine day: light at
+/// the top, deeper at the bottom, so white text reads everywhere.
 enum WidgetPalette {
-    static let top = Color(red: 0.20, green: 0.13, blue: 0.48)
-    static let middle = Color(red: 0.46, green: 0.18, blue: 0.62)
-    static let bottom = Color(red: 0.86, green: 0.30, blue: 0.52)
+    static let top = Color(red: 0.42, green: 0.72, blue: 0.98)
+    static let middle = Color(red: 0.25, green: 0.55, blue: 0.93)
+    static let bottom = Color(red: 0.13, green: 0.38, blue: 0.80)
     static let heart = Color(red: 1.00, green: 0.47, blue: 0.62)
 
     static var background: LinearGradient {
@@ -72,8 +76,9 @@ enum WidgetPalette {
     }
 }
 
-/// Brand gradient with soft light blooms; plain when the home screen is
-/// tinted (accented / vibrant rendering), where colour would be discarded.
+/// Sky gradient with soft light blooms (sun top-right, haze bottom-left);
+/// plain when the home screen is tinted (accented / vibrant rendering),
+/// where colour would be discarded.
 struct CompanionBackground: View {
     @Environment(\.widgetRenderingMode) private var renderingMode
 
@@ -85,7 +90,7 @@ struct CompanionBackground: View {
                     colors: [.white.opacity(0.28), .clear], center: .init(x: 0.85, y: 0.15),
                     startRadius: 2, endRadius: 140)
                 RadialGradient(
-                    colors: [WidgetPalette.heart.opacity(0.45), .clear], center: .init(x: 0.15, y: 1.0),
+                    colors: [.white.opacity(0.22), .clear], center: .init(x: 0.15, y: 1.0),
                     startRadius: 2, endRadius: 160)
             }
         } else {
@@ -276,6 +281,14 @@ struct CompanionWidgetView: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                 RelationshipBadge(snapshot: snapshot, ring: 24)
+                if let featured = snapshot.featuredLine {
+                    Text(featured.text)
+                        .font(.system(.caption, design: .rounded).weight(.medium))
+                        .foregroundStyle(.white.opacity(0.92))
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.8)
+                        .padding(.trailing, snapshot.hasLivePortrait ? 52 : 36)
+                }
                 Spacer(minLength: 0)
                 StatChip(symbol: "bubble.left.fill", text: snapshot.lastChatDescription(now: entry.date))
             }

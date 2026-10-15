@@ -48,7 +48,7 @@ struct MemoryRecapCard: View {
             }
         }
         .padding(16)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: AppTheme.Radius.large, style: .continuous))
     }
 
     /// Per-week dismissal state.

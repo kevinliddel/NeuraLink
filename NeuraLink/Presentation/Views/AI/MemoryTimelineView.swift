@@ -309,7 +309,7 @@ struct MemoryTimelineView: View {
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(.green)
                 .frame(width: 28, height: 28)
-                .background(Color.green.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .background(Color.green.opacity(0.12), in: RoundedRectangle(cornerRadius: AppTheme.Radius.chip, style: .continuous))
             VStack(alignment: .leading, spacing: 3) {
                 Text(factDisplayText(fact))
                     .font(.subheadline)
@@ -360,7 +360,7 @@ struct MemoryTimelineView: View {
             .font(.footnote.weight(.semibold))
             .foregroundStyle(.white)
             .frame(width: 28, height: 28)
-            .background(color, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .background(color, in: RoundedRectangle(cornerRadius: AppTheme.Radius.chip, style: .continuous))
     }
 
     private var visibleObservations: [MemoryUnit] {
@@ -483,7 +483,7 @@ struct SettingLabelStyle: LabelStyle {
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(.white)
                 .frame(width: 28, height: 28)
-                .background(color, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .background(color, in: RoundedRectangle(cornerRadius: AppTheme.Radius.chip, style: .continuous))
             configuration.title
         }
     }

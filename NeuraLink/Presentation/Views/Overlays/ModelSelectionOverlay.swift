@@ -58,7 +58,7 @@ struct ModelSelectionOverlay: View {
             .padding(.vertical, 16)
         }
         .background(
-            RoundedRectangle(cornerRadius: 24)
+            RoundedRectangle(cornerRadius: AppTheme.Radius.large)
                 .fill(.black)
                 .edgesIgnoringSafeArea(.bottom)
         )
@@ -115,12 +115,12 @@ private struct ModelCard: View {
             // Text and Icons
             VStack(spacing: 4) {
                 Text(entry.displayName)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.subheadline.weight(.bold))
                     .foregroundColor(.white)
                     .lineLimit(1)
 
                 Text(descriptionText)
-                    .font(.system(size: 8, weight: .medium))
+                    .font(.caption2.weight(.medium))
                     .foregroundColor(.white.opacity(0.7))
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
@@ -132,7 +132,7 @@ private struct ModelCard: View {
                         .frame(width: 24, height: 24)
                         .overlay(
                             Image(systemName: "message.fill")
-                                .font(.system(size: 10))
+                                .font(.caption2)
                                 .foregroundColor(.white)
                         )
 
@@ -141,7 +141,7 @@ private struct ModelCard: View {
                         .frame(width: 24, height: 24)
                         .overlay(
                             Image(systemName: "waveform")
-                                .font(.system(size: 10))
+                                .font(.caption2)
                                 .foregroundColor(isSelected ? .black : .white)
                         )
                 }
@@ -152,7 +152,7 @@ private struct ModelCard: View {
         .frame(width: 160, height: 220)
         .cornerRadius(16)
         .overlay(
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: AppTheme.Radius.medium)
                 .stroke(isSelected ? Color.white : Color.clear, lineWidth: 2)
         )
         .opacity(isSelected ? 1.0 : 0.6)
@@ -170,19 +170,19 @@ private struct ImportCard: View {
                     .font(.system(size: 36))
                     .foregroundColor(.white.opacity(0.8))
                 Text("Import VRM")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.footnote.weight(.semibold))
                     .foregroundColor(.white)
                 Text("From Files")
-                    .font(.system(size: 9))
+                    .font(.caption2)
                     .foregroundColor(.white.opacity(0.6))
             }
             .frame(width: 160, height: 220)
             .background(
-                RoundedRectangle(cornerRadius: 16)
+                RoundedRectangle(cornerRadius: AppTheme.Radius.medium)
                     .fill(Color.white.opacity(0.06))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 16)
+                RoundedRectangle(cornerRadius: AppTheme.Radius.medium)
                     .strokeBorder(
                         Color.white.opacity(0.35),
                         style: StrokeStyle(lineWidth: 1.5, dash: [6, 5]))
