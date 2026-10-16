@@ -215,3 +215,40 @@ so that state keeps the original mic gate. Toggle: Autonomy → "Interrupt while
 speaking (local)" (`OpenAISettings.isLocalBargeInEnabled`, default on for
 ≥ 5 GB devices).
 
+## Acoustic affect (2026-10-16)
+
+The companion hears *how* the user sounds, not only what they said
+(Companion Evolution pillar 1). Both engines measure the utterance the VAD
+already brackets; nothing extra is recorded.
+
+- **Features** (`AcousticFeatureExtractor`, Accelerate): the audio is
+  decimated to ≤ 16 kHz, cut into 25 ms frames, and each frame gets an RMS.
+  Frames above 30 % of the loud frames' RMS are speech; on those a
+  normalised autocorrelation over 70–400 Hz gives a pitch when its peak
+  passes 0.5 (the shortest lag within 90 % of the best peak, so period
+  multiples don't halve the pitch). Per utterance: duration, pitch mean and spread, energy mean
+  and spread, inner pauses (≥ 150 ms of silence between the first and last
+  speech frame) and, once the transcript lands, words per second.
+- **Where the audio comes from**: local, the 16 kHz samples handed to
+  whisper.cpp at voice end; OpenAI, the WAV the Silero wrapper returns from
+  `voiceEnded(withWavData:)` (`WAVDecoder`, 16-bit PCM or float).
+- **Judgement** (`AcousticAffect`, pure): relative to the user's own
+  baseline, an exponential moving average over their utterances (two before
+  any judgement is made). Quiet (≤ 0.7× usual energy), slower and flat
+  (< 25 Hz spread) → **subdued**; loud (≥ 1.3×) or lively (≥ 60 Hz spread)
+  and quicker → **animated**; slow with ≥ 0.4 pauses/s → **hesitant**;
+  otherwise neutral. Utterances under 1 s are never judged.
+- **Prompt**: a one-line tag with a tone directive ("[User acoustic affect:
+  subdued — …] → Tone directive: speak softly, …"). Local: a per-turn
+  system block after the history (KV-safe, like the game reminder), empty
+  when neutral. OpenAI: a system `conversation.item.create` only when the
+  read **changes**, plus a "back to their usual voice" line on the return
+  to neutral; the reply already streaming is unaffected, the next ones are.
+- **Voice**: `AcousticAffectState.modulation` bends the local voices —
+  VoiceVox `speedScale` / `intonationScale` (house defaults 1.1 / 1.5 ×
+  the modulation) and the system voice's rate and pitch. OpenVoice has no
+  knob. Subdued 0.92 / 0.85 / 0.97, animated 1.06 / 1.15 / 1.03, hesitant
+  0.95 / 0.9 / 1.
+- **Setting**: AI Settings → Autonomy → Conversation → "Sense my tone"
+  (`AffectSettings`, on by default). Off, nothing is measured and the
+  voices use their defaults.

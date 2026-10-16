@@ -145,6 +145,12 @@ extension LocalLLMManager: SileroVADDelegate {
             let whisperSamples = Array(
                 UnsafeBufferPointer(start: outChannelData[0], count: outLength))
 
+            // How they sounded, judged once the transcript arrives (AcousticAffect).
+            if !isPartial {
+                AcousticAffectState.shared.noteUtterance(
+                    AcousticFeatureExtractor.extract(samples: whisperSamples, sampleRate: 16_000))
+            }
+
             await whisperManager.transcribe(samples: whisperSamples, isPartial: isPartial)
         }
     }
@@ -169,6 +175,7 @@ extension LocalLLMManager: LocalWhisperManagerDelegate {
                 nlLogSensitive("[Local Transcript]: dropped phantom (\(reason.rawValue)): \"\(text)\"", level: .info)
                 return
             }
+            AcousticAffectState.shared.noteTranscript(text)
             // Feed the localized transcription directly to the Local LLM
             handleUserInput(text)
         }

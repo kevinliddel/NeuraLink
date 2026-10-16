@@ -143,6 +143,8 @@ extension OpenAIRealtimeManager {
                 ]
             ]
 
+            // A fresh session has heard no tone directive yet.
+            AcousticAffectState.shared.resetAnnouncement()
             send(update)
             nlLog(
                 "[AI]: Sent initial session.update with \(AppFunctionTool.all.count) tools and instructions: \(finalInstructions.prefix(100))...",

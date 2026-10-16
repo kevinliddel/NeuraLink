@@ -78,6 +78,18 @@ extension OpenAIRealtimeManager {
                         break
                     }
                     nlLogSensitive("[User Transcript]: \(trimmed)", level: .info)
+                    AcousticAffectState.shared.noteTranscript(trimmed)
+                    if let tag = AcousticAffectState.shared.realtimeTagIfChanged() {
+                        // The reply to this turn is already streaming; the tone
+                        // directive shapes the turns after it.
+                        _ = send([
+                            "type": "conversation.item.create",
+                            "item": [
+                                "type": "message", "role": "system",
+                                "content": [["type": "input_text", "text": tag]]
+                            ]
+                        ])
+                    }
                     state.userTranscript = trimmed
                     ProactiveVisionManager.shared.notifyUserSpoke()
                     InteractionClock.shared.noteUserSpoke()

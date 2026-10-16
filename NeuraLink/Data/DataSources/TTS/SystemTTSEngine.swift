@@ -42,6 +42,7 @@ final class SystemTTSEngine: NSObject, TTSEngineProtocol {
         // "unsafeForcedSync called from Swift Concurrent context" runtime trap.
         // Resume the continuation only on the empty-buffer sentinel that the
         // write() callback emits at end-of-utterance (Apple-documented).
+        let modulation = AcousticAffectState.shared.modulation
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
             DispatchQueue.main.async { [weak self] in
                 guard let self else {
@@ -54,8 +55,9 @@ final class SystemTTSEngine: NSObject, TTSEngineProtocol {
                     .filter { $0.language.hasPrefix(prefix) }
                     .max { $0.quality.rawValue < $1.quality.rawValue }
                 utterance.voice = best ?? AVSpeechSynthesisVoice(language: language)
-                utterance.rate = AVSpeechUtteranceDefaultSpeechRate
-                utterance.pitchMultiplier = 1.0
+                // Bent by how the user sounds right now (docs/LLM_VOICE.md).
+                utterance.rate = AVSpeechUtteranceDefaultSpeechRate * Float(modulation.speed)
+                utterance.pitchMultiplier = Float(modulation.pitch)
 
                 var resumed = false
                 self.synthesizer.write(utterance) { [weak self] buffer in

@@ -16,6 +16,7 @@ struct AutonomySettingsView: View {
     @Bindable var settings = OpenAISettings.shared
     @Bindable var presence = PresenceSettings.shared
     @Bindable var grounding = GroundingSettings.shared
+    @Bindable var affect = AffectSettings.shared
 
     var body: some View {
         Form {
@@ -50,6 +51,13 @@ struct AutonomySettingsView: View {
                 )
             }
             .disabled(!settings.isLocalLLMEnabled)
+
+            Toggle(isOn: $affect.isEnabled) {
+                InfoToggleLabel(
+                    title: "Sense my tone",
+                    info: "The character notices how you sound — quiet and slow, lively, or hesitant — against your own usual voice, and adapts its tone and, on the local voices, its pace. Measured on this device from your speech; only a one-line mood note reaches the model."
+                )
+            }
         }
     }
 
