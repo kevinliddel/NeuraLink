@@ -65,21 +65,30 @@ struct PhoneWidgetView: View {
             y: parkedOffset.height + dragTranslation.height
         )
         // Drag to park anywhere on screen; min distance keeps taps intact.
+        // Global coordinates: the gesture lives on the view the offset moves,
+        // so a local translation would be measured in a space that shifts
+        // under the finger and the phone would chase itself.
         .gesture(
-            DragGesture(minimumDistance: 12)
+            DragGesture(minimumDistance: 12, coordinateSpace: .global)
                 .onChanged { value in
-                    dragTranslation = value.translation
+                    // Follow the finger exactly; no animation on the live translation.
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) { dragTranslation = value.translation }
                 }
                 .onEnded { value in
                     let proposed = CGSize(
                         width: parkedOffset.width + value.translation.width,
                         height: parkedOffset.height + value.translation.height)
-                    dragTranslation = .zero
+                    let target = PhoneWidgetManager.clampedOffset(proposed, screen: UIScreen.main.bounds.size)
+                    // One transaction: the parked offset takes over from the
+                    // live translation at the same point, so the phone settles
+                    // from where the finger left it and only moves if clamped.
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
-                        parkedOffset = PhoneWidgetManager.clampedOffset(
-                            proposed, screen: UIScreen.main.bounds.size)
+                        parkedOffset = target
+                        dragTranslation = .zero
                     }
-                    manager.saveOffset(parkedOffset)
+                    manager.saveOffset(target)
                 }
         )
         .onAppear {
