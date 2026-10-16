@@ -209,6 +209,7 @@ struct CompanionJournalView: View {
     }
 
     private func deleteEntry(_ entry: JournalEntry) {
+        CompanionSceneCapture.removeJournalFile(named: entry.snapshotFile)
         MemoryStore.shared.deleteJournalEntry(id: entry.id)
         reload()
     }
@@ -221,6 +222,7 @@ struct CompanionJournalView: View {
     }
 
     private func performReset() {
+        for entry in entries { CompanionSceneCapture.removeJournalFile(named: entry.snapshotFile) }
         MemoryStore.shared.deleteJournal(character: character)
         MemoryStore.shared.deleteAllTraits(character: character)
         reload()

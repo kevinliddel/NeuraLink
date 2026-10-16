@@ -24,6 +24,9 @@ struct JournalEntry: Identifiable, Equatable, Sendable {
     let notified: Bool
     let openerUsed: Bool
     let createdAt: Date
+    /// Candid capture of the scene adopted by this reflection (file name in
+    /// the scene-captures directory); nil when none was fresh.
+    var snapshotFile: String? = nil
 }
 
 /// A distilled personality trait the companion has picked up ("teases the

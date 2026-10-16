@@ -136,6 +136,17 @@ struct JournalDaySection: View {
             .foregroundStyle(.pink)
             Text(entry.diary)
                 .font(.subheadline)
+            if let url = CompanionSceneCapture.journalURL(named: entry.snapshotFile),
+               let picture = UIImage(contentsOfFile: url.path) {
+                Image(uiImage: picture)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 150)
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous))
+                    .padding(.top, 4)
+                    .accessibilityLabel("A picture of her world that day")
+            }
         }
         .padding(.vertical, 2)
     }

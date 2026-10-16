@@ -51,7 +51,7 @@ trait CRUD lives in `MemoryStore+Journal.swift`, keepsakes in
 ```sql
 companion_journal (id, character, conversation_id, diary, opener,
                    notification_line, notified, opener_used,
-                   last_message_id, created_at)
+                   last_message_id, created_at, snapshot_file)
 persona_traits    (id, character, trait, weight, created_at, updated_at)
 companion_milestones (character, kind, achieved_at, celebrated_at)   -- PK (character, kind)
 ```
@@ -123,6 +123,8 @@ prompt forbids inventing facts.
 - **Output**: a `companion_journal` row, a widget snapshot refresh, the trait
   pool update (see Personality evolution), and, if notifications are on, the
   return series below. When it is scheduled, the row is marked `notified`.
+  The row also adopts the latest candid capture of the scene as its picture
+  (see Diary pictures) when one is fresh.
   The reply also carries `NOTIFY2:` / `NOTIFY3:`, two more notification lines
   for the later slots.
 
@@ -131,6 +133,10 @@ prompt forbids inventing facts.
 When the user leaves mid-chat, `CompanionNotificationScheduler` schedules a
 **return series**:
 
+- **Picture**: the first notification of the series carries the entry's
+  diary picture as an image attachment (thumbnail clipped to the upper
+  middle, where she stands). The attachment is built from a copy, because
+  the system moves the file it is given into its own store.
 - **Timing**: the first notification **1 h after the last message** in the
   conversation, then **one every 2 h**, for up to 24 h after the first (at
   most 12). iOS cannot run the app to compose a notification later, so the
@@ -209,8 +215,9 @@ time the notification toggle is switched on.
     entries · 1 keepsake").
   - **Day / This month** (`JournalDaySection`): with a day selected, the
     conversations you had that day (tap to open the read-only transcript as
-    a sheet, with your message count), its diary entries (swipe to delete)
-    and the keepsakes reached; "Nothing on this day." or "Not yet."
+    a sheet, with your message count), its diary entries (swipe to delete;
+    an entry shows the picture of her world adopted by that reflection,
+    when there is one) and the keepsakes reached; "Nothing on this day." or "Not yet."
     otherwise. With no day selected, the month's diary entries and keepsakes
     newest first. Day grouping uses the device calendar and time zone
     (`JournalCalendarModel`), so a late-night chat lands on the day you
@@ -277,6 +284,28 @@ prefix is untouched. The reminder carries the turn number, the secret (20Q)
 and a wrap-up nudge at the soft cap (20 / 10 / 15 turns). Game turns get
 `maxTokens = 120` instead of the usual 60. Five turns past the soft cap, the
 session ends itself.
+
+## Diary pictures
+
+Companion Evolution pillar 2: the companion shares pictures of her own
+world back. Metal only draws while the scene is on screen, and the
+reflection runs after the app has gone to the background, so nothing is
+rendered at reflection time. Instead `CompanionSceneCapture` keeps **one
+fresh candid capture** of the live scene — the Metal drawable composited
+over the custom background, no HUD — written as `latest.jpg` (≤ 1280 px
+JPEG) in the private `scene-captures` directory:
+
+- every 30 s while the scene is settled (model shown, entrance finished,
+  app active), starting 8 s after a character loads;
+- on `willResignActive`, best effort, so the frame on the way out is the
+  freshest.
+
+A reflection adopts the latest capture if it is under three hours old:
+the file is copied to `journal-<id>.jpg` and its name stored in
+`companion_journal.snapshot_file`. The journal shows it under the entry
+and deletes it with the entry (and on Reset Personality); the first return
+notification attaches it. No capture is ever posed: it is whatever she was
+doing, which is the point.
 
 ## Keepsake milestones
 
@@ -524,6 +553,7 @@ flowchart TD
 | `Data/DataSources/Grounding/CalendarGrounding.swift` | EventKit full-access request + 12 h event read |
 | `Data/DataSources/Grounding/SleepGrounding.swift` | HealthKit sleep-analysis request + last-night read |
 | `Data/DataSources/Grounding/DailyGroundingProvider.swift` | Once-per-visit fetch held for the Companion State block |
+| `Data/DataSources/CompanionSceneCapture.swift` | Candid scene captures: the 30 s loop, `latest.jpg`, the journal copy, the notification attachment |
 | `Presentation/Views/AI/JournalCalendarView.swift` | Month grid, activity dots, swipe / chevrons, Today |
 | `Presentation/Views/AI/JournalDaySection.swift` | Selected-day or month list under the calendar; opens transcripts as sheets |
 | `Data/DataSources/CompanionPortrait.swift` | Character face for the journal and Memory hero card (live portrait, else bundled thumbnail) |
@@ -614,3 +644,7 @@ shows the permission status, the pending count and the next fire date.
   device build signs. Check the calendar prompt appears once, that a denied
   permission turns the toggle back off, and that a short night from a Watch
   produces the sleep line while a normal night produces nothing.
+- Diary pictures: confirm a capture is written while idle (log
+  `[SceneCapture]`), that a diary entry made after a session shows it in
+  the journal, and that the first return notification carries the image.
+  Check the capture on the way to the background actually lands.

@@ -160,7 +160,7 @@ extension MemoryStore {
         defer { lock.unlock() }
         let query = """
         SELECT id, character, conversation_id, diary, opener, notification_line,
-               notified, opener_used, created_at
+               notified, opener_used, created_at, snapshot_file
         FROM companion_journal WHERE \(clause) ORDER BY id DESC LIMIT ?;
         """
         var statement: OpaquePointer?
@@ -208,8 +208,23 @@ extension MemoryStore {
             notificationLine: sqlite3_column_text(statement, 5).map { String(cString: $0) } ?? "",
             notified: sqlite3_column_int(statement, 6) == 1,
             openerUsed: sqlite3_column_int(statement, 7) == 1,
-            createdAt: Self.parseSQLiteTimestamp(createdRaw) ?? Date()
+            createdAt: Self.parseSQLiteTimestamp(createdRaw) ?? Date(),
+            snapshotFile: sqlite3_column_text(statement, 9).map { String(cString: $0) }
         )
+    }
+
+    /// Records the capture a reflection adopted.
+    func setJournalSnapshot(id: Int64, file: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        let query = "UPDATE companion_journal SET snapshot_file = ? WHERE id = ?;"
+        var statement: OpaquePointer?
+        if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
+            sqlite3_bind_text(statement, 1, (file as NSString).utf8String, -1, nil)
+            sqlite3_bind_int64(statement, 2, id)
+            _ = sqlite3_step(statement)
+        }
+        sqlite3_finalize(statement)
     }
 
     // MARK: - Persona traits

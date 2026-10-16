@@ -349,6 +349,11 @@ final class MemoryStore {
                 nil, nil, nil
             )
         }
+        // Diary pictures (Companion Evolution pillar 2): the capture a
+        // reflection adopted. Nullable, no backfill.
+        if !columnExists(table: "companion_journal", column: "snapshot_file") {
+            _ = sqlite3_exec(db, "ALTER TABLE companion_journal ADD COLUMN snapshot_file TEXT;", nil, nil, nil)
+        }
         // One-shot: fold the legacy flat `chat_events` log into a single
         // conversation so upgrading users keep their history under the new
         // session model. Idempotent (UserDefaults-guarded). See

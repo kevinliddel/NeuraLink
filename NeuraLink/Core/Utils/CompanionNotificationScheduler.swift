@@ -168,7 +168,11 @@ enum CompanionNotificationScheduler {
     /// Replaces any pending series with one built from `lines` (cycled when
     /// the series is longer). Returns how many were scheduled — 0 when
     /// permission is missing.
-    static func scheduleReturnSeries(characterName: String, lines: [String], anchor: Date) async -> Int {
+    /// `pictureURL`: a capture of her world, attached to the FIRST
+    /// notification only (the one the user is most likely to see).
+    static func scheduleReturnSeries(
+        characterName: String, lines: [String], anchor: Date, pictureURL: URL? = nil
+    ) async -> Int {
         let center = UNUserNotificationCenter.current()
         let status = await center.notificationSettings().authorizationStatus
         guard status == .authorized || status == .provisional else {
@@ -206,6 +210,9 @@ enum CompanionNotificationScheduler {
             content.body = lines[slot % lines.count]
             content.sound = .default
             content.threadIdentifier = identifier
+            if slot == 0, let pictureURL, let attachment = CompanionSceneCapture.attachment(copying: pictureURL) {
+                content.attachments = [attachment]
+            }
             let trigger = UNTimeIntervalNotificationTrigger(
                 timeInterval: max(1, fireDate.timeIntervalSinceNow), repeats: false)
             let request = UNNotificationRequest(
