@@ -25,6 +25,7 @@ final class InteractionClock: @unchecked Sendable {
 
     private let lock = NSLock()
     private var _lastUserSpeechAt: Date?
+    private var _foregroundAt = Date()
 
     private init() {}
 
@@ -45,6 +46,20 @@ final class InteractionClock: @unchecked Sendable {
     /// Seconds of user silence this session, or nil before the first turn.
     var secondsSinceUserSpoke: TimeInterval? {
         lastUserSpeechAt.map { Date().timeIntervalSince($0) }
+    }
+
+    // MARK: - Foreground visit (per-launch)
+
+    /// When the current foreground visit began: launch, or the last return
+    /// from the background. Prompt context that must not drift within a
+    /// session ("time apart") is measured against this instant.
+    var foregroundAt: Date {
+        lock.withLock { _foregroundAt }
+    }
+
+    /// Stamped by SessionLifecycle at launch and on `willEnterForeground`.
+    func markForeground() {
+        lock.withLock { _foregroundAt = Date() }
     }
 
     // MARK: - Cross-launch absence (persisted)

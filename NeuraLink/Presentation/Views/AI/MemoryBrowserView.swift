@@ -90,7 +90,7 @@ struct MemoryBrowserView: View {
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(tint)
                 .frame(width: 30, height: 30)
-                .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: AppTheme.Radius.chip, style: .continuous))
 
             VStack(alignment: .leading, spacing: 6) {
                 Text(RealtimeChatState.humanizingCharacterNames(item.text))
@@ -111,10 +111,10 @@ struct MemoryBrowserView: View {
         }
         .padding(12)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
                 .fill(.ultraThinMaterial)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
                         .strokeBorder(tint.opacity(0.16), lineWidth: 1))
         )
         .contentShape(Rectangle())

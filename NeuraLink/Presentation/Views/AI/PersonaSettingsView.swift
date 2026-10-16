@@ -127,7 +127,7 @@ struct PersonaSettingsView: View {
                         dismiss()
                     } label: {
                         Text("Save Changes")
-                            .font(.system(size: 17, weight: .medium))
+                            .font(.body.weight(.medium))
                             .foregroundColor(.blue)
                             .frame(maxWidth: .infinity)
                             .frame(height: 50)
@@ -147,7 +147,7 @@ struct PersonaSettingsView: View {
                         dismiss()
                     } label: {
                         Text("Reset to Default")
-                            .font(.system(size: 17, weight: .medium))
+                            .font(.body.weight(.medium))
                             .foregroundColor(.red)
                             .frame(maxWidth: .infinity)
                             .frame(height: 50)
@@ -274,12 +274,12 @@ struct PersonaSettingsView: View {
                     .padding(.vertical, 15)
                     .padding(.horizontal, 15)
                     .background(
-                        RoundedRectangle(cornerRadius: 25)
+                        RoundedRectangle(cornerRadius: AppTheme.Radius.large)
                             .stroke(lineWidth: 1.0)
                             .foregroundStyle(Color.clear)
                             .background(
                                 Color.gray.opacity(0.12)
-                                    .clipShape(RoundedRectangle(cornerRadius: 25))
+                                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.large))
                             )
                     )
                     .disabled(isLoadingPreview)
@@ -360,7 +360,7 @@ struct PersonaSettingsView: View {
                         .scaleEffect(0.85)
                 } else {
                     Image(systemName: isActive ? "stop.fill" : "mic.fill")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.subheadline.weight(.semibold))
                         .foregroundStyle(buttonTint(isActive: isActive))
                 }
             }

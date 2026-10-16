@@ -126,7 +126,7 @@ struct EnvironmentLoadingScreen: View {
         .padding(16)
         .background(
             .ultraThinMaterial,
-            in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            in: RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous))
         .frame(maxWidth: 420, alignment: .leading)
         .transition(.opacity.combined(with: .move(edge: .bottom)))
     }

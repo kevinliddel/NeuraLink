@@ -14,10 +14,10 @@ import SwiftUI
 extension UsageSource {
     var tint: Color {
         switch self {
-        case .voice: return Color(red: 0.49, green: 0.23, blue: 0.93)
-        case .transcription: return Color(red: 0.08, green: 0.66, blue: 0.62)
-        case .text: return Color(red: 0.23, green: 0.51, blue: 0.96)
-        case .vision: return Color(red: 0.96, green: 0.62, blue: 0.04)
+        case .voice: return AppTheme.Series.voice
+        case .transcription: return AppTheme.Series.transcription
+        case .text: return AppTheme.Series.text
+        case .vision: return AppTheme.Series.vision
         }
     }
 }
@@ -30,7 +30,7 @@ struct UsageCard<Content: View>: View {
         VStack(alignment: .leading, spacing: 14) { content }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: AppTheme.Radius.large, style: .continuous))
     }
 }
 
@@ -52,7 +52,7 @@ struct UsageHeroCard: View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 6) {
                 Text("ESTIMATED SPEND · \(range.periodLabel.uppercased())")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.caption2.weight(.bold))
                     .foregroundStyle(.white.opacity(0.7))
                 Text(UsageFormat.cost(summary.cost))
                     .font(.system(size: 40, weight: .bold, design: .rounded))
@@ -71,12 +71,9 @@ struct UsageHeroCard: View {
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            LinearGradient(
-                colors: [Color(red: 0.05, green: 0.55, blue: 0.62), Color(red: 0.25, green: 0.30, blue: 0.85),
-                         Color(red: 0.49, green: 0.23, blue: 0.93)],
-                startPoint: .topLeading, endPoint: .bottomTrailing),
-            in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(.white.opacity(0.15), lineWidth: 1))
+            AppTheme.Gradient.usage,
+            in: RoundedRectangle(cornerRadius: AppTheme.Radius.large, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: AppTheme.Radius.large, style: .continuous).strokeBorder(.white.opacity(0.15), lineWidth: 1))
         .shadow(color: .indigo.opacity(0.25), radius: 14, y: 6)
         .animation(.snappy, value: summary.cost)
     }
@@ -112,7 +109,7 @@ struct UsageStatTile: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.white.opacity(0.8))
             Text(value)
-                .font(.system(size: 19, weight: .bold, design: .rounded))
+                .font(.system(.title3, design: .rounded, weight: .bold))
                 .foregroundStyle(.white)
                 .monospacedDigit()
                 .lineLimit(1)
@@ -124,7 +121,7 @@ struct UsageStatTile: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
-        .background(.white.opacity(0.14), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(.white.opacity(0.14), in: RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous))
     }
 }
 

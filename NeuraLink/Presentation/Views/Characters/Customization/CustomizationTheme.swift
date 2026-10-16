@@ -21,7 +21,7 @@ enum CustomizationTheme {
     static let label = Color.white
     static let secondaryLabel = Color.white.opacity(0.55)
 
-    static let tileCorner: CGFloat = 14
+    static let tileCorner: CGFloat = AppTheme.Radius.medium
     static let tileGap: CGFloat = 10
     /// Four across: more choices per row, and a shorter sheet. The grid
     /// scrolls, so it only has to show enough to invite scrolling.

@@ -83,10 +83,16 @@ database. It reads a **snapshot** instead: a small JSON file in the App Group
   remembered facts and days talked, last chat date, thumbnail file, and
   `updatedAt`. It holds no transcript. Fields added later are optional, so
   older snapshots still decode.
-  - The memory line is the first sentence of the memory summary ("Between
-    you", then "About you" mental model), cut at a word boundary to 150
-    characters. Without a summary it falls back to an observation of ≤ 140
-    characters rotated by day index ("Remembered").
+  - The memory line is one **whole** sentence of the memory summary
+    ("Between you", then "About you" mental model): the first sentence that
+    fits 100 characters and stands on its own (one opening with "also",
+    "and", "but", "she also"… is passed over for the next), so the widget
+    shows a complete thought. Only when no sentence fits is the first one
+    cut at a word boundary. Without a summary it falls back to an
+    observation of ≤ 100 characters rotated by day index ("Remembered").
+    The medium widget keeps its name row and badge compact so the quote
+    card gets three lines of footnote; both widgets scale the quote down
+    (to 75 %) before truncating.
   - The last chat date is the last user speech, else `lastSeenAt`.
 - **Live portrait**: after a character loads (and its saved look is
   applied) and after every customization change or reset,
@@ -112,7 +118,7 @@ database. It reads a **snapshot** instead: a small JSON file in the App Group
 
   | Widget | Families | Shows |
   |---|---|---|
-  | **Companion** | `systemSmall`, `systemMedium` | Live portrait on the brand gradient, heart-ring relationship meter, the opener ("Coming up next time") or memory line in a frosted card, chips for last chat · memories · days together |
+  | **Companion** | `systemSmall`, `systemMedium` | Live portrait on a clear-sky blue gradient (`WidgetPalette`, the same blues as the Memory page's hero card), heart-ring relationship meter, the **featured line**, chips for last chat · memories · days together. The featured line is the memory sentence whenever one exists, else the opener ("Coming up next time"); the medium widget quotes it in a frosted card, the small widget in two lines under the meter, so every widget carries one sentence of memory |
   | **Come back** | `accessoryCircular`, `accessoryRectangular`, `accessoryInline` | Relationship gauge, name · stage, time since last chat, the featured line |
 
   On a tinted home screen (accented / vibrant rendering) the gradient is

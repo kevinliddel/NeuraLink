@@ -232,6 +232,8 @@ public struct VRMSceneView: View {
             EnvironmentLoadState.shared.markBaseSceneReady()
             // Widget follows the character on screen, dressed as it is.
             CompanionSnapshotWriter.shared.refreshPortrait(from: state)
+            // Diary pictures: candid captures of this scene while it is up.
+            CompanionSceneCapture.shared.start(with: state)
         } catch {
             // A cancelled load surfaces as CancellationError from the
             // loader's checkpoints — that's a model switch, not a failure,
@@ -250,6 +252,7 @@ public struct VRMSceneView: View {
                         slug: defaultEntry.name.lowercased(), to: state)
                     EnvironmentLoadState.shared.markBaseSceneReady()
                     CompanionSnapshotWriter.shared.refreshPortrait(from: state)
+                    CompanionSceneCapture.shared.start(with: state)
                     toastMessage = "Couldn't load that avatar — using the default"
                 } catch {
                     nlLog("[VRMSceneView] Fallback model load failed: \(error.localizedDescription)", level: .error)

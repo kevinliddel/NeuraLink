@@ -210,6 +210,15 @@ struct TutorialTests {
         #expect(copy.contains("offline"))
     }
 
+    @Test("The relationship beat points at the journal's calendar and keepsakes")
+    func scriptCoversJournal() {
+        let step = TutorialScript.steps.first { $0.id == "relationship" }
+        let copy = ((step?.body ?? "") + (step?.tip ?? "")).lowercased()
+        #expect(copy.contains("journal"))
+        #expect(copy.contains("calendar"))
+        #expect(copy.contains("keepsake"))
+    }
+
     @Test("A bar-local frame is rejected, a window frame is trusted")
     func navigationBarFramePlausibility() {
         // What a frame looks like when reported in the bar's own space: at

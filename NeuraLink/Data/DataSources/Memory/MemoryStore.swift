@@ -284,6 +284,13 @@ final class MemoryStore {
             updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_traits_character ON persona_traits(character, weight);
+        CREATE TABLE IF NOT EXISTS companion_milestones (
+            character TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            achieved_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            celebrated_at DATETIME,
+            PRIMARY KEY (character, kind)
+        );
         CREATE TABLE IF NOT EXISTS api_usage (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             created_at REAL NOT NULL,
@@ -341,6 +348,11 @@ final class MemoryStore {
                 """,
                 nil, nil, nil
             )
+        }
+        // Diary pictures (Companion Evolution pillar 2): the capture a
+        // reflection adopted. Nullable, no backfill.
+        if !columnExists(table: "companion_journal", column: "snapshot_file") {
+            _ = sqlite3_exec(db, "ALTER TABLE companion_journal ADD COLUMN snapshot_file TEXT;", nil, nil, nil)
         }
         // One-shot: fold the legacy flat `chat_events` log into a single
         // conversation so upgrading users keep their history under the new

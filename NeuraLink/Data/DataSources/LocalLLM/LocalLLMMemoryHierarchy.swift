@@ -125,6 +125,12 @@ final class LocalLLMMemoryHierarchy {
         if !gameBlock.isEmpty {
             messages.append(.init(role: "system", content: gameBlock))
         }
+        // How the user sounds this turn (docs/LLM_VOICE.md): per-turn, after
+        // history, so the stable prefix is untouched. Empty when neutral.
+        let affectBlock = isJP ? "" : AcousticAffectState.shared.promptBlock()
+        if !affectBlock.isEmpty {
+            messages.append(.init(role: "system", content: affectBlock))
+        }
         messages.append(.init(role: "user", content: userMessage))
 
         return Self.fitToBudget(messages, nCtx: Self.nCtx(for: config))

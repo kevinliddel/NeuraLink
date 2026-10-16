@@ -163,7 +163,7 @@ struct CharacterImportFlow: ViewModifier {
                     .foregroundStyle(.white.opacity(0.7))
             }
             .padding(28)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20))
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: AppTheme.Radius.large))
         }
         .transition(.opacity)
     }

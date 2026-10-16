@@ -145,7 +145,7 @@ struct UsageNavigationRow: View {
                     .frame(width: 44, height: 44)
                     .overlay(
                         Image(systemName: "chart.bar.xaxis")
-                            .font(.system(size: 18, weight: .semibold))
+                            .font(.headline.weight(.semibold))
                             .foregroundStyle(.white)
                     )
                     .overlay(Circle().stroke(Color.primary.opacity(0.15), lineWidth: 1))

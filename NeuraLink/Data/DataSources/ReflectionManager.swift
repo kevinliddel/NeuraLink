@@ -181,12 +181,18 @@ final class ReflectionManager: @unchecked Sendable {
             lastMessageID: messages.map(\.id).max() ?? 0
         )
         guard journalID > 0 else { return }
+        CompanionMilestoneTracker.note(.firstDiary, character: character)
         nlLogSensitive("[Reflection] \(character) diary: \(reflection.diary)", level: .info)
+        // The picture of her world that goes with this entry: the latest
+        // candid capture of the scene, if this session produced one.
+        let snapshotFile = CompanionSceneCapture.keepForJournal(entryID: journalID)
+        if let snapshotFile { MemoryStore.shared.setJournalSnapshot(id: journalID, file: snapshotFile) }
         await MainActor.run { CompanionSnapshotWriter.shared.scheduleRefresh() }
 
         recordTrait(character: character, trait: reflection.trait)
 
-        if await scheduleReturnNotifications(conversationID: conversationID, reflection: reflection) > 0 {
+        if await scheduleReturnNotifications(
+            conversationID: conversationID, reflection: reflection, snapshotFile: snapshotFile) > 0 {
             MemoryStore.shared.markJournalNotified(id: journalID)
         }
     }
@@ -207,7 +213,9 @@ final class ReflectionManager: @unchecked Sendable {
     /// generic ones fill the rest; anchored on the conversation's last
     /// message. Returns how many notifications were scheduled.
     @discardableResult
-    static func scheduleReturnNotifications(conversationID: Int64, reflection: Reflection?) async -> Int {
+    static func scheduleReturnNotifications(
+        conversationID: Int64, reflection: Reflection?, snapshotFile: String? = nil
+    ) async -> Int {
         guard PresenceSettings.shared.isPresenceEnabled, PresenceSettings.shared.isNotificationsEnabled else { return 0 }
         let isForeground = await MainActor.run { UIApplication.shared.applicationState == .active }
         guard !isForeground else { return 0 }
@@ -222,7 +230,8 @@ final class ReflectionManager: @unchecked Sendable {
         let userName = UserSettings.shared.name
         let lines = returnLines(reflection: reflection, userName: userName)
         let count = await CompanionNotificationScheduler.scheduleReturnSeries(
-            characterName: RealtimeChatState.shared.selectedCharacterName, lines: lines, anchor: lastExchange)
+            characterName: RealtimeChatState.shared.selectedCharacterName, lines: lines, anchor: lastExchange,
+            pictureURL: CompanionSceneCapture.journalURL(named: snapshotFile))
         if count > 0 { CompanionNotificationScheduler.logDiagnostics(context: "scheduled") }
         return count
     }

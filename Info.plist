@@ -38,6 +38,12 @@
 	<string>NeuraLink saves the photos you take with your character to your library when you ask.</string>
 	<key>NSRemindersUsageDescription</key>
 	<string>NeuraLink can create reminders for you when you ask the AI assistant.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>With Daily Grounding on, your companion can see what is on your calendar in the next hours so it can wish you luck or ask how things went.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>With Daily Grounding on, your companion reads last night's sleep from Health so it can go gentle after a short night. Nothing is written to Health.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>NeuraLink does not write to Health.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>NSUserActivityTypes</key>

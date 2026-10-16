@@ -193,6 +193,8 @@ final class VoiceVoxEngine: NSObject, @unchecked Sendable, TTSEngineProtocol {
     /// Public so callers that want raw audio (unit tests, debug UIs) can use it
     /// without going through the streaming callback.
     func synthesize(text: String, speakerID: Int) async throws -> Data {
+        // Read on the caller: the synthesis closure runs on the engine's queue.
+        let modulation = AcousticAffectState.shared.modulation
         guard isReady else { throw TTSError.notInitialized }
 
         let cleanText = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -262,11 +264,15 @@ final class VoiceVoxEngine: NSObject, @unchecked Sendable, TTSEngineProtocol {
                 var queryJson = String(cString: originalJsonPtr)
                 voicevox_json_free(originalJsonPtr)
 
+                // House defaults (1.1 / 1.5), bent by how the user sounds
+                // right now (AcousticAffect, docs/LLM_VOICE.md).
                 queryJson = queryJson.replacingOccurrences(
-                    of: "\"speedScale\":1.0", with: "\"speedScale\":1.1"
+                    of: "\"speedScale\":1.0",
+                    with: String(format: "\"speedScale\":%.2f", 1.1 * modulation.speed)
                 )
                 queryJson = queryJson.replacingOccurrences(
-                    of: "\"intonationScale\":1.0", with: "\"intonationScale\":1.5"
+                    of: "\"intonationScale\":1.0",
+                    with: String(format: "\"intonationScale\":%.2f", 1.5 * modulation.intonation)
                 )
 
                 var outputSize: Int = 0

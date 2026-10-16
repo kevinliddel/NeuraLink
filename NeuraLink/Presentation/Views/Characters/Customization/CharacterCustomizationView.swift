@@ -194,13 +194,13 @@ struct CharacterCustomizationView: View {
     private var header: some View {
         HStack(spacing: 12) {
             Text(displayName)
-                .font(.system(size: 17, weight: .bold))
+                .font(.body.weight(.bold))
                 .foregroundColor(CustomizationTheme.label)
                 .lineLimit(1)
             Spacer(minLength: 0)
             Button(action: cancel) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.subheadline.weight(.bold))
                     .foregroundColor(CustomizationTheme.label)
                     .frame(width: 30, height: 30)
                     .background(Circle().fill(CustomizationTheme.control))
@@ -224,14 +224,14 @@ struct CharacterCustomizationView: View {
                     } label: {
                         VStack(spacing: 4) {
                             Image(systemName: item.systemImage)
-                                .font(.system(size: 15, weight: .medium))
+                                .font(.subheadline.weight(.medium))
                             Text(item.title)
-                                .font(.system(size: 10, weight: .semibold))
+                                .font(.caption2.weight(.semibold))
                         }
                         .foregroundColor(selected ? .black : CustomizationTheme.label)
                         .frame(width: 58, height: 50)
                         .background(
-                            RoundedRectangle(cornerRadius: 12)
+                            RoundedRectangle(cornerRadius: AppTheme.Radius.medium)
                                 .fill(selected ? CustomizationTheme.accent : CustomizationTheme.control))
                     }
                     .buttonStyle(.plain)
@@ -274,7 +274,7 @@ struct CharacterCustomizationView: View {
         HStack(spacing: 10) {
             Button(action: resetAll) {
                 Text("Reset")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundColor(draft.isEmpty ? CustomizationTheme.secondaryLabel : CustomizationTheme.label)
                     .frame(maxWidth: .infinity)
                     .frame(height: CustomizationTheme.controlHeight)
@@ -285,7 +285,7 @@ struct CharacterCustomizationView: View {
 
             Button(action: save) {
                 Text("Save")
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.callout.weight(.bold))
                     .foregroundColor(.black)
                     .frame(maxWidth: .infinity)
                     .frame(height: CustomizationTheme.controlHeight)

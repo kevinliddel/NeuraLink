@@ -29,8 +29,7 @@ struct RelationshipMeterBarOverlay: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
-            .background(.black.opacity(0.36), in: Capsule())
-            .overlay(Capsule().strokeBorder(.white.opacity(0.18), lineWidth: 1))
+            .hudGlass(Capsule(), opacity: 0.36)
             .contentShape(Capsule())
             .onTapGesture { showJournal = true }
             .accessibilityAddTraits(.isButton)

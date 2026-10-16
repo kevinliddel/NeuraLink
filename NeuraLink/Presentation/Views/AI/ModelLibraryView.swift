@@ -127,7 +127,7 @@ struct ModelLibraryView: View {
         return HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Edge Intelligence")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .font(.system(.title, design: .rounded, weight: .bold))
                     .foregroundColor(.white)
 
                 Text(
@@ -135,7 +135,7 @@ struct ModelLibraryView: View {
                         ? "On device: \(formatBytes(totalBytes))"
                         : "Select and download local SLMs."
                 )
-                .font(.system(size: 15))
+                .font(.subheadline)
                 .foregroundColor(.white.opacity(0.6))
             }
 
@@ -146,7 +146,7 @@ struct ModelLibraryView: View {
                     showCleanAllConfirmation = true
                 } label: {
                     Image(systemName: "trash")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.callout.weight(.semibold))
                         .foregroundColor(.red.opacity(0.9))
                         .frame(width: 40, height: 40)
                         .background(Color.red.opacity(0.15))
