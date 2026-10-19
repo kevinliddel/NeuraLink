@@ -158,13 +158,6 @@ final class LocalModelDownloadManager: @unchecked Sendable {
         activeTask = Task { await performDownload() }
     }
 
-    func cancelDownload() {
-        activeTask?.cancel()
-        activeTask = nil
-        state = .notDownloaded
-        endBackgroundTask()
-    }
-
     func pauseDownload() {
         guard case .downloading(let progress) = state else { return }
         activeTask?.cancel()
@@ -177,10 +170,6 @@ final class LocalModelDownloadManager: @unchecked Sendable {
         guard case .paused = state else { return }
         state = .notDownloaded
         startDownload()
-    }
-
-    func deleteDownloadedModel() {
-        deleteModel(selectedConfig)
     }
 
     /// Wipes the on-disk cache for `config`. If `config` is the currently

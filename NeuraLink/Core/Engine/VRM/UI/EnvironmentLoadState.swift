@@ -80,13 +80,6 @@ final class EnvironmentLoadState {
         return "\(done) / \(all) (\(pct)%)"
     }
 
-    /// Fractional download progress in `0...1`, or `nil` when the total size is
-    /// unknown (so the UI shows an indeterminate spinner instead of a bar).
-    var progressFraction: Double? {
-        guard totalBytes > 0 else { return nil }
-        return min(1, max(0, Double(downloadedBytes) / Double(totalBytes)))
-    }
-
     /// 1 s heartbeat that trips `isStalled` after `stallThresholdSeconds`
     /// without progress. Self-cancels once the scene is ready.
     private func startStallMonitor() {

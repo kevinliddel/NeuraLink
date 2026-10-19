@@ -11,13 +11,6 @@ import RealTimeCutVADLibrary
 import SwiftUI
 import WebRTC
 
-/// Signature for handling incoming events from OpenAI
-protocol OpenAIRealtimeDelegate: AnyObject {
-    func openaiDidUpdateStatus(_ status: AIConnectionStatus)
-    func openaiDidReceiveTranscript(_ text: String, isUser: Bool)
-    func openaiDidUpdateAudioLevel(_ level: Float)
-}
-
 /// Core manager for OpenAI Realtime API via WebRTC.
 final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
     static let shared = OpenAIRealtimeManager()

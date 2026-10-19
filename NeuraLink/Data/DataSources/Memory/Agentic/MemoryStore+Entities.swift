@@ -113,26 +113,6 @@ extension MemoryStore {
         return result
     }
 
-    func fetchEntities(limit: Int = 50) -> [MemoryEntity] {
-        lock.lock()
-        defer { lock.unlock() }
-        let query = "SELECT id, canonical_name, kind, mention_count FROM memory_entities ORDER BY mention_count DESC LIMIT ?;"
-        var statement: OpaquePointer?
-        var rows: [MemoryEntity] = []
-        if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
-            sqlite3_bind_int(statement, 1, Int32(limit))
-            while sqlite3_step(statement) == SQLITE_ROW {
-                rows.append(MemoryEntity(
-                    id: sqlite3_column_int64(statement, 0),
-                    canonicalName: Self.text(statement, 1),
-                    kind: Self.text(statement, 2),
-                    mentionCount: Int(sqlite3_column_int(statement, 3))))
-            }
-        }
-        sqlite3_finalize(statement)
-        return rows
-    }
-
     // MARK: - Links
 
     func insertLinks(_ links: [MemoryLink]) {

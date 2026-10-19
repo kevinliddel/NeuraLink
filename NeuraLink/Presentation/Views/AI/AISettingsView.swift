@@ -9,7 +9,6 @@ import SwiftUI
 
 struct AISettingsView: View {
     @Bindable var settings = OpenAISettings.shared
-    @Bindable var appearance = AppearanceSettings.shared
     @Bindable var presence = PresenceSettings.shared
     @State private var aiState = RealtimeChatState.shared
     /// Voice model at open time; a change reconnects on Done.
@@ -144,16 +143,6 @@ struct AISettingsView: View {
             Text("On device LLMs")
         } footer: {
             VStack(alignment: .leading, spacing: 8) {
-                if let warning = ramWarning(for: downloader.selectedConfig) {
-                    Label {
-                        Text(warning)
-                    } icon: {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                    }
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                }
-
                 if case .failed(let msg) = downloader.state {
                     Text("Download failed: \(msg)")
                         .font(.caption)
@@ -161,13 +150,6 @@ struct AISettingsView: View {
                 }
             }
         }
-    }
-
-    /// Returns a warning when the selected model exceeds the device's safe RAM
-    /// headroom. Both shipped local models (Llama-1B, LLM-jp-3) are sized for the
-    /// 4 GB tier, so there's nothing to warn about today.
-    private func ramWarning(for config: LocalModelDownloadManager.ModelConfiguration) -> String? {
-        nil
     }
 
     private var personaRow: some View {
@@ -265,49 +247,6 @@ struct AISettingsView: View {
             Label("Failed", systemImage: "xmark.circle.fill")
                 .font(.caption.bold())
                 .foregroundStyle(.red)
-        }
-    }
-
-    @ViewBuilder
-    private var actionButton: some View {
-        switch downloader.state {
-        case .notDownloaded, .failed:
-            Button {
-                downloader.startDownload()
-            } label: {
-                Label("Download Model", systemImage: "arrow.down.circle")
-            }
-        case .downloading:
-            Button {
-                downloader.pauseDownload()
-            } label: {
-                Label("Pause Download", systemImage: "pause.circle")
-            }
-        case .paused:
-            HStack {
-                Button {
-                    downloader.resumeDownload()
-                } label: {
-                    Label("Resume", systemImage: "play.circle")
-                }
-                Button(role: .cancel) {
-                    downloader.cancelDownload()
-                } label: {
-                    Label("Cancel", systemImage: "xmark.circle")
-                        .foregroundStyle(.red)
-                }
-            }
-        case .bundled, .ready:
-            EmptyView()
-        }
-    }
-
-    private func downloadPhaseLabel(progress: Double) -> String {
-        let pct = Int(progress * 100)
-        if progress < 0.9 {
-            return "Downloading… \(pct)%"
-        } else {
-            return "Compiling for Neural Engine… \(pct)%"
         }
     }
 

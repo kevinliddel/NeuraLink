@@ -134,12 +134,6 @@ final class ImportedCharacterStore {
 
     // MARK: - Nonisolated reads (registry refresh during scene loads)
 
-    /// Thread-safe read for nonisolated contexts. SQL access is guarded by
-    /// MemoryStore's NSLock (same pattern as PersonaVoiceStore's mirrors).
-    nonisolated static func allFromSQL() -> [ImportedCharacter] {
-        MemoryStore.shared.fetchImportedCharacters()
-    }
-
     nonisolated static func fromSQL(slug: String) -> ImportedCharacter? {
         MemoryStore.shared.importedCharacter(slug: slug)
     }

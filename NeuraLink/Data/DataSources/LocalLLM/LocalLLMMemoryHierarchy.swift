@@ -224,28 +224,6 @@ final class LocalLLMMemoryHierarchy {
         return beyondWindow.filter { $0.id > lastCompactedID }
     }
 
-    /// Persists the highest event id from `turns` as the last-compacted
-    /// boundary so `compactionCandidates()` won't return them again.
-    func markCompacted(_ turns: [ChatEventItem]) {
-        guard let maxID = turns.map(\.id).max() else { return }
-        UserDefaults.standard.set(maxID, forKey: Self.lastCompactedKey)
-    }
-
-    /// Re-entrancy guard so concurrent `maybeRunCompaction` invocations
-    /// don't pile multiple background extractions on top of each other.
-    /// Returns true if the caller acquired the in-flight slot.
-    func tryBeginCompaction() -> Bool {
-        inFlightLock.lock(); defer { inFlightLock.unlock() }
-        if compactionInFlight { return false }
-        compactionInFlight = true
-        return true
-    }
-
-    func endCompaction() {
-        inFlightLock.lock(); defer { inFlightLock.unlock() }
-        compactionInFlight = false
-    }
-
     // MARK: - Internals
 
     private func buildSystemContent(

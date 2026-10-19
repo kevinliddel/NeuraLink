@@ -25,7 +25,6 @@ struct JournalDayActivity: Equatable, Sendable {
     var diaryEntries: [JournalEntry] = []
     var keepsakes: [CompanionMilestone] = []
 
-    var userMessages: Int { turnsByConversation.values.reduce(0, +) }
     var talked: Bool { !turnsByConversation.isEmpty }
     var isEmpty: Bool { !talked && diaryEntries.isEmpty && keepsakes.isEmpty }
 }

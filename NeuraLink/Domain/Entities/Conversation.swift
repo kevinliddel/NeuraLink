@@ -34,5 +34,4 @@ struct ConversationMessage: Identifiable, Hashable {
 
     var isUser: Bool { role == "user" }
     var isAssistant: Bool { role == "assistant" }
-    var isTool: Bool { role == "tool" }
 }

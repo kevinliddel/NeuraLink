@@ -101,14 +101,8 @@ final class PartsLibrary {
         return items.first { $0.stem == stem }
     }
 
-    static func isLibrarySlug(_ slug: String) -> Bool {
-        slug.lowercased().hasPrefix(slugPrefix)
-    }
-
     /// How much of the library is already on the device.
     var downloadedCount: Int { items.count { $0.isDownloaded } }
-
-    var isFullyDownloaded: Bool { downloadedCount == items.count }
 
     // MARK: - Discovery
 

@@ -116,10 +116,6 @@ final class LlamaBridge {
         }
     }
 
-    func clearToolGrammar() {
-        llama_bridge_clear_tool_grammar(handle)
-    }
-
     // MARK: - Inference
 
     /// Generates tokens for `prompt`. Blocks the calling thread — run inside a detached Task.
@@ -276,12 +272,6 @@ final class LlamaBridge {
     }
 
     // MARK: - Prompt-lookup decoding
-
-    /// Toggle prompt-lookup speculative decoding. Passing `n` or `nDraft`
-    /// non-positive keeps the C-side defaults (n=3, nDraft=5).
-    func enablePromptLookup(_ enabled: Bool, n: Int32 = 0, nDraft: Int32 = 0) {
-        llama_bridge_set_prompt_lookup(handle, enabled, n, nDraft)
-    }
 
     // MARK: - Chat template
 

@@ -32,7 +32,8 @@ final class AppearanceApplier {
     private(set) var isGrafting = false
 
     private var generation = 0
-    private var coverageCache: (model: ObjectIdentifier, masks: [VRoidMaterialSlot: UVCoverageMask])?
+    private var coverageCache:
+        (model: ObjectIdentifier, masks: [VRoidMaterialSlot: UVCoverageMask])?
     /// Recently loaded donor models keyed by "slug#part" (a part load skips
     /// the textures the part doesn't use). Two deep: hair + outfit of the
     /// donor being tried.
@@ -40,17 +41,6 @@ final class AppearanceApplier {
     private var donorLoads: [String: Task<VRMModel?, Never>] = [:]
 
     private init() {}
-
-    // MARK: - Apply
-
-    /// Applies the stored look for `slug` (clears when none is saved).
-    func applyStored(slug: String, to state: VRMMetalState) {
-        guard let spec = AppearanceStore.shared.spec(for: slug), !spec.isEmpty else {
-            clear(on: state)
-            return
-        }
-        apply(spec, to: state)
-    }
 
     /// Same, but doesn't return until the look is actually on the model.
     ///
@@ -102,7 +92,8 @@ final class AppearanceApplier {
 
     private func finishApplying(_ plan: ApplyPlan) async {
         let partsChanged = await applyParts(
-            plan.spec.parts, model: plan.model, renderer: plan.renderer, generation: plan.generation)
+            plan.spec.parts, model: plan.model, renderer: plan.renderer, generation: plan.generation
+        )
         guard generation == plan.generation else { return }
         if partsChanged { applyRecolors(plan.spec.recolors, model: plan.model, layer: plan.layer) }
         reconcileTextureOverrides(plan.spec.textures, model: plan.model, layer: plan.layer)
@@ -137,7 +128,8 @@ final class AppearanceApplier {
 
     /// Returns true when the model's grafts changed.
     private func applyParts(
-        _ parts: [AppearancePartKind: String], model: VRMModel, renderer: VRMRenderer, generation myGeneration: Int
+        _ parts: [AppearancePartKind: String], model: VRMModel, renderer: VRMRenderer,
+        generation myGeneration: Int
     ) async -> Bool {
         let wanted = Dictionary(uniqueKeysWithValues: parts.map { ($0.key, $0.value.lowercased()) })
         let current = model.composition?.activeParts ?? [:]
@@ -157,7 +149,9 @@ final class AppearanceApplier {
             do {
                 try VRMPartGrafter.graft(kind, from: donor, donorSlug: slug, onto: model)
             } catch {
-                nlLog("[Appearance] graft \(kind.rawValue) from '\(slug)' failed: \(error.localizedDescription)", level: .warning)
+                nlLog(
+                    "[Appearance] graft \(kind.rawValue) from '\(slug)' failed: \(error.localizedDescription)",
+                    level: .warning)
             }
         }
         renderer.refreshModelStructure()
@@ -176,7 +170,9 @@ final class AppearanceApplier {
             let device = MTLCreateSystemDefaultDevice()
         else { return nil }
         var filter: Set<Int>?
-        if let part, let scan = await donorScan(slug: slug), let indices = scan.partTextureIndices[part] {
+        if let part, let scan = await donorScan(slug: slug),
+            let indices = scan.partTextureIndices[part]
+        {
             filter = indices
         }
         let options = VRMLoadingOptions(textureIndexFilter: filter)
@@ -184,7 +180,9 @@ final class AppearanceApplier {
             do {
                 return try await VRMModel.load(from: source.url, device: device, options: options)
             } catch {
-                nlLog("[Appearance] donor model load failed for '\(key)': \(error.localizedDescription)", level: .warning)
+                nlLog(
+                    "[Appearance] donor model load failed for '\(key)': \(error.localizedDescription)",
+                    level: .warning)
                 return nil
             }
         }
@@ -201,7 +199,10 @@ final class AppearanceApplier {
 
     // MARK: - Colours
 
-    private func applyRecolors(_ recolors: [VRoidMaterialSlot: SlotRecolor], model: VRMModel, layer: AppearanceMaterialLayer) {
+    private func applyRecolors(
+        _ recolors: [VRoidMaterialSlot: SlotRecolor], model: VRMModel,
+        layer: AppearanceMaterialLayer
+    ) {
         layer.clearRecolors()
         let indicesBySlot = Self.materialIndicesBySlot(in: model)
         for (slot, recolor) in recolors where !recolor.isIdentity {
@@ -215,27 +216,37 @@ final class AppearanceApplier {
 
     /// Restores overrides no longer requested.
     private func reconcileTextureOverrides(
-        _ textures: [VRoidMaterialSlot: DonorTextureRef], model: VRMModel, layer: AppearanceMaterialLayer
+        _ textures: [VRoidMaterialSlot: DonorTextureRef], model: VRMModel,
+        layer: AppearanceMaterialLayer
     ) {
         let indicesBySlot = Self.materialIndicesBySlot(in: model)
-        let wanted = Set(textures.keys.flatMap { slot in
-            (indicesBySlot[slot] ?? []).compactMap { layer.baseTextureIndex(materialIndex: $0, in: model) }
-        })
+        let wanted = Set(
+            textures.keys.flatMap { slot in
+                (indicesBySlot[slot] ?? []).compactMap {
+                    layer.baseTextureIndex(materialIndex: $0, in: model)
+                }
+            })
         for textureIndex in model.textures.indices
-        where layer.isTextureOverridden(textureIndex: textureIndex) && !wanted.contains(textureIndex) {
+        where layer.isTextureOverridden(textureIndex: textureIndex)
+            && !wanted.contains(textureIndex)
+        {
             layer.restoreTexture(textureIndex: textureIndex, in: model)
         }
     }
 
     private func applyTextures(
         _ textures: [VRoidMaterialSlot: DonorTextureRef],
-        model: VRMModel, layer: AppearanceMaterialLayer, device: MTLDevice, generation myGeneration: Int
+        model: VRMModel, layer: AppearanceMaterialLayer, device: MTLDevice,
+        generation myGeneration: Int
     ) async {
         for (slot, ref) in textures {
             guard generation == myGeneration else { return }
-            guard let scan = await donorScan(slug: ref.donorSlug), let donor = scan.slots[ref.slot] else { continue }
+            guard let scan = await donorScan(slug: ref.donorSlug), let donor = scan.slots[ref.slot]
+            else { continue }
             guard await isCompatible(donor: donor, slot: slot, model: model) else {
-                nlLog("[Appearance] '\(ref.donorSlug)' \(ref.slot.rawValue) does not cover this model's \(slot.rawValue) UVs — skipped", level: .info)
+                nlLog(
+                    "[Appearance] '\(ref.donorSlug)' \(ref.slot.rawValue) does not cover this model's \(slot.rawValue) UVs — skipped",
+                    level: .info)
                 continue
             }
             let texture = await Task.detached(priority: .userInitiated) { () -> MTLTexture? in
@@ -244,7 +255,9 @@ final class AppearanceApplier {
             }.value
             guard generation == myGeneration, let texture else { continue }
             for materialIndex in Self.materialIndices(for: slot, in: model) {
-                if let textureIndex = layer.baseTextureIndex(materialIndex: materialIndex, in: model) {
+                if let textureIndex = layer.baseTextureIndex(
+                    materialIndex: materialIndex, in: model)
+                {
                     layer.overrideTexture(texture, textureIndex: textureIndex, in: model)
                 }
             }
@@ -259,7 +272,9 @@ final class AppearanceApplier {
         do {
             return try await VRMDonorTextureCache.shared.scan(url: source.url, slug: source.name)
         } catch {
-            nlLog("[Appearance] donor scan failed for '\(slug)': \(error.localizedDescription)", level: .warning)
+            nlLog(
+                "[Appearance] donor scan failed for '\(slug)': \(error.localizedDescription)",
+                level: .warning)
             return nil
         }
     }
@@ -267,12 +282,21 @@ final class AppearanceApplier {
     /// True when the donor texture covers (almost) every atlas cell the
     /// target slot samples. Decodes the donor texture (once per image) for
     /// its painted-area masks.
-    func isCompatible(donor: DonorSlotTexture, slot: VRoidMaterialSlot, model: VRMModel) async -> Bool {
-        guard let target = targetCoverage(for: slot, in: model), !target.isEmpty else { return false }
+    func isCompatible(donor: DonorSlotTexture, slot: VRoidMaterialSlot, model: VRMModel) async
+        -> Bool
+    {
+        guard let target = targetCoverage(for: slot, in: model), !target.isEmpty else {
+            return false
+        }
         // Cheap pre-check: the donor's own UV footprint alone may already cover it.
-        if target.fraction(coveredBy: donor.uvCoverage) >= Self.compatibilityThreshold { return true }
-        guard let masks = await VRMDonorTextureCache.shared.coverageMasks(for: donor) else { return false }
-        return target.fraction(coveredBy: donor.coverage(for: slot, masks: masks)) >= Self.compatibilityThreshold
+        if target.fraction(coveredBy: donor.uvCoverage) >= Self.compatibilityThreshold {
+            return true
+        }
+        guard let masks = await VRMDonorTextureCache.shared.coverageMasks(for: donor) else {
+            return false
+        }
+        return target.fraction(coveredBy: donor.coverage(for: slot, masks: masks))
+            >= Self.compatibilityThreshold
     }
 
     /// Union of the UV footprints of every BASE primitive drawn with a
@@ -288,7 +312,8 @@ final class AppearanceApplier {
         let meshes = model.composition?.snapshot.meshes ?? model.meshes
         for mesh in meshes {
             for primitive in mesh.primitives {
-                guard let materialIndex = primitive.materialIndex, materialIndex < model.materials.count,
+                guard let materialIndex = primitive.materialIndex,
+                    materialIndex < model.materials.count,
                     model.slot(ofMaterial: materialIndex) == slot,
                     let coverage = primitive.computeUVCoverage()
                 else { continue }
@@ -302,11 +327,14 @@ final class AppearanceApplier {
 
     // MARK: - Slots
 
-    nonisolated static func materialIndices(for slot: VRoidMaterialSlot, in model: VRMModel) -> [Int] {
+    nonisolated static func materialIndices(for slot: VRoidMaterialSlot, in model: VRMModel)
+        -> [Int]
+    {
         model.materials.indices.filter { model.slot(ofMaterial: $0) == slot }
     }
 
-    nonisolated static func materialIndicesBySlot(in model: VRMModel) -> [VRoidMaterialSlot: [Int]] {
+    nonisolated static func materialIndicesBySlot(in model: VRMModel) -> [VRoidMaterialSlot: [Int]]
+    {
         var result: [VRoidMaterialSlot: [Int]] = [:]
         for index in model.materials.indices {
             result[model.slot(ofMaterial: index), default: []].append(index)

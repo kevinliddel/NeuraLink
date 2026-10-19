@@ -166,11 +166,6 @@ public actor VRMDonorTextureCache {
         return masks
     }
 
-    public func invalidateAll() {
-        cache.removeAll()
-        masksByHash.removeAll()
-    }
-
     // MARK: - Scan
 
     nonisolated private static func performScan(url: URL, slug: String) throws -> DonorScan {

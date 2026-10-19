@@ -83,10 +83,6 @@ final class PiPManager: NSObject, AVPictureInPictureControllerDelegate {
         pipController?.startPictureInPicture()
     }
 
-    func stopPiP() {
-        pipController?.stopPictureInPicture()
-    }
-
     // MARK: - AVPictureInPictureControllerDelegate
 
     func pictureInPictureControllerWillStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
