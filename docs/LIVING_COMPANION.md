@@ -290,6 +290,44 @@ and a wrap-up nudge at the soft cap (20 / 10 / 15 turns). Game turns get
 `maxTokens = 120` instead of the usual 60. Five turns past the soft cap, the
 session ends itself.
 
+## Desk presence
+
+Companion Evolution section 3, the Gatebox "okaeri" for a phone on a desk.
+Opt-in (AI Settings → Autonomy → **Notice me at the desk**) and only while
+the camera button is on: the app never starts the camera on its own.
+
+- **Face detection** (`FacePresenceDetector`): a few times a second, the
+  newest frame `CameraManager` already captures goes through Vision's
+  face-rectangle request on this device, stood up with `.leftMirrored` for
+  the front camera and `.right` for the back one (the back camera's hint on
+  the front camera hands Vision an upside-down face: flickering detection
+  and a flipped centre). The largest face's centre (normalised, upright,
+  origin top-left) and width are published; "nobody" needs two empty
+  passes in a row. Nothing is stored and no frame leaves the phone.
+- **Gaze** (`VRMMetalState+AwayEpisode.followFace`): while a face is in
+  the frame the look-at's `userPosition` follows it and the target switches
+  from the camera or the forward rest to the user; when the face is gone the
+  previous target is restored. A point target set by something else is left
+  alone. `FaceGaze` anchors the point on the **scene camera** (the renderer
+  keeps `lookAtController.cameraPosition` current, so an orbited view still
+  means "at the viewer") and offsets it by the face's position in the frame
+  along the camera's own right and up: up to 1.2 m sideways and 0.9 m
+  vertically. A fixed world point would be "straight ahead of her", which
+  with the camera orbited to one side is away from the user. The mirrored
+  frame means right is right; `mirrorX` flips it if the device disagrees.
+- **Arrival greeting** (`DeskPresencePolicy`, `DeskPresenceManager`): a face
+  that stays 3 s after an absence of 10 min or more fires one greeting
+  through the shared `ProactivePresenceManager.engage(with:)` seam ("The
+  user just sat down at the desk after 15 minutes away…"), only when the
+  session is idle, at most once per 30 min. A passer-by, or a one-second
+  detector flicker, never greets. Absence is measured from the moment the
+  manager started when nobody has been seen yet.
+- **Away** (`AwayEpisode`): nobody for `deskAwayMinutes` (default 10,
+  5–30) starts the resting loop — `relax.vrma`, the lowest-priority
+  episode: idles stop, but a pose, the phone and the listening loop outrank
+  it and it resumes after them. A face that stays 2 s ends it (and, if the
+  absence was long, greets). Safety cap four hours.
+
 ## Diary pictures
 
 Companion Evolution pillar 2: the companion shares pictures of her own
@@ -559,6 +597,11 @@ flowchart TD
 | `Data/DataSources/Grounding/SleepGrounding.swift` | HealthKit sleep-analysis request + last-night read |
 | `Data/DataSources/Grounding/DailyGroundingProvider.swift` | Once-per-visit fetch held for the Companion State block |
 | `Data/DataSources/CompanionSceneCapture.swift` | Candid scene captures: the 30 s loop, `latest.jpg`, the journal copy, the notification attachment |
+| `Domain/Entities/DeskPresence.swift` | `DeskPresencePolicy` (arrival / away over face observations), greeting wording, `FaceGaze` |
+| `Domain/Entities/AwayEpisode.swift` | `AwayEpisodePolicy` + the app-wide `AwayEpisode` switch |
+| `Data/DataSources/Vision/FacePresenceDetector.swift` | On-device Vision face presence on the camera's frames |
+| `Data/DataSources/DeskPresenceManager.swift` | Runs the policy once a second; greeting + away episode |
+| `Core/Engine/VRM/UI/VRMMetalState+AwayEpisode.swift` | Body side of the away loop + the face-following gaze |
 | `Presentation/Views/AI/JournalCalendarView.swift` | Month grid, activity dots, swipe / chevrons, Today |
 | `Presentation/Views/AI/JournalDaySection.swift` | Selected-day or month list under the calendar; opens transcripts as sheets |
 | `Data/DataSources/CompanionPortrait.swift` | Character face for the journal and Memory hero card (live portrait, else bundled thumbnail) |
@@ -587,6 +630,8 @@ flowchart TD
     reflections, the greeting falls back to a generic welcome.
   - **Greet after time away** (1 / 6 / 12 / 24 h).
   - **Break silence after** (45 / 90 / 180 / 300 s).
+  - **Notice me at the desk** (camera-based, off by default) and **Rest when
+    nobody's there for** (5 / 10 / 20 / 30 min).
 - **Settings storage**: every `PresenceSettings` property uses the
   explicit `_x` backing with `access`/`withMutation`, never `didSet`. Under
   MainActor default isolation, `didSet` fires during init and overwrites the
@@ -653,3 +698,8 @@ shows the permission status, the pending count and the next fire date.
   `[SceneCapture]`), that a diary entry made after a session shows it in
   the journal, and that the first return notification carries the image.
   Check the capture on the way to the background actually lands.
+- Desk presence: with the camera on, confirm her gaze follows your head
+  the right way (if it mirrors, flip `FaceGaze.mirrorX`), that sitting down
+  after 10+ min away greets once, that leaving for the away threshold starts
+  the resting loop and coming back ends it, and that a pose or the phone
+  still win over the loop.

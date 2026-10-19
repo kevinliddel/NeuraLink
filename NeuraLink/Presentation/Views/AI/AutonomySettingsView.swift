@@ -26,6 +26,7 @@ struct AutonomySettingsView: View {
             presenceSection
             groundingSection
             engagementSection
+            deskSection
         }
         .scrollIndicators(.hidden)
         .navigationTitle("Autonomy")
@@ -197,6 +198,38 @@ struct AutonomySettingsView: View {
             }
         } header: {
             Text("Daily grounding")
+        }
+    }
+
+    // MARK: - Desk presence
+
+    /// Camera-based arrival greeting and away loop (docs/LIVING_COMPANION.md).
+    private var deskSection: some View {
+        Section {
+            Toggle(isOn: $presence.isDeskPresenceEnabled) {
+                InfoToggleLabel(
+                    title: "Notice me at the desk",
+                    info: "While the camera is on, the character sees whether someone is in front of the phone: a warm hello when you sit down after a while away, "
+                        + "a resting pose when nobody has been there for a bit, and her gaze follows your face. Face detection runs on this device; no frame leaves it."
+                )
+            }
+            .onChange(of: presence.isDeskPresenceEnabled) { _, enabled in
+                enabled ? DeskPresenceManager.shared.start() : DeskPresenceManager.shared.stop()
+            }
+            .listRowSeparator(presence.isDeskPresenceEnabled ? .hidden : .automatic)
+
+            if presence.isDeskPresenceEnabled {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Rest when nobody's there for")
+                    DropDownSelector(items: [5.0, 10.0, 20.0, 30.0], selection: $presence.deskAwayMinutes) { minutes in
+                        "\(Int(minutes)) min"
+                    }
+                }
+            }
+        } header: {
+            Text("At the desk")
+        } footer: {
+            Text("Needs the camera button on. The greeting goes through Proactive Engagement's seam, so it works on both engines.")
         }
     }
 

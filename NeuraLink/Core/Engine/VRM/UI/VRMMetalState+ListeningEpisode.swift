@@ -37,7 +37,7 @@ extension VRMMetalState {
         guard listeningEpisode.end() else { return }
         let wasPlaying = isPlayingListeningClip
         isPlayingListeningClip = false
-        guard !phoneEpisode.isActive, !isPlayingPose else { return }
+        guard !phoneEpisode.isActive, !isPlayingPose, !awayEpisode.isActive else { return }
         renderer?.lookAtController?.enabled = true
         guard wasPlaying, let model = currentModel, let clip = defaultClip else { return }
         animationPlayer.isLooping = true
@@ -63,6 +63,7 @@ extension VRMMetalState {
         guard let model = currentModel, let clip = listeningEpisodeClip,
               !isPlayingAppear, !isPlayingPose, !phoneEpisode.isActive else { return }
         isPlayingListeningClip = true
+        isPlayingAwayClip = false  // music outranks resting; it resumes after
         isPlayingRandomAnim = false
         randomAnimElapsed = 0
         randomAnimTimer = -1  // idles wait until the episode hands back

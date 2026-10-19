@@ -103,6 +103,13 @@ final class VRMMetalState {
     /// episode has borrowed it.
     var isPlayingListeningClip = false
 
+    // The "away from the desk" episode (VRMMetalState+AwayEpisode.swift)
+    var awayEpisode = AwayEpisodePolicy()
+    var awayEpisodeClip: AnimationClip?
+    var isPlayingAwayClip = false
+    /// Look-at target before the desk gaze took over, restored when the face is gone.
+    var faceGazeRestoreTarget: VRMLookAtTarget?
+
     // Drives fade-in of the Metal view so T-pose is never visible
     var modelAlpha: Double = 0
 
@@ -163,6 +170,7 @@ final class VRMMetalState {
             setupPoseObserver()
             setupPhoneEpisodeObservers()
             setupListeningEpisodeObservers()
+            setupAwayEpisodeObservers()
             return
         }
         #endif
@@ -171,6 +179,7 @@ final class VRMMetalState {
         setupPoseObserver()
         setupPhoneEpisodeObservers()
         setupListeningEpisodeObservers()
+        setupAwayEpisodeObservers()
         startRenderRateObservation()
     }
 
@@ -330,6 +339,10 @@ final class VRMMetalState {
         listeningEpisode = ListeningEpisodePolicy()
         listeningEpisodeClip = nil
         isPlayingListeningClip = false
+        AwayEpisode.end(reason: "scene cleared")
+        awayEpisode = AwayEpisodePolicy()
+        awayEpisodeClip = nil
+        isPlayingAwayClip = false
         currentExpressionWeights = [:]
         targetExpressionWeights = [:]
         lastAppliedEmotion = ""

@@ -65,7 +65,7 @@ extension VRMMetalState {
         let roll = Double.random(in: 0..<1)
         guard talkingGesturePolicy.shouldGesture(roll: roll) else { return }
         guard !isPlayingAppear, !isPlayingPose, !phoneEpisode.isActive, !listeningEpisode.isActive,
-              let entry = talkingGestureEntries.randomElement() else { return }
+              !awayEpisode.isActive, let entry = talkingGestureEntries.randomElement() else { return }
 
         isPlayingRandomAnim = false
         randomAnimTimer = -1  // idles wait until the gesture hands back
