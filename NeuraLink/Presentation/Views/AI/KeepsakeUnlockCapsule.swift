@@ -13,6 +13,7 @@
 import SwiftUI
 
 struct KeepsakeUnlockCapsule: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var controller = KeepsakeUnlockController.shared
 
     private let shape = RoundedRectangle(cornerRadius: AppTheme.Radius.large, style: .continuous)
@@ -28,7 +29,7 @@ struct KeepsakeUnlockCapsule: View {
                         .padding(.horizontal, 24)
                         .padding(.bottom, 120)
                 }
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .transition(AppTheme.transition(.move(edge: .bottom).combined(with: .opacity), reduceMotion: reduceMotion))
             }
         }
         .animation(.spring(response: 0.42, dampingFraction: 0.8), value: controller.current?.id)

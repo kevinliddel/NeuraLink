@@ -114,6 +114,15 @@ struct LLMRuntimeProfile {
             profile.threads = capped
         }
 
+        // Thermal / Low Power Mode: a hot or power-saving phone gets at most
+        // two generation threads (RuntimePressurePolicy). Read at load; the
+        // bridge has no runtime thread switch.
+        let tier = RuntimePressureMonitor.currentTier()
+        if let cap = RuntimePressurePolicy.threadCap(tier), profile.threads > cap {
+            nlLog("[LLMProfile] Thread count capped by pressure tier \(tier): \(profile.threads) → \(cap)", level: .info)
+            profile.threads = cap
+        }
+
         // Dynamic n_ctx: scale the context window up on devices with RAM
         // headroom so multi-turn conversations stay in-context longer before
         // LocalLLMFactExtractor compaction kicks in. Never lowers the

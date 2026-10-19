@@ -8,7 +8,6 @@
 import MetalKit
 import SwiftUI
 import simd
-import Combine
 
 @Observable
 @MainActor
@@ -42,7 +41,6 @@ final class VRMMetalState {
     private var backgroundTimer: Timer?
     private var lastTickTimestamp: CFTimeInterval = 0
     private var isAppInBackground = false
-    private var cancellables = Set<AnyCancellable>()
     var isPlayingAppear = false
     var pendingDefaultClip: AnimationClip?
     var defaultClip: AnimationClip?
@@ -107,8 +105,11 @@ final class VRMMetalState {
     var awayEpisode = AwayEpisodePolicy()
     var awayEpisodeClip: AnimationClip?
     var isPlayingAwayClip = false
-    /// Look-at target before the desk gaze took over, restored when the face is gone.
+    /// Look-at target and smoothing before the desk gaze took over, restored
+    /// when the face is gone; the smoother filters the detector's jitter.
     var faceGazeRestoreTarget: VRMLookAtTarget?
+    var faceGazeRestoreSmoothing: Float?
+    var faceGazeSmoother = FaceGazeSmoother()
 
     // Drives fade-in of the Metal view so T-pose is never visible
     var modelAlpha: Double = 0
@@ -196,13 +197,20 @@ final class VRMMetalState {
             self?.applyRenderRateForAIStatus()
         }
         
-        // Observe PiP state changes using Combine
-        PiPManager.shared.$isPiPActive
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.updateTickersForCurrentState()
+        // Observe PiP state changes (re-armed per change, like the render rate).
+        armPiPObservation()
+    }
+
+    private func armPiPObservation() {
+        withObservationTracking {
+            _ = PiPManager.shared.isPiPActive
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.updateTickersForCurrentState()
+                self.armPiPObservation()
             }
-            .store(in: &cancellables)
+        }
     }
     
     private func updateTickersForCurrentState() {
@@ -276,6 +284,7 @@ final class VRMMetalState {
             _ = aiState.status
             _ = OpenAISettings.shared.isLocalLLMEnabled
             _ = OpenAISettings.shared.isEnabled
+            _ = RuntimePressureMonitor.shared.tier
         } onChange: { [weak self] in
             // Fires in the property's `willSet`; defer so the read below sees
             // the new value, then re-arm for the next transition.
@@ -295,10 +304,15 @@ final class VRMMetalState {
         guard !isAppInBackground else { return }
         let localDecode = OpenAISettings.shared.isLocalLLMEnabled && !OpenAISettings.shared.isEnabled
         let decoding = aiState.status == .thinking || aiState.status == .speaking
-        let target = (localDecode && decoding) ? Self.decodeRenderFPS : Self.idleRenderFPS
+        // A hot or power-saving phone caps the rate and thins the rain
+        // (RuntimePressurePolicy, docs/OPT.md item 7).
+        let tier = RuntimePressureMonitor.shared.tier
+        let wanted = (localDecode && decoding) ? Self.decodeRenderFPS : Self.idleRenderFPS
+        let target = min(wanted, RuntimePressurePolicy.renderFPSCap(tier))
         if mtkView.preferredFramesPerSecond != target {
             mtkView.preferredFramesPerSecond = target
         }
+        renderer?.rainBudgetScale = RuntimePressurePolicy.rainScale(tier)
     }
 
     func clear() {

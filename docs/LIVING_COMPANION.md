@@ -315,6 +315,12 @@ the camera button is on: the app never starts the camera on its own.
   vertically. A fixed world point would be "straight ahead of her", which
   with the camera orbited to one side is away from the user. The mirrored
   frame means right is right; `mirrorX` flips it if the device disagrees.
+  Two things keep the head still: `FaceGazeSmoother` averages the detector's
+  face position (newest sample weight 0.35) and emits a new target only when
+  the average has moved ≥ 2 % of the frame, so detection noise of a few
+  pixels never reaches the eyes; and while following, the controller's
+  smoothing is raised from 0.1 (a two-frame snap, right for a target that
+  never moves) to 0.85 (about a third of a second), restored on hand-back.
 - **Arrival greeting** (`DeskPresencePolicy`, `DeskPresenceManager`): a face
   that stays 3 s after an absence of 10 min or more fires one greeting
   through the shared `ProactivePresenceManager.engage(with:)` seam ("The

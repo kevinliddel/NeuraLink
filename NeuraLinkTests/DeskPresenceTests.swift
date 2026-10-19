@@ -118,6 +118,28 @@ struct DeskPresenceTests {
         #expect(abs(abs(side.z) - FaceGaze.horizontalSpan / 4) < 0.001)
     }
 
+    @Test("The gaze smoother swallows jitter and glides on a real move")
+    func smoother() {
+        var smoother = FaceGazeSmoother()
+        let first = smoother.feed(CGPoint(x: 0.5, y: 0.5))
+        #expect(first == CGPoint(x: 0.5, y: 0.5))
+        // A few pixels of detector noise: no new target.
+        let jitter1 = smoother.feed(CGPoint(x: 0.505, y: 0.497))
+        let jitter2 = smoother.feed(CGPoint(x: 0.496, y: 0.503))
+        #expect(jitter1 == nil && jitter2 == nil)
+        #expect(smoother.emitted == CGPoint(x: 0.5, y: 0.5))
+        // A real move: targets are emitted and approach the new position.
+        var emitted: [CGPoint] = []
+        for _ in 0..<8 {
+            if let point = smoother.feed(CGPoint(x: 0.8, y: 0.5)) { emitted.append(point) }
+        }
+        #expect(!emitted.isEmpty)
+        #expect(emitted.last.map { $0.x > 0.75 && $0.x <= 0.8 } == true)
+        #expect(zip(emitted, emitted.dropFirst()).allSatisfy { $0.x < $1.x })
+        smoother.reset()
+        #expect(smoother.smoothed == nil && smoother.emitted == nil)
+    }
+
     @Test("The away episode begins once, ends once, and expires at its cap")
     func episode() {
         var episode = AwayEpisodePolicy()

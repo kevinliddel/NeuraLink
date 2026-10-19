@@ -162,6 +162,9 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
 
     // Rain-on-glass overlay
     var rainRenderer: RainRenderer?
+    /// Multiplier on the rain intensity the simulations receive; the scene
+    /// state lowers it under thermal or power pressure.
+    var rainBudgetScale: Float = 1
 
     // World-space 3D rain
     var rainWorldRenderer: RainWorldRenderer?

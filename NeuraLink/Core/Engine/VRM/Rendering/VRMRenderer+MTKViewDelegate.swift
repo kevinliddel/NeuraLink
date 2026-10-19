@@ -6,6 +6,7 @@
 //
 
 import MetalKit
+import os
 
 // MARK: - MTKViewDelegate
 
@@ -23,12 +24,15 @@ extension VRMRenderer: MTKViewDelegate {
             return
         }
 
+        // CPU side of the frame (encode + present); Instruments → os_signpost.
+        let frameSignpost = NLSignposts.render.beginInterval("frame")
         draw(in: view, commandBuffer: commandBuffer, renderPassDescriptor: descriptor)
         encodeCaptureIfRequested(view: view, commandBuffer: commandBuffer)
 
         if let drawable = view.currentDrawable {
             commandBuffer.present(drawable)
         }
+        NLSignposts.render.endInterval("frame", frameSignpost)
 
         // Add comprehensive error handler for debugging
         commandBuffer.addCompletedHandler { [weak self] cb in

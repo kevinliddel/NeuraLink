@@ -83,17 +83,30 @@ extension VRMMetalState {
         guard let lookAt = renderer?.lookAtController else { return }
         let detector = FacePresenceDetector.shared
         if detector.facePresent, let center = detector.faceCenter {
-            lookAt.userPosition = FaceGaze.userPosition(center: center, cameraPosition: lookAt.cameraPosition)
+            // Filtered first: detection noise never becomes a new target.
+            let moved = faceGazeSmoother.feed(center)
             switch lookAt.target {
             case .camera, .forward:
                 faceGazeRestoreTarget = lookAt.target
+                faceGazeRestoreSmoothing = lookAt.smoothing
+                lookAt.smoothing = FaceGaze.followSmoothing
+                if let point = moved ?? faceGazeSmoother.smoothed {
+                    lookAt.userPosition = FaceGaze.userPosition(center: point, cameraPosition: lookAt.cameraPosition)
+                }
                 lookAt.target = .user
-            case .user, .point:
+            case .user:
+                if let point = moved {
+                    lookAt.userPosition = FaceGaze.userPosition(center: point, cameraPosition: lookAt.cameraPosition)
+                }
+            case .point:
                 break
             }
         } else if case .user = lookAt.target, let restore = faceGazeRestoreTarget {
             lookAt.target = restore
+            if let smoothing = faceGazeRestoreSmoothing { lookAt.smoothing = smoothing }
             faceGazeRestoreTarget = nil
+            faceGazeRestoreSmoothing = nil
+            faceGazeSmoother.reset()
         }
     }
 }

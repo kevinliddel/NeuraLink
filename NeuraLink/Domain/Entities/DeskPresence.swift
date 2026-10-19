@@ -112,6 +112,11 @@ enum FaceGaze {
     static let mirrorX = false
     /// What the scene camera looks at, roughly her chest; defines its forward.
     static let sceneFocus: SIMD3<Float> = [0, 1.3, 0]
+    /// Look-at smoothing while following a face (the controller's default,
+    /// 0.1, reaches a new target in two frames — fine for a target that
+    /// never moves, a twitch for one refreshed from a camera). Higher is
+    /// slower: 0.85 glides over about a third of a second.
+    static let followSmoothing: Float = 0.85
 
     /// `center` is normalised in the upright image, origin top-left.
     static func userPosition(center: CGPoint, cameraPosition: SIMD3<Float>) -> SIMD3<Float> {
@@ -125,5 +130,44 @@ enum FaceGaze {
         // Camera's right: forward × up, the viewer's own right-hand side.
         let right = simd_normalize(simd_cross(forward, SIMD3<Float>(0, 1, 0)))
         return cameraPosition + right * dx + SIMD3<Float>(0, dy, 0)
+    }
+}
+
+/// Takes the jitter out of the detector's face position before it reaches
+/// the look-at: an exponential average, and a dead zone so detection noise
+/// of a few pixels produces no new target at all. Only a real move does.
+struct FaceGazeSmoother: Equatable {
+    /// Weight of the newest sample (0…1); lower is calmer.
+    var alpha: Float = 0.35
+    /// Smallest change of the averaged point (normalised frame units) worth
+    /// moving the eyes for.
+    var deadZone: Float = 0.02
+
+    private(set) var smoothed: CGPoint?
+    private(set) var emitted: CGPoint?
+
+    /// Feeds one raw sample; returns a new target only when it is worth it.
+    mutating func feed(_ raw: CGPoint) -> CGPoint? {
+        let next: CGPoint
+        if let smoothed {
+            let a = CGFloat(alpha)
+            next = CGPoint(x: smoothed.x + (raw.x - smoothed.x) * a, y: smoothed.y + (raw.y - smoothed.y) * a)
+        } else {
+            next = raw
+        }
+        smoothed = next
+        guard let emitted else {
+            self.emitted = next
+            return next
+        }
+        let dx = Float(next.x - emitted.x), dy = Float(next.y - emitted.y)
+        guard (dx * dx + dy * dy).squareRoot() >= deadZone else { return nil }
+        self.emitted = next
+        return next
+    }
+
+    mutating func reset() {
+        smoothed = nil
+        emitted = nil
     }
 }

@@ -22,6 +22,7 @@
 //
 
 import Foundation
+import os
 
 /// A protocol to receive transcriptions from the local STT engine.
 protocol LocalWhisperManagerDelegate: AnyObject {
@@ -160,6 +161,8 @@ final class LocalWhisperManager: NSObject, @unchecked Sendable {
     func transcribe(samples: [Float], isPartial: Bool = false) async {
         if isPartial { return }
         guard !samples.isEmpty else { return }
+        let signpost = NLSignposts.speech.beginInterval("transcribe")
+        defer { NLSignposts.speech.endInterval("transcribe", signpost) }
 
         // 1. Remove DC offset (centre the signal).
         let mean = samples.reduce(0, +) / Float(samples.count)

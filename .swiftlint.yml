@@ -32,20 +32,20 @@ file_length:
 
 # Rule 7 Enforcement: Low complexity
 cyclomatic_complexity:
-  warning: 60
-  error: 80
+  warning: 50
+  error: 70
 
 function_body_length:
   warning: 300
-  error: 500
+  error: 400
 
 type_body_length:
   warning: 500
   error: 800
 
 line_length:
-  warning: 300
-  error: 400
+  warning: 290
+  error: 350
 
 included:
   - NeuraLink

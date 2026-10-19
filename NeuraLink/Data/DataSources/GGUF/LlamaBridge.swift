@@ -10,6 +10,7 @@
 //
 
 import Foundation
+import os
 
 // MARK: - LlamaBridge
 
@@ -137,6 +138,7 @@ final class LlamaBridge {
         let stats = GenerationStats()
         let benchLabel = label
         let weakHandle = handle
+        let signpost = NLSignposts.llm.beginInterval("generate")
         let timedOnToken: (String) -> Bool = { token in
             if stats.firstTokenTime == nil {
                 stats.firstTokenTime = CFAbsoluteTimeGetCurrent()
@@ -156,6 +158,7 @@ final class LlamaBridge {
                 label: benchLabel, stats: stats,
                 prefillReused: reused, prefillNew: newTokens, prefillMs: prefillMs,
                 pldRounds: pldRounds, pldHits: pldHits)
+            NLSignposts.llm.endInterval("generate", signpost)
             onFinish()
         }
 
@@ -241,7 +244,9 @@ final class LlamaBridge {
     /// Caller MUST serialise with `generate(...)` (llama.cpp is not
     /// thread-safe on a single context).
     func prefill(prompt: String) {
+        let signpost = NLSignposts.llm.beginInterval("prefill")
         llama_bridge_prefill(handle, prompt)
+        NLSignposts.llm.endInterval("prefill", signpost)
     }
 
     // MARK: - KV cache persistence

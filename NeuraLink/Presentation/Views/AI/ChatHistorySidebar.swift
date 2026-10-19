@@ -13,6 +13,7 @@
 import SwiftUI
 
 struct ChatHistorySidebar: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Bindable var aiState: RealtimeChatState
     /// Start a fresh session and return to the live avatar.
     var onNewChat: () -> Void
@@ -52,7 +53,7 @@ struct ChatHistorySidebar: View {
                     .fill(.ultraThinMaterial)
                     .ignoresSafeArea()
                 )
-                .transition(.move(edge: .leading))
+                .transition(AppTheme.transition(.move(edge: .leading), reduceMotion: reduceMotion))
         }
         .onAppear(perform: reload)
         .alert("Rename Chat", isPresented: Binding(

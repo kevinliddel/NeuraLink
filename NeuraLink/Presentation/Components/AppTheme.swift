@@ -67,6 +67,14 @@ enum AppTheme {
     }
 }
 
+extension AppTheme {
+    /// A big move or dissolve, or a plain cross-fade when the person has
+    /// asked iOS to reduce motion.
+    static func transition(_ full: AnyTransition, reduceMotion: Bool) -> AnyTransition {
+        reduceMotion ? .opacity : full
+    }
+}
+
 extension View {
     /// The HUD capsule idiom: translucent black fill plus a white hairline,
     /// on any insettable shape. `opacity` is the fill's; the default suits a

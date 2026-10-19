@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct PhotoshootShareCapsule: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var controller = PhotoshootShareController.shared
 
     var body: some View {
@@ -51,7 +52,7 @@ struct PhotoshootShareCapsule: View {
                 .padding(.horizontal, 24)
                 .padding(.bottom, 120)
             }
-            .transition(.move(edge: .bottom).combined(with: .opacity))
+            .transition(AppTheme.transition(.move(edge: .bottom).combined(with: .opacity), reduceMotion: reduceMotion))
             .animation(.spring(response: 0.4, dampingFraction: 0.8), value: controller.isCapsuleVisible)
         }
     }

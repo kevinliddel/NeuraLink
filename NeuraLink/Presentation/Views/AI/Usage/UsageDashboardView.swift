@@ -14,6 +14,7 @@
 import SwiftUI
 
 struct UsageDashboardView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var range: UsageRange = .week
     @State private var metric: UsageMetric = .spend
     @State private var filter = UsageFilter()
@@ -36,7 +37,7 @@ struct UsageDashboardView: View {
 
                 if aiState.sessionUsage.responses > 0 {
                     UsageLiveSessionCard(meter: aiState.sessionUsage, model: OpenAISettings.shared.realtimeModel)
-                        .transition(.move(edge: .top).combined(with: .opacity))
+                        .transition(AppTheme.transition(.move(edge: .top).combined(with: .opacity), reduceMotion: reduceMotion))
                 }
 
                 UsageFilterBar(filter: $filter, models: summary.models)
