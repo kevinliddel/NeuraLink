@@ -252,7 +252,12 @@ otherwise.
   and the last engagement. It fires at most **2 per session**. The wait
   triples each time (×3 backoff, so 90 s → 270 s), and an event identical to
   the previous one is skipped. It is seeded with the time of day, the
-  relationship stage and one random remembered fact.
+  relationship stage and one random remembered fact. Each small talk takes a
+  different **angle** (`SmallTalkAngle`): the first checks in, the second
+  offers something of her own — a passing thought, the time of day, a tiny
+  moment — with no question. It uses a remembered fact not used before this
+  launch, and quotes her previous line with an instruction to say something
+  genuinely different, so two silences never get the same sentence.
 - **Time-of-day** is not a separate trigger. It is a descriptor inside the
   greeting and small-talk events: early morning, morning, afternoon, evening or late night.
 

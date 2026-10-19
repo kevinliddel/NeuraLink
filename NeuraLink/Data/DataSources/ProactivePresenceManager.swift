@@ -43,6 +43,9 @@ final class ProactivePresenceManager {
     private var smallTalkCount = 0
     private var lastEngagementAt: Date?
     private var lastEventNormalized = ""
+    /// Facts already woven into a small talk, so the next one leans on a
+    /// different memory instead of the same "mock trial win" twice.
+    private var usedFactSeeds: Set<String> = []
 
     private init() {}
 
@@ -155,12 +158,20 @@ final class ProactivePresenceManager {
             engagementsSoFar: smallTalkCount)
         guard silence >= required else { return }
 
-        let fact = MemoryStore.shared.fetchAllFacts().randomElement()
+        // A fact she hasn't used yet, a different angle each time, and her
+        // own previous line to steer away from — the second silence of a
+        // session must not get the same sentence as the first.
+        let fact = MemoryStore.shared.fetchAllFacts()
             .map { "\($0.subject) \($0.predicate) \($0.object)" }
+            .filter { !usedFactSeeds.contains($0) }
+            .randomElement()
+        let previousLine = Self.previousLine(RealtimeChatState.shared.aiTranscript)
         let event = Self.smallTalkEvent(
             timeOfDay: Self.timeOfDayDescriptor(hour: Calendar.current.component(.hour, from: Date())),
             stage: CompanionAffinity.compute().label,
-            factSeed: fact
+            factSeed: fact,
+            angle: Self.smallTalkAngle(for: smallTalkCount),
+            previousLine: previousLine
         )
 
         let normalized = Self.normalize(event)
@@ -168,6 +179,7 @@ final class ProactivePresenceManager {
 
         guard engage(with: event) else { return }
         lastEventNormalized = normalized
+        if let fact { usedFactSeeds.insert(fact) }
         smallTalkCount += 1
     }
 
@@ -220,15 +232,47 @@ final class ProactivePresenceManager {
             + "Greet them warmly back in character and ask what they've been up to.*"
     }
 
-    nonisolated static func smallTalkEvent(timeOfDay: String, stage: String, factSeed: String?) -> String {
-        var event = "*The user has gone quiet for a while. It's \(timeOfDay) and your "
-            + "relationship stage is \(stage). Break the silence in character with ONE short, "
-            + "casual line — don't ask whether they're still there."
+    /// What a small talk is for: the first one checks in, the next offers
+    /// something of her own, so two silences never read the same.
+    enum SmallTalkAngle: Int, CaseIterable, Sendable {
+        case checkIn, shareThought
+    }
+
+    nonisolated static func smallTalkAngle(for engagementsSoFar: Int) -> SmallTalkAngle {
+        SmallTalkAngle.allCases[max(0, engagementsSoFar) % SmallTalkAngle.allCases.count]
+    }
+
+    nonisolated static func smallTalkEvent(
+        timeOfDay: String, stage: String, factSeed: String?,
+        angle: SmallTalkAngle = .checkIn, previousLine: String? = nil
+    ) -> String {
+        var event: String
+        switch angle {
+        case .checkIn:
+            event = "*The user has gone quiet for a while. It's \(timeOfDay) and your "
+                + "relationship stage is \(stage). Break the silence in character with ONE short, "
+                + "casual line — don't ask whether they're still there."
+        case .shareThought:
+            event = "*The user is still quiet. It's \(timeOfDay) and your relationship stage is "
+                + "\(stage). Don't check in on them again — offer one small thing of your own instead: "
+                + "a passing thought, something about this \(timeOfDay), or a tiny moment from your day, "
+                + "in one or two short lines, no question needed."
+        }
         if let factSeed, !factSeed.isEmpty {
             event += " If it feels natural, you could reference that \(factSeed)."
         }
+        if let previousLine, !previousLine.isEmpty {
+            event += " You already said: \"\(previousLine)\" — say something genuinely different, in different words."
+        }
         event += "*"
         return event
+    }
+
+    /// Her last line, trimmed to one breath, for the anti-repeat clause.
+    nonisolated static func previousLine(_ transcript: String, limit: Int = 160) -> String? {
+        let flat = transcript.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        guard !flat.isEmpty else { return nil }
+        return flat.count <= limit ? flat : String(flat.prefix(limit)) + "…"
     }
 
     /// Lowercase, punctuation collapsed — consecutive-duplicate guard (same
