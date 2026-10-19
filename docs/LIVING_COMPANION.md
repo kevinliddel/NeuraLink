@@ -627,17 +627,27 @@ flowchart TD
 
 ## Integration notes
 
-- **Settings** (AI Settings → Autonomy):
-  - **Companion Presence** (master switch, off by default).
-  - **"Thinking of you" notifications**, shown only when the master switch is
-    on. Turning it on requests iOS permission. Turning either switch off
-    cancels the pending notification.
-  - **Proactive Engagement**, independent of the master switch. Without
+- **Settings** (AI Settings → Companion → Autonomy). The screen opens with
+  a **preset** header — Quiet / Balanced / Lively (`AutonomyPreset`, pure;
+  `AutonomyPresets.swift` reads and writes the switches) — that sets the
+  switches needing no permission; a mix of your own reads "Custom". Below
+  it, four cards of `FeatureToggleRow`s (tile, title, one-line meaning, ⓘ,
+  switch; sub-settings slot in under a row while it is on):
+  - **Talking**: Auto-turn detection, Interrupt while speaking, Sense my
+    tone, Keep talking in background (+ End after silence).
+  - **Seeing**: Proactive vision (+ interval, quiet after you speak), Notice
+    me at the desk (+ Rest when nobody's there for, 5 / 10 / 20 / 30 min).
+  - **Between sessions**: Companion Presence (master switch, off by default;
+    "Thinking of you" notes sit under it and request iOS permission when
+    turned on; turning either off cancels the pending notification), Follow
+    up on plans, Companion widgets, Speaks first (+ Greet after time away
+    1 / 6 / 12 / 24 h, Break silence after 45 / 90 / 180 / 300 s). Without
     reflections, the greeting falls back to a generic welcome.
-  - **Greet after time away** (1 / 6 / 12 / 24 h).
-  - **Break silence after** (45 / 90 / 180 / 300 s).
-  - **Notice me at the desk** (camera-based, off by default) and **Rest when
-    nobody's there for** (5 / 10 / 20 / 30 min).
+  - **Knowing your day**: Know my day, Know how I slept.
+
+  AI Settings itself is three cards: **OpenAI** (switch, key, Models, Usage),
+  **Companion** (persona, Autonomy — whose subtitle names the preset plus any
+  permission-gated extras), **On device** (model library, offline switch).
 - **Settings storage**: every `PresenceSettings` property uses the
   explicit `_x` backing with `access`/`withMutation`, never `didSet`. Under
   MainActor default isolation, `didSet` fires during init and overwrites the

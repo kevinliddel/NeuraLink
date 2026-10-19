@@ -137,20 +137,7 @@ struct UsageNavigationRow: View {
             UsageDashboardView()
         } label: {
             HStack(spacing: 12) {
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [.teal.opacity(0.9), .indigo.opacity(0.75)],
-                            startPoint: .topLeading, endPoint: .bottomTrailing)
-                    )
-                    .frame(width: 44, height: 44)
-                    .overlay(
-                        Image(systemName: "chart.bar.xaxis")
-                            .font(.headline.weight(.semibold))
-                            .foregroundStyle(.white)
-                    )
-                    .overlay(Circle().stroke(Color.primary.opacity(0.15), lineWidth: 1))
-                    .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
+                SettingsIconTile(symbol: "chart.bar.xaxis", tint: .teal, size: 40)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Usage")
