@@ -171,8 +171,7 @@ final class AppearanceApplier {
         else { return nil }
         var filter: Set<Int>?
         if let part, let scan = await donorScan(slug: slug),
-            let indices = scan.partTextureIndices[part]
-        {
+            let indices = scan.partTextureIndices[part] {
             filter = indices
         }
         let options = VRMLoadingOptions(textureIndexFilter: filter)
@@ -228,8 +227,7 @@ final class AppearanceApplier {
             })
         for textureIndex in model.textures.indices
         where layer.isTextureOverridden(textureIndex: textureIndex)
-            && !wanted.contains(textureIndex)
-        {
+            && !wanted.contains(textureIndex) {
             layer.restoreTexture(textureIndex: textureIndex, in: model)
         }
     }
@@ -256,8 +254,7 @@ final class AppearanceApplier {
             guard generation == myGeneration, let texture else { continue }
             for materialIndex in Self.materialIndices(for: slot, in: model) {
                 if let textureIndex = layer.baseTextureIndex(
-                    materialIndex: materialIndex, in: model)
-                {
+                    materialIndex: materialIndex, in: model) {
                     layer.overrideTexture(texture, textureIndex: textureIndex, in: model)
                 }
             }
@@ -283,8 +280,7 @@ final class AppearanceApplier {
     /// target slot samples. Decodes the donor texture (once per image) for
     /// its painted-area masks.
     func isCompatible(donor: DonorSlotTexture, slot: VRoidMaterialSlot, model: VRMModel) async
-        -> Bool
-    {
+        -> Bool {
         guard let target = targetCoverage(for: slot, in: model), !target.isEmpty else {
             return false
         }
@@ -328,13 +324,11 @@ final class AppearanceApplier {
     // MARK: - Slots
 
     nonisolated static func materialIndices(for slot: VRoidMaterialSlot, in model: VRMModel)
-        -> [Int]
-    {
+        -> [Int] {
         model.materials.indices.filter { model.slot(ofMaterial: $0) == slot }
     }
 
-    nonisolated static func materialIndicesBySlot(in model: VRMModel) -> [VRoidMaterialSlot: [Int]]
-    {
+    nonisolated static func materialIndicesBySlot(in model: VRMModel) -> [VRoidMaterialSlot: [Int]] {
         var result: [VRoidMaterialSlot: [Int]] = [:]
         for index in model.materials.indices {
             result[model.slot(ofMaterial: index), default: []].append(index)
