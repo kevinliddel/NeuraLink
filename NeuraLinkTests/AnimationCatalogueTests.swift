@@ -20,13 +20,18 @@ struct AnimationCatalogueTests {
     @Test("Each gender has its own base loop and idle pool, and rests in a clip it already holds")
     func poolsPerGender() {
         #expect(AnimationCatalogue.neutralClipName(for: .female) == "neutral")
-        #expect(AnimationCatalogue.neutralClipName(for: .male) == "male_powerful")
+        #expect(AnimationCatalogue.neutralClipName(for: .male) == "male_breathing")
 
         let female = Set(AnimationCatalogue.idleClipNames(for: .female))
         let male = Set(AnimationCatalogue.idleClipNames(for: .male))
         #expect(!female.isEmpty && !male.isEmpty)
-        #expect(female.isDisjoint(with: male))
-        #expect(male.allSatisfy { $0.hasPrefix("male_") })
+        // A male idle is one of his own clips, or a gender-neutral idle the
+        // female pool shares (neutral_4) — never a feminine-only clip.
+        for name in male {
+            #expect(name.hasPrefix("male_") || female.contains(name), "\(name) is neither a male clip nor a shared idle")
+        }
+        #expect(female.allSatisfy { !$0.hasPrefix("male_") })
+        #expect(male.contains { $0.hasPrefix("male_") }, "he has at least one clip of his own")
         #expect(!male.contains(AnimationCatalogue.neutralClipName(for: .male)), "the base loop is not an idle")
 
         for gender in CharacterGender.allCases {

@@ -345,9 +345,9 @@ app's. It decides which bundled clips the body draws on
 
 | Clips | Female | Male |
 |---|---|---|
-| Base loop | `neutral` | `male_powerful` |
-| Random idles | `default_state`, `neutral_2`…`neutral_4`, `relax`, `waiting` | `male_look_around`, `neutral_4` |
-| Resting loop (desk presence, away) | `relax` | `male_powerful` |
+| Base loop | `neutral` | `male_breathing` |
+| Random idles | `default_state`, `neutral_2`…`neutral_4`, `relax`, `waiting` | `male_look_around`, `male_powerful`, `male_stretching_arms`, `neutral_4` |
+| Resting loop (desk presence, away) | `relax` | `male_breathing` |
 | Photo poses | `cool`, `peace_sign`, `relax`, `stretch` | `cool`, `stretch`; `peace_sign` → `cool`, `relax` → `stretch` |
 | Entrance, talking gestures, phone, listening | shared | shared |
 
@@ -355,8 +355,9 @@ An idle plays once — never looped, since a short clip wrapping back to its
 first frame pops — and the blend back to the base loop starts a second
 before it ends. The pose tool keeps offering the same four names to every
 character, and the body resolves a feminine pose when it plays. The male
-clips came from the Sonya project's male set; rows and models that predate
-the label are female.
+clips came from the Sonya project's male set, plus Mixamo FBX clips
+converted with `scripts/fbx_to_vrma.py` (`male_breathing`,
+`male_stretching_arms`); rows and models that predate the label are female.
 
 ## Diary pictures
 

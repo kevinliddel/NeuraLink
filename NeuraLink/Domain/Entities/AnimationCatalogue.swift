@@ -34,7 +34,7 @@ nonisolated enum AnimationCatalogue {
     static func neutralClipName(for gender: CharacterGender) -> String {
         switch gender {
         case .female: return "neutral"
-        case .male: return "male_powerful"
+        case .male: return "male_breathing"
         }
     }
 
@@ -46,12 +46,12 @@ nonisolated enum AnimationCatalogue {
         case .female:
             return ["default_state", "neutral_2", "neutral_3", "neutral_4", "relax", "waiting"]
         case .male:
-            return ["male_look_around", "neutral_4"]
+            return ["male_look_around", "male_powerful", "male_stretching_arms", "neutral_4"]
         }
     }
 
-    /// The loop the away episode rests in (docs/LIVING_COMPANION.md). No
-    /// male resting clip ships yet, so he keeps his base loop.
+    /// The loop the away episode rests in (docs/LIVING_COMPANION.md). His
+    /// base loop is already a quiet breathing stand, so he rests in it.
     static func awayClipName(for gender: CharacterGender) -> String {
         switch gender {
         case .female: return AwayEpisodePolicy.clipName
