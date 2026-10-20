@@ -28,10 +28,12 @@ nonisolated enum CharacterGender: String, Codable, CaseIterable, Sendable {
         }
     }
 
-    var symbol: String {
+    /// Custom symbol in the asset catalogue (venus.symbolset, mars.symbolset):
+    /// the pickers show the sign alone and `title` is what VoiceOver reads.
+    var symbolAsset: String {
         switch self {
-        case .female: return "figure.stand.dress"
-        case .male: return "figure.stand"
+        case .female: return "venus"
+        case .male: return "mars"
         }
     }
 

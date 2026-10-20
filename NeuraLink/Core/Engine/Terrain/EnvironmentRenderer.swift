@@ -50,6 +50,14 @@ struct CityMeshGroup {
     let texFlags: SIMD4<Float>  // x = hasNormal, y = hasMR, z = hasEmissive
     let transform: simd_float4x4
     let isBlend: Bool
+    /// glTF `doubleSided`; single-sided groups are culled from behind when
+    /// the environment resolves duplicate faces.
+    var doubleSided = true
+    /// Coplanar layer (CoplanarLayering): drawn with a depth bias this many
+    /// steps toward the camera so a duplicate copy never wins over it.
+    var depthLayer = 0
+    /// The transform mirrors the mesh, so its winding reads the other way.
+    var mirrored = false
 }
 
 // MARK: - EnvironmentRenderer
@@ -82,6 +90,11 @@ final class EnvironmentRenderer: @unchecked Sendable {
     /// True for GLBs with lighting baked into their textures (city, campus), which the shader passes through almost directly.
     let bakedLighting: Bool
 
+    /// The GLB carries duplicate faces — a back-facing shell, coplanar copies
+    /// (SketchUp exports). Honour single-sided materials and draw coplanar
+    /// copies in layers (CoplanarLayering) so the detailed one always wins.
+    let resolvesDuplicateFaces: Bool
+
     /// Uniform scale actually applied at load (auto-fit or `instanceConfig.scale`).
     /// Used to scale the distance-haze range so a scaled-up env isn't hazed out.
     /// Set by `load(url:)` in the +Load extension, so not `private(set)`.
@@ -95,13 +108,22 @@ final class EnvironmentRenderer: @unchecked Sendable {
         device: MTLDevice,
         instanceConfig: InstanceConfig = (x: 0, y: 0, z: 0, rotY: 0, scale: 1.0),
         autoFitFootprint: Float? = nil,
-        bakedLighting: Bool = true
+        bakedLighting: Bool = true,
+        resolvesDuplicateFaces: Bool = false
     ) {
         self.device = device
         self.instanceConfig = instanceConfig
         self.autoFitFootprint = autoFitFootprint
         self.bakedLighting = bakedLighting
+        self.resolvesDuplicateFaces = resolvesDuplicateFaces
     }
+
+    /// Depth bias per coplanar layer: a few units of constant bias plus a
+    /// slope term, which is what keeps a floor seen at a grazing angle from
+    /// fighting. Small enough that nothing a few millimetres in front shows
+    /// through.
+    static let layerDepthBias: Float = -4
+    static let layerSlopeBias: Float = -2
 
     // MARK: - Shadow pass
 
@@ -171,10 +193,12 @@ final class EnvironmentRenderer: @unchecked Sendable {
             lightViewProjection: lightViewProjection,
             sunDirection: SIMD4<Float>(sunDirection.x, sunDirection.y, sunDirection.z, sunHeight),
             // x = shadowSoft, y/z = distance-haze start/end (scaled with the
-            // model so a large auto-fit env isn't hazed out), w = lighting mode
-            // (0 = baked passthrough, 1 = runtime-lit albedo).
+            // model so a large auto-fit env isn't hazed out — but never below
+            // 80–160 m: a scene shrunk into metres from inches or millimetres
+            // would otherwise be hazed from a couple of metres, or from the
+            // avatar's feet), w = lighting mode (0 = baked, 1 = runtime-lit).
             cityParams: SIMD4<Float>(
-                shadowSoft, 80 * appliedScale, 160 * appliedScale, bakedLighting ? 0 : 1),
+                shadowSoft, 80 * max(appliedScale, 1), 160 * max(appliedScale, 1), bakedLighting ? 0 : 1),
             cameraPosition: SIMD4<Float>(cameraPosition.x, cameraPosition.y, cameraPosition.z, 0),
             vrmLightViewProjection: vrmLightViewProjection
         )
@@ -189,7 +213,14 @@ final class EnvironmentRenderer: @unchecked Sendable {
         encoder.setFragmentTexture(vrmShadowMap, index: 2)
         encoder.setFragmentSamplerState(shadowSampler, index: 0)
 
+        let resolves = resolvesDuplicateFaces
         func drawGroup(_ group: CityMeshGroup) {
+            if resolves {
+                encoder.setCullMode(group.doubleSided ? .none : .back)
+                encoder.setFrontFacing(group.mirrored ? .clockwise : .counterClockwise)
+                let layer = Float(group.depthLayer)
+                encoder.setDepthBias(Self.layerDepthBias * layer, slopeScale: Self.layerSlopeBias * layer, clamp: 0)
+            }
             var transform = group.transform
             var baseColor = group.baseColorFactor
             var emissivePacked = group.emissivePacked
@@ -222,6 +253,11 @@ final class EnvironmentRenderer: @unchecked Sendable {
             encoder.setRenderPipelineState(blendPSO)
             encoder.setDepthStencilState(blendDS)
             for group in meshGroups where group.isBlend { drawGroup(group) }
+        }
+        if resolves {
+            encoder.setCullMode(.none)
+            encoder.setFrontFacing(.counterClockwise)
+            encoder.setDepthBias(0, slopeScale: 0, clamp: 0)
         }
 
         encoder.popDebugGroup()

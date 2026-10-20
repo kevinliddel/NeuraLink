@@ -73,10 +73,15 @@ struct RemoteAssetCacheResumeTests {
         return url
     }
 
+    /// A session configuration that routes every request through the stub.
+    private static var stubbed: URLSessionConfiguration {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [RangeStubProtocol.self]
+        return configuration
+    }
+
     private func withStub<T>(_ body: () async throws -> T) async rethrows -> T {
-        URLProtocol.registerClass(RangeStubProtocol.self)
-        defer { URLProtocol.unregisterClass(RangeStubProtocol.self) }
-        return try await body()
+        try await body()
     }
 
     @Test("A fresh fetch writes the whole blob and reports progress")
@@ -87,7 +92,7 @@ struct RemoteAssetCacheResumeTests {
         try await withStub {
             try await RemoteAssetCache.fetch(
                 from: URL(string: "https://stub.test/blob")!, to: part,
-                expectedSize: Int64(RangeStubProtocol.blob.count), onProgress: { seen.record($0, $1) })
+                expectedSize: Int64(RangeStubProtocol.blob.count), configuration: Self.stubbed, onProgress: { seen.record($0, $1) })
         }
         #expect(try Data(contentsOf: part) == RangeStubProtocol.blob)
         #expect(seen.last == Int64(RangeStubProtocol.blob.count))
@@ -103,7 +108,7 @@ struct RemoteAssetCacheResumeTests {
         try await withStub {
             try await RemoteAssetCache.fetch(
                 from: URL(string: "https://stub.test/blob")!, to: part,
-                expectedSize: Int64(RangeStubProtocol.blob.count), onProgress: { seen.record($0, $1) })
+                expectedSize: Int64(RangeStubProtocol.blob.count), configuration: Self.stubbed, onProgress: { seen.record($0, $1) })
         }
         #expect(try Data(contentsOf: part) == RangeStubProtocol.blob)
         // Progress counts from the resumed offset, so the first report is past the head.
@@ -118,7 +123,7 @@ struct RemoteAssetCacheResumeTests {
         try await withStub {
             try await RemoteAssetCache.fetch(
                 from: URL(string: "https://stub.test/norange")!, to: part,
-                expectedSize: Int64(RangeStubProtocol.blob.count), onProgress: nil)
+                expectedSize: Int64(RangeStubProtocol.blob.count), configuration: Self.stubbed, onProgress: nil)
         }
         #expect(try Data(contentsOf: part) == RangeStubProtocol.blob)
     }
@@ -128,10 +133,10 @@ struct RemoteAssetCacheResumeTests {
         let part = scratchFile("complete")
         defer { try? FileManager.default.removeItem(at: part) }
         try RangeStubProtocol.blob.write(to: part)
-        // No stub registered: a request would fail, so success proves none was made.
+        // A plain session cannot reach stub.test, so success proves no request was made.
         try await RemoteAssetCache.fetch(
             from: URL(string: "https://stub.test/blob")!, to: part,
-            expectedSize: Int64(RangeStubProtocol.blob.count), onProgress: nil)
+            expectedSize: Int64(RangeStubProtocol.blob.count), configuration: .ephemeral, onProgress: nil)
         #expect(try Data(contentsOf: part) == RangeStubProtocol.blob)
     }
 
@@ -142,7 +147,8 @@ struct RemoteAssetCacheResumeTests {
         await withStub {
             do {
                 try await RemoteAssetCache.fetch(
-                    from: URL(string: "https://stub.test/nowhere")!, to: part, expectedSize: 10, onProgress: nil)
+                    from: URL(string: "https://stub.test/nowhere")!, to: part, expectedSize: 10,
+                    configuration: Self.stubbed, onProgress: nil)
                 Issue.record("expected an HTTP failure")
             } catch {
                 guard case RemoteAssetCache.CacheError.httpStatus(let code) = error else {

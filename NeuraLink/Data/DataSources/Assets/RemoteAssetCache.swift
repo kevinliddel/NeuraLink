@@ -233,23 +233,27 @@ actor RemoteAssetCache {
 
     // MARK: - Fetch (resumable)
 
-    /// Bytes gathered between disk writes and progress reports.
-    private static let writeChunk = 256 * 1024
-
     /// Fetches `remoteURL` into `partURL`, continuing from whatever an
     /// earlier attempt — or an earlier launch — left there, with an HTTP
     /// Range request. The partial file IS the resume state, so a transfer
     /// that died at 80% costs the last 20% next time, not a fresh start;
     /// on a slow link that is the difference between the library arriving
-    /// and the same outfit being started over on every launch. Internal
-    /// so the resume path can be tested against a stub server.
+    /// and the same outfit being started over on every launch.
     ///
-    /// Throws `CacheError` on HTTP/transport failure. The partial is kept
-    /// on transport errors (the caller verifies it when it completes).
-    static func fetch(
+    /// Bytes arrive in the session's own chunks (`ResumableFetchDelegate`)
+    /// and go straight to disk on the delegate queue: a per-byte async loop
+    /// here was fine in release but crawled in the Debug builds tests run,
+    /// and starved a fresh install that pulls the whole parts library.
+    /// `nonisolated` so none of it can land on the main actor.
+    ///
+    /// Throws `CacheError` on HTTP/transport failure. The partial is kept on
+    /// transport errors (the caller verifies it when it completes).
+    /// `configuration` lets tests route the session through a stub protocol.
+    nonisolated static func fetch(
         from remoteURL: URL,
         to partURL: URL,
         expectedSize: Int64?,
+        configuration: URLSessionConfiguration = .default,
         onProgress: (@Sendable (Int64, Int64) -> Void)?
     ) async throws {
         var existing = max(0, fileSize(at: partURL))
@@ -266,100 +270,16 @@ actor RemoteAssetCache {
         if existing > 0 {
             request.setValue("bytes=\(existing)-", forHTTPHeaderField: "Range")
         }
-        let bytes: URLSession.AsyncBytes
-        let response: URLResponse
-        do {
-            (bytes, response) = try await URLSession.shared.bytes(for: request)
-        } catch is CancellationError {
-            throw CancellationError()
-        } catch {
-            throw CacheError.downloadFailed(error)
-        }
-        guard let http = response as? HTTPURLResponse else {
-            throw CacheError.downloadFailed(URLError(.badServerResponse))
-        }
-        switch http.statusCode {
-        case 206:
-            break  // the server honoured the range: append
-        case 416 where existing > 0:
-            return  // nothing past what is held; the caller verifies
-        case 200..<300:
-            existing = 0  // the whole file is coming: start the partial over
-        default:
-            throw CacheError.httpStatus(http.statusCode)
-        }
-        let total = http.expectedContentLength > 0
-            ? existing + http.expectedContentLength : (expectedSize ?? -1)
-
-        let handle = try openForAppend(partURL, keeping: existing)
-        defer { try? handle.close() }
-        let writer = ChunkWriter(handle: handle, written: existing, total: total, onProgress: onProgress)
-        do {
-            for try await byte in bytes {
-                try writer.append(byte)
+        let delegate = ResumableFetchDelegate(
+            partURL: partURL, existing: existing, expectedSize: expectedSize, onProgress: onProgress)
+        let session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
+        defer { session.finishTasksAndInvalidate() }
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                delegate.start(session.dataTask(with: request), continuation: continuation)
             }
-            try writer.finish()
-        } catch is CancellationError {
-            try? writer.flush()
-            throw CancellationError()
-        } catch let error as CacheError {
-            throw error
-        } catch {
-            try? writer.flush()  // keep what arrived for the next attempt
-            throw CacheError.downloadFailed(error)
-        }
-    }
-
-    /// Opens the partial for appending, truncated to the bytes being kept.
-    private static func openForAppend(_ url: URL, keeping offset: Int64) throws -> FileHandle {
-        if !FileManager.default.fileExists(atPath: url.path) {
-            FileManager.default.createFile(atPath: url.path, contents: nil)
-        }
-        let handle = try FileHandle(forWritingTo: url)
-        try handle.truncate(atOffset: UInt64(offset))
-        try handle.seekToEnd()
-        return handle
-    }
-
-    /// Buffers the byte stream into disk writes of `writeChunk`, reporting
-    /// progress on the first write, every ~64 KB after, and at the end.
-    private final class ChunkWriter {
-        private let handle: FileHandle
-        private let total: Int64
-        private let onProgress: (@Sendable (Int64, Int64) -> Void)?
-        private var written: Int64
-        private var lastReported: Int64 = -1
-        private var buffer = Data()
-
-        init(handle: FileHandle, written: Int64, total: Int64, onProgress: (@Sendable (Int64, Int64) -> Void)?) {
-            self.handle = handle
-            self.written = written
-            self.total = total
-            self.onProgress = onProgress
-            buffer.reserveCapacity(RemoteAssetCache.writeChunk)
-        }
-
-        func append(_ byte: UInt8) throws {
-            buffer.append(byte)
-            if buffer.count >= RemoteAssetCache.writeChunk { try flush() }
-        }
-
-        func flush() throws {
-            guard !buffer.isEmpty else { return }
-            try handle.write(contentsOf: buffer)
-            written += Int64(buffer.count)
-            buffer.removeAll(keepingCapacity: true)
-            if lastReported < 0 || written - lastReported >= 65_536 { report() }
-        }
-
-        func finish() throws {
-            try flush()
-            report()
-        }
-
-        private func report() {
-            lastReported = written
-            onProgress?(written, total)
+        } onCancel: {
+            delegate.cancel()
         }
     }
 
@@ -407,5 +327,131 @@ actor RemoteAssetCache {
             }
         }
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+// MARK: - Resumable fetch delegate
+
+/// Streams one ranged GET into the partial file, chunk by chunk, on the
+/// session's serial delegate queue. 206 appends to what is held; 200 starts
+/// the file over (the server ignored the range); 416 with bytes held means
+/// nothing is left to send.
+private final class ResumableFetchDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+    private let partURL: URL
+    private let expectedSize: Int64?
+    private let onProgress: (@Sendable (Int64, Int64) -> Void)?
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Void, Error>?
+    private var task: URLSessionDataTask?
+    private var wasCancelled = false
+    private var handle: FileHandle?
+    private var existing: Int64
+    private var written: Int64 = 0
+    private var total: Int64 = -1
+    private var lastReported: Int64 = -1
+    private var failure: Error?
+    private var nothingLeft = false
+
+    init(partURL: URL, existing: Int64, expectedSize: Int64?, onProgress: (@Sendable (Int64, Int64) -> Void)?) {
+        self.partURL = partURL
+        self.existing = existing
+        self.expectedSize = expectedSize
+        self.onProgress = onProgress
+    }
+
+    func start(_ task: URLSessionDataTask, continuation: CheckedContinuation<Void, Error>) {
+        lock.lock()
+        self.task = task
+        self.continuation = continuation
+        let cancelled = wasCancelled
+        lock.unlock()
+        if cancelled { task.cancel() } else { task.resume() }
+    }
+
+    func cancel() {
+        lock.lock()
+        wasCancelled = true
+        let task = self.task
+        lock.unlock()
+        task?.cancel()
+    }
+
+    func urlSession(
+        _ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse,
+        completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
+    ) {
+        guard let http = response as? HTTPURLResponse else {
+            failure = RemoteAssetCache.CacheError.downloadFailed(URLError(.badServerResponse))
+            return completionHandler(.cancel)
+        }
+        switch http.statusCode {
+        case 206:
+            break
+        case 416 where existing > 0:
+            nothingLeft = true
+            return completionHandler(.cancel)
+        case 200..<300:
+            existing = 0  // the whole file is coming: start the partial over
+        default:
+            failure = RemoteAssetCache.CacheError.httpStatus(http.statusCode)
+            return completionHandler(.cancel)
+        }
+        do {
+            if !FileManager.default.fileExists(atPath: partURL.path) {
+                FileManager.default.createFile(atPath: partURL.path, contents: nil)
+            }
+            let handle = try FileHandle(forWritingTo: partURL)
+            try handle.truncate(atOffset: UInt64(existing))
+            try handle.seekToEnd()
+            self.handle = handle
+        } catch {
+            failure = RemoteAssetCache.CacheError.downloadFailed(error)
+            return completionHandler(.cancel)
+        }
+        written = existing
+        total = http.expectedContentLength > 0 ? existing + http.expectedContentLength : (expectedSize ?? -1)
+        report()
+        completionHandler(.allow)
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        guard let handle, failure == nil else { return }
+        do {
+            try handle.write(contentsOf: data)
+            written += Int64(data.count)
+            if written - lastReported >= 65_536 { report() }
+        } catch {
+            failure = RemoteAssetCache.CacheError.downloadFailed(error)
+            dataTask.cancel()
+        }
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        try? handle?.close()
+        handle = nil
+        let result: Result<Void, Error>
+        if nothingLeft {
+            result = .success(())
+        } else if let failure {
+            result = .failure(failure)
+        } else if let error {
+            let cancelled = (error as? URLError)?.code == .cancelled
+            lock.lock(); let byCaller = wasCancelled; lock.unlock()
+            result = .failure(
+                cancelled && byCaller ? CancellationError() : RemoteAssetCache.CacheError.downloadFailed(error))
+        } else {
+            report()
+            result = .success(())
+        }
+        lock.lock()
+        let continuation = self.continuation
+        self.continuation = nil
+        lock.unlock()
+        continuation?.resume(with: result)
+    }
+
+    private func report() {
+        lastReported = written
+        onProgress?(written, total)
     }
 }

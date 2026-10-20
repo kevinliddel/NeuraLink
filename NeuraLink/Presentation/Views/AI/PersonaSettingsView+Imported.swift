@@ -17,12 +17,7 @@ extension PersonaSettingsView {
     var importedCharacterSections: some View {
         CharacterImageSection(slug: modelID.lowercased())
         Section {
-            Picker("Gender", selection: $gender) {
-                ForEach(CharacterGender.allCases, id: \.self) { option in
-                    Label(option.title, systemImage: option.symbol).tag(option)
-                }
-            }
-            .pickerStyle(.segmented)
+            GenderSquarePicker(selection: $gender)
         } header: {
             Text("Gender")
         } footer: {

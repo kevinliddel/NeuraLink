@@ -29,6 +29,9 @@ struct EnvironmentOption: Identifiable, Hashable {
     /// True for enclosed interiors (apartment, art gallery): outdoor 3D world
     /// rain is suppressed so it can't fall through the ceiling.
     let isInterior: Bool
+    /// See `EnvironmentRenderer.resolvesDuplicateFaces`: for exports that
+    /// carry a back-face shell or coplanar copies (pool, modern apartment).
+    var resolvesDuplicateFaces = false
 
     static func == (lhs: EnvironmentOption, rhs: EnvironmentOption) -> Bool { lhs.id == rhs.id }
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
@@ -53,18 +56,20 @@ enum EnvironmentCatalog {
     // after rotation (T·R·S), so it is the rotated, scaled spot negated.
 
     /// Modern apartment: a SketchUp export at 0.002 m per unit (2.9 m
-    /// ceiling, 1.8 m fridge). The avatar stands on the rug between the
-    /// dining table and the sofa, at (-15.2, -7.6) m, with the TV wall
-    /// behind; its model origin is outside the building, and auto-fit's
+    /// ceiling, 1.8 m fridge). The avatar stands on the rug in front of the
+    /// sofa, at (-16.1, -7.6) m, with the TV wall behind and the camera just
+    /// past the glass dining table (over it, the table filled the bottom of
+    /// the frame); its model origin is outside the building, and auto-fit's
     /// recentring would have put the avatar inside the sofa.
     private static let modernApartmentInstance: EnvironmentRenderer.InstanceConfig =
-        (x: -7.6, y: -0.222, z: 15.2, rotY: -.pi / 2, scale: 0.002)
+        (x: -7.6, y: -0.222, z: 16.1, rotY: -.pi / 2, scale: 0.002)
 
-    /// Pool: modelled in inches (5.5 m hall, 1.8 m deep pool). Its origin is
-    /// already open deck with 3 m clear all round, the loungers and the back
-    /// wall behind and the pool to the right, so only the units change.
+    /// Pool: modelled in inches (5.5 m hall, 1.8 m deep pool). The avatar
+    /// stands on the deck at the water's edge, at (2.0, -1.7) m between two
+    /// pillars, and the scene turns so the pool runs out behind them to the
+    /// far wall, 6.8 m away; the camera stays on the deck.
     private static let poolInstance: EnvironmentRenderer.InstanceConfig =
-        (x: 0, y: -0.02, z: 0, rotY: 0, scale: 0.0254)
+        (x: 1.7, y: -0.02, z: 2.0, rotY: .pi / 2, scale: 0.0254)
 
     /// St Bartholomew's: a photogrammetry scan in metres. Its origin sits on
     /// a pew seat, so the avatar moves into the central aisle at (-2.5, -2.2)
@@ -97,11 +102,13 @@ enum EnvironmentCatalog {
         EnvironmentOption(
             id: "modern_apartment", displayName: "Modern Apartment",
             previewImage: "modern_apartment", instanceConfig: modernApartmentInstance,
-            autoFitFootprint: nil, bakedLighting: true, isInterior: true),
+            autoFitFootprint: nil, bakedLighting: true, isInterior: true,
+            resolvesDuplicateFaces: true),
         EnvironmentOption(
             id: "pool", displayName: "Pool",
             previewImage: "pool", instanceConfig: poolInstance,
-            autoFitFootprint: nil, bakedLighting: false, isInterior: true),
+            autoFitFootprint: nil, bakedLighting: false, isInterior: true,
+            resolvesDuplicateFaces: true),
         EnvironmentOption(
             id: "st_bartholomew_cathedral", displayName: "St. Bartholomew's",
             previewImage: "st_bartholomew_cathedral", instanceConfig: cathedralInstance,

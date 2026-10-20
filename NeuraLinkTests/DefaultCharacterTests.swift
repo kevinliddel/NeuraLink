@@ -11,6 +11,7 @@
 
 import Foundation
 import Testing
+import UIKit
 @testable import NeuraLink
 
 @Suite("Default character")
@@ -26,6 +27,14 @@ struct DefaultCharacterTests {
         #expect(VRMModelRegistry.shared.defaultModel?.isImported == false)
         #expect(VRMModelRegistry.shared.entry(named: "Oz")?.gender == .male)
         #expect(VRMModelRegistry.shared.entry(named: "Ekaterina")?.gender == .female)
+    }
+
+    @Test("Both gender signs ship as symbols in the asset catalogue", arguments: CharacterGender.allCases)
+    @MainActor
+    func genderSymbolsShip(gender: CharacterGender) {
+        // The pickers show only the sign, so a missing asset would be an empty segment.
+        #expect(UIImage(named: gender.symbolAsset) != nil, "\(gender.symbolAsset) symbol")
+        #expect(!gender.title.isEmpty)
     }
 
     @Test("Oz has a built-in persona, a male cloud voice and a reserved slug")
