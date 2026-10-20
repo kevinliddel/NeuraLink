@@ -42,7 +42,9 @@ enum OpenVoiceVoicePreset: String, CaseIterable, Identifiable {
     }
 
     static func builtInDefault(for persona: PersonaIdentifier) -> OpenVoiceVoicePreset {
-        _ = persona
-        return .riko
+        switch persona.lowercased() {
+        case "oz": return .akira  // the calmer of the two placeholders, for the butler
+        default: return .riko
+        }
     }
 }

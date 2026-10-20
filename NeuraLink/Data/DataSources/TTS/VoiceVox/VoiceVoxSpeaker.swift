@@ -98,6 +98,8 @@ extension VoiceVoxSpeaker {
             return tsumugi.id  // soft, warm, friendly — fits the Onee-san archetype
         case "sonya":
             return ritsu.id  // female, characteristic, snappy — fits the tsundere
+        case "oz":
+            return ritsu.id  // the lowest-pitched pack pinned so far; no male VOICEVOX speaker is in the dataset yet
         default:
             return defaultSpeakerID
         }

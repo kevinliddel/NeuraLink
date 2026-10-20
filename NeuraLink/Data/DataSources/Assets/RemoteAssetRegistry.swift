@@ -30,7 +30,7 @@ nonisolated enum RemoteAssetRegistry: Hashable, Sendable {
     // Scenes — `name` is the GLB basename (resolves to `scenes/<name>.glb`).
     case scene(String)
     /// One cut-out donor part for character customization — resolves to
-    /// `Parts/<stem>.vrm`. The library is 225 MB, far too much to ship in
+    /// `Parts/<stem>.vrm`. The library is 356 MB, far too much to ship in
     /// the app, and nothing at startup needs it.
     case libraryPart(String)
 

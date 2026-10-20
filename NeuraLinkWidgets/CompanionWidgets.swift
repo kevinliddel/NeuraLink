@@ -41,9 +41,9 @@ struct CompanionProvider: TimelineProvider {
 
 extension CompanionSnapshot {
     static let placeholder = CompanionSnapshot(
-        character: "sonya", displayName: "Sonya", relationshipLabel: "Friends", relationshipScore: 0.62,
-        opener: "I kept thinking about that book you mentioned…",
-        memoryLine: "You light up whenever we talk about light novels.", memoryTitle: "Between you",
+        character: "oz", displayName: "Oz", relationshipLabel: "Friends", relationshipScore: 0.62,
+        opener: "The kettle is on, Sir. Shall I recount what the morning held?",
+        memoryLine: "You take your tea strong and your mornings quiet.", memoryTitle: "Between you",
         factCount: 24, daysTogether: 12,
         lastChatAt: Date().addingTimeInterval(-3 * 3_600), thumbnailFile: nil, updatedAt: Date())
 

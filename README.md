@@ -1,6 +1,7 @@
 # NeuraLink
 
 <p align="center">
+    <img src="./docs/Models/Oz.png" alt="NeuraLink Model" width="300" style="margin:6px;" />
     <img src="./docs/Models/Ekaterina.png" alt="NeuraLink Model" width="300" style="margin:6px;" />
     <img src="./docs/Models/Sonya.png" alt="NeuraLink Model" width="300" style="margin:6px;" />
 </p>
@@ -190,8 +191,12 @@ Each character model carries her own system prompt and OpenAI voice model, appli
 graph TD
     Select[Character Selection]
 
+    Select --> Oz[Oz]
     Select --> Ekaterina[Ekaterina]
     Select --> Sonya[Sonya]
+
+    Oz --> OV[Voice: ballad]
+    Oz --> OP[Persona: Butler\nCourteous · Erudite · Capable]
 
     Ekaterina --> EV[Voice: shimmer]
     Ekaterina --> EP[Persona: Onee-san\nGentle · Caring · Japanese]
@@ -208,6 +213,7 @@ graph TD
 
     style Ekaterina fill:#f472b6,stroke:#fff,color:#fff
     style Sonya fill:#7c3aed,stroke:#fff,color:#fff
+    style Oz fill:#0ea5e9,stroke:#fff,color:#fff
     style OpenAI fill:#10a37f,stroke:#fff,color:#fff
     style Session fill:#1e293b,stroke:#fff,color:#fff
 ```

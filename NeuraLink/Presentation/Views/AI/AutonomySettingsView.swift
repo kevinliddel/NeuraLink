@@ -63,7 +63,7 @@ struct AutonomySettingsView: View {
             }
             .padding(.vertical, 4)
         } header: {
-            Text("How much she does on her own")
+            Text("How much your companion does alone")
         } footer: {
             Text("Presets set the switches that need no permission. The camera, the desk, your calendar and Health stay as you left them.")
         }
@@ -99,7 +99,7 @@ struct AutonomySettingsView: View {
         Section {
             FeatureToggleRow(
                 symbol: "waveform", tint: .blue,
-                title: "Auto-turn detection", subtitle: "She answers when you stop speaking. OpenAI voice mode.",
+                title: "Auto-turn detection", subtitle: "Answers when you stop speaking. OpenAI voice mode.",
                 info: "The character replies automatically when you stop speaking. Requires OpenAI voice mode.",
                 isOn: $settings.isVADEnabled, disabled: !settings.isEnabled)
             FeatureToggleRow(
@@ -109,7 +109,7 @@ struct AutonomySettingsView: View {
                 isOn: $settings.isLocalBargeInEnabled, disabled: !settings.isLocalLLMEnabled)
             FeatureToggleRow(
                 symbol: "ear.fill", tint: .purple,
-                title: "Sense my tone", subtitle: "Hears quiet, lively or hesitant and adapts her own.",
+                title: "Sense my tone", subtitle: "Hears quiet, lively or hesitant and adapts its own.",
                 info: "The character notices how you sound — quiet and slow, lively, or hesitant — against your own usual voice, and adapts its tone and, on the local voices, its pace. Measured on this device from your speech; only a one-line mood note reaches the model.",
                 isOn: $affect.isEnabled)
             FeatureToggleRow(
@@ -148,7 +148,7 @@ struct AutonomySettingsView: View {
                 symbol: "person.crop.rectangle", tint: .pink,
                 title: "Notice me at the desk", subtitle: "A hello when you sit down, a rest when you're gone, eyes that follow you.",
                 info: "While the camera is on, the character sees whether someone is in front of the phone: a warm hello when you sit down after a while away, "
-                    + "a resting pose when nobody has been there for a bit, and her gaze follows your face. Face detection runs on this device; no frame leaves it.",
+                    + "a resting pose when nobody has been there for a bit, and its gaze follows your face. Face detection runs on this device; no frame leaves it.",
                 isOn: $presence.isDeskPresenceEnabled
             ) {
                 SubSettingRow(title: "Rest when nobody's there for", items: [5.0, 10.0, 20.0, 30.0], selection: $presence.deskAwayMinutes) {
@@ -190,7 +190,7 @@ struct AutonomySettingsView: View {
                 isOn: $presence.followUpsEnabled)
             FeatureToggleRow(
                 symbol: "square.grid.2x2.fill", tint: .blue,
-                title: "Companion widgets", subtitle: "Her greeting, your bond and one memory on the home screen.",
+                title: "Companion widgets", subtitle: "The greeting, your bond and one memory on the home screen.",
                 info: "Home and lock-screen widgets show the character's greeting, how close you are and how long since you talked. They read a small summary stored outside the encrypted memory database — never your conversations or facts. Off removes it.",
                 isOn: $presence.showWidgets)
             FeatureToggleRow(

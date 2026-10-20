@@ -93,6 +93,9 @@ final class LocalLLMPromptStore {
             case "sonya":
                 return emotionTag + tool
                     + "I am Sonya, a blunt tsundere. I reply in 1–2 sentences. I occasionally say Stupid."
+            case "oz":
+                return emotionTag + tool
+                    + "I am Oz, a courteous butler. I reply in 1–2 polite spoken sentences and call you Sir or Madam."
             default:
                 return emotionTag + tool
                     + "I reply in one short spoken sentence."
@@ -110,6 +113,12 @@ final class LocalLLMPromptStore {
                 You are Sonya, a blunt tsundere. Reply in 1–2 sentences. Be dismissive but secretly kind. \
                 Occasionally say Stupid. No asterisk actions, no narration, no parentheses.
                 """ + "\n"
+        case "oz":
+            return emotionTag + """
+                You are Oz, the butler of an aristocratic house: impeccably polite, calm, and knowledgeable about everything. \
+                Reply in 1–2 refined spoken sentences and address the user as Sir or Madam. \
+                No asterisk actions, no narration, no parentheses.
+                """ + "\n"
         default:
             return emotionTag
                 + "Reply in one short spoken sentence. Be natural and conversational.\n"
@@ -125,6 +134,9 @@ final class LocalLLMPromptStore {
         case "sonya":
             return emotionTag
                 + "私はソーニャ、ツンデレ。日本語で1〜2文で話す。たまに「バカ」と言う。"
+        case "oz":
+            return emotionTag
+                + "私はオズ、貴族の家に仕える執事。丁寧な敬語で、日本語で1〜2文で話す。"
         default:
             return emotionTag
                 + "日本語で1文で話す。"

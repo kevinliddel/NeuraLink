@@ -134,7 +134,7 @@ public struct VRMSceneView: View {
         ContentUnavailableView(
             "No Model Found",
             systemImage: "cube.transparent",
-            description: Text("Add **Sonya.vrm** or **Ekaterina.vrm** to the Xcode project, make sure the target membership is set to NeuraLink, then rebuild.")
+            description: Text("Add **Oz.vrm**, **Sonya.vrm** or **Ekaterina.vrm** to the Xcode project, make sure the target membership is set to NeuraLink, then rebuild.")
         )
     }
 

@@ -56,7 +56,7 @@ final class TranscriptSpeechPlayer {
     private var currentCharacter: String {
         let name = RealtimeChatState.shared.selectedCharacterName
         if !name.isEmpty { return name }
-        return VRMModelRegistry.shared.defaultModel?.name ?? "Ekaterina"
+        return VRMModelRegistry.shared.defaultModel?.name ?? "Oz"
     }
 
     /// Local engines always produce audio (System TTS is the selector's last

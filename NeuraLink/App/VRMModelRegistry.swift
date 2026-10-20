@@ -66,9 +66,9 @@ final class VRMModelRegistry {
         CompanionSnapshotWriter.shared.scheduleRefresh()
     }
 
-    /// Factory default: Ekaterina, else the first bundled model, else anything.
+    /// Factory default: Oz, else the first bundled model, else anything.
     var defaultModel: Entry? {
-        all.first { $0.name.lowercased() == "ekaterina" }
+        all.first { $0.name.lowercased() == "oz" }
             ?? all.first { !$0.isImported }
             ?? all.first
     }
@@ -91,8 +91,8 @@ final class VRMModelRegistry {
 
     private static func namedEntries() -> [Entry] {
         [
-            ("Sonya", "vrm"), ("Ekaterina", "vrm"),
-            ("Sonya", "glb"), ("Ekaterina", "glb")
+            ("Oz", "vrm"), ("Sonya", "vrm"), ("Ekaterina", "vrm"),
+            ("Oz", "glb"), ("Sonya", "glb"), ("Ekaterina", "glb")
         ]
         .compactMap { name, ext -> Entry? in
             guard let url = Bundle.main.url(forResource: name, withExtension: ext) else {

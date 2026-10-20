@@ -8,7 +8,7 @@
 //  a minimal VRM with just that part, so a hair donor loads in a fraction
 //  of the time the whole model took.
 //
-//  The files themselves are not in the app — 68 parts weigh 225 MB, more
+//  The files themselves are not in the app — 114 parts weigh 356 MB, more
 //  than everything else together — so the library is a MANIFEST
 //  (`RemoteAssetRegistry.libraryPartStems`) and each item resolves to a
 //  file on demand through `RemoteAssetCache`, exactly as the environment

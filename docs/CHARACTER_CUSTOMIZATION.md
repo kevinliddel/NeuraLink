@@ -200,7 +200,7 @@ Unnamed materials get a slot from the following sources, in order:
 
 Recovered slots are written under canonical names (`NL_Tops_01_CLOTH`, …).
 
-- **Delivery**: the 68 files (~225 MB) live in the Hugging Face dataset under
+- **Delivery**: the 114 files (~356 MB) live in the Hugging Face dataset under
   `Parts/`. They are reached through `RemoteAssetRegistry.libraryPart(stem)`
   and pinned by size + SHA-256.
 - **Manifest**: `PartsLibrary` lists `RemoteAssetRegistry.libraryPartStems`.
@@ -418,7 +418,7 @@ flowchart TD
 - Shoe fit is measured on the bundled characters (26 host×donor pairs, worst
   1.7% of the foot exposed). An imported model with other proportions can
   still show the foot through a borrowed shoe.
-- First install waits on ~225 MB of parts on top of the environment before
+- First install waits on ~356 MB of parts on top of the environment before
   the loading screen releases.
 - The footer under "Customize Appearance" in character settings still
   mentions skin tone. Skin recolour is no longer offered.

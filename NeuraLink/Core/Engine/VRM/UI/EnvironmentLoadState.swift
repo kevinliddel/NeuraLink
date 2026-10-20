@@ -29,8 +29,8 @@ final class EnvironmentLoadState {
     private(set) var partsReady = false
 
     /// Parts downloaded so far, and how many there are in total. Shown
-    /// instead of a byte count, because 68 files is easier to read as a
-    /// count than as a fraction of 225 MB.
+    /// instead of a byte count, because 114 files is easier to read as a
+    /// count than as a fraction of 356 MB.
     private(set) var partsDone = 0
     private(set) var partsTotal = 0
 

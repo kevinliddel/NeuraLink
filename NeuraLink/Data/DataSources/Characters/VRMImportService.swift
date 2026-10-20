@@ -101,7 +101,7 @@ actor VRMImportService {
 
     /// Slugs that collide with bundled characters' hardcoded switches
     /// (CharacterPersona, VoiceVoxSpeaker) and must never be assigned.
-    static let reservedSlugs: Set<String> = ["ekaterina", "sonya", "dedicatus"]
+    static let reservedSlugs: Set<String> = ["oz", "ekaterina", "sonya", "dedicatus"]
 
     private init() {}
 

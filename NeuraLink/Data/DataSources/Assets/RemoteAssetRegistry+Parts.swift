@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  The customization parts library, as a manifest rather than as bundled
-//  files. The 68 cut-out donor parts weigh 225 MB, which is more than the
+//  files. The 114 cut-out donor parts weigh 356 MB, which is more than the
 //  rest of the app put together, and nothing at startup needs them — so
 //  they live in the Hugging Face dataset next to the environment GLBs and
 //  come down on first launch. Sizes and hashes were captured from the
@@ -27,38 +27,63 @@ extension RemoteAssetRegistry {
         "casual__bottoms", "casual__eyes",
         "casual__hair", "casual__outfit",
         "casual__shoes", "casual__tops",
-        "classic__eyes", "classic__hair",
-        "classic__outfit", "classic__shoes",
-        "classic__tops", "classic_bunny_girl__eyes",
-        "classic_bunny_girl__hair", "classic_bunny_girl__outfit",
-        "classic_bunny_girl__shoes", "cool__eyes",
-        "cool__hair", "cool__outfit",
-        "cyberpunk__eyes", "cyberpunk__hair",
-        "cyberpunk__outfit", "cyberpunk__shoes",
-        "cyberpunk__tops", "dress__eyes",
+        "casual_boy__bottoms", "casual_boy__eyes",
+        "casual_boy__hair", "casual_boy__outfit",
+        "casual_boy__shoes", "casual_boy__tops",
+        "casual_dark__bottoms", "casual_dark__eyes",
+        "casual_dark__hair", "casual_dark__outfit",
+        "casual_dark__shoes", "chill_boy__bottoms",
+        "chill_boy__eyes", "chill_boy__hair",
+        "chill_boy__outfit", "chill_boy__shoes",
+        "chill_boy__tops", "classic__eyes",
+        "classic__hair", "classic__outfit",
+        "classic__shoes", "classic__tops",
+        "classic_bunny_girl__eyes", "classic_bunny_girl__hair",
+        "classic_bunny_girl__outfit", "classic_bunny_girl__shoes",
+        "cool__eyes", "cool__hair",
+        "cool__outfit", "cyberpunk__eyes",
+        "cyberpunk__hair", "cyberpunk__outfit",
+        "cyberpunk__shoes", "cyberpunk__tops",
+        "dark_swimsuit__eyes", "dark_swimsuit__hair",
+        "dark_swimsuit__outfit", "dark_swimsuit__shoes",
+        "dark_swimsuit__tops", "dress__eyes",
         "dress__hair", "dress__outfit",
         "dress__shoes", "dress__tops",
+        "duke__bottoms", "duke__eyes",
+        "duke__hair", "duke__outfit",
+        "duke__shoes", "duke__tops",
         "goth__eyes", "goth__hair",
         "goth__outfit", "goth__shoes",
-        "goth__tops", "maid__eyes",
-        "maid__hair", "maid__outfit",
-        "maid__shoes", "maid__tops",
-        "school_uniform_2__bottoms", "school_uniform_2__eyes",
-        "school_uniform_2__hair", "school_uniform_2__outfit",
-        "school_uniform_2__shoes", "school_uniform_2__tops",
-        "school_uniform_3__bottoms", "school_uniform_3__eyes",
-        "school_uniform_3__hair", "school_uniform_3__outfit",
-        "school_uniform_3__shoes", "school_uniform_3__tops",
-        "school_uniform__bottoms", "school_uniform__eyes",
-        "school_uniform__hair", "school_uniform__outfit",
-        "school_uniform__shoes", "school_uniform__tops"
+        "goth__tops", "ingrid__eyes",
+        "ingrid__hair", "ingrid__outfit",
+        "ingrid__shoes", "john__outfit",
+        "maid__eyes", "maid__hair",
+        "maid__outfit", "maid__shoes",
+        "maid__tops", "princess__eyes",
+        "princess__hair", "princess__outfit",
+        "princess__shoes", "school_uniform_2__bottoms",
+        "school_uniform_2__eyes", "school_uniform_2__hair",
+        "school_uniform_2__outfit", "school_uniform_2__shoes",
+        "school_uniform_2__tops", "school_uniform_3__bottoms",
+        "school_uniform_3__eyes", "school_uniform_3__hair",
+        "school_uniform_3__outfit", "school_uniform_3__shoes",
+        "school_uniform_3__tops", "school_uniform__bottoms",
+        "school_uniform__eyes", "school_uniform__hair",
+        "school_uniform__outfit", "school_uniform__shoes",
+        "school_uniform__tops", "swimsuit__eyes",
+        "swimsuit__hair", "swimsuit__outfit",
+        "swimsuit__shoes", "swimsuit__tops",
+        "wedding__eyes", "wedding__hair",
+        "wedding__outfit", "wedding__shoes"
     ]
 
     /// Total download for the whole library, used for progress before
     /// any individual file has reported its size.
-    static let libraryPartsTotalBytes: Int64 = 226503624
+    static let libraryPartsTotalBytes: Int64 = 356093644
 
-    /// Keyed by part stem. Captured from the dataset tree API 2026-09-27.
+    /// Keyed by part stem. Captured from the dataset tree API 2026-09-27;
+    /// the ten donors added 2026-10-20 were hashed locally and verified
+    /// against the tree API after upload.
     static let libraryPartIntegrity: [String: AssetIntegrity] = [
         "boy_uniform__bottoms": .init(
             size: 925_432,
@@ -114,6 +139,57 @@ extension RemoteAssetRegistry {
         "casual__tops": .init(
             size: 717_788,
             sha256: "a03ce11a84f9f165330c4275138884f65bdbe96a276cd685548c20bd50ffd13c"),
+        "casual_boy__bottoms": .init(
+            size: 671_828,
+            sha256: "8a7121fc76f562f4f17585ecc4e94f763a3205f8586aafe3d3972771152f6d64"),
+        "casual_boy__eyes": .init(
+            size: 198_240,
+            sha256: "b9dc756d4c0848cfa05158e461ce60ebd24cc21c2349b4e866e078cf51fae87e"),
+        "casual_boy__hair": .init(
+            size: 1_319_220,
+            sha256: "ff4f698b2cca12efb99a0d04cc490eb93cd27503f5ee585307c0b9d0a09713db"),
+        "casual_boy__outfit": .init(
+            size: 6_093_740,
+            sha256: "7b7573028102e1aa835818a0417e92ccedf9e5e861071109b82722d88277f4e2"),
+        "casual_boy__shoes": .init(
+            size: 970_328,
+            sha256: "5f6a0c027dc1418e8731965f15e5dc3eb5d1245788afd965ece744068b1c4ad0"),
+        "casual_boy__tops": .init(
+            size: 845_340,
+            sha256: "65d07644cce0e82d9093f23b66a883e3b257edf13bfb321a4e59db6fe7c9203a"),
+        "casual_dark__bottoms": .init(
+            size: 642_364,
+            sha256: "8a4ef8bce77d3ed8a1c411c29046281c6f2d90f8a71fcdb627806a1f559a4df9"),
+        "casual_dark__eyes": .init(
+            size: 901_464,
+            sha256: "a1e125d77a1aeb707b6a466d713ab4bda541873e669e00f489b22697fa7634e1"),
+        "casual_dark__hair": .init(
+            size: 3_074_272,
+            sha256: "fb4bcb74f9b02dc8a73393a79eb5080c0336a0c88bec211c4df96a7e25cfa681"),
+        "casual_dark__outfit": .init(
+            size: 11_532_348,
+            sha256: "c9ee14a648888346896a9b407c628aa2cdb4c32fd222e8ed373e35055ecd227f"),
+        "casual_dark__shoes": .init(
+            size: 563_752,
+            sha256: "1b1fa2a2f765bbae9525ecfa46651e0cafff7517104e6305566c940f90d1826a"),
+        "chill_boy__bottoms": .init(
+            size: 1_555_388,
+            sha256: "97aaf310cd47bb50abf91620bd4e7ae62d3e6bed002bbf1604bb64fefb576989"),
+        "chill_boy__eyes": .init(
+            size: 534_420,
+            sha256: "457cac72f2419be52de8a2704b4d70ed3aa89f7d80ad1e645a259c72fda6d30e"),
+        "chill_boy__hair": .init(
+            size: 1_031_624,
+            sha256: "34ea1920cc8e73ab6bbf53cbfbfb6faa4132748ece7a64df385e8c7d316b56a0"),
+        "chill_boy__outfit": .init(
+            size: 6_105_108,
+            sha256: "157e795345fdba060dc395716dc55db66e2f28febef632d9f72be3a4e4078d20"),
+        "chill_boy__shoes": .init(
+            size: 1_670_992,
+            sha256: "bfcc7cb8aafdc8b45bf1ed4e5708ecb955e7766480040d92503ee3c513f3e84c"),
+        "chill_boy__tops": .init(
+            size: 263_504,
+            sha256: "8c0d2826b70708848373dd09f982894497dcb9c681e8c78ef14ba8bdae5b8d21"),
         "classic__eyes": .init(
             size: 668_864,
             sha256: "c326009eda319f9823b7cbeba8c9081b580a08c820a8115bdab6c62194776fb1"),
@@ -165,6 +241,21 @@ extension RemoteAssetRegistry {
         "cyberpunk__tops": .init(
             size: 1_376_856,
             sha256: "a93b39c0a12d8521ebe6edbebcca2065babd1bfdcec19873ddf0346d0eaaf125"),
+        "dark_swimsuit__eyes": .init(
+            size: 899_328,
+            sha256: "988b698a39aef2328ec3b02b482a9a8ae841def6152ae13df51e38f04190834f"),
+        "dark_swimsuit__hair": .init(
+            size: 2_819_172,
+            sha256: "dbb918f69655552525ec783e9501b9cd1b912d1c7d4158530f509127ec982906"),
+        "dark_swimsuit__outfit": .init(
+            size: 9_957_128,
+            sha256: "483fadd6cab9d55ffc43babb6c76394d2ccf1e20fc98f073c5e4828f701a89ab"),
+        "dark_swimsuit__shoes": .init(
+            size: 314_616,
+            sha256: "7f9ebca37b363719cdcb790477058955b700107202ef3f35dfdeb19e5d3a845b"),
+        "dark_swimsuit__tops": .init(
+            size: 3_166_352,
+            sha256: "51242174ba6bc944873fb94af54c7ea3575c5d41d9201f99927220bd4bf70ffb"),
         "dress__eyes": .init(
             size: 665_144,
             sha256: "ed4caf9dd2c858c00a9e0a80edf5684a4be476d66abfab4d842e87b929a38643"),
@@ -180,6 +271,24 @@ extension RemoteAssetRegistry {
         "dress__tops": .init(
             size: 2_647_568,
             sha256: "b37f84013aa621089078fd05787bff44a08bf66467b1b4d6975c7107720d2e96"),
+        "duke__bottoms": .init(
+            size: 446_308,
+            sha256: "75362d2c964f20041d6490210717bac70d5a56bf8ab8776ec0598d36b0ec0274"),
+        "duke__eyes": .init(
+            size: 680_072,
+            sha256: "8b2dbf541811893fc11ef7eef83f9d278a438644a609bcee3f41c2776585bd40"),
+        "duke__hair": .init(
+            size: 3_209_788,
+            sha256: "5443217bf36ab7d0ec9f2063119f9a9890914c97077d633d255b5bb99f70b84d"),
+        "duke__outfit": .init(
+            size: 8_119_972,
+            sha256: "3b48a11758b9000686613839ffbc8ac109da21ad310d9321f98c3288d9cfa6c6"),
+        "duke__shoes": .init(
+            size: 541_444,
+            sha256: "5ca3097df20d5e8853f53746333505022ffa78aaefe4ef42b2e07f0ed803d15b"),
+        "duke__tops": .init(
+            size: 2_193_492,
+            sha256: "29d7efd8afe8faa821f93a9849ca751b756c01d3c4c51238161628c357e9a04f"),
         "goth__eyes": .init(
             size: 888_264,
             sha256: "5c7bf15f0616ea5d8e9fd46d63ae035dacf54589aa93c8ba01fab1d8e15cc638"),
@@ -195,6 +304,21 @@ extension RemoteAssetRegistry {
         "goth__tops": .init(
             size: 5_060_820,
             sha256: "94d199145755ab1a66788ace50e3b0501a9243f01fb4e7cf5c8aa0182893ccff"),
+        "ingrid__eyes": .init(
+            size: 355_336,
+            sha256: "77476862fe809471cc418c52e368edb33ecf634adf8e7a77ad9f3e4072f5de90"),
+        "ingrid__hair": .init(
+            size: 1_436_892,
+            sha256: "46d219c1e6b8fb17408e105ac7af1fdf41de3352f01b26ee335f2247750a53bc"),
+        "ingrid__outfit": .init(
+            size: 8_296_432,
+            sha256: "80741d6c63d8d57d05841d958ad97b4e312035e36cb6aed964e35d6e476f6b5c"),
+        "ingrid__shoes": .init(
+            size: 1_517_596,
+            sha256: "53483992d789bf60930a2115e6d7f0a639f166446357429f8e5839297146257c"),
+        "john__outfit": .init(
+            size: 12_096_724,
+            sha256: "a53f273b429f9a2a9854fd9e07545f894d4306232d16e106cca05effe86be2cf"),
         "maid__eyes": .init(
             size: 589_880,
             sha256: "8a88676fe4ce75523d1f5d0c3783a78a496a5f816440877a5f791aef8dc50abf"),
@@ -210,6 +334,18 @@ extension RemoteAssetRegistry {
         "maid__tops": .init(
             size: 1_137_412,
             sha256: "6357d8efc4f44466e69825aaaaffeaa35ad0427263942850fd71e51d868728ca"),
+        "princess__eyes": .init(
+            size: 417_304,
+            sha256: "898e29dc27f3c17d894b53173ce5d50d9a076e2c74cdeb080d135e83b7647da5"),
+        "princess__hair": .init(
+            size: 2_817_056,
+            sha256: "ffcda6c675043e1861c01839fecf0bac39636f06ca4fd0e932c3f2e2d6199414"),
+        "princess__outfit": .init(
+            size: 6_698_328,
+            sha256: "4cc24908c1f669f1ad6b26d4fb160636a3abcd5c8a7a874151605922027ae37a"),
+        "princess__shoes": .init(
+            size: 1_828_420,
+            sha256: "1a97ff08517fce614053b222249d4eb07a97445973a7360a5607f073bd0b1e15"),
         "school_uniform_2__bottoms": .init(
             size: 729_792,
             sha256: "794fbbfd34b75eb01e7c89d335d81c58953a367a3cbdd2ad8e14ca43228ef4d2"),
@@ -263,6 +399,33 @@ extension RemoteAssetRegistry {
             sha256: "5502e4053ed0b0dfa54e2b914616b08d4f81bc7d194eef0aa27d970b153a9fa9"),
         "school_uniform__tops": .init(
             size: 3_980_788,
-            sha256: "195590fa129192d4764eeddd308334d5c1e93ba677006787dfaec06e778acfc0")
+            sha256: "195590fa129192d4764eeddd308334d5c1e93ba677006787dfaec06e778acfc0"),
+        "swimsuit__eyes": .init(
+            size: 721_924,
+            sha256: "d0834ed680da72a3d67794e366112d6f3ba804d096965ec7dcfb16719e406bca"),
+        "swimsuit__hair": .init(
+            size: 3_741_736,
+            sha256: "32feee8a97ed3816cbd6fc6a9c189c87a634f854502c621d231e4fed07a88439"),
+        "swimsuit__outfit": .init(
+            size: 7_808_044,
+            sha256: "15c14a2c1f281cc422a492ab20329cd20582c3067c50fecdc98b8e17f20a814b"),
+        "swimsuit__shoes": .init(
+            size: 300_476,
+            sha256: "40796076a8096e74b2f87dc595b942ca561cd2d0a0eba9df3d7d2a7bf365097d"),
+        "swimsuit__tops": .init(
+            size: 1_218_784,
+            sha256: "8e316972639fbe655bc041fd7ec4b0d52fe9be3bf21166082d526a28db957643"),
+        "wedding__eyes": .init(
+            size: 597_984,
+            sha256: "636a9d28cc10da57ddc21cadf542c41ee8f4dea69b3083e7898851fd6582aaf0"),
+        "wedding__hair": .init(
+            size: 2_456_120,
+            sha256: "537c8b7e119dde9a5a40a160fe6ce98378145893fa3e380f7d4c0d9979d9c75d"),
+        "wedding__outfit": .init(
+            size: 5_962_684,
+            sha256: "e6c28d76daa76e616eb0911f6f1433103a7ca0bd99adba4f45454577ebda57e9"),
+        "wedding__shoes": .init(
+            size: 996_576,
+            sha256: "5ad3c674db8c06d411ea7a22ddf5875115536a4005430dd90e51eee0dbeeb8cb")
     ]
 }

@@ -145,7 +145,7 @@ struct JournalDaySection: View {
                     .frame(height: 150)
                     .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous))
                     .padding(.top, 4)
-                    .accessibilityLabel("A picture of her world that day")
+                    .accessibilityLabel("A picture of your companion's world that day")
             }
         }
         .padding(.vertical, 2)

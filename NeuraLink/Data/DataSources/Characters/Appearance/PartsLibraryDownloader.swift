@@ -6,7 +6,7 @@
 //  way the 3D environment arrives: fetch through RemoteAssetCache, report
 //  progress to the loading screen, and release the gate when it is in.
 //
-//  The library is 225 MB across 68 files. It ships outside the app because
+//  The library is 356 MB across 114 files. It ships outside the app because
 //  that is more than everything else put together, and because nothing on
 //  screen needs it until the user opens customization. The pictures for the
 //  cards DO ship, so the picker looks complete either way.
