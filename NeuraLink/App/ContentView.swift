@@ -257,10 +257,9 @@ struct ContentView: View {
                 Text("Removes the model file and its persona settings. Chat history is kept.")
             }
             .task {
-                // The parts library comes down alongside the environment on
-                // first launch, and gates the reveal the same way. On every
-                // later launch the files are already on disk and this
-                // finishes on the first runloop.
+                // The parts library comes down in the background; the reveal
+                // never waits for it. On every later launch the files are
+                // already on disk and this finishes on the first runloop.
                 EnvironmentLoadState.shared.setPartsRetryHandler {
                     PartsLibraryDownloader.reset()
                     PartsLibraryDownloader.start()

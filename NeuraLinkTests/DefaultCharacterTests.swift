@@ -24,6 +24,8 @@ struct DefaultCharacterTests {
         guard VRMModelRegistry.shared.entry(named: "Oz") != nil else { return }
         #expect(VRMModelRegistry.shared.defaultModel?.name == "Oz")
         #expect(VRMModelRegistry.shared.defaultModel?.isImported == false)
+        #expect(VRMModelRegistry.shared.entry(named: "Oz")?.gender == .male)
+        #expect(VRMModelRegistry.shared.entry(named: "Ekaterina")?.gender == .female)
     }
 
     @Test("Oz has a built-in persona, a male cloud voice and a reserved slug")
@@ -53,7 +55,7 @@ struct DefaultCharacterTests {
         "The donors added in October 2026 are in the parts manifest, typed and pinned",
         arguments: [
             "casual_boy", "casual_dark", "chill_boy", "dark_swimsuit", "duke",
-            "ingrid", "john", "princess", "swimsuit", "wedding"
+            "ingrid", "jelsa", "john", "princess", "swimsuit", "wedding"
         ])
     @MainActor
     func donorsAreInTheManifest(model: String) {

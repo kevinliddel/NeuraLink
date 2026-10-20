@@ -24,13 +24,13 @@ final class EnvironmentLoadState {
     /// The selected environment's 3D mesh finished loading (success or failure).
     private(set) var environmentMeshReady = false
     /// The customization parts library has arrived, or has been given up on.
-    /// Only the first install waits: afterwards the files are on disk and
-    /// this flips on the first runloop.
+    /// Informational: the library comes down in the background and the
+    /// reveal never waits for it (docs/CHARACTER_CUSTOMIZATION.md).
     private(set) var partsReady = false
 
     /// Parts downloaded so far, and how many there are in total. Shown
-    /// instead of a byte count, because 114 files is easier to read as a
-    /// count than as a fraction of 356 MB.
+    /// instead of a byte count, because 119 files is easier to read as a
+    /// count than as a fraction of 364 MB.
     private(set) var partsDone = 0
     private(set) var partsTotal = 0
 
@@ -197,9 +197,10 @@ final class EnvironmentLoadState {
     }
 
     /// Everything needed before revealing the live 3D scene. When the user has
-    /// the 3D environment disabled, the mesh load is not awaited.
+    /// the 3D environment disabled, the mesh load is not awaited. The parts
+    /// library is never awaited: it is background work.
     var isReady: Bool {
-        guard baseSceneReady, partsReady else { return false }
+        guard baseSceneReady else { return false }
         return UserSettings.shared.showEnvironment ? environmentMeshReady : true
     }
 

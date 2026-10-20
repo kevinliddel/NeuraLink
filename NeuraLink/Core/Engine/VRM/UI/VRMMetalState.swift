@@ -27,6 +27,9 @@ final class VRMMetalState {
     var isEnvironmentReady: Bool = false
     var errorMessage: String?
     var currentModel: VRMModel?
+    /// Gender of the character on screen; picks its clip pools
+    /// (AnimationCatalogue). Set by `display(_:gender:)`.
+    var characterGender: CharacterGender = .fallback
     let isMetalAvailable: Bool
 
     // Sky ticker — independent of model lifecycle so clouds never freeze
@@ -64,9 +67,14 @@ final class VRMMetalState {
     var randomAnimTimer: Float = -1
     var randomAnimElapsed: Float = 0
     var randomAnimDuration: Float = 0
-    static let randomAnimNames = ["default_state", "neutral_2", "neutral_3", "neutral_4", "relax", "waiting"]
     static let randomAnimIntervalRange: ClosedRange<Float> = 8...20
-    static let randomAnimDurationRange: ClosedRange<Float> = 5...12
+    /// An idle plays once, cut here if it runs longer; never looped, since
+    /// a clip wrapping back to its first frame pops.
+    static let randomAnimMaxHold: Float = 12
+    static let randomAnimMinHold: Float = 2
+    /// The blend back to the base loop starts this long before the idle
+    /// ends, so the body flows home instead of snapping from the last frame.
+    static let idleReturnCrossfade: Float = 1.0
 
     // Occasional talking gestures (VRMMetalState+TalkingGesture.swift)
     var talkingGestureEntries: [RandomAnimEntry] = []
@@ -362,7 +370,8 @@ final class VRMMetalState {
         lastAppliedEmotion = ""
     }
 
-    func display(_ model: VRMModel) {
+    func display(_ model: VRMModel, gender: CharacterGender = .fallback) {
+        characterGender = gender
         currentModel = model
         renderer?.loadModel(model)
         // Before the saved customization grafts, so the phone is part of

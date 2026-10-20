@@ -200,17 +200,20 @@ Unnamed materials get a slot from the following sources, in order:
 
 Recovered slots are written under canonical names (`NL_Tops_01_CLOTH`, …).
 
-- **Delivery**: the 114 files (~356 MB) live in the Hugging Face dataset under
+- **Delivery**: the 119 files (~364 MB) live in the Hugging Face dataset under
   `Parts/`. They are reached through `RemoteAssetRegistry.libraryPart(stem)`
   and pinned by size + SHA-256.
 - **Manifest**: `PartsLibrary` lists `RemoteAssetRegistry.libraryPartStems`.
   Donor slugs are `lib:<stem>`, and library parts never appear in the
   character picker.
-- **First-launch download**: `PartsLibraryDownloader` fetches missing parts
-  (3 attempts each) and gates the loading screen through
-  `EnvironmentLoadState.partsReady`. It releases the gate on success **or**
-  failure: a missing library costs outfits, never the app.
-- **Tile pictures** ship pre-rendered: 79 PNGs in
+- **Background download**: `PartsLibraryDownloader` fetches missing parts
+  after launch (3 attempts each, in the background) and never holds the
+  loading screen. Every fetch resumes from its partial file with an HTTP
+  Range request (`RemoteAssetCache.fetch`), so a slow link makes progress
+  across attempts and launches instead of starting an outfit over. A file
+  the server does not have (4xx) rests for six hours before it is asked for
+  again. A part that has not arrived is fetched when its tile is tapped.
+- **Tile pictures** ship pre-rendered: 131 PNGs in
   `App/Resources/Custom/Thumbs/`, named `<model>__<category>.png`, covering
   the library and the bundled characters. The picker therefore looks
   complete before any part arrives. Imported characters' tiles are rendered
@@ -320,8 +323,8 @@ flowchart TD
 
     LAUNCH["🚀 first launch"] --> DL["PartsLibraryDownloader.start()"]
     DL --> MISSING{"parts missing?"}
-    MISSING --> D1["no"] --> GATE["EnvironmentLoadState<br/>partsDidLoad()"]
-    MISSING --> D2["yes"] --> FETCH["RemoteAssetCache fetch<br/>3 attempts each"]
+    MISSING --> D1["no"] --> GATE["EnvironmentLoadState<br/>partsDidLoad() · never gates"]
+    MISSING --> D2["yes"] --> FETCH["RemoteAssetCache fetch<br/>resumable · 3 attempts each"]
     HF --> FETCH
     FETCH --> D3["done or gave up"] --> GATE
 
@@ -364,7 +367,7 @@ flowchart TD
 | `Data/DataSources/Characters/Appearance/AppearanceApplier.swift` | Spec → renderer state (parts → colours → textures), donor cache, generation counter |
 | `Data/DataSources/Characters/Appearance/VRMDonorTextureCache.swift` | Decode-free donor inventory, fingerprints, lazy masks |
 | `Data/DataSources/Characters/Appearance/PartsLibrary.swift` | Manifest of library parts (`lib:<stem>`) |
-| `Data/DataSources/Characters/Appearance/PartsLibraryDownloader.swift` | First-launch download + loading-screen gate |
+| `Data/DataSources/Characters/Appearance/PartsLibraryDownloader.swift` | Background download, 4xx cooldown |
 | `Data/DataSources/Characters/Appearance/PartThumbnailStore.swift` | Bundled tile lookup + runtime render cache |
 | `Data/DataSources/Assets/RemoteAssetRegistry+Parts.swift` | Part stems + size/SHA-256 pins |
 | `Data/DataSources/Memory/MemoryStore+Appearance.swift` | `character_appearance` table |
@@ -418,7 +421,8 @@ flowchart TD
 - Shoe fit is measured on the bundled characters (26 host×donor pairs, worst
   1.7% of the foot exposed). An imported model with other proportions can
   still show the foot through a borrowed shoe.
-- First install waits on ~356 MB of parts on top of the environment before
-  the loading screen releases.
+- The parts library (~364 MB) comes down in the background after the first
+  launch; the picker shows every tile at once and fetches a part when it is
+  tapped if it has not arrived yet.
 - The footer under "Customize Appearance" in character settings still
   mentions skin tone. Skin recolour is no longer offered.

@@ -70,7 +70,7 @@ extension VRMMetalState {
         renderer?.lookAtController?.enabled = false
         animationPlayer.isLooping = true
         animationPlayer.crossfade(to: clip, duration: Self.awayCrossfade, from: model)
-        nlLog("[AwayEpisode] ▶ \(AwayEpisodePolicy.clipName) (loop)")
+        nlLog("[AwayEpisode] ▶ \(AnimationCatalogue.awayClipName(for: characterGender)) (loop)")
     }
 
     // MARK: - Desk gaze

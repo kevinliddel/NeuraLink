@@ -334,6 +334,30 @@ the camera button is on: the app never starts the camera on its own.
   it and it resumes after them. A face that stays 2 s ends it (and, if the
   absence was long, greets). Safety cap four hours.
 
+## Clip pools by gender
+
+Every character carries a gender label (`CharacterGender`): fixed in the
+registry for the bundled ones (Oz is male, Ekaterina and Sonya female),
+chosen in the import sheet for a user's VRM and editable afterwards in the
+character's settings. VRM metadata has no such field, so the label is the
+app's. It decides which bundled clips the body draws on
+(`AnimationCatalogue`):
+
+| Clips | Female | Male |
+|---|---|---|
+| Base loop | `neutral` | `male_powerful` |
+| Random idles | `default_state`, `neutral_2`…`neutral_4`, `relax`, `waiting` | `male_look_around`, `male_impatient` |
+| Resting loop (desk presence, away) | `relax` | `male_powerful` |
+| Photo poses | `cool`, `peace_sign`, `relax`, `stretch` | `cool`, `stretch`; `peace_sign` → `cool`, `relax` → `stretch` |
+| Entrance, talking gestures, phone, listening | shared | shared |
+
+An idle plays once — never looped, since a short clip wrapping back to its
+first frame pops — and the blend back to the base loop starts a second
+before it ends. The pose tool keeps offering the same four names to every
+character, and the body resolves a feminine pose when it plays. The male
+clips came from the Sonya project's male set; rows and models that predate
+the label are female.
+
 ## Diary pictures
 
 Companion Evolution pillar 2: the companion shares pictures of her own

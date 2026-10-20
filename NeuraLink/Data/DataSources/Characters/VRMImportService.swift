@@ -192,6 +192,7 @@ actor VRMImportService {
     func finalize(
         _ candidate: VRMImportCandidate,
         displayName: String,
+        gender: CharacterGender = .fallback,
         customThumbnailPNG: Data? = nil
     ) throws -> ImportedCharacter {
         guard let baseDir = try? ProtectedStorage.privateApplicationSupportURL() else {
@@ -251,15 +252,16 @@ actor VRMImportService {
                 ? nil : candidate.report.authors.joined(separator: ", "),
             metaLicenseURL: candidate.report.licenseURL,
             metaAvatarPermission: candidate.report.avatarPermission,
-            metaCommercialUsage: candidate.report.commercialUsage)
+            metaCommercialUsage: candidate.report.commercialUsage,
+            gender: gender)
 
         guard let row = MemoryStore.shared.insertImportedCharacter(draft) else {
             try? FileManager.default.removeItem(at: modelURL)
             if let thumbnailURL { try? FileManager.default.removeItem(at: thumbnailURL) }
             throw VRMImportError.insertRejected
         }
-        seedPersonaDefaults(slug: slug, displayName: draft.displayName)
-        nlLog("[VRMImportService] Imported character '\(slug)' (\(candidate.fileSize) bytes)", level: .info)
+        seedPersonaDefaults(slug: slug, displayName: draft.displayName, gender: gender)
+        nlLog("[VRMImportService] Imported character '\(slug)' (\(gender.rawValue), \(candidate.fileSize) bytes)", level: .info)
         return row
     }
 
@@ -268,20 +270,23 @@ actor VRMImportService {
     /// persisted voice in the list — an absent value displays row 0 without
     /// writing back). The OpenAI prompt body is stored WITHOUT the emotion
     /// preamble; PersonaStore re-prepends it on read.
-    private func seedPersonaDefaults(slug: String, displayName: String) {
+    private func seedPersonaDefaults(slug: String, displayName: String, gender: CharacterGender) {
         let store = MemoryStore.shared
         let openai = MemoryStore.PersonaEngine.openai
         store.setPersonaName(character: slug, engine: openai, name: displayName)
         store.setPersonaPrompt(
             character: slug, engine: openai,
             prompt: "You are \(displayName), a friendly AI companion. Keep replies brief, warm, and conversational.")
-        store.setPersonaVoice(character: slug, engine: openai, voice: "alloy")
+        // A male character starts on the deeper voice each engine has;
+        // the user can still pick any voice in the character's settings.
+        let isMale = gender == .male
+        store.setPersonaVoice(character: slug, engine: openai, voice: isMale ? "ash" : "alloy")
         store.setPersonaVoice(
             character: slug, engine: MemoryStore.PersonaEngine.llmJp3,
-            voice: String(VoiceVoxSpeaker.defaultSpeakerID))
+            voice: String(isMale ? VoiceVoxSpeaker.ritsu.id : VoiceVoxSpeaker.defaultSpeakerID))
         store.setPersonaVoice(
             character: slug, engine: MemoryStore.PersonaEngine.local,
-            voice: OpenVoiceVoicePreset.riko.rawValue)
+            voice: (isMale ? OpenVoiceVoicePreset.akira : .riko).rawValue)
     }
 
     /// Cancellation cleanup for a staged candidate.

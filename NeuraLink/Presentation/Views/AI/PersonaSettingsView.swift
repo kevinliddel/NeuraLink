@@ -25,6 +25,8 @@ struct PersonaSettingsView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var previewText: String = ""
+    /// Imported characters only; bundled ones are fixed in the registry.
+    @State var gender: CharacterGender
     @State private var previewPlayer = VoicePreviewPlayer()
     @State private var localPreviewPlayer = LocalTTSPreviewPlayer()
     @State private var isLoadingPreview = false
@@ -50,6 +52,7 @@ struct PersonaSettingsView: View {
         self.selectedConfig = config
         let current = CharacterPersona.forCharacter(named: modelID)
         _persona = State(initialValue: current)
+        _gender = State(initialValue: ImportedCharacterStore.shared.character(slug: modelID.lowercased())?.gender ?? .fallback)
         let prompt = LocalLLMPromptStore.shared.effectivePrompt(for: modelID, config: config)
         _localPrompt = State(initialValue: prompt)
         let initialSpeaker = VoiceVoxSpeaker.speakerID(for: modelID)
@@ -74,7 +77,7 @@ struct PersonaSettingsView: View {
             }
 
             if ImportedCharacterStore.shared.isImported(slug: modelID.lowercased()) {
-                CharacterImageSection(slug: modelID.lowercased())
+                importedCharacterSections
             }
 
             if isLocalLLMMode {
@@ -181,8 +184,11 @@ struct PersonaSettingsView: View {
             let trimmed = persona.name.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty {
                 ImportedCharacterStore.shared.rename(slug: slug, to: trimmed)
-                VRMModelRegistry.shared.refresh()
             }
+            if ImportedCharacterStore.shared.character(slug: slug)?.gender != gender {
+                ImportedCharacterStore.shared.setGender(slug: slug, gender)
+            }
+            VRMModelRegistry.shared.refresh()
         }
         if isLocalLLMMode {
             nlLog(
@@ -485,11 +491,5 @@ struct PersonaSettingsView: View {
             PersonaVoiceStore.shared.setOpenVoiceVoiceID(previousOpenVoice, for: modelID)
         }
         TTSEngineSelector.shared.invalidateCache(for: modelID)
-    }
-}
-
-#Preview {
-    NavigationStack {
-        PersonaSettingsView(modelID: "Ekaterina")
     }
 }

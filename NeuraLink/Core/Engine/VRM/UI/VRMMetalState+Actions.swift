@@ -25,17 +25,22 @@ extension VRMMetalState {
     }
 
     func loadAnimationSequence(for model: VRMModel) {
-        let appearURL  = Self.findVRMA(named: "appear")
-        let defaultURL = Self.findVRMA(named: "neutral")
+        let appearURL  = Self.findVRMA(named: AnimationCatalogue.appear)
+        let neutralName = AnimationCatalogue.neutralClipName(for: characterGender)
+        let defaultURL = Self.findVRMA(named: neutralName)
 
         guard let defaultURL else {
-            nlLog("[VRMMetalState] No neutral.vrma found — showing bind pose")
+            nlLog("[VRMMetalState] No \(neutralName).vrma found — showing bind pose")
             renderer?.isModelVisible = true
             return
         }
 
         // Idle, talking-gesture and episode clips load together; split below.
-        let clipNames = Self.randomAnimNames + TalkingGesturePolicy.clipNames
+        // The idle pool and the resting loop follow the character's gender.
+        let awayName = AnimationCatalogue.awayClipName(for: characterGender)
+        var idleNames = AnimationCatalogue.idleClipNames(for: characterGender)
+        if !idleNames.contains(awayName) { idleNames.append(awayName) }
+        let clipNames = idleNames + TalkingGesturePolicy.clipNames
             + [PhoneEpisodePolicy.clipName, ListeningEpisodePolicy.clipName]
         let randomPairs = clipNames.compactMap { name -> (String, URL)? in
             guard let url = Self.findVRMA(named: name) else { return nil }
@@ -67,7 +72,7 @@ extension VRMMetalState {
                 let phoneClip = loadedEntries.first { $0.name == PhoneEpisodePolicy.clipName }?.clip
                 let listeningClip = loadedEntries.first { $0.name == ListeningEpisodePolicy.clipName }?.clip
                 // The resting loop is also an ordinary idle; it stays in the idle pool.
-                let awayClip = loadedEntries.first { $0.name == AwayEpisodePolicy.clipName }?.clip
+                let awayClip = loadedEntries.first { $0.name == awayName }?.clip
                 loadedEntries.removeAll { $0.name == PhoneEpisodePolicy.clipName || $0.name == ListeningEpisodePolicy.clipName }
 
                 if let appearURL {
@@ -141,7 +146,8 @@ extension VRMMetalState {
                     isPlayingRandomAnim = false
                     randomAnimElapsed = 0
                     if let clip = defaultClip {
-                        animationPlayer.crossfade(to: clip, duration: 0.5, from: model)
+                        animationPlayer.isLooping = true
+                        animationPlayer.crossfade(to: clip, duration: Self.idleReturnCrossfade, from: model)
                     }
                     scheduleNextRandomAnim()
                     nlLog("[RandomAnim] ↩ neutral — next random in \(String(format: "%.1f", randomAnimTimer))s")
@@ -151,8 +157,12 @@ extension VRMMetalState {
                 if randomAnimTimer <= 0, let entry = randomAnimEntries.randomElement() {
                     isPlayingRandomAnim = true
                     randomAnimElapsed = 0
-                    randomAnimDuration = Float.random(in: Self.randomAnimDurationRange)
-                    animationPlayer.isLooping = true
+                    // Once through, never looped; the blend home starts just
+                    // before the clip ends. Long clips are cut at the cap.
+                    randomAnimDuration = min(
+                        max(entry.clip.duration - Self.idleReturnCrossfade, Self.randomAnimMinHold),
+                        Self.randomAnimMaxHold)
+                    animationPlayer.isLooping = false
                     animationPlayer.crossfade(to: entry.clip, duration: 0.5, from: model)
                     nlLog("[RandomAnim] ▶ '\(entry.name)' — duration: \(String(format: "%.1f", randomAnimDuration))s")
                 }
@@ -353,7 +363,9 @@ extension VRMMetalState {
     }
 
     private func playPose(named name: String) {
-        guard let model = currentModel, let url = Self.findVRMA(named: name) else {
+        // A feminine pose on a male body plays his stand-in (AnimationCatalogue).
+        let clipName = AnimationCatalogue.poseClipName(name, for: characterGender)
+        guard let model = currentModel, let url = Self.findVRMA(named: clipName) else {
             nlLog("[VRMMetalState] ⚠️ Pose '\(name)' not found")
             return
         }

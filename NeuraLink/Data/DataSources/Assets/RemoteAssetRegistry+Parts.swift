@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  The customization parts library, as a manifest rather than as bundled
-//  files. The 114 cut-out donor parts weigh 356 MB, which is more than the
+//  files. The 119 cut-out donor parts weigh 364 MB, which is more than the
 //  rest of the app put together, and nothing at startup needs them — so
 //  they live in the Hugging Face dataset next to the environment GLBs and
 //  come down on first launch. Sizes and hashes were captured from the
@@ -56,33 +56,36 @@ extension RemoteAssetRegistry {
         "goth__outfit", "goth__shoes",
         "goth__tops", "ingrid__eyes",
         "ingrid__hair", "ingrid__outfit",
-        "ingrid__shoes", "john__outfit",
-        "maid__eyes", "maid__hair",
-        "maid__outfit", "maid__shoes",
-        "maid__tops", "princess__eyes",
-        "princess__hair", "princess__outfit",
-        "princess__shoes", "school_uniform_2__bottoms",
-        "school_uniform_2__eyes", "school_uniform_2__hair",
-        "school_uniform_2__outfit", "school_uniform_2__shoes",
-        "school_uniform_2__tops", "school_uniform_3__bottoms",
-        "school_uniform_3__eyes", "school_uniform_3__hair",
-        "school_uniform_3__outfit", "school_uniform_3__shoes",
-        "school_uniform_3__tops", "school_uniform__bottoms",
-        "school_uniform__eyes", "school_uniform__hair",
-        "school_uniform__outfit", "school_uniform__shoes",
-        "school_uniform__tops", "swimsuit__eyes",
-        "swimsuit__hair", "swimsuit__outfit",
-        "swimsuit__shoes", "swimsuit__tops",
-        "wedding__eyes", "wedding__hair",
-        "wedding__outfit", "wedding__shoes"
+        "ingrid__shoes", "jelsa__bottoms",
+        "jelsa__eyes", "jelsa__hair",
+        "jelsa__outfit", "jelsa__shoes",
+        "john__outfit", "maid__eyes",
+        "maid__hair", "maid__outfit",
+        "maid__shoes", "maid__tops",
+        "princess__eyes", "princess__hair",
+        "princess__outfit", "princess__shoes",
+        "school_uniform_2__bottoms", "school_uniform_2__eyes",
+        "school_uniform_2__hair", "school_uniform_2__outfit",
+        "school_uniform_2__shoes", "school_uniform_2__tops",
+        "school_uniform_3__bottoms", "school_uniform_3__eyes",
+        "school_uniform_3__hair", "school_uniform_3__outfit",
+        "school_uniform_3__shoes", "school_uniform_3__tops",
+        "school_uniform__bottoms", "school_uniform__eyes",
+        "school_uniform__hair", "school_uniform__outfit",
+        "school_uniform__shoes", "school_uniform__tops",
+        "swimsuit__eyes", "swimsuit__hair",
+        "swimsuit__outfit", "swimsuit__shoes",
+        "swimsuit__tops", "wedding__eyes",
+        "wedding__hair", "wedding__outfit",
+        "wedding__shoes"
     ]
 
     /// Total download for the whole library, used for progress before
     /// any individual file has reported its size.
-    static let libraryPartsTotalBytes: Int64 = 356093644
+    static let libraryPartsTotalBytes: Int64 = 364118636
 
     /// Keyed by part stem. Captured from the dataset tree API 2026-09-27;
-    /// the ten donors added 2026-10-20 were hashed locally and verified
+    /// the eleven donors added 2026-10-20 were hashed locally and verified
     /// against the tree API after upload.
     static let libraryPartIntegrity: [String: AssetIntegrity] = [
         "boy_uniform__bottoms": .init(
@@ -316,6 +319,21 @@ extension RemoteAssetRegistry {
         "ingrid__shoes": .init(
             size: 1_517_596,
             sha256: "53483992d789bf60930a2115e6d7f0a639f166446357429f8e5839297146257c"),
+        "jelsa__bottoms": .init(
+            size: 930_036,
+            sha256: "f6c4406cbf89e04681f6f12acc324cc278ce926fcaeca3c44980cfc702f17015"),
+        "jelsa__eyes": .init(
+            size: 499_204,
+            sha256: "5e55d8765d6efabc7ff57da7e540e1ab85fa9aa36bc7250d55e1fe2379fa78ed"),
+        "jelsa__hair": .init(
+            size: 1_278_004,
+            sha256: "85ede26789ad335f9f89f4f0e8ba48aadf35dd5438be297211d747b82c56356a"),
+        "jelsa__outfit": .init(
+            size: 3_469_724,
+            sha256: "86b81f18c535ae39a338fe845ad0a81bd74d05c7a74f321395a30d260cf898a8"),
+        "jelsa__shoes": .init(
+            size: 1_848_024,
+            sha256: "56128840e846ec7eb3b7b44695a9ff291222c1addeb6fb39b5dd4aac5a319edc"),
         "john__outfit": .init(
             size: 12_096_724,
             sha256: "a53f273b429f9a2a9854fd9e07545f894d4306232d16e106cca05effe86be2cf"),
