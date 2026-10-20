@@ -54,20 +54,29 @@ extension GGUFLLMjp3Engine {
                 self.bridgeLock.lock()
                 defer { self.bridgeLock.unlock() }
 
+                // Stops where the model starts writing the next turn itself.
+                var stops = StopSequenceFilter()
                 bridge.generate(
                     prompt: prompt,
                     maxNewTokens: Int32(maxTokens),
                     onToken: { [weak self] token in
                         guard let self else { return false }
-                        fullText += token
-                        Task { @MainActor [weak self] in
-                            self?.delegate?.localLLM(didGenerateToken: token)
+                        let safe = stops.feed(token)
+                        if !safe.isEmpty {
+                            fullText += safe
+                            Task { @MainActor [weak self] in
+                                self?.delegate?.localLLM(didGenerateToken: safe)
+                            }
                         }
-                        return true
+                        return !stops.stopped
                     },
                     onFinish: { [weak self] in
+                        let rest = stops.flush()
+                        fullText += rest
+                        let finalText = fullText
                         Task { @MainActor [weak self] in
-                            self?.delegate?.localLLM(didFinishGeneration: fullText)
+                            if !rest.isEmpty { self?.delegate?.localLLM(didGenerateToken: rest) }
+                            self?.delegate?.localLLM(didFinishGeneration: finalText)
                         }
                         continuation.resume()
                     }
@@ -87,9 +96,9 @@ extension GGUFLLMjp3Engine {
 
     func prefill(messages: [LLMChatMessage]) async {
         guard isLoaded, let bridge else { return }
-        guard let prompt = bridge.applyChatTemplate(
-            messages: messages, addGenerationPrompt: false
-        ) else { return }
+        // Same native format as the turn, without the answer tail, so the
+        // turn's prompt extends this one and reuses its KV cache.
+        let prompt = LLMjpPromptFormat.render(messages, addGenerationPrompt: false)
 
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             // .userInitiated, not .utility: warm-up prefill is on the first-token

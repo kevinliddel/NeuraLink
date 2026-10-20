@@ -235,8 +235,10 @@ time the notification toggle is switched on.
 `ProactivePresenceManager` lets the companion speak first. It checks every
 **15 s**. It works with either engine: it injects through
 `OpenAIRealtimeManager.sendInteractionEvent` when the data channel is open,
-and through `LocalLLMManager.handleUserInput(_, logToTimeline: false)`
-otherwise.
+and as a `LocalCue` through `LocalLLMManager.handleCue` otherwise — an
+instruction rather than the user's words, in Japanese for the LLM-jp model, and
+checked before it is spoken so the instruction itself is never read out
+(`docs/Local_SLM_Model.md`, "Lines the companion starts").
 
 - **Guards on every tick**: the Proactive Engagement toggle is on, and the app
   is active (or PiP is active). `status == .ready`, and the UI isn't hidden.

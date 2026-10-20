@@ -342,7 +342,7 @@ final class SongRecognitionManager {
                 nlLog("[SongID] Skipping announcement — pipeline busy (\(status.label)).", level: .info)
                 return
             }
-            LocalLLMManager.shared.handleUserInput(event, logToTimeline: false)
+            LocalLLMManager.shared.handleCue(LocalCue(english: event))
         } else if settings.isEnabled && settings.hasValidKey {
             OpenAIRealtimeManager.shared.sendInteractionEvent(event)
         }

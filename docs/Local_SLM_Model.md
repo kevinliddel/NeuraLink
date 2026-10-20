@@ -103,10 +103,19 @@ Both engines call into `NeuraLink/Core/Bridge/llama_bridge.{h,cpp}`:
 - **Tuned sampler chain** (top-k 40, top-p 0.9, temp 0.7, repetition penalty)
   instead of greedy argmax, which avoids the loop/repetition pathologies of small
   models.
-- **`llama_chat_apply_template`** — prompts are formatted with the chat template
-  baked into each model's GGUF metadata, so the app never drifts from the format the
-  model was trained on. (`LocalLLMManager` hand-rolls a Llama-3 fallback only if a
-  model has no embedded template.)
+- **`llama_chat_apply_template`** — Llama-3.2 prompts are formatted with the chat
+  template baked into the GGUF metadata, so the app never drifts from the format the
+  model was trained on. **LLM-jp-3 is the exception:** its "### 指示 / ### 応答"
+  format isn't in llama.cpp's template detector, so that call failed and the app fell
+  back to Llama-3 markup the model had never seen, and it answered with an improvised
+  script ("ユーザー：… Oz:…"). `LLMjpPromptFormat` renders the native format in Swift
+  for turns and warm-ups alike, with the persona folded into the instruction block
+  (the stock template discards system messages).
+- **Stop sequences** — `StopSequenceFilter` sits on the token stream of both
+  engines and stops a reply where the model starts writing the next turn itself
+  ("ユーザー：", "### 指示", "User:", template tokens), holding back anything that
+  could still become a marker so none of it reaches the screen or TTS.
+  `LeadingLabelFilter` drops a "Oz:" style speaker label off the front of a reply.
 - **Prompt-lookup decoding (PLD)** — a lightweight speculative pass, tuned per model
   (the Japanese model uses a smaller n-gram window since JP subwords repeat less).
 
@@ -176,6 +185,23 @@ keep that difference at the end of the prompt.
 
 KV-cache blobs are AES-256-GCM encrypted on disk and namespaced per model (so a model
 swap never restores an incompatible blob). See `LocalLLMKVCache`.
+
+## Lines the companion starts (cues)
+
+Silence breaks, return greetings, song reactions, head pats and the other
+proactive moments reach the local model as a `LocalCue`
+(`LocalLLMManager.handleCue`), not as the user's words. Sent as a user message, a
+1–2B model read the English instruction out or answered it, and the instruction
+showed on screen as if the user had said it.
+
+- **An instruction, in the model's language.** Llama-3.2 gets it as a final system
+  message after the history. LLM-jp gets Japanese — native versions of the silence
+  break and the return greeting (`ProactivePresenceManager.smallTalkEventJapanese`,
+  `greetingEventJapanese`), and a short Japanese frame around any other English cue.
+- **Checked before it is said.** The reply is buffered, not streamed, and
+  `CueReplyValidator` drops it when it repeats or narrates the instruction (a long
+  run copied from it, "the user…", "ユーザーが…", stage-direction asterisks). A
+  dropped line is simply not spoken; the user's transcript is never touched.
 
 ## Key source files
 

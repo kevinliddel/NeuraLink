@@ -133,7 +133,11 @@ final class GGUFLLMjp3Engine: NSObject, @unchecked Sendable, LLMEngineProtocol {
         bridge?.cancel()
     }
 
+    /// LLM-jp-3's own "### 指示 / ### 応答" format, rendered here: llama.cpp's
+    /// template detector doesn't know it, so the GGUF template path failed and
+    /// the reply came back as an improvised script (see LLMjpPromptFormat).
     func applyChatTemplate(messages: [LLMChatMessage]) -> String? {
-        bridge?.applyChatTemplate(messages: messages)
+        guard bridge != nil else { return nil }
+        return LLMjpPromptFormat.render(messages, addGenerationPrompt: true)
     }
 }

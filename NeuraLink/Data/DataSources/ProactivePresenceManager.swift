@@ -130,13 +130,17 @@ final class ProactivePresenceManager {
 
         let character = RealtimeChatState.shared.selectedCharacterName
         let entry = MemoryStore.shared.latestUnusedOpener(character: character)
+        let hour = Calendar.current.component(.hour, from: Date())
         let event = Self.greetingEvent(
             opener: entry?.opener,
             hoursAway: hours,
-            timeOfDay: Self.timeOfDayDescriptor(hour: Calendar.current.component(.hour, from: Date()))
+            timeOfDay: Self.timeOfDayDescriptor(hour: hour)
         )
+        let japanese = Self.greetingEventJapanese(
+            name: RealtimeChatState.shared.characterDisplayName, opener: entry?.opener,
+            hoursAway: hours, timeOfDay: Self.timeOfDayJapanese(hour: hour))
 
-        guard engage(with: event) else { return false }
+        guard engage(with: event, japanese: japanese) else { return false }
         hasGreetedSinceForeground = true
         if let entry { MemoryStore.shared.markOpenerUsed(id: entry.id) }
         return true
@@ -166,18 +170,23 @@ final class ProactivePresenceManager {
             .filter { !usedFactSeeds.contains($0) }
             .randomElement()
         let previousLine = Self.previousLine(RealtimeChatState.shared.aiTranscript)
+        let hour = Calendar.current.component(.hour, from: Date())
+        let angle = Self.smallTalkAngle(for: smallTalkCount)
         let event = Self.smallTalkEvent(
-            timeOfDay: Self.timeOfDayDescriptor(hour: Calendar.current.component(.hour, from: Date())),
+            timeOfDay: Self.timeOfDayDescriptor(hour: hour),
             stage: CompanionAffinity.compute().label,
             factSeed: fact,
-            angle: Self.smallTalkAngle(for: smallTalkCount),
+            angle: angle,
             previousLine: previousLine
         )
+        let japanese = Self.smallTalkEventJapanese(
+            name: RealtimeChatState.shared.characterDisplayName,
+            timeOfDay: Self.timeOfDayJapanese(hour: hour), angle: angle, previousLine: previousLine)
 
         let normalized = Self.normalize(event)
         guard normalized != lastEventNormalized else { return }
 
-        guard engage(with: event) else { return }
+        guard engage(with: event, japanese: japanese) else { return }
         lastEventNormalized = normalized
         if let fact { usedFactSeeds.insert(fact) }
         smallTalkCount += 1
@@ -185,16 +194,18 @@ final class ProactivePresenceManager {
 
     // MARK: - Engine-agnostic injection
 
+    /// `japanese`: the same instruction for the Japanese local model (LLM-jp);
+    /// without it the English goes in a short Japanese frame.
     @discardableResult
-    func engage(with event: String) -> Bool {
+    func engage(with event: String, japanese: String? = nil) -> Bool {
         let openAI = OpenAISettings.shared
         if openAI.isEnabled && openAI.hasValidKey {
             guard OpenAIRealtimeManager.shared.remoteDataChannel?.readyState == .open
             else { return false }
             OpenAIRealtimeManager.shared.sendInteractionEvent(event)
         } else if openAI.isLocalLLMEnabled {
-            guard LocalLLMManager.shared.llmEngine.isLoaded else { return false }
-            LocalLLMManager.shared.handleUserInput(event, logToTimeline: false)
+            // An instruction, not the user's words (LocalLLMManager+Cue).
+            guard LocalLLMManager.shared.handleCue(LocalCue(english: event, japanese: japanese)) else { return false }
         } else {
             return false
         }
@@ -230,6 +241,56 @@ final class ProactivePresenceManager {
         }
         return "*The user has returned after about \(away) away. It's \(timeOfDay). "
             + "Greet them warmly back in character and ask what they've been up to.*"
+    }
+
+    nonisolated static func timeOfDayJapanese(hour: Int) -> String {
+        switch hour {
+        case 5..<9: return "早朝"
+        case 9..<12: return "朝"
+        case 12..<17: return "午後"
+        case 17..<22: return "夕方"
+        default: return "夜遅く"
+        }
+    }
+
+    /// The return greeting for LLM-jp: short, imperative Japanese a 1.8B model
+    /// follows instead of echoing. The saved opener only rides along when it is
+    /// itself Japanese.
+    nonisolated static func greetingEventJapanese(
+        name: String, opener: String?, hoursAway: Double, timeOfDay: String
+    ) -> String {
+        let away = hoursAway >= 48 ? "\(Int(hoursAway / 24))日" : "\(Int(hoursAway))時間"
+        var event = "相手が約\(away)ぶりに戻ってきました。今は\(timeOfDay)です。"
+            + "\(name)として、温かく短い挨拶で迎えてください。"
+        if let opener, isJapanese(opener) {
+            event += "伝えたかった「\(opener.prefix(60))」という話も自然に入れてください。"
+        } else {
+            event += "最近どうしていたか聞いてください。"
+        }
+        return event
+    }
+
+    /// The silence break for LLM-jp, same two angles as the English one.
+    nonisolated static func smallTalkEventJapanese(
+        name: String, timeOfDay: String, angle: SmallTalkAngle, previousLine: String?
+    ) -> String {
+        var event: String
+        switch angle {
+        case .checkIn:
+            event = "今は\(timeOfDay)で、しばらく会話が途切れています。\(name)として、自分から短く自然な一言で話しかけてください。"
+                + "「まだいますか」とは聞かないでください。"
+        case .shareThought:
+            event = "今は\(timeOfDay)で、まだ静かです。\(name)として、自分のちょっとした考えや今日の小さな出来事を一言か二言で話してください。"
+                + "質問は不要です。"
+        }
+        if let previousLine, !previousLine.isEmpty {
+            event += "さっきは「\(previousLine.prefix(40))」と言ったので、違う言葉で別のことを話してください。"
+        }
+        return event
+    }
+
+    nonisolated static func isJapanese(_ text: String) -> Bool {
+        text.unicodeScalars.contains { (0x3040...0x30FF).contains($0.value) || (0x4E00...0x9FFF).contains($0.value) }
     }
 
     /// What a small talk is for: the first one checks in, the next offers

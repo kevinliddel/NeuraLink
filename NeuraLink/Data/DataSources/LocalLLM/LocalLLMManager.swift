@@ -59,6 +59,12 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     // Accumulate text for TTS chunking (e.g., speak sentence by sentence)
     var ttsBuffer = ""
 
+    /// Drops a "Oz:" style speaker label off the front of each reply.
+    var replyLabelFilter = LeadingLabelFilter(names: [])
+    /// Set while a `LocalCue` is generating: its reply is checked whole
+    /// (CueReplyValidator) before anything is shown or spoken.
+    var activeCueInstruction: String?
+
     // Buffers tokens that may be part of an [emotion:n] tag.
     // Tag characters are intercepted here and never reach ttsBuffer or aiTranscript.
     var tagBuffer = ""
@@ -263,6 +269,8 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
         firstTokenLatencyLogged = false
         firstAudioLatencyLogged = false
         firstTTSChunkPending = true
+        replyLabelFilter = LeadingLabelFilter(names: replyLabelNames)
+        activeCueInstruction = nil
 
         Task { @MainActor in
             state.userTranscript = text
@@ -434,12 +442,10 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
 
     /// Handles a physical interaction event (e.g. head pat) by triggering the local LLM.
     func handleInteractionEvent(_ action: String) {
-        // We reuse handleUserInput but we might want to wrap the action in a way
-        // that the model understands it's a physical action, not spoken text.
-        // Don't log it to the timeline — it's an action, not something the user
-        // said, so persisting `*head pat*` as a user message just adds noise.
-        let text = "*\(action)*"
-        handleUserInput(text, logToTimeline: false)
+        // A cue, not a user message: the model reacts to what happened instead
+        // of answering `*head pat*` as if the user had said it, and nothing is
+        // logged as the user's words.
+        handleCue(LocalCue(english: "Something just happened: \(action). React in character with one short spoken line."))
     }
 
     @MainActor

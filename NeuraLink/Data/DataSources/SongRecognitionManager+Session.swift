@@ -152,7 +152,7 @@ extension SongRecognitionManager {
             // Never barge in on an in-flight generation or TTS playback.
             let status = RealtimeChatState.shared.status
             guard status == .ready || status == .listening else { return }
-            LocalLLMManager.shared.handleUserInput(event, logToTimeline: false)
+            LocalLLMManager.shared.handleCue(LocalCue(english: event))
         } else if settings.isEnabled && settings.hasValidKey {
             OpenAIRealtimeManager.shared.sendInteractionEvent(event)
         } else {

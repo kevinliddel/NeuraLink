@@ -63,22 +63,31 @@ extension GGUFLlamaEngine {
                 self.bridgeLock.lock()
                 defer { self.bridgeLock.unlock() }
 
+                // Stops where the model starts writing the next turn itself.
+                var stops = StopSequenceFilter()
                 bridge.generate(
                     prompt: prompt,
                     maxNewTokens: Int32(maxTokens),
                     onToken: { [weak self] token in
                         guard let self else { return false }
-                        fullText += token
-                        Task { @MainActor [weak self] in
-                            self?.delegate?.localLLM(didGenerateToken: token)
+                        let safe = stops.feed(token)
+                        if !safe.isEmpty {
+                            fullText += safe
+                            Task { @MainActor [weak self] in
+                                self?.delegate?.localLLM(didGenerateToken: safe)
+                            }
                         }
                         // A finished tool call is the whole reply; stop here
                         // instead of letting the model ramble after it.
-                        return !fullText.hasSuffix("</tool>")
+                        return !stops.stopped && !fullText.hasSuffix("</tool>")
                     },
                     onFinish: { [weak self] in
+                        let rest = stops.flush()
+                        fullText += rest
+                        let finalText = fullText
                         Task { @MainActor [weak self] in
-                            self?.delegate?.localLLM(didFinishGeneration: fullText)
+                            if !rest.isEmpty { self?.delegate?.localLLM(didGenerateToken: rest) }
+                            self?.delegate?.localLLM(didFinishGeneration: finalText)
                         }
                         continuation.resume()
                     }

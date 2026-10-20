@@ -161,6 +161,32 @@ final class LocalLLMMemoryHierarchy {
         return Self.fitToBudget(messages, nCtx: nCtx)
     }
 
+    /// Messages for a line the companion says on its own (a `LocalCue`): the
+    /// same system prompt and history as a turn — so the warm KV prefix still
+    /// applies — then the instruction as a final system message, with no user
+    /// message at all. The JP model's format folds it into the instruction
+    /// block with the persona.
+    func buildCueMessages(
+        instruction: String,
+        config: LocalModelDownloadManager.ModelConfiguration,
+        characterName: String,
+        baseSystemPrompt: String
+    ) async -> [LLMChatMessage] {
+        let isJP = (config == .llmJp3)
+        let systemContent = buildSystemContent(
+            base: baseSystemPrompt, characterName: characterName, isLLMjp: isJP,
+            compactCompanionState: config == .llama1b)
+        if isJP {
+            return [.init(role: "system", content: systemContent), .init(role: "user", content: instruction)]
+        }
+        var messages: [LLMChatMessage] = [.init(role: "system", content: systemContent)]
+        messages.append(contentsOf: buildHistory(isLLMjp: false, excluding: ""))
+        messages.append(.init(
+            role: "system",
+            content: "[Your next line] \(instruction) Reply with only the words you say aloud — never repeat or describe this instruction."))
+        return Self.fitToBudget(messages, nCtx: Self.nCtx(for: config))
+    }
+
     /// The token count `fitToBudget` starts evicting at.
     static func budgetLimit(_ nCtx: Int) -> Int {
         Int(Double(nCtx) * LocalLLMContextBudget.defaultCompactionThreshold)
