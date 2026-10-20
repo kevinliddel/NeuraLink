@@ -46,6 +46,33 @@ enum EnvironmentCatalog {
     private static let galleryInstance: EnvironmentRenderer.InstanceConfig =
         (x: 0, y: -0.02, z: 3, rotY: .pi / 2, scale: 1.0)
 
+    // The three below were placed from the GLBs themselves (floor plans and
+    // ray tests in the scene's own units): `scale` converts to metres, `rotY`
+    // turns the scene so its best view sits behind the avatar, and `x`/`z`/`y`
+    // move a chosen open spot of floor to the origin. Translation applies
+    // after rotation (T·R·S), so it is the rotated, scaled spot negated.
+
+    /// Modern apartment: a SketchUp export at 0.002 m per unit (2.9 m
+    /// ceiling, 1.8 m fridge). The avatar stands on the rug between the
+    /// dining table and the sofa, at (-15.2, -7.6) m, with the TV wall
+    /// behind; its model origin is outside the building, and auto-fit's
+    /// recentring would have put the avatar inside the sofa.
+    private static let modernApartmentInstance: EnvironmentRenderer.InstanceConfig =
+        (x: -7.6, y: -0.222, z: 15.2, rotY: -.pi / 2, scale: 0.002)
+
+    /// Pool: modelled in inches (5.5 m hall, 1.8 m deep pool). Its origin is
+    /// already open deck with 3 m clear all round, the loungers and the back
+    /// wall behind and the pool to the right, so only the units change.
+    private static let poolInstance: EnvironmentRenderer.InstanceConfig =
+        (x: 0, y: -0.02, z: 0, rotY: 0, scale: 0.0254)
+
+    /// St Bartholomew's: a photogrammetry scan in metres. Its origin sits on
+    /// a pew seat, so the avatar moves into the central aisle at (-2.5, -2.2)
+    /// m, where the floor is at -1.225, and the scene turns so the altar and
+    /// the stained-glass apse are behind them, about 7 m away.
+    private static let cathedralInstance: EnvironmentRenderer.InstanceConfig =
+        (x: -2.2, y: 1.205, z: 2.5, rotY: -.pi / 2, scale: 1.0)
+
     /// Every selectable environment, in picker order.
     /// It auto-fits to a ~120-unit footprint
     /// (recentered on the origin); the others render at their native size. Tune
@@ -66,6 +93,18 @@ enum EnvironmentCatalog {
         EnvironmentOption(
             id: "art_gallery", displayName: "Art Gallery",
             previewImage: "art_gallery", instanceConfig: galleryInstance,
+            autoFitFootprint: nil, bakedLighting: true, isInterior: true),
+        EnvironmentOption(
+            id: "modern_apartment", displayName: "Modern Apartment",
+            previewImage: "modern_apartment", instanceConfig: modernApartmentInstance,
+            autoFitFootprint: nil, bakedLighting: true, isInterior: true),
+        EnvironmentOption(
+            id: "pool", displayName: "Pool",
+            previewImage: "pool", instanceConfig: poolInstance,
+            autoFitFootprint: nil, bakedLighting: false, isInterior: true),
+        EnvironmentOption(
+            id: "st_bartholomew_cathedral", displayName: "St. Bartholomew's",
+            previewImage: "st_bartholomew_cathedral", instanceConfig: cathedralInstance,
             autoFitFootprint: nil, bakedLighting: true, isInterior: true)
     ]
 

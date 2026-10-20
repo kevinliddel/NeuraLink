@@ -80,6 +80,7 @@ private struct ModelCard: View {
         switch entry.name.lowercased() {
         case "ekaterina": return "温かく、優しいお姉さんタイプ――思いやりがあり、愛情深い"
         case "sonya": return "鋭いツンデレの女王様――高慢な中にも隠れた優しさ"
+        case "oz": return "その涙の理由を変える者"
         default: return entry.isImported ? "Imported character" : "AI Companion"
         }
     }

@@ -94,6 +94,7 @@ struct RemoteAssetIntegrityTests {
         assets += RemoteAssetRegistry.jtalkDictFilenames.map { .jtalkDictFile($0) }
         assets += ["apartment", "art_gallery", "campus", "city", "ruined_city"]
             .map { .scene($0) }
+        assets += EnvironmentCatalog.all.map { .scene($0.id) }
         assets += RemoteAssetRegistry.libraryPartStems.map { .libraryPart($0) }
 
         for asset in assets {
