@@ -60,3 +60,49 @@ void llama_bridge_get_pld_stats(LlamaBridgeHandle* handle, int32_t* out_rounds, 
     if (out_rounds) { *out_rounds = handle->last_pld_rounds; }
     if (out_hits) { *out_hits = handle->last_pld_hits; }
 }
+
+// MARK: - In-memory snapshot (background generations)
+
+struct LlamaBridgeSnapshot {
+    std::vector<uint8_t> data;
+    std::vector<llama_token> tokens;
+};
+
+LlamaBridgeSnapshot* llama_bridge_snapshot_create(LlamaBridgeHandle* handle) {
+    if (!handle || !handle->ctx || handle->kv_tokens.empty()) { return nullptr; }
+    const size_t size = llama_state_seq_get_size(handle->ctx, /*seq_id=*/0);
+    if (size == 0) { return nullptr; }
+    auto* snapshot = new LlamaBridgeSnapshot();
+    snapshot->data.resize(size);
+    const size_t written = llama_state_seq_get_data(handle->ctx, snapshot->data.data(), size, /*seq_id=*/0);
+    if (written == 0) {
+        delete snapshot;
+        return nullptr;
+    }
+    snapshot->data.resize(written);
+    snapshot->tokens = handle->kv_tokens;
+    return snapshot;
+}
+
+bool llama_bridge_snapshot_restore(LlamaBridgeHandle* handle, const LlamaBridgeSnapshot* snapshot) {
+    if (!handle || !handle->ctx || !snapshot) { return false; }
+    auto* memory = llama_get_memory(handle->ctx);
+    llama_memory_seq_rm(memory, /*seq_id=*/0, -1, -1);
+    const size_t read = llama_state_seq_set_data(handle->ctx, snapshot->data.data(), snapshot->data.size(),
+                                                 /*dest_seq_id=*/0);
+    if (read == 0) {
+        // Leave a clean, empty cache: the next prompt prefills from scratch.
+        llama_memory_clear(memory, true);
+        handle->kv_tokens.clear();
+        return false;
+    }
+    handle->kv_tokens = snapshot->tokens;
+    return true;
+}
+
+int32_t llama_bridge_snapshot_token_count(const LlamaBridgeSnapshot* snapshot) {
+    return snapshot ? static_cast<int32_t>(snapshot->tokens.size()) : 0;
+}
+
+void llama_bridge_snapshot_free(LlamaBridgeSnapshot* snapshot) { delete snapshot; }
+

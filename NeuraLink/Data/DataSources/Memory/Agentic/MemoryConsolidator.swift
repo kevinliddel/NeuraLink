@@ -89,7 +89,10 @@ final class MemoryConsolidator: @unchecked Sendable {
             system: Self.systemPrompt(disposition: MemoryDisposition.forCharacter(character)),
             user: Self.userPrompt(facts: batch, observations: existing),
             maxTokens: llm.tier == .cloud ? Self.cloudMaxTokens : Self.localMaxTokens)
-        let actions = Self.parse(raw ?? "")
+        // No answer (a user turn preempted it, or the request failed): leave
+        // the batch unconsolidated so the next run picks it up.
+        guard let raw else { return false }
+        let actions = Self.parse(raw)
         let changed = apply(actions, batch: batch, existing: existing)
         store.markConsolidated(ids: batch.map(\.id))
         nlLog("[MemoryConsolidator] \(batch.count) facts → \(actions.count) actions (\(llm.tier))", level: .info)

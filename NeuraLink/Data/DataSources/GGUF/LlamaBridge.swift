@@ -21,7 +21,7 @@ final class LlamaBridge {
     // MARK: - Properties
 
     private var handle: OpaquePointer?
-    private let label: String
+    private var label: String
 
     var version: String {
         String(cString: llama_bridge_version())
@@ -78,16 +78,24 @@ final class LlamaBridge {
         // `LLMRuntimeProfile.resolve` (Simulator / < 5 GB → 0). Here we only
         // need the reactive fallback below for real Metal-init failures.
         let layers = gpuLayers
+        // A GPU load that the system kills mid-way can't be caught; mark it
+        // pending so the next launch knows (LLMGPUSentinel). Confirmed after
+        // the first forward pass completes.
+        if layers > 0 { LLMGPUSentinel.beginGPULoad() }
         handle = llama_bridge_create(modelPath, contextLength, threads, layers, kType.rawValue, vType.rawValue, flashAttn.rawValue)
 
         // If Metal/GPU initialization fails on real hardware (e.g. pre-A14 devices or MTLCompilerService XPC error),
         // gracefully fall back to CPU-only execution.
+        var usedCPUFallback = false
         if handle == nil && layers > 0 {
+            usedCPUFallback = true
             nlLog("[LlamaBridge] Metal/GPU initialization failed. Retrying with CPU-only (gpuLayers = 0)...", level: .error)
             handle = llama_bridge_create(modelPath, contextLength, threads, 0, kType.rawValue, vType.rawValue, flashAttn.rawValue)
         }
 
         guard handle != nil else { return nil }
+        // Bench lines say where the model actually runs.
+        self.label += (layers > 0 && !usedCPUFallback) ? "·gpu" : "·cpu"
         // Prompt-Lookup Decoding is on by default for every engine: it's a
         // free 1.5–2× tok/s win on conversational repetition and gracefully
         // no-ops when no n-gram match is found. pldN / pldNDraft = 0 keeps
@@ -143,6 +151,7 @@ final class LlamaBridge {
             return onToken(token)
         }
         let timedOnFinish: () -> Void = {
+            if stats.tokenCount > 0 { LLMGPUSentinel.confirmGPUWorks() }
             var reused: Int32 = 0
             var newTokens: Int32 = 0
             var prefillMs: Double = 0
@@ -235,6 +244,34 @@ final class LlamaBridge {
         llama_bridge_cancel(handle)
     }
 
+    // MARK: - In-memory KV snapshot
+
+    /// Sequence 0's KV state and tokens, held in RAM (see
+    /// `llama_bridge_snapshot_create`). Freed with the object.
+    final class KVSnapshot {
+        fileprivate let pointer: OpaquePointer
+        let tokenCount: Int
+        fileprivate init(pointer: OpaquePointer) {
+            self.pointer = pointer
+            tokenCount = Int(llama_bridge_snapshot_token_count(pointer))
+        }
+        deinit { llama_bridge_snapshot_free(pointer) }
+    }
+
+    /// Copies the current KV state out. Nil when the cache is empty. Caller
+    /// must hold the engine's bridge lock, as for generate/prefill.
+    func snapshotKV() -> KVSnapshot? {
+        guard let pointer = llama_bridge_snapshot_create(handle) else { return nil }
+        return KVSnapshot(pointer: pointer)
+    }
+
+    /// Puts a snapshot back. On failure the cache is left empty (the next
+    /// prompt prefills from scratch). Caller must hold the bridge lock.
+    @discardableResult
+    func restoreKV(_ snapshot: KVSnapshot) -> Bool {
+        llama_bridge_snapshot_restore(handle, snapshot.pointer)
+    }
+
     /// Synchronously prefills the KV cache for `prompt` without generating
     /// tokens. Blocks the calling thread — dispatch to a background queue.
     /// Caller MUST serialise with `generate(...)` (llama.cpp is not
@@ -243,6 +280,7 @@ final class LlamaBridge {
         let signpost = NLSignposts.llm.beginInterval("prefill")
         llama_bridge_prefill(handle, prompt)
         NLSignposts.llm.endInterval("prefill", signpost)
+        if llama_bridge_kv_token_count(handle) > 0 { LLMGPUSentinel.confirmGPUWorks() }
     }
 
     // MARK: - KV cache persistence
@@ -267,6 +305,15 @@ final class LlamaBridge {
 
     /// Number of tokens currently materialised in the KV cache. Useful for
     /// benchmark logging ("loaded N tokens from disk cache").
+    /// Reuse and cost of the most recent prefill (generate or warm-up).
+    var lastPrefillStats: (reused: Int, new: Int, ms: Double) {
+        var reused: Int32 = 0
+        var fresh: Int32 = 0
+        var ms: Double = 0
+        llama_bridge_get_prefill_stats(handle, &reused, &fresh, &ms)
+        return (Int(reused), Int(fresh), ms)
+    }
+
     var kvTokenCount: Int {
         return Int(llama_bridge_kv_token_count(handle))
     }

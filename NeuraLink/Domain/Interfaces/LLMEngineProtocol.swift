@@ -81,6 +81,11 @@ protocol LLMEngineProtocol: AnyObject {
     /// loadModel and before any prefill/generate.
     func loadKVCache(from path: String) async -> Int
 
+    /// One background generation (memory extraction, reflections, titles)
+    /// that leaves the conversation's KV cache as it found it and yields to
+    /// a user turn. Nil when no model is loaded or a user turn preempted it.
+    func generateSilently(prompt: String, maxTokens: Int) async -> String?
+
     /// Constrain tool-call output with a lazy GBNF grammar. Engines that do
     /// not support grammars default to a no-op returning false.
     func setToolGrammar(gbnf: String, root: String, triggerPatterns: [String]) -> Bool
@@ -91,4 +96,5 @@ extension LLMEngineProtocol {
     func prefill(messages: [LLMChatMessage]) async { /* no-op */ }
     func saveKVCache(to path: String) async -> Bool { false }
     func loadKVCache(from path: String) async -> Int { 0 }
+    func generateSilently(prompt: String, maxTokens: Int) async -> String? { nil }
 }

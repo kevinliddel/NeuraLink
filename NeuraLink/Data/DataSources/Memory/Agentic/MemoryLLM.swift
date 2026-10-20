@@ -50,9 +50,11 @@ struct LiveMemoryLLM: MemoryLLM {
             return await OpenAIChatClient.complete(
                 system: system, user: user, maxTokens: maxTokens, temperature: 0.2, purpose: "memory")
         case .local:
-            let text = await LocalLLMManager.shared.runSilentGeneration(
+            // nil = no answer (preempted by a user turn, never idle): callers
+            // keep their state and retry later. A run that finished with
+            // nothing to say is "", which callers treat as an answer.
+            return await LocalLLMManager.shared.runSilentGenerationOrNil(
                 prompt: "\(system)\n\n\(user)", maxTokens: maxTokens)
-            return text.isEmpty ? nil : text
         case .none:
             return nil
         }

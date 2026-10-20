@@ -72,7 +72,7 @@ struct UserSettingsView: View {
                     NavigationLink {
                         MemoryTimelineView()
                     } label: {
-                        Label("Memory & Facts", systemImage: "brain")
+                        Label("Memory & Facts", image: "nodes")
                     }
                 }
                 

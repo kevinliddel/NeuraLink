@@ -151,7 +151,7 @@ struct MemoryHeroCard: View {
         }
     }
 
-    /// The character's face when a portrait exists, else the brain mark.
+    /// The character's face when a portrait exists, else the nodes mark.
     @ViewBuilder
     private var heroIcon: some View {
         if let portrait {
@@ -164,7 +164,7 @@ struct MemoryHeroCard: View {
                 .overlay(RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous).strokeBorder(.white.opacity(0.35), lineWidth: 1))
                 .accessibilityLabel("\(characterName)'s portrait")
         } else {
-            Image(systemName: "brain")
+            Image("nodes")
                 .font(.title.weight(.semibold))
                 .foregroundStyle(.white)
                 .frame(width: 52, height: 52)

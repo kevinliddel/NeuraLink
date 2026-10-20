@@ -21,6 +21,7 @@ extension GGUFLLMjp3Engine {
             return
         }
 
+        silentGate.preemptIfActive()
         generationLock.lock()
         let alreadyRunning = _isGenerating
         if !alreadyRunning { _isGenerating = true }
@@ -73,6 +74,13 @@ extension GGUFLLMjp3Engine {
                 )
             }
         }
+    }
+
+    // MARK: - LLMEngineProtocol — silent (background) generation
+
+    func generateSilently(prompt: String, maxTokens: Int) async -> String? {
+        guard isLoaded, let bridge else { return nil }
+        return await silentGate.run(bridge: bridge, bridgeLock: bridgeLock, prompt: prompt, maxTokens: maxTokens)
     }
 
     // MARK: - LLMEngineProtocol — prefill (background warmup)

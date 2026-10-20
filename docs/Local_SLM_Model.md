@@ -6,10 +6,11 @@ OpenAI Realtime (cloud) path. This document covers the local Small Language Mode
 pipeline from microphone to spoken reply.
 
 > **Where it runs — no ANE.** Despite earlier plans, the on-device LLM does **not**
-> use the Apple Neural Engine. It runs through **llama.cpp**: on the **Metal GPU**
-> for devices with ≥ 5 GB RAM, and **CPU-only** on the 4 GB tier (iPhone 11/12/13),
-> where `LLMRuntimeProfile` forces `gpuLayers = 0` to stay clear of the jetsam
-> budget. Speech-to-text (whisper.cpp) always runs on the **CPU**.
+> use the Apple Neural Engine. It runs through **llama.cpp** on the **Metal GPU** on
+> every real device, the 4 GB tier (iPhone 11/12/13) included — as SynapLink does.
+> It falls back to the **CPU** on the Simulator, and on a 4 GB build whose GPU load
+> was once killed by the system (`LLMGPUSentinel`). Speech-to-text (whisper.cpp)
+> always runs on the **CPU**.
 
 ## Why llama.cpp (and not CoreML / ANE)
 
@@ -111,8 +112,9 @@ Both engines call into `NeuraLink/Core/Bridge/llama_bridge.{h,cpp}`:
 
 ## Memory residency (the 4 GB constraint)
 
-On the 4 GB tier the LLM is CPU-only and **memory-bandwidth bound**, so the
-single biggest factor is whether the model's weights stay **resident in RAM**:
+Decode is **memory-bandwidth bound** on the GPU and the CPU alike, so on the 4 GB
+tier the single biggest factor is whether the model's weights stay **resident in
+RAM** (Metal maps the same mmap'd pages, so this holds on the GPU too):
 
 - llama.cpp `mmap`s the GGUF. If the model is too large to stay resident alongside
   the avatar, environment, and TTS engines, iOS evicts its clean pages and re-reads
@@ -125,18 +127,52 @@ single biggest factor is whether the model's weights stay **resident in RAM**:
   instead of crashing.
 
 Per-model runtime parameters (context length, threads, `gpuLayers`, KV quant, flash
-attention, PLD window) live in one place: `LLMRuntimeProfile.resolve(for:)`.
+attention, PLD window) live in one place: `LLMRuntimeProfile.resolve(for:)`, with the
+per-device rules in `LLMRuntimeProfile.tuned`, aligned with SynapLink:
 
-## Cold-start latency
+| Device | Where | Threads | KV cache | Context |
+|---|---|---|---|---|
+| < 5 GB (iPhone 11/12/13) | Metal (CPU if a GPU load once died) | 2 | q4_0 | 2048 (Llama-1B), 1024 (LLM-jp) |
+| ≥ 5 GB | Metal | 4 | q8_0 | grows with RAM (2048 / 4096) |
+| Simulator | CPU | 2 | q4_0 | as the model's baseline |
 
-First-token latency is minimized in `LocalLLMManager.startListening()`:
+**GPU sentinel.** A load the system kills for memory (jetsam) can't be caught, so
+`LlamaBridge` marks a GPU load pending before creating the context and
+`LLMGPUSentinel` confirms it after the first forward pass completes. A launch that
+finds a load still pending keeps that build on the CPU; a new build tries the GPU
+again once. `[Bench]` lines end the model label with `·gpu` or `·cpu`.
 
-- **`tryRestoreKVCache()`** — a previous session's prefilled persona prefix is
-  restored from disk, so the first turn reuses it (~instant first token from the 2nd
-  launch onward).
-- **`warmupPrefill()`** — on a first-ever launch the persona prefix is prefilled in
-  the background at launch (it overlaps Whisper setup), so it's warm before the user
-  finishes speaking their first turn.
+## Turn latency
+
+A turn only pays for the tokens the bridge has not already got in its KV cache: it
+reuses everything up to the first token where the new prompt differs. Four things
+keep that difference at the end of the prompt.
+
+- **Anchored history window.** The verbatim history starts at a fixed message and
+  grows; only once it passes 16 messages, or the context budget, does it jump forward
+  to keep the last 8 (`LocalLLMMemoryHierarchy.stableWindow`). A window that slid by a
+  pair every turn changed the prompt right after the system block and re-prefilled
+  the whole history every turn (measured: ~365 of ~850 tokens from turn 6 on); now a
+  turn prefills its facts, the user's words and the template, and a jump costs one
+  re-prefill every few turns. The voice-start warm-up and the turn compute the same
+  window from the same anchor.
+- **Background generations keep the prefix.** Fact extraction, consolidation, mental
+  models, reflections and chat titles run on the same model. `SilentGenerationGate`
+  snapshots the conversation's KV state in RAM before each one and restores it after
+  (`llama_bridge_snapshot_*`, milliseconds), so the next turn starts warm.
+- **User turns come first.** A silent run starts only after the companion has been
+  idle for 1.5 s, and a user turn preempts it at its next token instead of being
+  dropped. A preempted run returns no answer: memory retain advances its watermark
+  only past chunks it finished, consolidation and mental models keep their state, and
+  all of them retry on their next trigger.
+- **Cold start.** `LocalLLMManager.startListening()` restores and warms the prefix:
+
+  - **`tryRestoreKVCache()`** — a previous session's prefilled persona prefix is
+    restored from disk, so the first turn reuses it (~instant first token from the
+    2nd launch onward).
+  - **`warmupPrefill()`** — on a first-ever launch the persona prefix is prefilled in
+    the background at launch (it overlaps Whisper setup), so it's warm before the
+    user finishes speaking their first turn.
 
 KV-cache blobs are AES-256-GCM encrypted on disk and namespaced per model (so a model
 swap never restores an incompatible blob). See `LocalLLMKVCache`.

@@ -53,8 +53,11 @@ struct LLMRuntimeProfile {
             // 2 threads keeps work on the P-cores (E-core spill hurts CPU
             // decode). n_ctx 1024 must match `fitToBudget`'s nCtx in the
             // memory hierarchy.
+            // n_ctx 2048 (SynapLink's 4 GB value): the anchored history window
+            // in LocalLLMMemoryHierarchy needs room to grow between jumps,
+            // or it re-prefills every turn. q4_0 KV at 2048 is ~19 MB.
             profile = LLMRuntimeProfile(
-                contextLength: 1024, threads: 2, gpuLayers: 999,
+                contextLength: 2048, threads: 2, gpuLayers: 999,
                 kType: .q4_0, vType: .q4_0, flashAttn: .enabled,
                 pldN: 0, pldNDraft: 0)
         case .llmJp3:
@@ -81,22 +84,13 @@ struct LLMRuntimeProfile {
     ) -> LLMRuntimeProfile {
         var profile = baseProfile(for: config)
 
-        // Proactive CPU-only fallback (moved here from LlamaBridge so the tier
-        // model owns it): the Simulator and < 5 GB devices (iPhone 11/12/13)
-        // can't compile Metal shaders without risking jetsam, so force
-        // gpuLayers = 0. The bridges keep a *reactive* retry-on-failure for
-        // real Metal init errors on the GPU path. Flash-attn + KV are left
-        // unchanged here (Phase-2 parity); the sweep decides whether the CPU
-        // path prefers FA AUTO / f16 V.
         #if targetEnvironment(simulator)
-        profile.gpuLayers = 0
+        profile = tuned(profile, ramGB: 0, isSimulator: true, gpuAllowed: false)
         #else
         let gb = Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824.0
-        if gb < 5.0 {
-            nlLog("[LLMProfile] Device RAM (\(String(format: "%.1f", gb)) GB) < 5.0 GB — CPU-only (gpuLayers = 0).",
-                  level: .info)
-            profile.gpuLayers = 0
-        }
+        profile = tuned(profile, ramGB: gb, isSimulator: false, gpuAllowed: LLMGPUSentinel.gpuAllowed())
+        nlLog("[LLMProfile] \(String(format: "%.1f", gb)) GB → gpuLayers=\(profile.gpuLayers) threads=\(profile.threads) kv=\(profile.kType.rawValue)",
+              level: .info)
         #endif
 
         // Dynamic thread cap: the per-tier thread counts in `baseProfile` are
@@ -148,6 +142,32 @@ struct LLMRuntimeProfile {
     /// compactor can never disagree with the `contextLength` the engines pass
     /// to the bridge — a mismatch would over-evict (wasting the larger window)
     /// or under-evict (overflowing prefill).
+    /// Per-device tuning, aligned with SynapLink's RuntimeProfile:
+    /// - Every real device offloads the model to Metal (SynapLink does so on
+    ///   the iPhone 11 too). Below 5 GB that used to be CPU-only — 2 threads,
+    ///   sharing the CPU with streaming TTS — the main reason local replies
+    ///   came out so much slower here. `gpuAllowed` is LLMGPUSentinel's
+    ///   verdict: a GPU load that once died keeps that build on the CPU.
+    /// - 5 GB and up: 4 threads and a q8_0 KV cache, as SynapLink.
+    /// - The Simulator stays on the CPU.
+    /// Pure, for tests.
+    static func tuned(
+        _ base: LLMRuntimeProfile, ramGB: Double, isSimulator: Bool, gpuAllowed: Bool
+    ) -> LLMRuntimeProfile {
+        var profile = base
+        if isSimulator {
+            profile.gpuLayers = 0
+            return profile
+        }
+        profile.gpuLayers = gpuAllowed ? 999 : 0
+        if ramGB >= 5.0 {
+            profile.threads = max(profile.threads, 4)
+            profile.kType = .q8_0
+            profile.vType = .q8_0
+        }
+        return profile
+    }
+
     static func resolvedContextLength(
         for config: LocalModelDownloadManager.ModelConfiguration
     ) -> Int32 {
@@ -158,7 +178,7 @@ struct LLMRuntimeProfile {
         let gb = Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824.0
         let ramCtx: Int32
         switch gb {
-        case ..<5.0:  ramCtx = 512    // 4 GB tier — baseline (1024) governs via max()
+        case ..<5.0:  ramCtx = 512    // 4 GB tier — the model's baseline governs via max()
         case ..<7.0:  ramCtx = 2_048  // 6 GB tier — Qwen-3B sweet spot
         default:      ramCtx = 4_096  // 8 GB tier — Qwen-7B / speculative path
         }

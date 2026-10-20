@@ -221,12 +221,12 @@ struct RelationshipBadge: View {
 
 /// Frosted pill with an icon and a short value.
 struct StatChip: View {
-    let symbol: String
+    let icon: Image
     let text: String
 
     var body: some View {
         HStack(spacing: 4) {
-            Image(systemName: symbol)
+            icon
                 .font(.system(size: 9, weight: .bold))
             Text(text)
                 .font(.system(size: 10, weight: .semibold, design: .rounded))
@@ -236,6 +236,12 @@ struct StatChip: View {
         .padding(.horizontal, 7)
         .padding(.vertical, 4)
         .background(.white.opacity(0.16), in: Capsule())
+    }
+}
+
+extension StatChip {
+    init(symbol: String, text: String) {
+        self.init(icon: Image(systemName: symbol), text: text)
     }
 }
 
@@ -341,7 +347,7 @@ struct CompanionWidgetView: View {
                 HStack(spacing: 5) {
                     StatChip(symbol: "bubble.left.fill", text: snapshot.lastChatDescription(now: entry.date))
                     if let facts = snapshot.factCount, facts > 0 {
-                        StatChip(symbol: "brain.head.profile", text: "\(facts)")
+                        StatChip(icon: Image("nodes"), text: "\(facts)")
                     }
                     if let days = snapshot.daysTogether, days > 0 {
                         StatChip(symbol: "calendar", text: days == 1 ? "1 day" : "\(days) days")

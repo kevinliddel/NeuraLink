@@ -115,7 +115,10 @@ final class MemoryMentalModels: @unchecked Sendable {
             system: Self.systemPrompt(character: character, disposition: MemoryDisposition.forCharacter(character)),
             user: "QUESTION: \(model.question)\n\nEVIDENCE:\n\(evidence)\n\nANSWER:",
             maxTokens: Self.maxTokens)
-        let answer = Self.cleanAnswer(raw ?? "")
+        // No answer (a user turn preempted it, or the request failed): keep
+        // the summary we have; it stays due and refreshes on the next pass.
+        guard let raw else { return false }
+        let answer = Self.cleanAnswer(raw)
         store.updateMentalModel(id: model.id, content: answer, lastMemoryID: latestMemoryID)
         nlLogSensitive("[MentalModel] \(model.slug): \(answer)", level: .info)
         if answer != model.content {

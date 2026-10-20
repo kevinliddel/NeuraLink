@@ -35,6 +35,8 @@ final class GGUFLLMjp3Engine: NSObject, @unchecked Sendable, LLMEngineProtocol {
 
     // Same concurrency guard as GGUFLlamaEngine — llama.cpp is NOT thread-safe.
     internal let generationLock = NSLock()
+    /// Background generations: KV snapshot/restore + preemption.
+    internal let silentGate = SilentGenerationGate()
     internal var _isGenerating = false
 
     // See GGUFLlamaEngine.bridgeLock: serialises prefill warmup against

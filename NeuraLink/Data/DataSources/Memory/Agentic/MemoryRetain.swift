@@ -172,9 +172,24 @@ final class MemoryRetain: @unchecked Sendable {
         Task.detached(priority: .background) { [weak self] in
             guard let self else { return }
             defer { self.lock.withLock { self.inFlight = false } }
-            let stored = await self.retain(turns: pending.map(\.turn))
-            self.advanceWatermark(to: pending.map(\.id).max() ?? 0)
-            nlLog("[MemoryRetain] Retained \(pending.count) turns → \(stored) facts (\(self.llm.tier))", level: .info)
+            // Chunk by chunk, and the watermark only passes chunks that were
+            // actually read: an extraction a user turn preempted (or that
+            // never got an idle engine) leaves its turns for the next run
+            // instead of skipping them for good.
+            var stored = 0
+            var retainedThrough: Int64 = 0
+            var completed = 0
+            var offset = 0
+            for chunk in Self.chunk(pending.map(\.turn), maxCharacters: Self.chunkCharacters) {
+                let ids = pending[offset..<(offset + chunk.count)].map(\.id)
+                offset += chunk.count
+                guard let facts = await self.extractOrNil(from: chunk) else { break }
+                stored += self.persist(facts, mentionedAt: chunk.last?.timestamp ?? Date()).count
+                retainedThrough = ids.max() ?? retainedThrough
+                completed += chunk.count
+            }
+            self.advanceWatermark(to: retainedThrough)
+            nlLog("[MemoryRetain] Retained \(completed)/\(pending.count) turns → \(stored) facts (\(self.llm.tier))", level: .info)
             if stored > 0 {
                 await MemoryConsolidator.shared.consolidatePending()
             }
@@ -193,6 +208,12 @@ final class MemoryRetain: @unchecked Sendable {
     }
 
     func extract(from turns: [MemoryFactExtraction.Turn]) async -> [ExtractedFact] {
+        await extractOrNil(from: turns) ?? []
+    }
+
+    /// Nil when the LLM gave no answer (unavailable, preempted, request
+    /// failed); an answer with nothing usable in it is an empty list.
+    func extractOrNil(from turns: [MemoryFactExtraction.Turn]) async -> [ExtractedFact]? {
         guard !turns.isEmpty else { return [] }
         let assistant = RealtimeChatState.shared.characterDisplayName.capitalized
         let userName = UserSettings.shared.name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -203,16 +224,16 @@ final class MemoryRetain: @unchecked Sendable {
                     assistantName: assistant, userName: userName),
                 user: MemoryFactExtraction.cloudUserPrompt(turns: turns, assistantName: assistant),
                 maxTokens: MemoryFactExtraction.cloudMaxTokens)
-            else { return [] }
+            else { return nil }
             return MemoryFactExtraction.parseCloud(raw, reference: turns.last?.timestamp ?? Date())
         case .local:
             guard let raw = await llm.complete(
                 system: "", user: MemoryFactExtraction.localPrompt(turns: turns),
                 maxTokens: MemoryFactExtraction.localMaxTokens)
-            else { return [] }
+            else { return nil }
             return MemoryFactExtraction.parseLocal(raw)
         case .none:
-            return []
+            return nil
         }
     }
 

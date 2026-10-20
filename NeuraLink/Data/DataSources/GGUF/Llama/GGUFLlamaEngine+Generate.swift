@@ -21,6 +21,9 @@ extension GGUFLlamaEngine {
             return
         }
 
+        // A background (silent) generation yields at its next token and
+        // restores the conversation's KV state before this turn takes the bridge.
+        silentGate.preemptIfActive()
         // Reject concurrent calls — llama.cpp crashes if two generate calls run simultaneously.
         generationLock.lock()
         let alreadyRunning = _isGenerating
@@ -82,6 +85,13 @@ extension GGUFLlamaEngine {
                 )
             }
         }
+    }
+
+    // MARK: - LLMEngineProtocol — silent (background) generation
+
+    func generateSilently(prompt: String, maxTokens: Int) async -> String? {
+        guard isLoaded, let bridge else { return nil }
+        return await silentGate.run(bridge: bridge, bridgeLock: bridgeLock, prompt: prompt, maxTokens: maxTokens)
     }
 
     // MARK: - LLMEngineProtocol — prefill (background warmup)

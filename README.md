@@ -276,7 +276,7 @@ ruby purge_spm.rb
 
 
 ## ֎ Offline AI
-NeuraLink features a high-performance local AI pipeline that runs **entirely on your device** via llama.cpp — on the Metal GPU (6 GB+ devices) or the CPU (4 GB tier). No cloud, no Apple Neural Engine.
+NeuraLink features a high-performance local AI pipeline that runs **entirely on your device** via llama.cpp — on the Metal GPU on every device, with a CPU fallback. No cloud, no Apple Neural Engine.
 
 - **whisper.cpp**: Multi-lingual speech-to-text via `whisper.xcframework` running the `ggml-base` model on the CPU.
 - **llama.cpp**: Metal/CPU inference for Llama-3.2-1B (English) and LLM-jp-3 1.8B (Japanese), shipped as single-file GGUF.

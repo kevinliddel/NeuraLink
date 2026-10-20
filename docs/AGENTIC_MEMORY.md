@@ -259,7 +259,7 @@ character's observations into another's when sharing is off.
 | consolidation | 1 per batch (≤ 4 batches/run) | after extraction stored something |
 | mental-model refresh | 1 per stale model | after consolidation changed something |
 
-Local extraction reuses `runSilentGeneration`, which is serialised with user-facing generation; the larger local batch amortises the cost. The JP tier is excluded (`LiveMemoryLLM.tier`), matching the existing "no Tier 3 for LLM-jp" rule.
+Local extraction goes through `runSilentGenerationOrNil`: it waits until the companion has been idle for 1.5 s, keeps the conversation's KV cache (snapshot and restore, see `docs/Local_SLM_Model.md`), and yields to a user turn at its next token. A run that gets no answer leaves its state for the next pass — retain advances its watermark only past finished chunks, consolidation leaves the batch unconsolidated, and a mental model keeps its summary. The larger local batch amortises the cost. The JP tier is excluded (`LiveMemoryLLM.tier`), matching the existing "no Tier 3 for LLM-jp" rule.
 
 ## Testing
 

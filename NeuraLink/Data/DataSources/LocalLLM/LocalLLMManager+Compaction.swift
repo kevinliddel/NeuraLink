@@ -25,48 +25,43 @@ extension LocalLLMManager {
         MemoryRetain.shared.maybeRetain()
     }
 
-    /// One-shot generation that bypasses the manager's delegate methods.
-    /// Tokens are collected into a captive `SilentLLMDelegate` rather than
-    /// being streamed through the live UI/transcript/TTS pipeline, so the
-    /// user sees and hears nothing during background fact extraction.
-    ///
-    /// Serialised via the engine's existing `generationLock`, so a silent
-    /// run can never overlap a user-facing generation (or vice versa).
+    /// How long the companion must have been idle (not listening, thinking
+    /// or speaking) before a background generation starts, and how long to
+    /// wait for that before giving up — the caller retries on its next
+    /// trigger. Keeps memory work off the turn's CPU/GPU and out of its way.
+    static let silentIdleSettle: TimeInterval = 1.5
+    static let silentIdleTimeout: TimeInterval = 120
+
+    /// One-shot background generation (fact extraction, reflections, titles):
+    /// nothing reaches the transcript or TTS, the conversation's KV cache is
+    /// left as it was, and a user turn preempts it. Empty on failure.
     func runSilentGeneration(prompt: String, maxTokens: Int) async -> String {
-        let originalDelegate = llmEngine.delegate
-        let silent = SilentLLMDelegate()
-        llmEngine.delegate = silent
-        defer { llmEngine.delegate = originalDelegate }
-
-        await llmEngine.generate(prompt: prompt, maxTokens: maxTokens)
-        return silent.fullText
-    }
-}
-
-/// Captures token output during a silent (background) generation so the
-/// engine's regular delegate doesn't observe the run. Each LLMEngine's
-/// `delegate` property is `weak`, so the caller of
-/// `LocalLLMManager.runSilentGeneration` must hold the strong reference
-/// to this instance until the awaited call returns — which it does, since
-/// the instance is held in a local `let`.
-final class SilentLLMDelegate: LocalLLMEngineDelegate {
-
-    /// Final, full text accumulated from `didFinishGeneration`. Per-token
-    /// callbacks are intentionally discarded — we don't need them and they
-    /// would compete with the engine's token-streaming closure for the
-    /// brief window the silent run holds.
-    private(set) var fullText: String = ""
-
-    func localLLM(didGenerateToken token: String) {
-        // Intentionally empty: silent runs only consume the final aggregate.
+        await runSilentGenerationOrNil(prompt: prompt, maxTokens: maxTokens) ?? ""
     }
 
-    func localLLM(didFinishGeneration text: String) {
-        fullText = text
+    /// As `runSilentGeneration`, but nil when it could not run to the end
+    /// (no model, never idle, or preempted) so callers can retry instead of
+    /// treating it as an empty answer.
+    func runSilentGenerationOrNil(prompt: String, maxTokens: Int) async -> String? {
+        guard llmEngine.isLoaded, await waitUntilIdle() else { return nil }
+        return await llmEngine.generateSilently(prompt: prompt, maxTokens: maxTokens)
     }
 
-    func localLLM(didFailWithError error: Error) {
-        // Best-effort: leave `fullText` empty so the FactExtractor's
-        // `NONE`-handling path treats this as "no facts extractable".
+    private func waitUntilIdle() async -> Bool {
+        let deadline = Date().addingTimeInterval(Self.silentIdleTimeout)
+        var idleSince: Date?
+        while Date() < deadline {
+            let quiet = await MainActor.run { state.status == .ready || state.status == .disconnected }
+            let recording = recordingLock.withLock { isRecordingVoice }
+            if quiet && !recording {
+                let since = idleSince ?? Date()
+                idleSince = since
+                if Date().timeIntervalSince(since) >= Self.silentIdleSettle { return true }
+            } else {
+                idleSince = nil
+            }
+            try? await Task.sleep(nanoseconds: 250_000_000)
+        }
+        return false
     }
 }

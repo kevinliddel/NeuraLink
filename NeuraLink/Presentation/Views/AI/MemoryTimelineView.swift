@@ -112,7 +112,7 @@ struct MemoryTimelineView: View {
                         title: "Remember conversations",
                         info: "Facts, insights and moments from your chats are kept on this device only, so \(characterName) can bring them up later.")
                 } icon: {
-                    settingIcon("brain", color: .purple)
+                    settingIcon(Image("nodes"), color: .purple)
                 }
             }
 
@@ -356,7 +356,11 @@ struct MemoryTimelineView: View {
     }
 
     private func settingIcon(_ symbol: String, color: Color) -> some View {
-        Image(systemName: symbol)
+        settingIcon(Image(systemName: symbol), color: color)
+    }
+
+    private func settingIcon(_ image: Image, color: Color) -> some View {
+        image
             .font(.footnote.weight(.semibold))
             .foregroundStyle(.white)
             .frame(width: 28, height: 28)
