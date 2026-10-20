@@ -213,7 +213,7 @@ Recovered slots are written under canonical names (`NL_Tops_01_CLOTH`, …).
   across attempts and launches instead of starting an outfit over. A file
   the server does not have (4xx) rests for six hours before it is asked for
   again. A part that has not arrived is fetched when its tile is tapped.
-- **Tile pictures** ship pre-rendered: 131 PNGs in
+- **Tile pictures** ship pre-rendered: 136 PNGs in
   `App/Resources/Custom/Thumbs/`, named `<model>__<category>.png`, covering
   the library and the bundled characters. The picker therefore looks
   complete before any part arrives. Imported characters' tiles are rendered

@@ -346,7 +346,7 @@ app's. It decides which bundled clips the body draws on
 | Clips | Female | Male |
 |---|---|---|
 | Base loop | `neutral` | `male_powerful` |
-| Random idles | `default_state`, `neutral_2`…`neutral_4`, `relax`, `waiting` | `male_look_around`, `male_impatient` |
+| Random idles | `default_state`, `neutral_2`…`neutral_4`, `relax`, `waiting` | `male_look_around`, `neutral_4` |
 | Resting loop (desk presence, away) | `relax` | `male_powerful` |
 | Photo poses | `cool`, `peace_sign`, `relax`, `stretch` | `cool`, `stretch`; `peace_sign` → `cool`, `relax` → `stretch` |
 | Entrance, talking gestures, phone, listening | shared | shared |

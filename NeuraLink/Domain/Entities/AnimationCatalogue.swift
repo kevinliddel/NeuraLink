@@ -24,7 +24,9 @@ nonisolated enum AnimationCatalogue {
     static let appear = "appear"
 
     /// Everything that plays regardless of gender, for the bundle check.
-    static let sharedClipNames = [appear, "speaking", "talking", "checking_phone", "listen_to_music"]
+    static let sharedClipNames = [
+        appear, "speaking", "talking", "checking_phone", "listen_to_music"
+    ]
 
     // MARK: - Per gender
 
@@ -44,7 +46,7 @@ nonisolated enum AnimationCatalogue {
         case .female:
             return ["default_state", "neutral_2", "neutral_3", "neutral_4", "relax", "waiting"]
         case .male:
-            return ["male_look_around", "male_impatient"]
+            return ["male_look_around", "neutral_4"]
         }
     }
 
