@@ -3,7 +3,6 @@
 //  NeuraLink
 //
 //  MeloTTS (no-BERT) -> tone-color converter, both ONNX via ONNX Runtime.
-//  Ported verbatim (renamed) from SynapLink's synap_voice.cpp.
 //  The STFT between melo and the converter MUST match openvoice's
 //  spectrogram_torch exactly (periodic Hann, reflect pad (n_fft-hop)/2,
 //  center=False, magnitude sqrt(re^2+im^2+1e-6)), or the converter gets a bad

@@ -7,12 +7,9 @@
 //  non-Japanese voice (VoiceVox stays for the JP model).
 //
 //  text -> G2P -> chunk at punctuation -> openvoice_bridge_say per chunk
-//  (22.05 kHz mono float) -> AVAudioPCMBuffer -> onBufferReady. Unlike
-//  SynapLink's VoiceCloner, this engine does NOT own an AVAudioEngine: it
-//  pushes buffers through `onBufferReady` and LocalLLMManager+TTS schedules
-//  playback (matching VoiceVox).
-//
-//  Ported from SynapLink's VoiceCloner (synth / chunkize / trimSilence).
+//  (22.05 kHz mono float) -> AVAudioPCMBuffer -> onBufferReady. This engine
+//  does NOT own an AVAudioEngine: it pushes buffers through `onBufferReady`
+//  and LocalLLMManager+TTS schedules playback (matching VoiceVox).
 //
 
 import AVFoundation
@@ -40,7 +37,7 @@ final class OpenVoiceEngine: NSObject, @unchecked Sendable, TTSEngineProtocol {
 
     // Sentence chunking — group whole sentences into ~minChunkChars…maxChunkChars
     // so MeloTTS+BERT get full sentences (good intonation) while no tiny chunk
-    // starves the player. Mirrors VoiceCloner.
+    // starves the player.
     private static let sentenceEnders: Set<Character> = [".", "!", "?"]
     private static let minChunkChars = 60
     private static let maxChunkChars = 220
@@ -239,7 +236,7 @@ final class OpenVoiceEngine: NSObject, @unchecked Sendable, TTSEngineProtocol {
         return data.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
     }
 
-    // MARK: - Chunking / trimming (ported from VoiceCloner)
+    // MARK: - Chunking / trimming
 
     private struct Chunk { let text: String; let pause: Double }
 

@@ -53,7 +53,7 @@ struct LLMRuntimeProfile {
             // 2 threads keeps work on the P-cores (E-core spill hurts CPU
             // decode). n_ctx 1024 must match `fitToBudget`'s nCtx in the
             // memory hierarchy.
-            // n_ctx 2048 (SynapLink's 4 GB value): the anchored history window
+            // n_ctx 2048: the anchored history window
             // in LocalLLMMemoryHierarchy needs room to grow between jumps,
             // or it re-prefills every turn. q4_0 KV at 2048 is ~19 MB.
             profile = LLMRuntimeProfile(
@@ -142,13 +142,13 @@ struct LLMRuntimeProfile {
     /// compactor can never disagree with the `contextLength` the engines pass
     /// to the bridge — a mismatch would over-evict (wasting the larger window)
     /// or under-evict (overflowing prefill).
-    /// Per-device tuning, aligned with SynapLink's RuntimeProfile:
-    /// - Every real device offloads the model to Metal (SynapLink does so on
-    ///   the iPhone 11 too). Below 5 GB that used to be CPU-only — 2 threads,
+    /// Per-device tuning:
+    /// - Every real device offloads the model to Metal, the iPhone 11
+    ///   included. Below 5 GB that used to be CPU-only — 2 threads,
     ///   sharing the CPU with streaming TTS — the main reason local replies
     ///   came out so much slower here. `gpuAllowed` is LLMGPUSentinel's
-    ///   verdict: a GPU load that once died keeps that build on the CPU.
-    /// - 5 GB and up: 4 threads and a q8_0 KV cache, as SynapLink.
+    ///   verdict: GPU loads that died twice in a row keep that build on the CPU.
+    /// - 5 GB and up: 4 threads and a q8_0 KV cache.
     /// - The Simulator stays on the CPU.
     /// Pure, for tests.
     static func tuned(

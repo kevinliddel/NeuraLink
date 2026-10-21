@@ -7,7 +7,7 @@
 //  into the chosen voice; the picker in PersonaSettings sets it per persona.
 //
 //  NOTE: the current entries are PLACEHOLDER voices carried over from the
-//  source pack (SynapLink). Replace with NeuraLink persona voices extracted
+//  original voice pack. Replace with NeuraLink persona voices extracted
 //  offline (OpenVoice `se_extractor`) and bundle/host the matching
 //  `se_<name>.f32`, then add cases here.
 //

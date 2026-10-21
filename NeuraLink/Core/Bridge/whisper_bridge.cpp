@@ -3,7 +3,6 @@
 //  NeuraLink
 //
 //  C++ implementation of the whisper_bridge C API over whisper.cpp's C API.
-//  Ported verbatim (renamed) from SynapLink's synap_whisper.cpp.
 //
 
 #include "whisper_bridge.h"

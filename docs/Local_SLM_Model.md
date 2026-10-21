@@ -7,7 +7,7 @@ pipeline from microphone to spoken reply.
 
 > **Where it runs — no ANE.** Despite earlier plans, the on-device LLM does **not**
 > use the Apple Neural Engine. It runs through **llama.cpp** on the **Metal GPU** on
-> every real device, the 4 GB tier (iPhone 11/12/13) included — as SynapLink does.
+> every real device, the 4 GB tier (iPhone 11/12/13) included.
 > It falls back to the **CPU** on the Simulator, and on a 4 GB build whose GPU load
 > was killed by the system twice in a row (`LLMGPUSentinel`). Speech-to-text (whisper.cpp)
 > always runs on the **CPU**.
@@ -140,7 +140,7 @@ RAM** (Metal maps the same mmap'd pages, so this holds on the GPU too):
 
 Per-model runtime parameters (context length, threads, `gpuLayers`, KV quant, flash
 attention, PLD window) live in one place: `LLMRuntimeProfile.resolve(for:)`, with the
-per-device rules in `LLMRuntimeProfile.tuned`, aligned with SynapLink:
+per-device rules in `LLMRuntimeProfile.tuned`:
 
 | Device | Where | Threads | KV cache | Context |
 |---|---|---|---|---|

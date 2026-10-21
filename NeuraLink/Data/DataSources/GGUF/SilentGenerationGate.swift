@@ -4,7 +4,7 @@
 //
 //  Background generations (memory extraction, consolidation, reflections,
 //  chat titles) share the chat model with the user's turns. Run naively they
-//  did two things SynapLink's chat never suffers: they replaced the
+//  did two things a plain chat never suffers: they replaced the
 //  conversation's KV cache with their own prompt, so the next user turn had
 //  to prefill the whole system prompt and history again, and they held the
 //  engine, so a user turn arriving meanwhile was dropped. The gate fixes

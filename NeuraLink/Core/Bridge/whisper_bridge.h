@@ -2,9 +2,8 @@
 //  whisper_bridge.h
 //  NeuraLink
 //
-//  Pure-C bridge to whisper.cpp — on-device speech-to-text. Ported from
-//  SynapLink's proven `synap_whisper` bridge (validated on the iPhone 11 / A13
-//  tier). Swift imports this through NeuraLink-Bridging-Header.h; the
+//  Pure-C bridge to whisper.cpp — on-device speech-to-text (validated on the
+//  iPhone 11 / A13 tier). Swift imports this through NeuraLink-Bridging-Header.h; the
 //  whisper/ggml C++ symbols stay inside whisper.xcframework.
 //
 //  Replaces WhisperKit (CoreML) for local STT: multilingual (ggml-base handles

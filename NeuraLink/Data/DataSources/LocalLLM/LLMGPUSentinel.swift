@@ -3,9 +3,9 @@
 //  NeuraLink
 //
 //  Remembers whether running the local model on the GPU (Metal) is safe on a
-//  4 GB device. SynapLink offloads its 1B model to Metal on the iPhone 11 and
-//  streams several times faster than a 2-thread CPU decode, so NeuraLink now
-//  does too — but this app also holds the avatar, the 3D scene and the TTS
+//  4 GB device. A 1B model on Metal streams several times faster on the
+//  iPhone 11 than a 2-thread CPU decode, so NeuraLink uses it there too — but
+//  this app also holds the avatar, the 3D scene and the TTS
 //  model, and a load that pushes past the memory limit is killed by the
 //  system (jetsam), which no code can catch. So a GPU load is marked pending
 //  before it starts and confirmed after the first forward pass completes; a

@@ -3,8 +3,8 @@
 //  NeuraLinkTests
 //
 //  The local model's time-to-first-token levers: the anchored history window
-//  (a turn only prefills its own tail), the SynapLink-aligned device tuning
-//  (Metal everywhere unless a GPU load once died), and the KV snapshot that
+//  (a turn only prefills its own tail), the device tuning (Metal everywhere
+//  unless GPU loads died twice in a row), and the KV snapshot that
 //  keeps background generations from wiping the conversation's prefix. The
 //  bridge test needs a real GGUF: NL_LLM_TEST_MODEL=/path/to/model.gguf.
 //
@@ -62,7 +62,7 @@ struct LocalLLMLatencyTests {
         #expect(median < 120, "median fresh tokens \(median)")
     }
 
-    @Test("Device tuning matches SynapLink: Metal on every device unless the GPU once failed")
+    @Test("Device tuning: Metal on every device unless GPU loads keep failing")
     func deviceTuning() {
         let base = LLMRuntimeProfile(
             contextLength: 2048, threads: 2, gpuLayers: 999, kType: .q4_0, vType: .q4_0,
