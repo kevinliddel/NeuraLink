@@ -27,13 +27,13 @@ enum CompanionMilestoneTracker {
     }
 
     /// Re-derives the count-based milestones (first hello, shared days)
-    /// from the same totals the affinity curve reads. Only missing ones
-    /// touch the database.
+    /// from the same per-character totals the affinity curve reads. Only
+    /// missing ones touch the database.
     static func refreshDerived(character: String? = nil, store: MemoryStore = .shared) {
         let key = character ?? RealtimeChatState.shared.selectedCharacterName
         guard !key.isEmpty else { return }
-        let turns = store.countMessages(role: "user", kind: "message")
-        let days = store.distinctUserMessageDays()
+        let turns = store.userTurnCount(character: key)
+        let days = store.distinctUserMessageDays(character: key)
         let collected = Set(store.milestones(character: key).map(\.kind))
         for kind in MilestoneRules.derivedKinds(userTurns: turns, sharedDays: days)
         where !collected.contains(kind) {

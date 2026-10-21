@@ -20,7 +20,7 @@ struct MemoryOwnershipTests {
         let store = MemoryStore.shared
         let unitID = store.insertUnit(text: "User keeps an export marker Zyqxexp.", vector: [0.3, 0.4], factType: .world, source: "test")
         let convoID = store.insertConversation(title: "Export fixture Zyqxexp")
-        store.insertMessage(conversationID: convoID, role: "user", kind: "message", content: "hello Zyqxexp")
+        store.insertMessage(conversationID: convoID, role: "user", kind: "message", content: "hello Zyqxexp", character: "test-history")
         defer {
             store.deleteUnit(id: unitID)
             store.deleteConversation(id: convoID)

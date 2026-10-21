@@ -235,10 +235,10 @@ struct ReflectionTests {
         #expect(convID > 0)
         defer { MemoryStore.shared.deleteConversation(id: convID) }
 
-        MemoryStore.shared.insertMessage(conversationID: convID, role: "user", kind: "message", content: "hi")
-        MemoryStore.shared.insertMessage(conversationID: convID, role: "assistant", kind: "message", content: "hello")
-        MemoryStore.shared.insertMessage(conversationID: convID, role: "user", kind: "message", content: "how are you")
-        MemoryStore.shared.insertMessage(conversationID: convID, role: "tool", kind: "tool_call", content: "x")
+        MemoryStore.shared.insertMessage(conversationID: convID, role: "user", kind: "message", content: "hi", character: "test-history")
+        MemoryStore.shared.insertMessage(conversationID: convID, role: "assistant", kind: "message", content: "hello", character: "test-history")
+        MemoryStore.shared.insertMessage(conversationID: convID, role: "user", kind: "message", content: "how are you", character: "test-history")
+        MemoryStore.shared.insertMessage(conversationID: convID, role: "tool", kind: "tool_call", content: "x", character: "test-history")
 
         #expect(MemoryStore.shared.userMessageCount(conversationID: convID) == 2)
         #expect(MemoryStore.shared.userMessageCount(conversationID: convID) < ReflectionManager.minUserTurns)

@@ -31,8 +31,8 @@ struct ChatSearchTests {
         let store = MemoryStore.shared
         let id = store.insertConversation(title: "Search fixture Zyqxconv")
         defer { store.deleteConversation(id: id) }
-        _ = store.insertMessage(conversationID: id, role: "user", kind: "message", content: "Remind me about the Zyqxplant watering")
-        _ = store.insertMessage(conversationID: id, role: "assistant", kind: "message", content: "Sure, every Sunday.")
+        _ = store.insertMessage(conversationID: id, role: "user", kind: "message", content: "Remind me about the Zyqxplant watering", character: "test-history")
+        _ = store.insertMessage(conversationID: id, role: "assistant", kind: "message", content: "Sure, every Sunday.", character: "test-history")
 
         let hits = ConversationStore.shared.conversations(matching: "zyqxplant")
         #expect(hits.contains { $0.id == id })

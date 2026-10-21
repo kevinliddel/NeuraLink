@@ -123,7 +123,7 @@ final class CompanionSnapshotWriter: @unchecked Sendable {
         let character = RealtimeChatState.shared.selectedCharacterName
         guard !character.isEmpty else { return }
         let store = MemoryStore.shared
-        let affinity = CompanionAffinity.compute(store: store)
+        let affinity = CompanionAffinity.compute(store: store, character: character)
         let opener = store.latestUnusedOpener(character: character)?.opener ?? ""
         let memory = Self.memoryLine(
             models: store.fetchMentalModels(character: character),
@@ -143,8 +143,8 @@ final class CompanionSnapshotWriter: @unchecked Sendable {
             opener: opener,
             memoryLine: RealtimeChatState.humanizingCharacterNames(memory.line),
             memoryTitle: memory.title,
-            factCount: store.fetchAllFacts().count,
-            daysTogether: store.distinctUserMessageDays(),
+            factCount: store.factCount(character: character),
+            daysTogether: store.distinctUserMessageDays(character: character),
             lastChatAt: InteractionClock.shared.lastUserSpeechAt ?? InteractionClock.shared.lastSeenAt,
             thumbnailFile: thumbnailFile,
             updatedAt: Date())

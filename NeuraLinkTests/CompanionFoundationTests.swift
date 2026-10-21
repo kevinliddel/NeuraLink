@@ -104,8 +104,8 @@ struct CompanionFoundationTests {
         }
         func say(_ count: Int) {
             for turn in 0..<count {
-                MemoryStore.shared.insertMessage(conversationID: convID, role: "user", kind: "message", content: "u\(turn)")
-                MemoryStore.shared.insertMessage(conversationID: convID, role: "assistant", kind: "message", content: "a\(turn)")
+                MemoryStore.shared.insertMessage(conversationID: convID, role: "user", kind: "message", content: "u\(turn)", character: "test-history")
+                MemoryStore.shared.insertMessage(conversationID: convID, role: "assistant", kind: "message", content: "a\(turn)", character: "test-history")
             }
         }
 

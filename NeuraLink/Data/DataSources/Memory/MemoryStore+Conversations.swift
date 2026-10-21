@@ -249,16 +249,19 @@ extension MemoryStore {
         return removed
     }
 
-    func insertMessage(conversationID: Int64, role: String, kind: String, content: String) {
+    /// `character` is who the turn was shared with (the identity key); the
+    /// relationship meter counts per character (MemoryStore+CharacterBond).
+    func insertMessage(conversationID: Int64, role: String, kind: String, content: String, character: String) {
         lock.lock()
         defer { lock.unlock() }
-        let query = "INSERT INTO messages (conversation_id, role, kind, content) VALUES (?, ?, ?, ?);"
+        let query = "INSERT INTO messages (conversation_id, role, kind, content, character) VALUES (?, ?, ?, ?, ?);"
         var statement: OpaquePointer?
         if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
             sqlite3_bind_int64(statement, 1, conversationID)
             sqlite3_bind_text(statement, 2, (role as NSString).utf8String, -1, nil)
             sqlite3_bind_text(statement, 3, (kind as NSString).utf8String, -1, nil)
             sqlite3_bind_text(statement, 4, (content as NSString).utf8String, -1, nil)
+            sqlite3_bind_text(statement, 5, (character as NSString).utf8String, -1, nil)
             _ = sqlite3_step(statement)
         }
         sqlite3_finalize(statement)
@@ -438,7 +441,8 @@ extension MemoryStore {
         return Conversation(id: id, title: title, createdAt: created, updatedAt: updated)
     }
 
-    private func conversationMessageRow(from statement: OpaquePointer?) -> ConversationMessage {
+    /// Maps `id, conversation_id, role, kind, content, timestamp`.
+    func conversationMessageRow(from statement: OpaquePointer?) -> ConversationMessage {
         let id = sqlite3_column_int64(statement, 0)
         let convID = sqlite3_column_int64(statement, 1)
         let role = String(cString: sqlite3_column_text(statement, 2))

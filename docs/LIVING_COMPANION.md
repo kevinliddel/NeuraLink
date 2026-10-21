@@ -64,6 +64,33 @@ stops the upgrade from re-reflecting conversations that already have entries.
 Swift entities: `JournalEntry`, `PersonaTrait` (`Domain/Entities/CompanionJournal.swift`);
 `MilestoneKind`, `CompanionMilestone`, `MilestoneRules` (`Domain/Entities/CompanionMilestone.swift`).
 
+## One bond per character
+
+The relationship is between the user and **one** character. Every row in
+`messages` and `knowledge_graph` has a `character` column, the identity key
+of the character on screen when it was written (`ConversationStore`,
+`KnowledgeGraphManager`). One conversation can span a character switch, so
+the tag is per message, not per conversation. The relationship meter, the
+count-based keepsakes, the journal calendar, time apart, the carry-over line
+and the home-screen widget all count only that character's rows
+(`MemoryStore+Affinity`, `MemoryStore+CharacterBond`). A character met
+today is "New", however long the user has known another one.
+
+What a character **knows** is a separate setting. Facts about the user live
+in the shared memory bank, and "Characters share memories" decides whether
+recall also reads other characters' banks (`MemoryBanks`, docs/CHAT_LLM.md).
+So a new character can know the user's sister's name and still be at "New".
+The meter's depth only counts facts the user told **this** character.
+
+**Upgrading.** The first launch with the column attributes older rows once
+(`attributeLegacyRows`):
+
+1. A message a diary entry covered goes to that entry's character.
+2. The rest of a reflected conversation goes to its latest diary character.
+3. Anything else goes to the character with the most diary entries, or else
+   the last character the user picked.
+4. A fact goes to the character of the last message before it.
+
 ## Background text client
 
 `Data/DataSources/OpenAI/OpenAIChatClient.swift` is the one-shot Chat
@@ -171,7 +198,8 @@ time the notification toggle is switched on.
 ## Personality evolution
 
 - **One relationship curve**: `CompanionAffinity` drives both the UI meter
-  and the prompt. The score weights shared days (45%), depth (35%: facts
+  and the prompt, for one character at a time (see One bond per character).
+  The meter refreshes after every turn and on a character switch. The score weights shared days (45%), depth (35%: facts
   learned + reflection count) and volume (20%: turns, which saturate at
   150). Time apart cools it gently, down to a floor of 0.65×, and it is
   capped at 0.95. There are five stages: New, Acquaintances, Friends, Good
@@ -391,8 +419,8 @@ the persona. Eight kinds (`MilestoneKind`; raw values are the stored keys):
 
 | Keepsake | Unlocks when |
 |---|---|
-| First hello | the user has spoken at least once |
-| One week / 30 days / 100 days together | `distinctUserMessageDays()` reaches 7 / 30 / 100 (the same totals the affinity curve reads) |
+| First hello | the user has spoken to this character at least once |
+| One week / 30 days / 100 days together | `distinctUserMessageDays(character:)` reaches 7 / 30 / 100 (the same per-character totals the affinity curve reads) |
 | First shared song | the first `SongRecognitionManager.presentMatch` |
 | First game together | the first `GameSessionManager.start` (the model decides who won, so a "win" badge is not knowable) |
 | First photo shared | the first `PhotoMemoryService.handlePicked` |
@@ -435,8 +463,10 @@ block, so no session starts cold, even with Companion Presence off:
 
 1. **the latest reflection diary** (< 7 days, up to 200 chars): "Last
    session, you privately noted: …", else
-2. **the closing exchange of the previous conversation** (< 48 h, up to 140
-   chars), credited to whoever said it.
+2. **the last exchange with this character** outside the active conversation
+   (< 48 h, up to 140 chars; `MemoryStore.lastExchange`), credited to whoever
+   said it. Another character's closing line is never quoted back as "you
+   saying".
 
 The guidance line tells the persona to "pick up threads… never act like a
 stranger". The block is built when the session starts. That keeps it stable
@@ -457,10 +487,12 @@ days at them." The wording is `CompanionAbsence` (pure, unit-tested);
 Two rules keep it honest and stable:
 
 - **Measured from before this visit.** The gap runs from the last user turn
-  strictly before `InteractionClock.foregroundAt` (launch, or the last return
-  from the background; `MemoryStore.lastUserMessageAt(before:)`), so the
-  turns of the current visit never shrink it to "a minute ago".
-- **Frozen per visit.** The first block built in a visit snapshots that turn
+  to this character strictly before `InteractionClock.foregroundAt` (launch,
+  or the last return from the background;
+  `MemoryStore.lastUserMessageAt(before:character:)`), so the turns of the
+  current visit never shrink it to "a minute ago", and switching to a
+  character last seen a week ago reads a week.
+- **Frozen per visit and character.** The first block built in a visit snapshots that turn
   and the current time; every later build in the visit formats the same
   values, so the local KV prefix and the Realtime instruction refreshes see
   an identical block.
@@ -618,12 +650,14 @@ flowchart TD
 | `Data/DataSources/ReflectionManager.swift` | Reflection pass, labelled-line parser, trait pool, launch catch-up |
 | `Core/Utils/CompanionNotificationScheduler.swift` | Scheduling, quiet hours, communication-style avatar, foreground presenter |
 | `Data/DataSources/PresenceSettings.swift` | All presence toggles/thresholds (explicit-backing `@Observable`) |
-| `Data/DataSources/Memory/CompanionAffinity.swift` | The single relationship curve + stage guidance |
+| `Data/DataSources/Memory/CompanionAffinity.swift` | The single relationship curve + stage guidance, per character |
+| `Data/DataSources/Memory/MemoryStore+Affinity.swift` | Per-character meter inputs: turns, shared days, last seen, diary count, facts told |
+| `Data/DataSources/Memory/MemoryStore+CharacterBond.swift` | `character` columns, one-time attribution of older rows, per-character `lastExchange` |
 | `Data/DataSources/Memory/CompanionStateManager.swift` | `[Companion State]` prompt block; time-apart (frozen per visit), carry-over and keepsake lines |
 | `Presentation/Views/AI/CompanionJournalView.swift` | Journal sheet: relationship, calendar, day / month list, keepsakes, traits, reset |
 | `Domain/Entities/JournalCalendar.swift` | `JournalCalendarModel` month grid + local-day `JournalDayActivity` grouping |
 | `Domain/Entities/CompanionAbsence.swift` | Time-apart wording (pure) |
-| `Data/DataSources/Memory/MemoryStore+JournalCalendar.swift` | `userTurnStamps(between:and:)`, `lastUserMessageAt(before:)` |
+| `Data/DataSources/Memory/MemoryStore+JournalCalendar.swift` | `userTurnStamps(between:and:character:)`, `lastUserMessageAt(before:character:)` |
 | `Domain/Entities/DailyGrounding.swift` | `GroundingEvent`, `SleepSummary`, schedule / sleep line wording, interval union |
 | `Data/DataSources/Grounding/GroundingSettings.swift` | The two opt-in toggles (explicit-backing `@Observable`) |
 | `Data/DataSources/Grounding/CalendarGrounding.swift` | EventKit full-access request + 12 h event read |

@@ -18,6 +18,10 @@
 //  Each stage also carries behavior guidance so the persona ACTS the stage:
 //  reserved when new, warm as friends, at ease when close.
 //
+//  v3 (2026-10-21): one bond per character. Every input counts only what
+//  the user shared with that character (MemoryStore+CharacterBond), so a
+//  character met today starts at "New" however long you've known another.
+//
 
 import Foundation
 
@@ -45,14 +49,17 @@ enum CompanionAffinity {
     static let reflectionsToSaturate = 12.0
     static let turnsToSaturate = 150.0
 
-    static func compute(store: MemoryStore = .shared) -> State {
-        let turns = store.countMessages(role: "user", kind: "message")
+    /// The bond with `character` (the identity key); nil = the character on
+    /// screen.
+    static func compute(store: MemoryStore = .shared, character: String? = nil) -> State {
+        let key = character ?? RealtimeChatState.shared.selectedCharacterName
+        let turns = store.userTurnCount(character: key)
         let inputs = Inputs(
             turns: turns,
-            factCount: store.fetchAllFacts().count,
-            sharedDays: store.distinctUserMessageDays(),
-            reflectionCount: store.journalEntryCount(),
-            daysSinceLastSeen: store.lastUserMessageAt()
+            factCount: store.factCount(character: key),
+            sharedDays: store.distinctUserMessageDays(character: key),
+            reflectionCount: store.journalEntryCount(character: key),
+            daysSinceLastSeen: store.lastUserMessageAt(character: key)
                 .map { Date().timeIntervalSince($0) / 86_400.0 }
         )
         let score = score(inputs)

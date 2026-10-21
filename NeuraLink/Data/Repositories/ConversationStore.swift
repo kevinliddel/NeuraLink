@@ -62,8 +62,11 @@ final class ConversationStore: @unchecked Sendable {
             convID = newID
             lock.unlock()
         }
+        // Tagged with the character on screen: one conversation can span a
+        // character switch, and each bond counts only its own turns.
         MemoryStore.shared.insertMessage(
-            conversationID: convID, role: role, kind: kind, content: content)
+            conversationID: convID, role: role, kind: kind, content: content,
+            character: RealtimeChatState.shared.selectedCharacterName)
         MemoryStore.shared.touchConversation(id: convID)
     }
 

@@ -97,13 +97,20 @@ struct CompanionMilestoneTests {
         #expect(CompanionMilestoneTracker.celebrationLine(character: character, now: later) == nil)
     }
 
-    @Test("Derived refresh records the first hello once the user has spoken")
+    @Test("Derived refresh records the first hello once the user has spoken to this character")
     func derivedRefresh() {
         defer { cleanup() }
+        // Nothing said to this character yet: no first hello, whoever else you talk to.
+        CompanionMilestoneTracker.refreshDerived(character: character)
+        #expect(MemoryStore.shared.milestones(character: character).isEmpty)
+
+        let id = MemoryStore.shared.insertConversation(title: "keepsake-test")
+        defer { MemoryStore.shared.deleteConversation(id: id) }
+        MemoryStore.shared.insertMessage(
+            conversationID: id, role: "user", kind: "message", content: "hello", character: character)
         CompanionMilestoneTracker.refreshDerived(character: character)
         let kinds = Set(MemoryStore.shared.milestones(character: character).map(\.kind))
-        let spoken = MemoryStore.shared.countMessages(role: "user", kind: "message") > 0
-        #expect(kinds.contains(.firstConversation) == spoken)
+        #expect(kinds.contains(.firstConversation))
         #expect(kinds.isDisjoint(with: [.firstSharedSong, .firstGame, .firstPhoto, .firstDiary]))
     }
 }

@@ -16,7 +16,7 @@ final class CompanionStateManager {
 
     /// Frozen per foreground visit (see `absenceLine`): the last user turn
     /// before the visit began, and when the visit's first block was built.
-    private var absenceSnapshot: (foregroundAt: Date, lastTalkedAt: Date?, now: Date)?
+    private var absenceSnapshot: (foregroundAt: Date, character: String, lastTalkedAt: Date?, now: Date)?
 
     private init() {}
 
@@ -32,11 +32,11 @@ final class CompanionStateManager {
         // Same curve as the UI meter (CompanionAffinity) — Phase 2 unification.
         // The stage actively shapes personality: reserved when new, warm as
         // friends, at ease when close (v2 relationship model).
-        let affinity = CompanionAffinity.compute(store: store)
+        let affinity = CompanionAffinity.compute(store: store, character: characterName)
         let relationship = affinity.userTurns > 0
             ? "\(affinity.label). \(CompanionAffinity.stageGuidance(for: affinity.label))" : nil
         let tone = Self.recentTone(from: events)
-        let absence = absenceLine(compact: compact)
+        let absence = absenceLine(characterName: characterName, compact: compact)
         DailyGroundingProvider.shared.refreshIfNeeded()
         let grounding = DailyGroundingProvider.shared.lines(compact: compact)
         let traits = store.traits(character: characterName, limit: compact ? 2 : 3)
@@ -86,11 +86,15 @@ final class CompanionStateManager {
     /// user turn BEFORE this foreground visit began and frozen for the visit,
     /// so the block reads the same on every turn of a session (local KV
     /// prefix, Realtime instruction refreshes) while new turns keep landing
-    /// in the database. Nil on the first ever chat and for gaps under an hour.
-    private func absenceLine(compact: Bool) -> String? {
+    /// in the database. Nil on the first chat with this character and for
+    /// gaps under an hour. Per character: switching to someone you last saw
+    /// a week ago reads a week, whoever you talked to this morning.
+    private func absenceLine(characterName: String, compact: Bool) -> String? {
         let foregroundAt = InteractionClock.shared.foregroundAt
-        if absenceSnapshot?.foregroundAt != foregroundAt {
-            absenceSnapshot = (foregroundAt, store.lastUserMessageAt(before: foregroundAt), Date())
+        if absenceSnapshot?.foregroundAt != foregroundAt || absenceSnapshot?.character != characterName {
+            absenceSnapshot = (
+                foregroundAt, characterName,
+                store.lastUserMessageAt(before: foregroundAt, character: characterName), Date())
         }
         guard let snapshot = absenceSnapshot, let lastTalkedAt = snapshot.lastTalkedAt else { return nil }
         // The user's time zone and week, but English day names: the block is English.
@@ -114,12 +118,12 @@ final class CompanionStateManager {
                 diary: String(entry.diary.prefix(200)), closingRole: nil, closingContent: nil)
         }
 
-        let active = ConversationStore.shared.activeConversationID
+        // This character's own last exchange: another character's closing
+        // line must never be quoted back as "you saying".
         guard
-            let previous = store.fetchConversations(matching: "").first(where: { $0.id != active }),
-            Date().timeIntervalSince(previous.updatedAt) < 48 * 3600,
-            let closing = store.fetchMessages(conversationID: previous.id)
-                .last(where: { $0.kind == "message" && !$0.content.isEmpty })
+            let closing = store.lastExchange(
+                character: characterName, excludingConversation: ConversationStore.shared.activeConversationID),
+            Date().timeIntervalSince(closing.timestamp) < 48 * 3600
         else { return nil }
         return Self.carryOverText(
             diary: nil, closingRole: closing.role, closingContent: closing.content)
