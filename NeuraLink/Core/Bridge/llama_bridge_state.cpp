@@ -104,5 +104,6 @@ int32_t llama_bridge_snapshot_token_count(const LlamaBridgeSnapshot* snapshot) {
     return snapshot ? static_cast<int32_t>(snapshot->tokens.size()) : 0;
 }
 
-void llama_bridge_snapshot_free(LlamaBridgeSnapshot* snapshot) { delete snapshot; }
-
+void llama_bridge_snapshot_free(LlamaBridgeSnapshot* snapshot) {
+    delete snapshot;
+}
