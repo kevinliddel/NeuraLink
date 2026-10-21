@@ -3,7 +3,6 @@
 //  NeuraLink
 //
 //  C++ implementation of the whisper_bridge C API over whisper.cpp's C API.
-//  Ported verbatim (renamed) from SynapLink's synap_whisper.cpp.
 //
 
 #include "whisper_bridge.h"
@@ -14,8 +13,9 @@
 #include <string>
 
 struct WhisperBridge {
-    whisper_context* ctx = nullptr;
-    int32_t n_threads    = 4;
+    whisper_context* ctx     = nullptr;
+    int32_t n_threads        = 4;
+    bool suppress_non_speech = false;
 };
 
 WhisperBridge* whisper_bridge_create(const char* model_path, bool use_gpu, int32_t n_threads) {
@@ -52,6 +52,10 @@ int32_t whisper_bridge_transcribe(WhisperBridge* whisper, const float* samples, 
     params.translate           = false;
     params.no_timestamps       = true;
     params.suppress_blank      = true;
+    // Off on purpose: on noise whisper writes a subtitle annotation ("(笑)",
+    // "[MUSIC]") that the app can recognise and drop. Suppressing those tokens
+    // makes it invent plausible words instead (WhisperPhantomDiagnostic).
+    params.suppress_nst = whisper->suppress_non_speech;
     if (language && language[0] != '\0' && std::string(language) != "auto") {
         params.language        = language;
         params.detect_language = false;
@@ -83,4 +87,8 @@ int32_t whisper_bridge_transcribe(WhisperBridge* whisper, const float* samples, 
     memcpy(out_buf, text.data(), static_cast<size_t>(n));
     out_buf[n] = '\0';
     return total;
+}
+
+void whisper_bridge_set_suppress_non_speech(WhisperBridge* whisper, bool suppress) {
+    if (whisper) { whisper->suppress_non_speech = suppress; }
 }

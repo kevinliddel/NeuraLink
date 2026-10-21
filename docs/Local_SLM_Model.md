@@ -6,10 +6,11 @@ OpenAI Realtime (cloud) path. This document covers the local Small Language Mode
 pipeline from microphone to spoken reply.
 
 > **Where it runs — no ANE.** Despite earlier plans, the on-device LLM does **not**
-> use the Apple Neural Engine. It runs through **llama.cpp**: on the **Metal GPU**
-> for devices with ≥ 5 GB RAM, and **CPU-only** on the 4 GB tier (iPhone 11/12/13),
-> where `LLMRuntimeProfile` forces `gpuLayers = 0` to stay clear of the jetsam
-> budget. Speech-to-text (whisper.cpp) always runs on the **CPU**.
+> use the Apple Neural Engine. It runs through **llama.cpp** on the **Metal GPU** on
+> every real device, the 4 GB tier (iPhone 11/12/13) included.
+> It falls back to the **CPU** on the Simulator, and on a 4 GB build whose GPU load
+> was killed by the system twice in a row (`LLMGPUSentinel`). Speech-to-text (whisper.cpp)
+> always runs on the **CPU**.
 
 ## Why llama.cpp (and not CoreML / ANE)
 
@@ -39,7 +40,10 @@ Two models ship today — one English, one Japanese. Both are sized to stay
 `LocalModelDownloadManager.defaultConfigForCurrentDevice()` defaults **every**
 device to Llama-3.2-1B; the Japanese model is opt-in via Settings. Models are
 downloaded on-demand from the shared Hugging Face dataset (`LocalModelDownloadManager`
-→ `GGUF…Downloader` → `GGUF…ModelAccess`), and the **matching voice pack is bundled
+→ `GGUF…Downloader` → `GGUFDirectDownloader` → `GGUF…ModelAccess`). The direct
+downloader streams the `.gguf` with `RemoteAssetCache.fetch`, so the progress bar
+moves as bytes arrive and a paused download resumes from where it stopped; the
+file is checked for the `GGUF` magic before it is used. The **matching voice pack is bundled
 into the same download** (VOICEVOX dict + speaker for Japanese, OpenVoice
 MeloTTS + converter for English) so the user never fetches voices separately.
 
@@ -102,17 +106,27 @@ Both engines call into `NeuraLink/Core/Bridge/llama_bridge.{h,cpp}`:
 - **Tuned sampler chain** (top-k 40, top-p 0.9, temp 0.7, repetition penalty)
   instead of greedy argmax, which avoids the loop/repetition pathologies of small
   models.
-- **`llama_chat_apply_template`** — prompts are formatted with the chat template
-  baked into each model's GGUF metadata, so the app never drifts from the format the
-  model was trained on. (`LocalLLMManager` hand-rolls a Llama-3 fallback only if a
-  model has no embedded template.)
+- **`llama_chat_apply_template`** — Llama-3.2 prompts are formatted with the chat
+  template baked into the GGUF metadata, so the app never drifts from the format the
+  model was trained on. **LLM-jp-3 is the exception:** its "### 指示 / ### 応答"
+  format isn't in llama.cpp's template detector, so that call failed and the app fell
+  back to Llama-3 markup the model had never seen, and it answered with an improvised
+  script ("ユーザー：… Oz:…"). `LLMjpPromptFormat` renders the native format in Swift
+  for turns and warm-ups alike, with the persona folded into the instruction block
+  (the stock template discards system messages).
+- **Stop sequences** — `StopSequenceFilter` sits on the token stream of both
+  engines and stops a reply where the model starts writing the next turn itself
+  ("ユーザー：", "### 指示", "User:", template tokens), holding back anything that
+  could still become a marker so none of it reaches the screen or TTS.
+  `LeadingLabelFilter` drops a "Oz:" style speaker label off the front of a reply.
 - **Prompt-lookup decoding (PLD)** — a lightweight speculative pass, tuned per model
   (the Japanese model uses a smaller n-gram window since JP subwords repeat less).
 
 ## Memory residency (the 4 GB constraint)
 
-On the 4 GB tier the LLM is CPU-only and **memory-bandwidth bound**, so the
-single biggest factor is whether the model's weights stay **resident in RAM**:
+Decode is **memory-bandwidth bound** on the GPU and the CPU alike, so on the 4 GB
+tier the single biggest factor is whether the model's weights stay **resident in
+RAM** (Metal maps the same mmap'd pages, so this holds on the GPU too):
 
 - llama.cpp `mmap`s the GGUF. If the model is too large to stay resident alongside
   the avatar, environment, and TTS engines, iOS evicts its clean pages and re-reads
@@ -125,21 +139,75 @@ single biggest factor is whether the model's weights stay **resident in RAM**:
   instead of crashing.
 
 Per-model runtime parameters (context length, threads, `gpuLayers`, KV quant, flash
-attention, PLD window) live in one place: `LLMRuntimeProfile.resolve(for:)`.
+attention, PLD window) live in one place: `LLMRuntimeProfile.resolve(for:)`, with the
+per-device rules in `LLMRuntimeProfile.tuned`:
 
-## Cold-start latency
+| Device | Where | Threads | KV cache | Context |
+|---|---|---|---|---|
+| < 5 GB (iPhone 11/12/13) | Metal (CPU if GPU loads died twice in a row) | 2 | q4_0 | 2048 (Llama-1B), 1024 (LLM-jp) |
+| ≥ 5 GB | Metal | 4 | q8_0 | grows with RAM (2048 / 4096) |
+| Simulator | CPU | 2 | q4_0 | as the model's baseline |
 
-First-token latency is minimized in `LocalLLMManager.startListening()`:
+**GPU sentinel.** A load the system kills for memory (jetsam) can't be caught, so
+`LlamaBridge` marks a GPU load pending before creating the context and
+`LLMGPUSentinel` confirms it after the first forward pass completes. A launch that
+finds a load still pending counts a strike. Xcode stopping the app mid-load looks
+the same as a kill, so it takes two strikes in a row before that build stays on
+the CPU, and a confirmed load clears them. A new build, a fresh model download, or
+the DEBUG launch argument `-nl.llm.resetGPU YES` tries the GPU again. `[Bench]`
+lines end the model label with `·gpu` or `·cpu`, and `[LLMGPU]` lines say why.
 
-- **`tryRestoreKVCache()`** — a previous session's prefilled persona prefix is
-  restored from disk, so the first turn reuses it (~instant first token from the 2nd
-  launch onward).
-- **`warmupPrefill()`** — on a first-ever launch the persona prefix is prefilled in
-  the background at launch (it overlaps Whisper setup), so it's warm before the user
-  finishes speaking their first turn.
+## Turn latency
+
+A turn only pays for the tokens the bridge has not already got in its KV cache: it
+reuses everything up to the first token where the new prompt differs. Four things
+keep that difference at the end of the prompt.
+
+- **Anchored history window.** The verbatim history starts at a fixed message and
+  grows; only once it passes 16 messages, or the context budget, does it jump forward
+  to keep the last 8 (`LocalLLMMemoryHierarchy.stableWindow`). A window that slid by a
+  pair every turn changed the prompt right after the system block and re-prefilled
+  the whole history every turn (measured: ~365 of ~850 tokens from turn 6 on); now a
+  turn prefills its facts, the user's words and the template, and a jump costs one
+  re-prefill every few turns. The voice-start warm-up and the turn compute the same
+  window from the same anchor.
+- **Background generations keep the prefix.** Fact extraction, consolidation, mental
+  models, reflections and chat titles run on the same model. `SilentGenerationGate`
+  snapshots the conversation's KV state in RAM before each one and restores it after
+  (`llama_bridge_snapshot_*`, milliseconds), so the next turn starts warm.
+- **User turns come first.** A silent run starts only after the companion has been
+  idle for 1.5 s, and a user turn preempts it at its next token instead of being
+  dropped. A preempted run returns no answer: memory retain advances its watermark
+  only past chunks it finished, consolidation and mental models keep their state, and
+  all of them retry on their next trigger.
+- **Cold start.** `LocalLLMManager.startListening()` restores and warms the prefix:
+
+  - **`tryRestoreKVCache()`** — a previous session's prefilled persona prefix is
+    restored from disk, so the first turn reuses it (~instant first token from the
+    2nd launch onward).
+  - **`warmupPrefill()`** — on a first-ever launch the persona prefix is prefilled in
+    the background at launch (it overlaps Whisper setup), so it's warm before the
+    user finishes speaking their first turn.
 
 KV-cache blobs are AES-256-GCM encrypted on disk and namespaced per model (so a model
 swap never restores an incompatible blob). See `LocalLLMKVCache`.
+
+## Lines the companion starts (cues)
+
+Silence breaks, return greetings, song reactions, head pats and the other
+proactive moments reach the local model as a `LocalCue`
+(`LocalLLMManager.handleCue`), not as the user's words. Sent as a user message, a
+1–2B model read the English instruction out or answered it, and the instruction
+showed on screen as if the user had said it.
+
+- **An instruction, in the model's language.** Llama-3.2 gets it as a final system
+  message after the history. LLM-jp gets Japanese — native versions of the silence
+  break and the return greeting (`ProactivePresenceManager.smallTalkEventJapanese`,
+  `greetingEventJapanese`), and a short Japanese frame around any other English cue.
+- **Checked before it is said.** The reply is buffered, not streamed, and
+  `CueReplyValidator` drops it when it repeats or narrates the instruction (a long
+  run copied from it, "the user…", "ユーザーが…", stage-direction asterisks). A
+  dropped line is simply not spoken; the user's transcript is never touched.
 
 ## Key source files
 

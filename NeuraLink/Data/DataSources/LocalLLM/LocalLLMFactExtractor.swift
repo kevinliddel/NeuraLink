@@ -56,20 +56,6 @@ final class LocalLLMFactExtractor {
         return parseFacts(raw)
     }
 
-    /// Convenience: extract facts and persist them via `RAGManager`. Each
-    /// fact is stored with `source = "fact"` so it can be retrieved later
-    /// via `fetchFacts(relevantTo:limit:)`.
-    func extractAndStore(
-        from turns: [ChatEventItem],
-        using generate: LocalLLMSilentGenerator
-    ) async -> [String] {
-        let facts = await extract(from: turns, using: generate)
-        for fact in facts {
-            RAGManager.shared.storeFact(fact)
-        }
-        return facts
-    }
-
     // MARK: - Prompt building
 
     /// Builds the LLM prompt that asks for atomic-fact summarisation of the

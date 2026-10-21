@@ -134,7 +134,7 @@ public struct VRMSceneView: View {
         ContentUnavailableView(
             "No Model Found",
             systemImage: "cube.transparent",
-            description: Text("Add **Sonya.vrm** or **Ekaterina.vrm** to the Xcode project, make sure the target membership is set to NeuraLink, then rebuild.")
+            description: Text("Add **Oz.vrm**, **Sonya.vrm** or **Ekaterina.vrm** to the Xcode project, make sure the target membership is set to NeuraLink, then rebuild.")
         )
     }
 
@@ -222,7 +222,7 @@ public struct VRMSceneView: View {
             // `.task(id: modelURL)` cancelled this load (user switched
             // models) — the replacement task owns the scene now.
             guard !Task.isCancelled else { return }
-            state.display(model)
+            state.display(model, gender: VRMModelRegistry.shared.entry(named: characterName)?.gender ?? .fallback)
             // Saved customization (docs/CHARACTER_CUSTOMIZATION.md) —
             // applied on top of the fresh model, never by reloading it, and
             // awaited before the scene is declared ready so the character is
@@ -232,6 +232,8 @@ public struct VRMSceneView: View {
             EnvironmentLoadState.shared.markBaseSceneReady()
             // Widget follows the character on screen, dressed as it is.
             CompanionSnapshotWriter.shared.refreshPortrait(from: state)
+            // Diary pictures: candid captures of this scene while it is up.
+            CompanionSceneCapture.shared.start(with: state)
         } catch {
             // A cancelled load surfaces as CancellationError from the
             // loader's checkpoints — that's a model switch, not a failure,
@@ -245,11 +247,12 @@ public struct VRMSceneView: View {
                     guard let device = state.mtkView.device else { return }
                     let model = try await VRMModel.load(from: defaultEntry.url, device: device)
                     guard !Task.isCancelled else { return }
-                    state.display(model)
+                    state.display(model, gender: defaultEntry.gender)
                     await AppearanceApplier.shared.applyStoredAndWait(
                         slug: defaultEntry.name.lowercased(), to: state)
                     EnvironmentLoadState.shared.markBaseSceneReady()
                     CompanionSnapshotWriter.shared.refreshPortrait(from: state)
+                    CompanionSceneCapture.shared.start(with: state)
                     toastMessage = "Couldn't load that avatar — using the default"
                 } catch {
                     nlLog("[VRMSceneView] Fallback model load failed: \(error.localizedDescription)", level: .error)

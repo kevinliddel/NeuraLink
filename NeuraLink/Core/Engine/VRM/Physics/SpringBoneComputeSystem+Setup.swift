@@ -51,16 +51,14 @@ extension SpringBoneComputeSystem {
 
             // Build collision group mask for this spring chain
             // Each bit represents a collision group that this spring interacts with
+            // The list names the groups this chain collides with; an empty
+            // list means none (VRM 0.x and 1.0 alike, and what UniVRM and
+            // three-vrm do). VRoid leaves it empty on bust and skirt chains
+            // on purpose — colliding those with the head and chest spheres
+            // is what kept outfits twitching.
             var colliderGroupMask: UInt32 = 0
-            if spring.colliderGroups.isEmpty {
-                // No groups specified - collide with all groups (backward compatible default)
-                colliderGroupMask = 0xFFFF_FFFF
-            } else {
-                for groupIndex in spring.colliderGroups {
-                    if groupIndex < 32 {
-                        colliderGroupMask |= (1 << groupIndex)
-                    }
-                }
+            for groupIndex in spring.colliderGroups where groupIndex < 32 {
+                colliderGroupMask |= (1 << groupIndex)
             }
 
             for joint in spring.joints {

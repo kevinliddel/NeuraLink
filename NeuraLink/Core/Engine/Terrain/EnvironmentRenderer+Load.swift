@@ -46,12 +46,18 @@ extension EnvironmentRenderer {
         // never sinks/floats when auto-fit scales it.
         var groundFootprint: Float = 0
         var groundTopY: Float = 0
+        // Axis-aligned planes per group, for CoplanarLayering (opt-in).
+        var groupFaces: [[CoplanarFace]] = []
 
         for (meshIndex, worldTransform) in meshInstances {
             guard let mesh = document.meshes?[safe: meshIndex] else { continue }
 
             for primitive in mesh.primitives {
-                guard let posIdx = primitive.attributes["POSITION"],
+                // Only triangles are surfaces. SketchUp exports carry their
+                // edges as LINES primitives; fed to a triangle draw, every
+                // three line indices became a sliver across the building.
+                guard (primitive.mode ?? 4) == 4,
+                      let posIdx = primitive.attributes["POSITION"],
                       let idxIdx = primitive.indices
                 else { continue }
 
@@ -246,8 +252,13 @@ extension EnvironmentRenderer {
                         emissiveTexture != nil ? 1 : 0,
                         0),
                     transform: worldTransform,
-                    isBlend: isBlend
+                    isBlend: isBlend,
+                    doubleSided: mat?.doubleSided ?? false
                 ))
+                groupFaces.append(
+                    resolvesDuplicateFaces
+                        ? CoplanarLayering.faces(positions: posF, indices: indices, transform: worldTransform)
+                        : [])
             }
         }
 
@@ -281,15 +292,30 @@ extension EnvironmentRenderer {
 
         let instanceTransform = T * R * S * recenter
 
-        meshGroups = groups.map {
-            CityMeshGroup(
-                vertexBuffer: $0.vertexBuffer, indexBuffer: $0.indexBuffer,
-                indexCount: $0.indexCount, indexType: $0.indexType, texture: $0.texture,
-                normalTexture: $0.normalTexture, mrTexture: $0.mrTexture,
-                emissiveTexture: $0.emissiveTexture,
-                baseColorFactor: $0.baseColorFactor, emissivePacked: $0.emissivePacked,
-                materialParams: $0.materialParams, texFlags: $0.texFlags,
-                transform: instanceTransform * $0.transform, isBlend: $0.isBlend)
+        // Duplicate faces: later coplanar copies draw one layer up (opt-in).
+        let layers = resolvesDuplicateFaces
+            ? CoplanarLayering.layers(faces: groupFaces, tolerance: max(extent.x, extent.y, extent.z) * 2e-5)
+            : [Int](repeating: 0, count: groups.count)
+        if resolvesDuplicateFaces {
+            let layered = layers.count { $0 > 0 }
+            nlLog("[EnvironmentRenderer] Duplicate faces: \(layered) of \(groups.count) group(s) layered over a coplanar copy")
+        }
+        meshGroups = groups.enumerated().map { index, group in
+            let transform = instanceTransform * group.transform
+            let linear = simd_float3x3(
+                SIMD3<Float>(transform[0].x, transform[0].y, transform[0].z),
+                SIMD3<Float>(transform[1].x, transform[1].y, transform[1].z),
+                SIMD3<Float>(transform[2].x, transform[2].y, transform[2].z))
+            return CityMeshGroup(
+                vertexBuffer: group.vertexBuffer, indexBuffer: group.indexBuffer,
+                indexCount: group.indexCount, indexType: group.indexType, texture: group.texture,
+                normalTexture: group.normalTexture, mrTexture: group.mrTexture,
+                emissiveTexture: group.emissiveTexture,
+                baseColorFactor: group.baseColorFactor, emissivePacked: group.emissivePacked,
+                materialParams: group.materialParams, texFlags: group.texFlags,
+                transform: transform, isBlend: group.isBlend,
+                doubleSided: group.doubleSided, depthLayer: layers[index],
+                mirrored: simd_determinant(linear) < 0)
         }
         isReady = !meshGroups.isEmpty
         nlLog("[EnvironmentRenderer] Loaded \(meshGroups.count) mesh group(s)"

@@ -11,13 +11,6 @@ import RealTimeCutVADLibrary
 import SwiftUI
 import WebRTC
 
-/// Signature for handling incoming events from OpenAI
-protocol OpenAIRealtimeDelegate: AnyObject {
-    func openaiDidUpdateStatus(_ status: AIConnectionStatus)
-    func openaiDidReceiveTranscript(_ text: String, isUser: Bool)
-    func openaiDidUpdateAudioLevel(_ level: Float)
-}
-
 /// Core manager for OpenAI Realtime API via WebRTC.
 final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
     static let shared = OpenAIRealtimeManager()
@@ -62,6 +55,15 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
     /// response never clears `state.aiTranscript`, and logging it again
     /// duplicated the previous reply in the chat history.
     var hasFreshAITranscript = false
+
+    /// Server-VAD segment timing per conversation item, so a transcript can
+    /// be judged against how long the "speech" really lasted
+    /// (`PhantomTranscriptFilter`). Entries are consumed on transcription.
+    var speechStartMsByItem: [String: Int] = [:]
+    var speechMsByItem: [String: Int] = [:]
+    /// Set when the active response was cancelled because its user turn was
+    /// a phantom: that response's `response.done` must not be logged.
+    var phantomResponseCancelled = false
 
     // Post-audio execution: function waits until the AI's spoken audio finishes
     var audioPlaybackMonitorTask: Task<Void, Never>?

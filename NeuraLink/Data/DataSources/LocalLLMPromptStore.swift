@@ -63,6 +63,15 @@ final class LocalLLMPromptStore {
             character: characterName, engine: engineKey(for: config), prompt: nil)
     }
 
+    /// The name the Japanese prompt gives the character ("私はオズ、…" →
+    /// "オズ"), so Japanese cues address it the way its persona does.
+    func japaneseName(for characterName: String) -> String? {
+        let prompt = effectivePrompt(for: characterName, config: .llmJp3)
+        guard let range = prompt.range(of: #"私は([^、。\s]{1,12})[、。]"#, options: .regularExpression) else { return nil }
+        let match = prompt[range].dropFirst(2).dropLast()
+        return match.isEmpty ? nil : String(match)
+    }
+
     // MARK: - Built-in defaults
 
     static func defaultPrompt(
@@ -93,6 +102,9 @@ final class LocalLLMPromptStore {
             case "sonya":
                 return emotionTag + tool
                     + "I am Sonya, a blunt tsundere. I reply in 1–2 sentences. I occasionally say Stupid."
+            case "oz":
+                return emotionTag + tool
+                    + "I am Oz, a courteous butler. I reply in 1–2 polite spoken sentences and call you Sir or Madam."
             default:
                 return emotionTag + tool
                     + "I reply in one short spoken sentence."
@@ -110,6 +122,12 @@ final class LocalLLMPromptStore {
                 You are Sonya, a blunt tsundere. Reply in 1–2 sentences. Be dismissive but secretly kind. \
                 Occasionally say Stupid. No asterisk actions, no narration, no parentheses.
                 """ + "\n"
+        case "oz":
+            return emotionTag + """
+                You are Oz, the butler of an aristocratic house: impeccably polite, calm, and knowledgeable about everything. \
+                Reply in 1–2 refined spoken sentences and address the user as Sir or Madam. \
+                No asterisk actions, no narration, no parentheses.
+                """ + "\n"
         default:
             return emotionTag
                 + "Reply in one short spoken sentence. Be natural and conversational.\n"
@@ -125,6 +143,9 @@ final class LocalLLMPromptStore {
         case "sonya":
             return emotionTag
                 + "私はソーニャ、ツンデレ。日本語で1〜2文で話す。たまに「バカ」と言う。"
+        case "oz":
+            return emotionTag
+                + "私はオズ、貴族の家に仕える執事。丁寧な敬語で、日本語で1〜2文で話す。"
         default:
             return emotionTag
                 + "日本語で1文で話す。"

@@ -26,7 +26,15 @@ final class CompanionSnapshotWriter: @unchecked Sendable {
     /// Minimum gap between writes; more frequent requests coalesce.
     static let debounce: Duration = .seconds(5)
     /// Memory-line length the widget can show without truncating badly.
-    static let memoryLineLimit = 150
+    /// Longest memory line the widgets quote in full: three lines of the
+    /// medium widget's quote card at footnote size.
+    static let memoryLineLimit = 100
+
+    /// Openers that only make sense after the sentence before them; a
+    /// widget quoting "She also clarified…" on its own reads as noise.
+    nonisolated static let continuationOpeners: Set<String> = [
+        "also", "and", "but", "so", "then", "however", "still", "yet", "meanwhile", "besides", "plus"
+    ]
 
     private var pending: Task<Void, Never>?
     private var portraitTask: Task<Void, Never>?
@@ -164,24 +172,52 @@ final class CompanionSnapshotWriter: @unchecked Sendable {
         return (observation, observation.isEmpty ? nil : "Remembered")
     }
 
-    /// First sentence of `text`, cut at a word boundary to fit the widget.
+    /// One whole sentence of `text` for the widget: the first that fits
+    /// `memoryLineLimit` and stands on its own, else the first that fits,
+    /// so the widget shows a complete thought rather than the opening of a
+    /// long one. Only when no sentence fits is the first cut at a word
+    /// boundary.
     nonisolated static func leadingSentence(of text: String) -> String? {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        var sentence = trimmed
-        if let end = trimmed.firstIndex(where: { ".!?".contains($0) }) {
-            sentence = String(trimmed[...end])
-        }
-        guard sentence.count > memoryLineLimit else { return sentence }
-        let cut = sentence.prefix(memoryLineLimit)
+        let sentences = self.sentences(of: text)
+        guard let first = sentences.first else { return nil }
+        let fitting = sentences.filter { $0.count <= memoryLineLimit }
+        if let standalone = fitting.first(where: { !isContinuation($0) }) { return standalone }
+        if let whole = fitting.first { return whole }
+        let cut = first.prefix(memoryLineLimit)
         let words = cut.split(separator: " ").dropLast()
         return words.joined(separator: " ") + "…"
+    }
+
+    /// "Also, …", "And she…", "She also…": a sentence that leans on the one
+    /// before it.
+    nonisolated static func isContinuation(_ sentence: String) -> Bool {
+        let words = sentence.lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }
+        guard let head = words.first else { return false }
+        if continuationOpeners.contains(head) { return true }
+        return words.count > 1 && (words[1] == "also" || words[1] == "too")
+    }
+
+    /// `text` split at sentence ends, trimmed, empties dropped.
+    nonisolated static func sentences(of text: String) -> [String] {
+        var out: [String] = []
+        var current = ""
+        for character in text {
+            current.append(character)
+            if ".!?".contains(character) {
+                out.append(current)
+                current = ""
+            }
+        }
+        out.append(current)
+        return out.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
     }
 
     /// One observation, chosen by the day so the widget rotates without the
     /// app having to remember anything. Empty when there are none.
     nonisolated static func memoryOfTheDay(from observations: [MemoryUnit], date: Date = Date()) -> String {
-        let candidates = observations.map(\.text).filter { $0.count <= 140 }
+        let candidates = observations.map(\.text).filter { $0.count <= memoryLineLimit }
         guard !candidates.isEmpty else { return "" }
         let day = Int(date.timeIntervalSince1970 / 86_400)
         return candidates[day % candidates.count]

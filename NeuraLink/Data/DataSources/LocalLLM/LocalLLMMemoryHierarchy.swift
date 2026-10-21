@@ -27,7 +27,23 @@ final class LocalLLMMemoryHierarchy {
 
     /// Tier 2 verbatim window, in raw chat events (≈ 6 user+assistant pairs).
     /// Lower bound; the budget check in `fitToBudget` can evict more.
+    /// Still the compaction watermark; the prompt itself uses the anchored
+    /// window below.
     static let verbatimWindowMessages = 12
+
+    /// The prompt's history window is ANCHORED, not sliding. The bridge only
+    /// re-prefills from the first token that differs from its KV cache, so a
+    /// window that drops its oldest pair every turn changes the prompt right
+    /// after the system block and forces the whole history to be prefilled
+    /// again (measured: ~365 of ~850 tokens, every turn, from turn 6 on). The
+    /// window instead grows from a fixed first message and only jumps forward
+    /// — to keep the last `windowLowWater` — once it passes `windowHighWater`
+    /// or the context budget: one re-prefill every few turns, not every turn.
+    static let windowHighWater = 16
+    static let windowLowWater = 8
+    /// Room the warm-up leaves for what the real turn adds (facts, the user's
+    /// words, the reply), so both decide on a window jump the same way.
+    static let turnReserveTokens = 260
 
     /// Top-K facts retrieved from `RAGManager.fetchFacts` for Tier 3.
     static let factsLimit = 3
@@ -56,6 +72,10 @@ final class LocalLLMMemoryHierarchy {
 
     private let inFlightLock = NSLock()
     private var compactionInFlight = false
+
+    /// First message id of each conversation's prompt window.
+    private let anchorLock = NSLock()
+    private var historyAnchors: [Int64: Int64] = [:]
 
     // MARK: - Init
 
@@ -104,12 +124,17 @@ final class LocalLLMMemoryHierarchy {
             ? ""
             : buildFactsBlock(relevantTo: userInput)
 
-        let history = buildHistory(
-            isLLMjp: isJP,
-            excluding: userInput
-        )
-
+        let nCtx = Self.nCtx(for: config)
+        var history = buildHistory(isLLMjp: isJP, excluding: userInput)
         let userMessage = isJP ? "\(Self.jpAnswerLeadIn)\(userInput)" : userInput
+        // Over budget: jump the anchor (sticky, so the next turns keep the
+        // shorter window and its prefix) rather than trimming a pair a turn.
+        let perTurn = [factsBlock, userMessage].map(LocalLLMContextBudget.estimateTokens(in:)).reduce(0, +)
+        if !history.isEmpty,
+           LocalLLMContextBudget.estimateTokens(in: [.init(role: "system", content: systemContent)] + history)
+            + perTurn > Self.budgetLimit(nCtx) {
+            history = buildHistory(isLLMjp: isJP, excluding: userInput, forceJump: true)
+        }
 
         var messages: [LLMChatMessage] = [
             .init(role: "system", content: systemContent)
@@ -125,9 +150,46 @@ final class LocalLLMMemoryHierarchy {
         if !gameBlock.isEmpty {
             messages.append(.init(role: "system", content: gameBlock))
         }
+        // How the user sounds this turn (docs/LLM_VOICE.md): per-turn, after
+        // history, so the stable prefix is untouched. Empty when neutral.
+        let affectBlock = isJP ? "" : AcousticAffectState.shared.promptBlock()
+        if !affectBlock.isEmpty {
+            messages.append(.init(role: "system", content: affectBlock))
+        }
         messages.append(.init(role: "user", content: userMessage))
 
+        return Self.fitToBudget(messages, nCtx: nCtx)
+    }
+
+    /// Messages for a line the companion says on its own (a `LocalCue`): the
+    /// same system prompt and history as a turn — so the warm KV prefix still
+    /// applies — then the instruction as a final system message, with no user
+    /// message at all. The JP model's format folds it into the instruction
+    /// block with the persona.
+    func buildCueMessages(
+        instruction: String,
+        config: LocalModelDownloadManager.ModelConfiguration,
+        characterName: String,
+        baseSystemPrompt: String
+    ) async -> [LLMChatMessage] {
+        let isJP = (config == .llmJp3)
+        let systemContent = buildSystemContent(
+            base: baseSystemPrompt, characterName: characterName, isLLMjp: isJP,
+            compactCompanionState: config == .llama1b)
+        if isJP {
+            return [.init(role: "system", content: systemContent), .init(role: "user", content: instruction)]
+        }
+        var messages: [LLMChatMessage] = [.init(role: "system", content: systemContent)]
+        messages.append(contentsOf: buildHistory(isLLMjp: false, excluding: ""))
+        messages.append(.init(
+            role: "system",
+            content: "[Your next line] \(instruction) Reply with only the words you say aloud — never repeat or describe this instruction."))
         return Self.fitToBudget(messages, nCtx: Self.nCtx(for: config))
+    }
+
+    /// The token count `fitToBudget` starts evicting at.
+    static func budgetLimit(_ nCtx: Int) -> Int {
+        Int(Double(nCtx) * LocalLLMContextBudget.defaultCompactionThreshold)
     }
 
     /// Builds the warmup prompt for `prefill(messages:)` — everything we
@@ -152,10 +214,13 @@ final class LocalLLMMemoryHierarchy {
         var messages: [LLMChatMessage] = [
             .init(role: "system", content: systemContent)
         ]
-        messages.append(contentsOf: buildHistory(
-            isLLMjp: isJP,
-            excluding: ""
-        ))
+        var history = buildHistory(isLLMjp: isJP, excluding: "")
+        if !history.isEmpty,
+           LocalLLMContextBudget.estimateTokens(in: messages + history) + Self.turnReserveTokens
+            > Self.budgetLimit(Self.nCtx(for: config)) {
+            history = buildHistory(isLLMjp: isJP, excluding: "", forceJump: true)
+        }
+        messages.append(contentsOf: history)
         // JP path has no history, so a system-only message list makes the model's
         // chat template render nothing reusable (the warm-up no-ops and the
         // first token re-prefills the whole prompt — observed as prefill=1+N
@@ -216,28 +281,6 @@ final class LocalLLMMemoryHierarchy {
         guard allRecent.count > windowMessages else { return [] }
         let beyondWindow = Array(allRecent.dropFirst(windowMessages))
         return beyondWindow.filter { $0.id > lastCompactedID }
-    }
-
-    /// Persists the highest event id from `turns` as the last-compacted
-    /// boundary so `compactionCandidates()` won't return them again.
-    func markCompacted(_ turns: [ChatEventItem]) {
-        guard let maxID = turns.map(\.id).max() else { return }
-        UserDefaults.standard.set(maxID, forKey: Self.lastCompactedKey)
-    }
-
-    /// Re-entrancy guard so concurrent `maybeRunCompaction` invocations
-    /// don't pile multiple background extractions on top of each other.
-    /// Returns true if the caller acquired the in-flight slot.
-    func tryBeginCompaction() -> Bool {
-        inFlightLock.lock(); defer { inFlightLock.unlock() }
-        if compactionInFlight { return false }
-        compactionInFlight = true
-        return true
-    }
-
-    func endCompaction() {
-        inFlightLock.lock(); defer { inFlightLock.unlock() }
-        compactionInFlight = false
     }
 
     // MARK: - Internals
@@ -355,33 +398,59 @@ final class LocalLLMMemoryHierarchy {
 
     private func buildHistory(
         isLLMjp: Bool,
-        excluding currentInput: String
+        excluding currentInput: String,
+        forceJump: Bool = false
     ) -> [LLMChatMessage] {
         // No history for the Japanese 1B model — see comment in the
         // original handleUserInput about orphaned AI responses and the
         // 1B model's poor multi-turn coherence.
-        let limit = isLLMjp ? 0 : Self.verbatimWindowMessages
-        guard limit > 0,
-              let convID = ConversationStore.shared.activeConversationID
-        else { return [] }
+        guard !isLLMjp, let convID = ConversationStore.shared.activeConversationID else { return [] }
 
         // Verbatim window = the CURRENT conversation only (new chat = fresh
         // context). fetchRecentMessages returns chronological (oldest first).
         var msgs = MemoryStore.shared.fetchRecentMessages(
-            conversationID: convID, limit: limit)
+            conversationID: convID, limit: Self.windowHighWater + 8)
         // If the just-logged user message is already persisted
         // (`ChatTimelineStore.logUserMessage` ran before us) drop it so
-        // we don't duplicate it as both history and current turn.
+        // we don't duplicate it as both history and current turn — and so
+        // the turn sees exactly the list the warm-up saw.
         if let last = msgs.last, last.role == "user", last.content == currentInput {
             msgs.removeLast()
         }
         // Only verbatim user/assistant turns belong in the prompt — tool_call
         // rows are excluded.
-        return msgs.compactMap { m in
-            guard m.kind == "message", m.role == "user" || m.role == "assistant"
-            else { return nil }
-            return LLMChatMessage(role: m.role, content: m.content)
+        let eligible = msgs.filter { $0.kind == "message" && ($0.role == "user" || $0.role == "assistant") }
+        let start = anchorLock.withLock { () -> Int in
+            let window = Self.stableWindow(
+                eligible.map { (id: $0.id, role: $0.role) }, anchor: historyAnchors[convID],
+                high: Self.windowHighWater, low: Self.windowLowWater, forceJump: forceJump)
+            historyAnchors[convID] = window.anchor
+            return window.start
         }
+        return eligible[start...].map { LLMChatMessage(role: $0.role, content: $0.content) }
+    }
+
+    /// Where the prompt's history starts. Keeps the previous anchor while the
+    /// window holds at most `high` messages; past that (or when forced by the
+    /// budget) it jumps to keep the last `low` — moved forward to a user
+    /// message when one is in reach, so the window opens on the user's turn.
+    /// Pure, for tests.
+    static func stableWindow(
+        _ messages: [(id: Int64, role: String)], anchor: Int64?, high: Int, low: Int, forceJump: Bool = false
+    ) -> (start: Int, anchor: Int64?) {
+        guard !messages.isEmpty else { return (0, anchor) }
+        var start = anchor.flatMap { a in messages.firstIndex { $0.id >= a } } ?? 0
+        if anchor != nil, messages.allSatisfy({ $0.id < anchor! }) { start = messages.count }
+        let kept = messages.count - start
+        if kept > high || (forceJump && kept > 0) {
+            let keep = forceJump ? min(low, max(2, kept / 2)) : low
+            start = messages.count - min(keep, messages.count)
+            if messages[start].role != "user",
+               let next = messages[start...].firstIndex(where: { $0.role == "user" }) {
+                start = next
+            }
+        }
+        return (start, start < messages.count ? messages[start].id : anchor)
     }
 
     /// Evicts the oldest history message (and a second one to keep

@@ -4,8 +4,9 @@
 //
 //  Confirmation step of the VRM import flow: shows the staged candidate's
 //  thumbnail, metadata, license permissions, and capability warnings; lets
-//  the user pick the display name and (optionally) a custom card image from
-//  Photos; and gates restricted-use models behind an explicit acknowledgment.
+//  the user pick the display name, the gender (which idle and pose clips
+//  the body uses) and (optionally) a custom card image from Photos; and
+//  gates restricted-use models behind an explicit acknowledgment.
 //  Import commits the files to protected storage (VRMImportService.finalize)
 //  — Cancel discards the staging copy.
 //
@@ -15,19 +16,21 @@ import SwiftUI
 
 struct CharacterImportConfirmSheet: View {
     let candidate: VRMImportCandidate
-    /// (displayName, customCardImage) — image nil means "use the thumbnail
-    /// embedded in the VRM file" (or the placeholder when there is none).
-    var onConfirm: (String, Data?) -> Void
+    /// (displayName, gender, customCardImage) — image nil means "use the
+    /// thumbnail embedded in the VRM file" (or the placeholder when there is
+    /// none).
+    var onConfirm: (String, CharacterGender, Data?) -> Void
     var onCancel: () -> Void
 
     @State private var displayName: String
+    @State private var gender: CharacterGender = .fallback
     @State private var acknowledgedRestriction = false
     @State private var photoItem: PhotosPickerItem?
     @State private var customImageData: Data?
 
     init(
         candidate: VRMImportCandidate,
-        onConfirm: @escaping (String, Data?) -> Void,
+        onConfirm: @escaping (String, CharacterGender, Data?) -> Void,
         onCancel: @escaping () -> Void
     ) {
         self.candidate = candidate
@@ -49,6 +52,7 @@ struct CharacterImportConfirmSheet: View {
                 Section("Name") {
                     TextField("Character name", text: $displayName)
                 }
+                genderSection
                 if !report.warnings.isEmpty {
                     warningsSection
                 }
@@ -61,7 +65,7 @@ struct CharacterImportConfirmSheet: View {
                     Button("Cancel", action: onCancel)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Import") { onConfirm(displayName, customImageData) }
+                    Button("Import") { onConfirm(displayName, gender, customImageData) }
                         .fontWeight(.semibold)
                         .disabled(!canImport)
                 }
@@ -100,9 +104,9 @@ struct CharacterImportConfirmSheet: View {
                         .scaledToFill()
                         .frame(width: 72, height: 72)
                         .clipped()
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.medium))
                 } else {
-                    RoundedRectangle(cornerRadius: 12)
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.medium)
                         .fill(Color.secondary.opacity(0.15))
                         .frame(width: 72, height: 72)
                         .overlay(Image(systemName: "person.fill").foregroundStyle(.secondary))
@@ -141,6 +145,16 @@ struct CharacterImportConfirmSheet: View {
             }
         } footer: {
             Text("The card image is shown in the character picker. It defaults to the thumbnail embedded in the VRM file.")
+        }
+    }
+
+    private var genderSection: some View {
+        Section {
+            GenderSquarePicker(selection: $gender)
+        } header: {
+            Text("Gender")
+        } footer: {
+            Text("Picks the idle, resting and photo-pose animations the character uses. Talking and the phone are shared. You can change it later in the character's settings.")
         }
     }
 

@@ -28,8 +28,8 @@ extension MemoryStore {
         INSERT INTO imported_characters
             (slug, display_name, file_path, file_size, sha256,
              thumbnail_path, source_filename, vrm_spec, meta_name, meta_authors,
-             meta_license_url, meta_avatar_permission, meta_commercial_usage)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+             meta_license_url, meta_avatar_permission, meta_commercial_usage, gender)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
         """
         var statement: OpaquePointer?
         var rowID: Int64?
@@ -47,6 +47,7 @@ extension MemoryStore {
             bindText(statement, 11, draft.metaLicenseURL)
             bindText(statement, 12, draft.metaAvatarPermission)
             bindText(statement, 13, draft.metaCommercialUsage)
+            bindText(statement, 14, draft.gender.rawValue)
             if sqlite3_step(statement) == SQLITE_DONE {
                 rowID = sqlite3_last_insert_rowid(db)
             } else {
@@ -137,6 +138,12 @@ extension MemoryStore {
             texts: [displayName, slug.lowercased()], label: "display_name")
     }
 
+    func updateImportedCharacterGender(slug: String, gender: CharacterGender) {
+        execImportedUpdate(
+            "UPDATE imported_characters SET gender = ?, updated_at = CURRENT_TIMESTAMP WHERE slug = ?;",
+            texts: [gender.rawValue, slug.lowercased()], label: "gender")
+    }
+
     func setImportedCharacterQuarantined(slug: String, _ quarantined: Bool) {
         execImportedUpdate(
             "UPDATE imported_characters SET quarantined = \(quarantined ? 1 : 0), updated_at = CURRENT_TIMESTAMP WHERE slug = ?;",
@@ -175,7 +182,7 @@ extension MemoryStore {
     id, slug, display_name, file_path, file_size, sha256, \
     thumbnail_path, source_filename, vrm_spec, meta_name, meta_authors, \
     meta_license_url, meta_avatar_permission, meta_commercial_usage, \
-    quarantined, created_at, updated_at
+    quarantined, created_at, updated_at, gender
     """
 
     private func importedCharacterRow(from statement: OpaquePointer?) -> ImportedCharacter {
@@ -198,7 +205,8 @@ extension MemoryStore {
             // Nil-safe despite NOT NULL: pre-fix rows created without the
             // constraint could carry NULL, which must not crash the mapper.
             createdAt: columnText(statement, 15).flatMap(Self.parseSQLiteTimestamp) ?? Date(),
-            updatedAt: columnText(statement, 16).flatMap(Self.parseSQLiteTimestamp) ?? Date()
+            updatedAt: columnText(statement, 16).flatMap(Self.parseSQLiteTimestamp) ?? Date(),
+            gender: CharacterGender(stored: columnText(statement, 17))
         )
     }
 

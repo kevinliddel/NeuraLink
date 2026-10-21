@@ -35,6 +35,8 @@ final class GGUFLLMjp3Engine: NSObject, @unchecked Sendable, LLMEngineProtocol {
 
     // Same concurrency guard as GGUFLlamaEngine — llama.cpp is NOT thread-safe.
     internal let generationLock = NSLock()
+    /// Background generations: KV snapshot/restore + preemption.
+    internal let silentGate = SilentGenerationGate()
     internal var _isGenerating = false
 
     // See GGUFLlamaEngine.bridgeLock: serialises prefill warmup against
@@ -131,7 +133,11 @@ final class GGUFLLMjp3Engine: NSObject, @unchecked Sendable, LLMEngineProtocol {
         bridge?.cancel()
     }
 
+    /// LLM-jp-3's own "### 指示 / ### 応答" format, rendered here: llama.cpp's
+    /// template detector doesn't know it, so the GGUF template path failed and
+    /// the reply came back as an improvised script (see LLMjpPromptFormat).
     func applyChatTemplate(messages: [LLMChatMessage]) -> String? {
-        bridge?.applyChatTemplate(messages: messages)
+        guard bridge != nil else { return nil }
+        return LLMjpPromptFormat.render(messages, addGenerationPrompt: true)
     }
 }

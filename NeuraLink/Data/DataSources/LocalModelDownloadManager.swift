@@ -158,13 +158,6 @@ final class LocalModelDownloadManager: @unchecked Sendable {
         activeTask = Task { await performDownload() }
     }
 
-    func cancelDownload() {
-        activeTask?.cancel()
-        activeTask = nil
-        state = .notDownloaded
-        endBackgroundTask()
-    }
-
     func pauseDownload() {
         guard case .downloading(let progress) = state else { return }
         activeTask?.cancel()
@@ -177,10 +170,6 @@ final class LocalModelDownloadManager: @unchecked Sendable {
         guard case .paused = state else { return }
         state = .notDownloaded
         startDownload()
-    }
-
-    func deleteDownloadedModel() {
-        deleteModel(selectedConfig)
     }
 
     /// Wipes the on-disk cache for `config`. If `config` is the currently
@@ -309,6 +298,8 @@ final class LocalModelDownloadManager: @unchecked Sendable {
                 return
             }
 
+            // A freshly downloaded model gets a clean GPU slate (LLMGPUSentinel).
+            LLMGPUSentinel.reset()
             await MainActor.run { state = .downloading(progress: 1.0) }
             try? await Task.sleep(nanoseconds: 500_000_000)
             await MainActor.run { state = .ready }
@@ -317,7 +308,12 @@ final class LocalModelDownloadManager: @unchecked Sendable {
 
         } catch {
             guard !Task.isCancelled else {
-                await MainActor.run { state = .notDownloaded }
+                // A pause cancels this task too: keep its `.paused` state (and
+                // the partial file, which the next start resumes from).
+                await MainActor.run {
+                    if case .paused = state { return }
+                    state = .notDownloaded
+                }
                 endBackgroundTask()
                 return
             }

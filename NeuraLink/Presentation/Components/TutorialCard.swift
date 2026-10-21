@@ -44,9 +44,9 @@ struct TutorialCard: View {
         }
         .padding(18)
         .frame(maxWidth: Self.maxWidth, alignment: .leading)
-        .background(.black.opacity(0.82), in: RoundedRectangle(cornerRadius: 22))
+        .background(.black.opacity(0.82), in: RoundedRectangle(cornerRadius: AppTheme.Radius.large))
         .overlay(
-            RoundedRectangle(cornerRadius: 22)
+            RoundedRectangle(cornerRadius: AppTheme.Radius.large)
                 .strokeBorder(.white.opacity(0.16), lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.5), radius: 18, y: 8)
@@ -57,7 +57,7 @@ struct TutorialCard: View {
     private var header: some View {
         HStack(spacing: 12) {
             Image(systemName: step.icon)
-                .font(.system(size: 17, weight: .semibold))
+                .font(.body.weight(.semibold))
                 .foregroundStyle(.white)
                 .frame(width: 38, height: 38)
                 .background(

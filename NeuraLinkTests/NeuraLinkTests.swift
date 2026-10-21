@@ -132,6 +132,10 @@ struct NeuraLinkTests {
         
         let ekaterina = CharacterPersona.forCharacter(named: "Ekaterina")
         #expect(ekaterina.instructions.contains("Onee-san") == true)
+
+        let oz = CharacterPersona.forCharacter(named: "Oz")
+        #expect(oz.instructions.contains("butler") == true)
+        #expect(oz.voice == "ballad")
         #expect(ekaterina.voice == "shimmer")
     }
 

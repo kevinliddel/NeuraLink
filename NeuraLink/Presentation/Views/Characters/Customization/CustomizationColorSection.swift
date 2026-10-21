@@ -37,22 +37,22 @@ struct CustomizationColorSection: View {
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: "paintpalette.fill")
-                    .font(.system(size: 15))
+                    .font(.subheadline)
                     .foregroundColor(isEnabled ? CustomizationTheme.accent : CustomizationTheme.secondaryLabel)
                 Text(title)
-                    .font(.system(size: 15, weight: .medium))
+                    .font(.subheadline.weight(.medium))
                 if !recolor.isIdentity {
                     Circle().fill(CustomizationTheme.accent).frame(width: 7, height: 7)
                 }
                 Spacer()
                 Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.footnote.weight(.semibold))
                     .foregroundColor(CustomizationTheme.secondaryLabel)
             }
             .foregroundColor(CustomizationTheme.label)
             .frame(height: CustomizationTheme.controlHeight)
             .padding(.horizontal, 14)
-            .background(RoundedRectangle(cornerRadius: 14).fill(CustomizationTheme.control))
+            .background(RoundedRectangle(cornerRadius: AppTheme.Radius.medium).fill(CustomizationTheme.control))
         }
         .buttonStyle(.plain)
         .disabled(!isEnabled)
@@ -77,7 +77,7 @@ struct CustomizationColorSection: View {
                             .overlay {
                                 if hue == 0 {
                                     Image(systemName: "slash.circle")
-                                        .font(.system(size: 15, weight: .medium))
+                                        .font(.subheadline.weight(.medium))
                                         .foregroundColor(.white.opacity(0.9))
                                 }
                             }
@@ -117,7 +117,7 @@ struct CustomizationColorSection: View {
     ) -> some View {
         HStack(spacing: 12) {
             Text(label)
-                .font(.system(size: 13, weight: .medium))
+                .font(.footnote.weight(.medium))
                 .foregroundColor(CustomizationTheme.secondaryLabel)
                 .frame(width: 78, alignment: .leading)
             Slider(
@@ -125,7 +125,7 @@ struct CustomizationColorSection: View {
                 in: Double(range.lowerBound)...Double(range.upperBound))
             .tint(CustomizationTheme.accent)
             Text(String(format: format, value))
-                .font(.system(size: 12, weight: .semibold))
+                .font(.caption.weight(.semibold))
                 .foregroundColor(CustomizationTheme.secondaryLabel)
                 .monospacedDigit()
                 .frame(width: 56, alignment: .trailing)

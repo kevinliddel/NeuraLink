@@ -28,11 +28,11 @@ struct ModelLibraryCard: View {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(config.rawValue)
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .font(.system(.headline, design: .rounded, weight: .bold))
                         .foregroundColor(.white)
 
                     Text(config.quantizationLabel)
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .font(.system(.caption, design: .monospaced, weight: .medium))
                         .foregroundColor(.white.opacity(0.6))
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
@@ -46,7 +46,7 @@ struct ModelLibraryCard: View {
             }
 
             Text(config.description)
-                .font(.system(size: 13))
+                .font(.footnote)
                 .foregroundColor(.white.opacity(0.8))
                 .lineLimit(2)
 
@@ -55,10 +55,10 @@ struct ModelLibraryCard: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("ESTIMATED SIZE")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.caption2.weight(.bold))
                         .foregroundColor(.white.opacity(0.4))
                     Text(String(format: "%.1f GB", config.estimatedSizeGB))
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.footnote.weight(.medium))
                         .foregroundColor(.white)
                 }
 
@@ -67,10 +67,10 @@ struct ModelLibraryCard: View {
                 if diskUsage > 0 {
                     VStack(alignment: .trailing, spacing: 2) {
                         Text("ON DISK")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.caption2.weight(.bold))
                             .foregroundColor(.white.opacity(0.4))
                         Text(formatBytes(diskUsage))
-                            .font(.system(size: 13, weight: .medium))
+                            .font(.footnote.weight(.medium))
                             .foregroundColor(.cyan)
                     }
                 }
@@ -83,7 +83,7 @@ struct ModelLibraryCard: View {
                         .scaleEffect(x: 1, y: 1.5, anchor: .center)
 
                     Text("\(Int(progress * 100))%")
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .font(.system(.caption2, design: .monospaced, weight: .bold))
                         .foregroundColor(.cyan)
                 }
                 .transition(.opacity.combined(with: .scale))
@@ -92,7 +92,7 @@ struct ModelLibraryCard: View {
                     HStack {
                         Button(action: onPause) {
                             Label("Pause", systemImage: "pause.fill")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.caption.weight(.semibold))
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 6)
                                 .background(Color.white.opacity(0.08))
@@ -101,7 +101,7 @@ struct ModelLibraryCard: View {
                         Spacer()
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundColor(.green)
-                            .font(.system(size: 20))
+                            .font(.title3)
                     }
                 }
             } else if case .paused(let progress) = status {
@@ -111,7 +111,7 @@ struct ModelLibraryCard: View {
                         .scaleEffect(x: 1, y: 1.5, anchor: .center)
 
                     Text("Paused")
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .font(.system(.caption2, design: .monospaced, weight: .bold))
                         .foregroundColor(.white.opacity(0.6))
                 }
 
@@ -119,7 +119,7 @@ struct ModelLibraryCard: View {
                     HStack {
                         Button(action: onResume) {
                             Label("Resume", systemImage: "play.fill")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.caption.weight(.semibold))
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 6)
                                 .background(Color.white.opacity(0.08))
@@ -128,7 +128,7 @@ struct ModelLibraryCard: View {
                         Spacer()
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundColor(.green)
-                            .font(.system(size: 20))
+                            .font(.title3)
                     }
                 }
             } else if isSelected {
@@ -136,7 +136,7 @@ struct ModelLibraryCard: View {
                     if status == .ready {
                         Button(role: .destructive, action: onDelete) {
                             Label("Delete", systemImage: "trash")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.caption.weight(.semibold))
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 6)
                                 .background(Color.red.opacity(0.2))
@@ -144,12 +144,12 @@ struct ModelLibraryCard: View {
                         }
                     } else if status == .bundled {
                         Label("Built-in", systemImage: "checkmark.seal.fill")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.caption.weight(.semibold))
                             .foregroundColor(.green)
                     } else {
                         Button(action: onSelect) {
                             Text("Download")
-                                .font(.system(size: 14, weight: .bold))
+                                .font(.subheadline.weight(.bold))
                                 .foregroundColor(.black)
                                 .padding(.horizontal, 20)
                                 .padding(.vertical, 8)
@@ -162,12 +162,12 @@ struct ModelLibraryCard: View {
 
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundColor(.green)
-                        .font(.system(size: 20))
+                        .font(.title3)
                 }
             } else {
                 Button(action: onSelect) {
                     Text("Select Model")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.subheadline.weight(.bold))
                         .foregroundColor(.white)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 8)
@@ -180,7 +180,7 @@ struct ModelLibraryCard: View {
         .background(
             ZStack {
                 Color.black.opacity(0.4)
-                RoundedRectangle(cornerRadius: 24)
+                RoundedRectangle(cornerRadius: AppTheme.Radius.large)
                     .stroke(
                         isSelected ? Color.cyan.opacity(0.5) : Color.white.opacity(0.1),
                         lineWidth: 1.5)

@@ -310,6 +310,7 @@ final class SongRecognitionManager {
     func presentMatch(_ song: RecognizedSong, emotion: String = "surprised") {
         phase = .matched(song)
         RealtimeChatState.shared.triggerEmotion(emotion, duration: 2.5)
+        CompanionMilestoneTracker.note(.firstSharedSong)
     }
 
     /// Setter seam for the +Session extension (`phase` stays `private(set)`
@@ -341,7 +342,7 @@ final class SongRecognitionManager {
                 nlLog("[SongID] Skipping announcement — pipeline busy (\(status.label)).", level: .info)
                 return
             }
-            LocalLLMManager.shared.handleUserInput(event, logToTimeline: false)
+            LocalLLMManager.shared.handleCue(LocalCue(english: event))
         } else if settings.isEnabled && settings.hasValidKey {
             OpenAIRealtimeManager.shared.sendInteractionEvent(event)
         }

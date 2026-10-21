@@ -112,7 +112,7 @@ struct MemoryTimelineView: View {
                         title: "Remember conversations",
                         info: "Facts, insights and moments from your chats are kept on this device only, so \(characterName) can bring them up later.")
                 } icon: {
-                    settingIcon("brain", color: .purple)
+                    settingIcon(Image("nodes"), color: .purple)
                 }
             }
 
@@ -309,7 +309,7 @@ struct MemoryTimelineView: View {
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(.green)
                 .frame(width: 28, height: 28)
-                .background(Color.green.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .background(Color.green.opacity(0.12), in: RoundedRectangle(cornerRadius: AppTheme.Radius.chip, style: .continuous))
             VStack(alignment: .leading, spacing: 3) {
                 Text(factDisplayText(fact))
                     .font(.subheadline)
@@ -356,11 +356,15 @@ struct MemoryTimelineView: View {
     }
 
     private func settingIcon(_ symbol: String, color: Color) -> some View {
-        Image(systemName: symbol)
+        settingIcon(Image(systemName: symbol), color: color)
+    }
+
+    private func settingIcon(_ image: Image, color: Color) -> some View {
+        image
             .font(.footnote.weight(.semibold))
             .foregroundStyle(.white)
             .frame(width: 28, height: 28)
-            .background(color, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .background(color, in: RoundedRectangle(cornerRadius: AppTheme.Radius.chip, style: .continuous))
     }
 
     private var visibleObservations: [MemoryUnit] {
@@ -483,7 +487,7 @@ struct SettingLabelStyle: LabelStyle {
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(.white)
                 .frame(width: 28, height: 28)
-                .background(color, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .background(color, in: RoundedRectangle(cornerRadius: AppTheme.Radius.chip, style: .continuous))
             configuration.title
         }
     }

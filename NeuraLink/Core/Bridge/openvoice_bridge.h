@@ -3,10 +3,10 @@
 //  NeuraLink
 //
 //  C bridge over the on-device OpenVoice TTS: MeloTTS VITS -> tone-color
-//  converter, both ONNX via ONNX Runtime. Ported from SynapLink's proven
-//  `synap_voice` bridge. Reuses the ONNX Runtime NeuraLink already ships
-//  (headers under Dependencies/Kokoro/include — on HEADER_SEARCH_PATHS — plus
-//  the voicevox_onnxruntime framework). The OpenVoice engine is the local TTS
+//  converter, both ONNX via ONNX Runtime. Reuses the ONNX Runtime NeuraLink
+//  already ships (headers under Dependencies/ONNXRuntime/include — on
+//  HEADER_SEARCH_PATHS — plus the voicevox_onnxruntime framework). The
+//  OpenVoice engine is the local TTS
 //  for every non-Japanese voice (VoiceVox stays for the JP model).
 //
 //  One call synthesizes a single g2p'd text chunk in a target voice and returns

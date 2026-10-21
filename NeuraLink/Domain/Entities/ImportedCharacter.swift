@@ -47,6 +47,9 @@ nonisolated struct ImportedCharacter: Identifiable, Hashable, Sendable {
     var quarantined: Bool
     let createdAt: Date
     var updatedAt: Date
+    /// Chosen at import, editable in the character's settings; picks the
+    /// idle, resting and pose clips. Rows older than the column are female.
+    var gender: CharacterGender = .fallback
 
     /// Absolute URL of the stored `.vrm`; nil if the protected directory is
     /// unavailable (the app then behaves as if the character doesn't exist).
@@ -79,4 +82,5 @@ nonisolated struct ImportedCharacterDraft: Sendable {
     var metaLicenseURL: String?
     var metaAvatarPermission: String?
     var metaCommercialUsage: String?
+    var gender: CharacterGender = .fallback
 }

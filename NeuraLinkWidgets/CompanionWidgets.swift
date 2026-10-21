@@ -41,16 +41,18 @@ struct CompanionProvider: TimelineProvider {
 
 extension CompanionSnapshot {
     static let placeholder = CompanionSnapshot(
-        character: "sonya", displayName: "Sonya", relationshipLabel: "Friends", relationshipScore: 0.62,
-        opener: "I kept thinking about that book you mentioned…",
-        memoryLine: "You light up whenever we talk about light novels.", memoryTitle: "Between you",
+        character: "oz", displayName: "Oz", relationshipLabel: "Friends", relationshipScore: 0.62,
+        opener: "The kettle is on, Sir. Shall I recount what the morning held?",
+        memoryLine: "You take your tea strong and your mornings quiet.", memoryTitle: "Between you",
         factCount: 24, daysTogether: 12,
         lastChatAt: Date().addingTimeInterval(-3 * 3_600), thumbnailFile: nil, updatedAt: Date())
 
-    /// The line the medium widget quotes, with what it is.
+    /// The line the widgets quote, with what it is: something remembered
+    /// first, so every widget carries one sentence of memory; the saved
+    /// opener only when nothing is remembered yet.
     var featuredLine: (title: String, text: String)? {
-        if !opener.isEmpty { return ("Coming up next time", opener) }
         if !memoryLine.isEmpty { return (memoryTitle ?? "Remembered", memoryLine) }
+        if !opener.isEmpty { return ("Coming up next time", opener) }
         return nil
     }
 
@@ -61,10 +63,12 @@ extension CompanionSnapshot {
 
 // MARK: - Palette
 
+/// A clear-sky blue, the way the Weather app paints a fine day: light at
+/// the top, deeper at the bottom, so white text reads everywhere.
 enum WidgetPalette {
-    static let top = Color(red: 0.20, green: 0.13, blue: 0.48)
-    static let middle = Color(red: 0.46, green: 0.18, blue: 0.62)
-    static let bottom = Color(red: 0.86, green: 0.30, blue: 0.52)
+    static let top = Color(red: 0.30, green: 0.58, blue: 0.92)
+    static let middle = Color(red: 0.17, green: 0.42, blue: 0.84)
+    static let bottom = Color(red: 0.09, green: 0.28, blue: 0.66)
     static let heart = Color(red: 1.00, green: 0.47, blue: 0.62)
 
     static var background: LinearGradient {
@@ -72,8 +76,9 @@ enum WidgetPalette {
     }
 }
 
-/// Brand gradient with soft light blooms; plain when the home screen is
-/// tinted (accented / vibrant rendering), where colour would be discarded.
+/// Sky gradient with soft light blooms (sun top-right, haze bottom-left);
+/// plain when the home screen is tinted (accented / vibrant rendering),
+/// where colour would be discarded.
 struct CompanionBackground: View {
     @Environment(\.widgetRenderingMode) private var renderingMode
 
@@ -85,7 +90,7 @@ struct CompanionBackground: View {
                     colors: [.white.opacity(0.28), .clear], center: .init(x: 0.85, y: 0.15),
                     startRadius: 2, endRadius: 140)
                 RadialGradient(
-                    colors: [WidgetPalette.heart.opacity(0.45), .clear], center: .init(x: 0.15, y: 1.0),
+                    colors: [.white.opacity(0.22), .clear], center: .init(x: 0.15, y: 1.0),
                     startRadius: 2, endRadius: 160)
             }
         } else {
@@ -176,22 +181,39 @@ struct HeartRing: View {
     }
 }
 
-/// Relationship label with its ring, e.g. ♥ Friends · 62 %.
+/// Relationship label with its ring, e.g. ♥ Friends · 62 %. `compact`
+/// puts label and score on one line where vertical space is the quote's.
 struct RelationshipBadge: View {
     let snapshot: CompanionSnapshot
     var ring: CGFloat = 26
+    var compact = false
+
+    private var percent: String { "\(Int((snapshot.relationshipScore * 100).rounded())) %" }
 
     var body: some View {
         HStack(spacing: 7) {
             HeartRing(score: snapshot.relationshipScore, size: ring)
-            VStack(alignment: .leading, spacing: 0) {
-                Text(snapshot.relationshipLabel)
-                    .font(.system(.caption, design: .rounded).weight(.bold))
-                    .foregroundStyle(.white)
-                Text("\(Int((snapshot.relationshipScore * 100).rounded())) %")
-                    .font(.system(size: 10, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.7))
-                    .monospacedDigit()
+            if compact {
+                HStack(spacing: 4) {
+                    Text(snapshot.relationshipLabel)
+                        .font(.system(.caption2, design: .rounded).weight(.bold))
+                        .foregroundStyle(.white)
+                    Text("· \(percent)")
+                        .font(.system(.caption2, design: .rounded).weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.7))
+                        .monospacedDigit()
+                }
+                .lineLimit(1)
+            } else {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(snapshot.relationshipLabel)
+                        .font(.system(.caption, design: .rounded).weight(.bold))
+                        .foregroundStyle(.white)
+                    Text(percent)
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.7))
+                        .monospacedDigit()
+                }
             }
         }
     }
@@ -199,12 +221,12 @@ struct RelationshipBadge: View {
 
 /// Frosted pill with an icon and a short value.
 struct StatChip: View {
-    let symbol: String
+    let icon: Image
     let text: String
 
     var body: some View {
         HStack(spacing: 4) {
-            Image(systemName: symbol)
+            icon
                 .font(.system(size: 9, weight: .bold))
             Text(text)
                 .font(.system(size: 10, weight: .semibold, design: .rounded))
@@ -214,6 +236,12 @@ struct StatChip: View {
         .padding(.horizontal, 7)
         .padding(.vertical, 4)
         .background(.white.opacity(0.16), in: Capsule())
+    }
+}
+
+extension StatChip {
+    init(symbol: String, text: String) {
+        self.init(icon: Image(systemName: symbol), text: text)
     }
 }
 
@@ -276,6 +304,15 @@ struct CompanionWidgetView: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                 RelationshipBadge(snapshot: snapshot, ring: 24)
+                if let featured = snapshot.featuredLine {
+                    Text(featured.text)
+                        .font(.system(.caption, design: .rounded).weight(.medium))
+                        .foregroundStyle(.white.opacity(0.92))
+                        .lineLimit(3)
+                        .minimumScaleFactor(0.75)
+                        .padding(.trailing, snapshot.hasLivePortrait ? 52 : 36)
+                        .layoutPriority(1)
+                }
                 Spacer(minLength: 0)
                 StatChip(symbol: "bubble.left.fill", text: snapshot.lastChatDescription(now: entry.date))
             }
@@ -292,28 +329,33 @@ struct CompanionWidgetView: View {
                 .frame(maxHeight: .infinity, alignment: snapshot.hasLivePortrait ? .bottom : .center)
                 .offset(y: snapshot.hasLivePortrait ? 18 : 0)
 
-            VStack(alignment: .leading, spacing: 8) {
+            // Vertical budget (≈158 pt): name row 20, chips 20, spacings 18,
+            // paddings 22 — the rest is the quote card, enough for three
+            // lines of footnote. The name and badge are kept compact for it.
+            VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .center) {
                     Text(snapshot.displayName)
-                        .font(.system(.title3, design: .rounded).weight(.bold))
+                        .font(.system(.headline, design: .rounded).weight(.bold))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     Spacer(minLength: 4)
-                    RelationshipBadge(snapshot: snapshot, ring: 24)
+                    RelationshipBadge(snapshot: snapshot, ring: 20, compact: true)
                 }
                 quoteCard(snapshot)
+                    .layoutPriority(1)
                 Spacer(minLength: 0)
                 HStack(spacing: 5) {
                     StatChip(symbol: "bubble.left.fill", text: snapshot.lastChatDescription(now: entry.date))
                     if let facts = snapshot.factCount, facts > 0 {
-                        StatChip(symbol: "brain.head.profile", text: "\(facts)")
+                        StatChip(icon: Image("nodes"), text: "\(facts)")
                     }
                     if let days = snapshot.daysTogether, days > 0 {
                         StatChip(symbol: "calendar", text: days == 1 ? "1 day" : "\(days) days")
                     }
                 }
             }
-            .padding(.vertical, 14)
+            .padding(.top, 12)
+            .padding(.bottom, 10)
             .padding(.trailing, 14)
         }
     }
@@ -326,10 +368,10 @@ struct CompanionWidgetView: View {
                     .tracking(0.6)
                     .foregroundStyle(.white.opacity(0.65))
                 Text(featured.text)
-                    .font(.system(.subheadline, design: .rounded).weight(.medium))
+                    .font(.system(.footnote, design: .rounded).weight(.medium))
                     .foregroundStyle(.white)
                     .lineLimit(3)
-                    .minimumScaleFactor(0.85)
+                    .minimumScaleFactor(0.75)
             } else {
                 Text("Say hi — \(snapshot.displayName) is waiting.")
                     .font(.system(.subheadline, design: .rounded).weight(.medium))
@@ -338,7 +380,7 @@ struct CompanionWidgetView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.vertical, 6)
         .background(.white.opacity(0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)

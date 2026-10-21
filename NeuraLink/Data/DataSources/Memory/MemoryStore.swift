@@ -241,6 +241,7 @@ final class MemoryStore {
             id            INTEGER PRIMARY KEY AUTOINCREMENT,
             slug          TEXT    NOT NULL UNIQUE,
             display_name  TEXT    NOT NULL,
+            gender        TEXT    NOT NULL DEFAULT 'female',
             file_path     TEXT    NOT NULL,
             file_size     INTEGER NOT NULL,
             sha256        TEXT    NOT NULL,
@@ -284,6 +285,13 @@ final class MemoryStore {
             updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_traits_character ON persona_traits(character, weight);
+        CREATE TABLE IF NOT EXISTS companion_milestones (
+            character TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            achieved_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            celebrated_at DATETIME,
+            PRIMARY KEY (character, kind)
+        );
         CREATE TABLE IF NOT EXISTS api_usage (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             created_at REAL NOT NULL,
@@ -341,6 +349,17 @@ final class MemoryStore {
                 """,
                 nil, nil, nil
             )
+        }
+        // Diary pictures (Companion Evolution pillar 2): the capture a
+        // reflection adopted. Nullable, no backfill.
+        if !columnExists(table: "companion_journal", column: "snapshot_file") {
+            _ = sqlite3_exec(db, "ALTER TABLE companion_journal ADD COLUMN snapshot_file TEXT;", nil, nil, nil)
+        }
+        // Gender label for imported characters (CharacterGender); rows
+        // from before the column keep the female clip pools they had.
+        if !columnExists(table: "imported_characters", column: "gender") {
+            _ = sqlite3_exec(
+                db, "ALTER TABLE imported_characters ADD COLUMN gender TEXT NOT NULL DEFAULT 'female';", nil, nil, nil)
         }
         // One-shot: fold the legacy flat `chat_events` log into a single
         // conversation so upgrading users keep their history under the new

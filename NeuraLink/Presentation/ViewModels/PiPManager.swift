@@ -10,21 +10,22 @@ import MetalKit
 import UIKit
 
 @MainActor
-final class PiPManager: NSObject, ObservableObject, AVPictureInPictureControllerDelegate {
+@Observable
+final class PiPManager: NSObject, AVPictureInPictureControllerDelegate {
     static let shared = PiPManager()
 
-    @Published var isPiPActive = false
-    @Published var canStartPiP = false
-    
-    // We allow auto PiP if enabled in settings, but default to true here
-    @Published var isAutoPiPEnabled = true
+    var isPiPActive = false
+    var canStartPiP = false
 
-    private var pipController: AVPictureInPictureController?
-    private var pipVideoCallViewController: AVPictureInPictureVideoCallViewController?
-    
-    weak var mtkView: MTKView?
-    private weak var originalSuperview: UIView?
-    private var cancellables = Set<AnyCancellable>()
+    // We allow auto PiP if enabled in settings, but default to true here
+    var isAutoPiPEnabled = true
+
+    @ObservationIgnored private var pipController: AVPictureInPictureController?
+    @ObservationIgnored private var pipVideoCallViewController: AVPictureInPictureVideoCallViewController?
+
+    @ObservationIgnored weak var mtkView: MTKView?
+    @ObservationIgnored private weak var originalSuperview: UIView?
+    @ObservationIgnored private var cancellables = Set<AnyCancellable>()
 
     override private init() {
         super.init()
@@ -80,10 +81,6 @@ final class PiPManager: NSObject, ObservableObject, AVPictureInPictureController
 
     func startPiP() {
         pipController?.startPictureInPicture()
-    }
-
-    func stopPiP() {
-        pipController?.stopPictureInPicture()
     }
 
     // MARK: - AVPictureInPictureControllerDelegate

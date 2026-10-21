@@ -50,6 +50,25 @@ struct ImportedCharacterStoreTests {
         }
     }
 
+    @Test("Gender defaults to female, round-trips, and can be changed")
+    func genderRoundTrip() {
+        var draft = makeDraft(tag: "gender")
+        cleanup(draft.slug)
+        defer { cleanup(draft.slug) }
+
+        #expect(draft.gender == .female)
+        draft.gender = .male
+        let inserted = MemoryStore.shared.insertImportedCharacter(draft)
+        #expect(inserted?.gender == .male)
+        #expect(MemoryStore.shared.importedCharacter(slug: draft.slug)?.gender == .male)
+
+        MemoryStore.shared.updateImportedCharacterGender(slug: draft.slug, gender: .female)
+        #expect(MemoryStore.shared.importedCharacter(slug: draft.slug)?.gender == .female)
+        #expect(MemoryStore.shared.columnExists(table: "imported_characters", column: "gender"))
+        #expect(CharacterGender(stored: "unicorn") == .female)
+        #expect(CharacterGender(stored: nil) == .female)
+    }
+
     @Test("Insert and fetch round-trips every column")
     func insertRoundTrip() {
         let draft = makeDraft(tag: "roundtrip")

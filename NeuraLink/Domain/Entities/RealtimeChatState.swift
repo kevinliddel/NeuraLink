@@ -134,32 +134,4 @@ final class RealtimeChatState {
         self.emotionDuration = duration
     }
 
-    /// Parses tags like [happy:2.5] from the given text and triggers the corresponding emotion.
-    /// Tracks progress to avoid re-triggering the same tag.
-    func parseAndTriggerEmotion(from text: String) {
-        let nsString = text as NSString
-        // Auto-reset when the transcript was cleared/restarted between turns
-        if nsString.length < lastParsedIndex {
-            lastParsedIndex = 0
-        }
-        guard nsString.length > lastParsedIndex else { return }
-        
-        let remainingRange = NSRange(location: lastParsedIndex, length: nsString.length - lastParsedIndex)
-        // nlLog("[EmotionManager] Parsing: \(nsString.substring(with: remainingRange))", level: .info)
-        
-        let pattern = #"(?i)\[(happy|angry|sad|relaxed|surprised|shocked|shy|embarrassed|bored|confused|wink|neutral):(\d+(?:\.\d+)?)\]"#
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else { return }
-
-        let results = regex.matches(in: text, options: [], range: remainingRange)
-
-        for result in results {
-            let emotion = nsString.substring(with: result.range(at: 1))
-            let durationString = nsString.substring(with: result.range(at: 2))
-            if let duration = Float(durationString) {
-                nlLog("[EmotionManager] Found tag: [\(emotion):\(duration)] in text", level: .info)
-                triggerEmotion(emotion, duration: duration)
-            }
-            lastParsedIndex = result.range.upperBound
-        }
-    }
 }

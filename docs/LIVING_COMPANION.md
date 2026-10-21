@@ -44,14 +44,16 @@ values are UTC strings, and they are never mixed into this arithmetic.
 
 ## Storage
 
-`MemoryStore`'s single `createTableQuery` creates two tables. Their CRUD lives
-in `MemoryStore+Journal.swift`.
+`MemoryStore`'s single `createTableQuery` creates three tables. Journal and
+trait CRUD lives in `MemoryStore+Journal.swift`, keepsakes in
+`MemoryStore+Milestones.swift`.
 
 ```sql
 companion_journal (id, character, conversation_id, diary, opener,
                    notification_line, notified, opener_used,
-                   last_message_id, created_at)
+                   last_message_id, created_at, snapshot_file)
 persona_traits    (id, character, trait, weight, created_at, updated_at)
+companion_milestones (character, kind, achieved_at, celebrated_at)   -- PK (character, kind)
 ```
 
 `companion_journal.conversation_id` deliberately has no foreign key.
@@ -59,7 +61,8 @@ persona_traits    (id, character, trait, weight, created_at, updated_at)
 the **reflection watermark** (see End-of-session reflection). When the column is added during an
 upgrade, it is backfilled to each conversation's current last message. This
 stops the upgrade from re-reflecting conversations that already have entries.
-Swift entities: `JournalEntry`, `PersonaTrait` (`Domain/Entities/CompanionJournal.swift`).
+Swift entities: `JournalEntry`, `PersonaTrait` (`Domain/Entities/CompanionJournal.swift`);
+`MilestoneKind`, `CompanionMilestone`, `MilestoneRules` (`Domain/Entities/CompanionMilestone.swift`).
 
 ## Background text client
 
@@ -120,6 +123,8 @@ prompt forbids inventing facts.
 - **Output**: a `companion_journal` row, a widget snapshot refresh, the trait
   pool update (see Personality evolution), and, if notifications are on, the
   return series below. When it is scheduled, the row is marked `notified`.
+  The row also adopts the latest candid capture of the scene as its picture
+  (see Diary pictures) when one is fresh.
   The reply also carries `NOTIFY2:` / `NOTIFY3:`, two more notification lines
   for the later slots.
 
@@ -128,6 +133,10 @@ prompt forbids inventing facts.
 When the user leaves mid-chat, `CompanionNotificationScheduler` schedules a
 **return series**:
 
+- **Picture**: the first notification of the series carries the entry's
+  diary picture as an image attachment (thumbnail clipped to the upper
+  middle, where she stands). The attachment is built from a copy, because
+  the system moves the file it is given into its own store.
 - **Timing**: the first notification **1 h after the last message** in the
   conversation, then **one every 2 h**, for up to 24 h after the first (at
   most 12). iOS cannot run the app to compose a notification later, so the
@@ -181,30 +190,55 @@ time the notification toggle is switched on.
   is the one hook shared by both engines: local `buildSystemContent` and the
   OpenAI session instructions. Its `[Companion State]` block holds:
   - relationship stage + guidance,
+  - the time-apart line (see Time apart),
   - recent tone,
   - known preferences (up to 6),
   - up to 3 traits,
-  - the carry-over line (see Cross-session carry-over).
+  - the carry-over line (see Cross-session carry-over),
+  - the keepsake celebration line (see Keepsake milestones).
 
   On `.llama1b` it is compact: 3 preferences and 2 traits. The JP (`llmJp3`)
   path leaves it out. When nothing is known, it returns `""`. It sits in the
   system prompt rather than in `LocalLLMPromptStore.effectivePrompt`, so it
   never overwrites a prompt the user has saved.
 - **Journal UI**: tapping the relationship meter (`RelationshipMeterBarOverlay`)
-  opens `CompanionJournalView`. It has four sections:
-  - **Relationship**
-  - **Personality**: traits, swipe to delete
-  - **Diary**: newest first, swipe to delete
+  opens `CompanionJournalView`, an inset-grouped list:
+  - **Relationship**: the character's portrait (`CompanionPortrait`: the
+    live render the widget pipeline keeps, else the model's thumbnail),
+    stage label, meter and "N days together".
+  - **Together**: a month calendar (`JournalCalendarView`). Each day carries
+    up to three dots: grey when you talked, pink for a diary entry, purple
+    for a keepsake. Today is outlined; future days are dimmed. Tap a day to
+    filter the section below to it, tap again (or "All days") to clear;
+    chevrons or a horizontal swipe change month and a "Today" button jumps
+    back. The header line summarises the month ("Talked on 9 days · 3 diary
+    entries · 1 keepsake").
+  - **Day / This month** (`JournalDaySection`): with a day selected, the
+    conversations you had that day (tap to open the read-only transcript as
+    a sheet, with your message count), its diary entries (swipe to delete;
+    an entry shows the picture of her world adopted by that reflection,
+    when there is one) and the keepsakes reached; "Nothing on this day." or "Not yet."
+    otherwise. With no day selected, the month's diary entries and keepsakes
+    newest first. Day grouping uses the device calendar and time zone
+    (`JournalCalendarModel`), so a late-night chat lands on the day you
+    lived it, not the UTC day SQLite stored.
+  - **Keepsakes**: the badge grid (see Keepsake milestones).
+  - **Personality**: traits, swipe to delete.
   - **Reset Personality**: after a confirmation, deletes the diary and all
-    traits. Chat history and facts are kept.
+    traits. Chat history, keepsakes and facts are kept.
+
+  Turns are read per visible month (`MemoryStore.userTurnStamps(between:and:)`);
+  the diary and keepsakes are loaded once per open.
 
 ## Proactive engagement
 
 `ProactivePresenceManager` lets the companion speak first. It checks every
 **15 s**. It works with either engine: it injects through
 `OpenAIRealtimeManager.sendInteractionEvent` when the data channel is open,
-and through `LocalLLMManager.handleUserInput(_, logToTimeline: false)`
-otherwise.
+and as a `LocalCue` through `LocalLLMManager.handleCue` otherwise — an
+instruction rather than the user's words, in Japanese for the LLM-jp model, and
+checked before it is spoken so the instruction itself is never read out
+(`docs/Local_SLM_Model.md`, "Lines the companion starts").
 
 - **Guards on every tick**: the Proactive Engagement toggle is on, and the app
   is active (or PiP is active). `status == .ready`, and the UI isn't hidden.
@@ -220,7 +254,12 @@ otherwise.
   and the last engagement. It fires at most **2 per session**. The wait
   triples each time (×3 backoff, so 90 s → 270 s), and an event identical to
   the previous one is skipped. It is seeded with the time of day, the
-  relationship stage and one random remembered fact.
+  relationship stage and one random remembered fact. Each small talk takes a
+  different **angle** (`SmallTalkAngle`): the first checks in, the second
+  offers something of her own — a passing thought, the time of day, a tiny
+  moment — with no question. It uses a remembered fact not used before this
+  launch, and quotes her previous line with an instruction to say something
+  genuinely different, so two silences never get the same sentence.
 - **Time-of-day** is not a separate trigger. It is a descriptor inside the
   greeting and small-talk events: early morning, morning, afternoon, evening or late night.
 
@@ -253,6 +292,142 @@ and a wrap-up nudge at the soft cap (20 / 10 / 15 turns). Game turns get
 `maxTokens = 120` instead of the usual 60. Five turns past the soft cap, the
 session ends itself.
 
+## Desk presence
+
+Companion Evolution section 3, the Gatebox "okaeri" for a phone on a desk.
+Opt-in (AI Settings → Autonomy → **Notice me at the desk**) and only while
+the camera button is on: the app never starts the camera on its own.
+
+- **Face detection** (`FacePresenceDetector`): a few times a second, the
+  newest frame `CameraManager` already captures goes through Vision's
+  face-rectangle request on this device, stood up with `.leftMirrored` for
+  the front camera and `.right` for the back one (the back camera's hint on
+  the front camera hands Vision an upside-down face: flickering detection
+  and a flipped centre). The largest face's centre (normalised, upright,
+  origin top-left) and width are published; "nobody" needs two empty
+  passes in a row. Nothing is stored and no frame leaves the phone.
+- **Gaze** (`VRMMetalState+AwayEpisode.followFace`): while a face is in
+  the frame the look-at's `userPosition` follows it and the target switches
+  from the camera or the forward rest to the user; when the face is gone the
+  previous target is restored. A point target set by something else is left
+  alone. `FaceGaze` anchors the point on the **scene camera** (the renderer
+  keeps `lookAtController.cameraPosition` current, so an orbited view still
+  means "at the viewer") and offsets it by the face's position in the frame
+  along the camera's own right and up: up to 1.2 m sideways and 0.9 m
+  vertically. A fixed world point would be "straight ahead of her", which
+  with the camera orbited to one side is away from the user. The mirrored
+  frame means right is right; `mirrorX` flips it if the device disagrees.
+  Two things keep the head still: `FaceGazeSmoother` averages the detector's
+  face position (newest sample weight 0.35) and emits a new target only when
+  the average has moved ≥ 2 % of the frame, so detection noise of a few
+  pixels never reaches the eyes; and while following, the controller's
+  smoothing is raised from 0.1 (a two-frame snap, right for a target that
+  never moves) to 0.85 (about a third of a second), restored on hand-back.
+- **Arrival greeting** (`DeskPresencePolicy`, `DeskPresenceManager`): a face
+  that stays 3 s after an absence of 10 min or more fires one greeting
+  through the shared `ProactivePresenceManager.engage(with:)` seam ("The
+  user just sat down at the desk after 15 minutes away…"), only when the
+  session is idle, at most once per 30 min. A passer-by, or a one-second
+  detector flicker, never greets. Absence is measured from the moment the
+  manager started when nobody has been seen yet.
+- **Away** (`AwayEpisode`): nobody for `deskAwayMinutes` (default 10,
+  5–30) starts the resting loop — `relax.vrma`, the lowest-priority
+  episode: idles stop, but a pose, the phone and the listening loop outrank
+  it and it resumes after them. A face that stays 2 s ends it (and, if the
+  absence was long, greets). Safety cap four hours.
+
+## Clip pools by gender
+
+Every character carries a gender label (`CharacterGender`): fixed in the
+registry for the bundled ones (Oz is male, Ekaterina and Sonya female),
+chosen in the import sheet for a user's VRM and editable afterwards in the
+character's settings. VRM metadata has no such field, so the label is the
+app's. It decides which bundled clips the body draws on
+(`AnimationCatalogue`):
+
+| Clips | Female | Male |
+|---|---|---|
+| Base loop | `neutral` | `male_breathing` |
+| Random idles | `default_state`, `neutral_2`…`neutral_4`, `relax`, `waiting` | `male_look_around`, `male_powerful`, `male_stretching_arms`, `neutral_4` |
+| Resting loop (desk presence, away) | `relax` | `male_breathing` |
+| Photo poses | `cool`, `peace_sign`, `relax`, `stretch` | `cool`, `stretch`; `peace_sign` → `cool`, `relax` → `stretch` |
+| Entrance, talking gestures, phone, listening | shared | shared |
+
+An idle plays once — never looped, since a short clip wrapping back to its
+first frame pops — and the blend back to the base loop starts a second
+before it ends. The pose tool keeps offering the same four names to every
+character, and the body resolves a feminine pose when it plays. The male
+clips came from the Sonya project's male set, plus Mixamo FBX clips
+converted with `scripts/fbx_to_vrma.py` (`male_breathing`,
+`male_stretching_arms`); rows and models that predate the label are female.
+
+## Diary pictures
+
+Companion Evolution pillar 2: the companion shares pictures of her own
+world back. Metal only draws while the scene is on screen, and the
+reflection runs after the app has gone to the background, so nothing is
+rendered at reflection time. Instead `CompanionSceneCapture` keeps **one
+fresh candid capture** of the live scene — the Metal drawable composited
+over the custom background, no HUD — written as `latest.jpg` (≤ 1280 px
+JPEG) in the private `scene-captures` directory:
+
+- every 30 s while the scene is settled (model shown, entrance finished,
+  app active), starting 8 s after a character loads;
+- on `willResignActive`, best effort, so the frame on the way out is the
+  freshest.
+
+A reflection adopts the latest capture if it is under three hours old:
+the file is copied to `journal-<id>.jpg` and its name stored in
+`companion_journal.snapshot_file`. The journal shows it under the entry
+and deletes it with the entry (and on Reset Personality); the first return
+notification attaches it. No capture is ever posed: it is whatever she was
+doing, which is the point.
+
+## Keepsake milestones
+
+Shared "firsts" the user and the character collect, shown as badges in the
+journal's **Keepsakes** section (dimmed until reached) and mentioned once by
+the persona. Eight kinds (`MilestoneKind`; raw values are the stored keys):
+
+| Keepsake | Unlocks when |
+|---|---|
+| First hello | the user has spoken at least once |
+| One week / 30 days / 100 days together | `distinctUserMessageDays()` reaches 7 / 30 / 100 (the same totals the affinity curve reads) |
+| First shared song | the first `SongRecognitionManager.presentMatch` |
+| First game together | the first `GameSessionManager.start` (the model decides who won, so a "win" badge is not knowable) |
+| First photo shared | the first `PhotoMemoryService.handlePicked` |
+| First diary entry | the first reflection row written for that character |
+
+`CompanionMilestoneTracker` is stateless. Event keepsakes are noted where they
+happen; count-based ones are re-derived in `CompanionStateStore.refresh()`
+(every user turn) and again when the Keepsakes section appears. Rows are keyed
+by `RealtimeChatState.selectedCharacterName`, the identity key the journal
+uses, so each character has its own set. `INSERT OR IGNORE` on the
+`(character, kind)` primary key makes every call idempotent, and rows with a
+kind an older build doesn't know are skipped, never deleted.
+
+**Celebration.** `CompanionStateManager.promptContext` asks the tracker for a
+`celebrationLine`: keepsakes reached in the last 7 days and never mentioned
+yield one `[Companion State]` line ("Keepsake to celebrate together, once and
+naturally: 30 days together…"). The first call stamps `celebrated_at`; the line
+then stays for two hours (`MilestoneRules.celebrationHold`) so the block is
+identical on every turn of that session (the local path rebuilds the system
+content per turn and reuses the KV prefix; Realtime re-sends instructions
+mid-session), and it is gone from the next session on. Older keepsakes are
+history, not news, and are never announced.
+
+**The moment.** A newly recorded keepsake is handed to
+`KeepsakeUnlockController`, and `KeepsakeUnlockCapsule` (in the HUD layer,
+same placement and glass as the photoshoot capsule) rises from the bottom of
+the scene with the badge, the title and its one-line meaning, plays a
+success haptic, and leaves after 5 s or on tap. Unlocks queue and show one
+at a time; a repeat record never shows anything, because only the first
+`INSERT` succeeds.
+
+**Reset.** "Reset Personality" keeps keepsakes: they are shared history like
+the chat log, not a learned trait. `deleteMilestones(character:)` exists for
+character removal and tests.
+
 ## Cross-session carry-over
 
 `CompanionStateManager.carryOverLine` adds one line to the Companion State
@@ -267,6 +442,64 @@ The guidance line tells the persona to "pick up threads… never act like a
 stranger". The block is built when the session starts. That keeps it stable
 within a session. The saved cross-launch KV cache misses whenever the diary
 has changed, and warm-up then re-prefills.
+
+## Time apart
+
+The persona should know when the user has been gone a day or two, not only
+at the moment of the absence greeting (which needs Proactive Engagement on).
+`CompanionStateManager` adds a **time-apart line** to the `[Companion State]`
+block: "Time apart: you last talked 3 days ago (Friday evening); it's Tuesday
+morning now. If the gap feels notable, acknowledge it naturally — glad to see
+them, curious what they've been up to — without guilt-tripping or counting
+days at them." The wording is `CompanionAbsence` (pure, unit-tested);
+`.llama1b` gets the compact form.
+
+Two rules keep it honest and stable:
+
+- **Measured from before this visit.** The gap runs from the last user turn
+  strictly before `InteractionClock.foregroundAt` (launch, or the last return
+  from the background; `MemoryStore.lastUserMessageAt(before:)`), so the
+  turns of the current visit never shrink it to "a minute ago".
+- **Frozen per visit.** The first block built in a visit snapshots that turn
+  and the current time; every later build in the visit formats the same
+  values, so the local KV prefix and the Realtime instruction refreshes see
+  an identical block.
+
+Wording: under an hour, nothing; same day, "earlier today, about N hours
+ago"; then "yesterday (Monday evening)", "N days ago (…)", "about a week ago
+(…)", "N weeks ago", "about a month ago", "about N months ago". Day names
+are English whatever the device locale; the time zone and week are the
+user's.
+
+## Daily grounding
+
+Two opt-in lines of real-world context in the `[Companion State]` block
+(AI Settings → Autonomy → **Daily grounding**), so the persona knows what
+the user's day holds without being told. Both are read-only and, like the
+time-apart line, fetched once per foreground visit by
+`DailyGroundingProvider` and held for the visit, so the block is stable
+within a session. A fetch that lands after the first block was built posts
+`realtimeInstructionsDidChange`, which refreshes the Realtime instructions.
+
+- **Know my day** (`CalendarGrounding`, EventKit full access): events under
+  way or starting within 12 hours, soonest first, at most three: "Today's
+  schedule: Ana's birthday (all day); Standup (now); Presentation at
+  2:00 PM. Wish them luck or ask how it went when it fits naturally; never
+  recite the list." Untitled events are skipped. Its store is separate from
+  `ReminderSkill`'s, which only holds reminders access.
+- **Know how I slept** (`SleepGrounding`, HealthKit sleep analysis, last 24
+  h): "asleep" samples (stages, from a Watch or a sleep app) are summed as
+  a union of intervals, so two sources recording the same night count once;
+  "in bed" samples (what the iPhone alone records) likewise. The line only
+  appears when the night was short — under 5.5 h asleep, or under 6 h in
+  bed when there are no stages — and tells the persona to go gentle and not
+  lecture. A normal night says nothing. HealthKit never reveals a denied
+  read; it simply returns no samples.
+
+Turning a toggle on asks for the permission and turns itself back off on a
+denial (`AutonomySettingsView.groundingSection`). The `.llama1b` tier gets
+compact forms ("Today: …", "Sleep: about 4.5 h last night (short)."). The
+wording and arithmetic are `DailyGrounding` (pure, unit-tested).
 
 ## Flow
 
@@ -377,7 +610,7 @@ flowchart TD
 | File | Role |
 |---|---|
 | `Data/DataSources/SessionLifecycle.swift` | Session boundaries; posts `sessionDidEnd` |
-| `Core/Utils/InteractionClock.swift` | `lastUserSpeechAt` (per launch) + persisted `lastSeenAt` |
+| `Core/Utils/InteractionClock.swift` | `lastUserSpeechAt` (per launch), persisted `lastSeenAt`, `foregroundAt` (visit start) |
 | `Domain/Entities/CompanionJournal.swift` | `JournalEntry` / `PersonaTrait` entities |
 | `Data/DataSources/Memory/MemoryStore+Journal.swift` | Journal + trait CRUD, `unreflectedUserTurns` watermark count |
 | `Data/DataSources/Memory/MemoryStore.swift` | Table DDL + `last_message_id` migration/backfill |
@@ -386,8 +619,31 @@ flowchart TD
 | `Core/Utils/CompanionNotificationScheduler.swift` | Scheduling, quiet hours, communication-style avatar, foreground presenter |
 | `Data/DataSources/PresenceSettings.swift` | All presence toggles/thresholds (explicit-backing `@Observable`) |
 | `Data/DataSources/Memory/CompanionAffinity.swift` | The single relationship curve + stage guidance |
-| `Data/DataSources/Memory/CompanionStateManager.swift` | `[Companion State]` prompt block + carry-over line |
-| `Presentation/Views/AI/CompanionJournalView.swift` | Journal sheet: relationship, traits, diary, reset |
+| `Data/DataSources/Memory/CompanionStateManager.swift` | `[Companion State]` prompt block; time-apart (frozen per visit), carry-over and keepsake lines |
+| `Presentation/Views/AI/CompanionJournalView.swift` | Journal sheet: relationship, calendar, day / month list, keepsakes, traits, reset |
+| `Domain/Entities/JournalCalendar.swift` | `JournalCalendarModel` month grid + local-day `JournalDayActivity` grouping |
+| `Domain/Entities/CompanionAbsence.swift` | Time-apart wording (pure) |
+| `Data/DataSources/Memory/MemoryStore+JournalCalendar.swift` | `userTurnStamps(between:and:)`, `lastUserMessageAt(before:)` |
+| `Domain/Entities/DailyGrounding.swift` | `GroundingEvent`, `SleepSummary`, schedule / sleep line wording, interval union |
+| `Data/DataSources/Grounding/GroundingSettings.swift` | The two opt-in toggles (explicit-backing `@Observable`) |
+| `Data/DataSources/Grounding/CalendarGrounding.swift` | EventKit full-access request + 12 h event read |
+| `Data/DataSources/Grounding/SleepGrounding.swift` | HealthKit sleep-analysis request + last-night read |
+| `Data/DataSources/Grounding/DailyGroundingProvider.swift` | Once-per-visit fetch held for the Companion State block |
+| `Data/DataSources/CompanionSceneCapture.swift` | Candid scene captures: the 30 s loop, `latest.jpg`, the journal copy, the notification attachment |
+| `Domain/Entities/DeskPresence.swift` | `DeskPresencePolicy` (arrival / away over face observations), greeting wording, `FaceGaze` |
+| `Domain/Entities/AwayEpisode.swift` | `AwayEpisodePolicy` + the app-wide `AwayEpisode` switch |
+| `Data/DataSources/Vision/FacePresenceDetector.swift` | On-device Vision face presence on the camera's frames |
+| `Data/DataSources/DeskPresenceManager.swift` | Runs the policy once a second; greeting + away episode |
+| `Core/Engine/VRM/UI/VRMMetalState+AwayEpisode.swift` | Body side of the away loop + the face-following gaze |
+| `Presentation/Views/AI/JournalCalendarView.swift` | Month grid, activity dots, swipe / chevrons, Today |
+| `Presentation/Views/AI/JournalDaySection.swift` | Selected-day or month list under the calendar; opens transcripts as sheets |
+| `Data/DataSources/CompanionPortrait.swift` | Character face for the journal and Memory hero card (live portrait, else bundled thumbnail) |
+| `Data/DataSources/KeepsakeUnlockController.swift` | Queue + lifetime for the "Keepsake collected" capsule |
+| `Presentation/Views/AI/KeepsakeUnlockCapsule.swift` | The capsule itself: badge, title, haptic, tap or 5 s to dismiss |
+| `Domain/Entities/CompanionMilestone.swift` | `MilestoneKind` (titles, symbols, day thresholds), `CompanionMilestone`, pure `MilestoneRules` |
+| `Data/DataSources/Memory/MemoryStore+Milestones.swift` | `companion_milestones` CRUD (`INSERT OR IGNORE` record, oldest-first read, celebrated flag) |
+| `Data/DataSources/Memory/CompanionMilestoneTracker.swift` | `note` / `refreshDerived` / once-only `celebrationLine` |
+| `Presentation/Views/AI/CompanionKeepsakesSection.swift` | Badge grid in the journal; dims keepsakes not yet reached |
 | `Presentation/Views/AI/RelationshipMeterBarOverlay.swift` | Meter overlay; tap opens the Journal |
 | `Data/DataSources/ProactivePresenceManager.swift` | Absence greeting + silence small talk loop; shared `engage(with:)` |
 | `Presentation/Views/AI/AutonomySettingsView.swift` | Companion Presence / Proactive Engagement settings sections |
@@ -398,15 +654,27 @@ flowchart TD
 
 ## Integration notes
 
-- **Settings** (AI Settings → Autonomy):
-  - **Companion Presence** (master switch, off by default).
-  - **"Thinking of you" notifications**, shown only when the master switch is
-    on. Turning it on requests iOS permission. Turning either switch off
-    cancels the pending notification.
-  - **Proactive Engagement**, independent of the master switch. Without
+- **Settings** (AI Settings → Companion → Autonomy). The screen opens with
+  a **preset** header — Quiet / Balanced / Lively (`AutonomyPreset`, pure;
+  `AutonomyPresets.swift` reads and writes the switches) — that sets the
+  switches needing no permission; a mix of your own reads "Custom". Below
+  it, four cards of `FeatureToggleRow`s (tile, title, one-line meaning, ⓘ,
+  switch; sub-settings slot in under a row while it is on):
+  - **Talking**: Auto-turn detection, Interrupt while speaking, Sense my
+    tone, Keep talking in background (+ End after silence).
+  - **Seeing**: Proactive vision (+ interval, quiet after you speak), Notice
+    me at the desk (+ Rest when nobody's there for, 5 / 10 / 20 / 30 min).
+  - **Between sessions**: Companion Presence (master switch, off by default;
+    "Thinking of you" notes sit under it and request iOS permission when
+    turned on; turning either off cancels the pending notification), Follow
+    up on plans, Companion widgets, Speaks first (+ Greet after time away
+    1 / 6 / 12 / 24 h, Break silence after 45 / 90 / 180 / 300 s). Without
     reflections, the greeting falls back to a generic welcome.
-  - **Greet after time away** (1 / 6 / 12 / 24 h).
-  - **Break silence after** (45 / 90 / 180 / 300 s).
+  - **Knowing your day**: Know my day, Know how I slept.
+
+  AI Settings itself is three cards: **OpenAI** (switch, key, Models, Usage),
+  **Companion** (persona, Autonomy — whose subtitle names the preset plus any
+  permission-gated extras), **On device** (model library, offline switch).
 - **Settings storage**: every `PresenceSettings` property uses the
   explicit `_x` backing with `access`/`withMutation`, never `didSet`. Under
   MainActor default isolation, `didSet` fires during init and overwrites the
@@ -458,3 +726,23 @@ shows the permission status, the pending count and the next fire date.
   devices when running on the local model.
 - Check that a long-running conversation produces a second diary entry and a
   second notification after 4 or more new turns.
+- Check the journal calendar on device: horizontal month swipe inside the
+  list, day selection and clearing, and the transcript sheet from a day row.
+- Check the keepsake capsule on device: it should rise once with a haptic
+  when a first song / game / photo lands, and never again for the same one.
+- Check that the time-apart line reads the same on every turn of a session
+  and names the right day after a real overnight gap.
+- Daily grounding: the HealthKit entitlement needs **HealthKit enabled on
+  the App ID** (Signing & Capabilities, or the developer portal) before a
+  device build signs. Check the calendar prompt appears once, that a denied
+  permission turns the toggle back off, and that a short night from a Watch
+  produces the sleep line while a normal night produces nothing.
+- Diary pictures: confirm a capture is written while idle (log
+  `[SceneCapture]`), that a diary entry made after a session shows it in
+  the journal, and that the first return notification carries the image.
+  Check the capture on the way to the background actually lands.
+- Desk presence: with the camera on, confirm her gaze follows your head
+  the right way (if it mirrors, flip `FaceGaze.mirrorX`), that sitting down
+  after 10+ min away greets once, that leaving for the away threshold starts
+  the resting loop and coming back ends it, and that a pose or the phone
+  still win over the loop.

@@ -44,6 +44,7 @@ final class PhotoMemoryService {
         PhoneEpisode.toolFinished()
         react(description: description, userWords: userWords)
         remember(image: scaled, description: description, userWords: userWords, takenAt: takenAt)
+        CompanionMilestoneTracker.note(.firstPhoto)
     }
 
     /// Begins the phone episode and presents the picture on the widget right

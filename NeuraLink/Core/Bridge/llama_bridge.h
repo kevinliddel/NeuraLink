@@ -134,6 +134,15 @@ int32_t llama_bridge_load_kv_state(LlamaBridgeHandle* handle, const char* path);
 /// useful for benchmark logs ("loaded N tokens from disk cache").
 int32_t llama_bridge_kv_token_count(LlamaBridgeHandle* handle);
 
+/// In-memory copy of sequence 0's KV state and its tokens, taken before a
+/// background generation and put back after, so the conversation's prefix
+/// survives a silent run instead of being re-prefilled by the next turn.
+typedef struct LlamaBridgeSnapshot LlamaBridgeSnapshot;
+LlamaBridgeSnapshot* llama_bridge_snapshot_create(LlamaBridgeHandle* handle);
+bool llama_bridge_snapshot_restore(LlamaBridgeHandle* handle, const LlamaBridgeSnapshot* snapshot);
+int32_t llama_bridge_snapshot_token_count(const LlamaBridgeSnapshot* snapshot);
+void llama_bridge_snapshot_free(LlamaBridgeSnapshot* snapshot);
+
 /// Returns LLAMA_STATE_SEQ_VERSION — the on-disk format version for the
 /// sequence-state files written by `llama_bridge_save_kv_state`. It bumps
 /// whenever saved blobs become incompatible with the linked llama.cpp, so

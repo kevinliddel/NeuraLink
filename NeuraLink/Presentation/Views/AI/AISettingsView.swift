@@ -9,7 +9,6 @@ import SwiftUI
 
 struct AISettingsView: View {
     @Bindable var settings = OpenAISettings.shared
-    @Bindable var appearance = AppearanceSettings.shared
     @Bindable var presence = PresenceSettings.shared
     @State private var aiState = RealtimeChatState.shared
     /// Voice model at open time; a change reconnects on Done.
@@ -23,10 +22,7 @@ struct AISettingsView: View {
         NavigationStack {
             Form {
                 openAISection
-                modelsSection
-                usageSection
-                interactionSection
-                personaSection
+                companionSection
                 localSLMSection
                 helpSection
             }
@@ -46,45 +42,10 @@ struct AISettingsView: View {
 
     // MARK: - Sections
 
-    /// Row into the dedicated Models screen — same shape as the Autonomy row.
-    private var modelsSection: some View {
-        Section("Models") {
-            NavigationLink {
-                ModelsSettingsView()
-            } label: {
-                HStack(spacing: 12) {
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [.purple.opacity(0.85), .indigo.opacity(0.7)],
-                                startPoint: .topLeading, endPoint: .bottomTrailing)
-                        )
-                        .frame(width: 44, height: 44)
-                        .overlay(
-                            Image(systemName: "cpu")
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundStyle(.white)
-                        )
-                        .overlay(Circle().stroke(Color.primary.opacity(0.15), lineWidth: 1))
-                        .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Models")
-                            .font(.headline)
-                        Text(modelsSummary)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-            .disabled(!settings.isEnabled)
-        }
-    }
-
-    /// Row into the Usage dashboard (docs/API_USAGE.md).
-    private var usageSection: some View {
-        Section("Usages") {
-            UsageNavigationRow()
+    /// Row into the dedicated Models screen, inside the OpenAI card.
+    private var modelsRow: some View {
+        SettingsLinkRow(symbol: "cpu", tint: .purple, title: "Models", subtitle: modelsSummary) {
+            ModelsSettingsView()
         }
         .disabled(!settings.isEnabled)
     }
@@ -98,14 +59,37 @@ struct AISettingsView: View {
         return "\(settings.realtimeModel) · \(settings.textModel)\(usage)"
     }
 
+    /// One card for everything cloud: the switch, the key, then the models
+    /// and the usage it drives (docs/API_USAGE.md).
     private var openAISection: some View {
-        Section("OpenAI") {
+        Section {
             Toggle("Enable OpenAI", isOn: $settings.isEnabled)
 
             SecureField("API Key", text: $settings.apiKey)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
                 .disabled(!settings.isEnabled)
+
+            modelsRow
+            UsageNavigationRow()
+                .disabled(!settings.isEnabled)
+        } header: {
+            Text("OpenAI")
+        } footer: {
+            Text(
+                settings.isEnabled
+                    ? "Voice runs in the cloud; the key never leaves the Keychain."
+                    : "Off, the local model answers (see On device).")
+        }
+    }
+
+    /// One card for who she is and how much she does on her own.
+    private var companionSection: some View {
+        Section {
+            personaRow
+            autonomyRow
+        } header: {
+            Text("Companion")
         }
     }
     /// Replays the onboarding tour. The sheet has to go first — the tour
@@ -156,19 +140,9 @@ struct AISettingsView: View {
                     .foregroundStyle(.secondary)
             }
         } header: {
-            Text("Local Edge LLMs")
+            Text("On device LLMs")
         } footer: {
             VStack(alignment: .leading, spacing: 8) {
-                if let warning = ramWarning(for: downloader.selectedConfig) {
-                    Label {
-                        Text(warning)
-                    } icon: {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                    }
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                }
-
                 if case .failed(let msg) = downloader.state {
                     Text("Download failed: \(msg)")
                         .font(.caption)
@@ -178,14 +152,7 @@ struct AISettingsView: View {
         }
     }
 
-    /// Returns a warning when the selected model exceeds the device's safe RAM
-    /// headroom. Both shipped local models (Llama-1B, LLM-jp-3) are sized for the
-    /// 4 GB tier, so there's nothing to warn about today.
-    private func ramWarning(for config: LocalModelDownloadManager.ModelConfiguration) -> String? {
-        nil
-    }
-
-    private var personaSection: some View {
+    private var personaRow: some View {
         _ = personaStore.lastUpdated  // Observe changes
         let modelID = RealtimeChatState.shared.selectedCharacterName
         let persona = CharacterPersona.forCharacter(named: modelID)
@@ -196,84 +163,59 @@ struct AISettingsView: View {
                 guard FileManager.default.fileExists(atPath: pngURL.path) else { return nil }
                 return UIImage(contentsOfFile: pngURL.path)
             }
-        return Section("Character Persona") {
-            NavigationLink {
-                PersonaSettingsView(modelID: modelID)
-            } label: {
-                HStack(spacing: 12) {
-                    if let img = avatarImage {
-                        Image(uiImage: img)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: 44, height: 44)
-                            .clipped()
-                            .clipShape(Circle())
-                            .overlay(Circle().stroke(Color.primary.opacity(0.15), lineWidth: 1))
-                            .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
-                    } else {
-                        Circle()
-                            .fill(Color.secondary.opacity(0.15))
-                            .frame(width: 44, height: 44)
-                            .overlay(Circle().stroke(Color.primary.opacity(0.15), lineWidth: 1))
-                            .overlay(Image(systemName: "person.fill").foregroundStyle(.secondary))
-                            .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
-                    }
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(persona.name)
-                            .font(.headline)
-                        Text(settings.isLocalLLMEnabled ? "System Prompt" : "Instructions & Voice")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-        }
-    }
-
-    /// Compact entry row (persona-row pattern) — the toggles themselves live
-    /// in AutonomySettingsView, one titled section per feature.
-    private var interactionSection: some View {
-        Section("Autonomy") {
-            NavigationLink {
-                AutonomySettingsView()
-            } label: {
-                HStack(spacing: 12) {
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [.cyan.opacity(0.85), .blue.opacity(0.7)],
-                                startPoint: .topLeading, endPoint: .bottomTrailing)
-                        )
+        return NavigationLink {
+            PersonaSettingsView(modelID: modelID)
+        } label: {
+            HStack(spacing: 12) {
+                if let img = avatarImage {
+                    Image(uiImage: img)
+                        .resizable()
+                        .scaledToFill()
                         .frame(width: 44, height: 44)
-                        .overlay(
-                            Image(systemName: "wand.and.stars")
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundStyle(.white)
-                        )
+                        .clipped()
+                        .clipShape(Circle())
                         .overlay(Circle().stroke(Color.primary.opacity(0.15), lineWidth: 1))
                         .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Autonomy")
-                            .font(.headline)
-                        Text(autonomySummary)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                } else {
+                    Circle()
+                        .fill(Color.secondary.opacity(0.15))
+                        .frame(width: 44, height: 44)
+                        .overlay(Circle().stroke(Color.primary.opacity(0.15), lineWidth: 1))
+                        .overlay(Image(systemName: "person.fill").foregroundStyle(.secondary))
+                        .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(persona.name)
+                        .font(.headline)
+                    Text(settings.isLocalLLMEnabled ? "System Prompt" : "Instructions & Voice")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
         }
     }
 
-    /// One-line status of the autonomous features, shown under the row title.
+    /// Entry into AutonomySettingsView, whose preset names the summary.
+    private var autonomyRow: some View {
+        SettingsLinkRow(
+            symbol: "wand.and.stars", tint: .cyan, title: "Autonomy", subtitle: autonomySummary
+        ) {
+            AutonomySettingsView()
+        }
+    }
+
+    /// The preset in force, plus the permission-gated extras that are on.
     private var autonomySummary: String {
-        var active: [String] = []
-        if settings.isEnabled && settings.isVADEnabled { active.append("VAD") }
-        if settings.isEnabled && settings.isProactiveVisionEnabled { active.append("Vision") }
-        if presence.isPresenceEnabled { active.append("Presence") }
-        if presence.isProactiveEngagementEnabled { active.append("Engagement") }
-        return active.isEmpty
-            ? "Everything off — tap to configure" : active.joined(separator: " · ")
+        _ = settings.isVADEnabled
+        _ = presence.isPresenceEnabled
+        _ = presence.isProactiveEngagementEnabled
+        var parts = [AutonomyPreset.current()?.title ?? "Custom"]
+        if settings.isEnabled && settings.isProactiveVisionEnabled { parts.append("Vision") }
+        if presence.isDeskPresenceEnabled { parts.append("Desk") }
+        if GroundingSettings.shared.isCalendarEnabled || GroundingSettings.shared.isSleepEnabled {
+            parts.append("Grounding")
+        }
+        return parts.joined(separator: " · ")
     }
 
     // MARK: - Sub-views
@@ -305,49 +247,6 @@ struct AISettingsView: View {
             Label("Failed", systemImage: "xmark.circle.fill")
                 .font(.caption.bold())
                 .foregroundStyle(.red)
-        }
-    }
-
-    @ViewBuilder
-    private var actionButton: some View {
-        switch downloader.state {
-        case .notDownloaded, .failed:
-            Button {
-                downloader.startDownload()
-            } label: {
-                Label("Download Model", systemImage: "arrow.down.circle")
-            }
-        case .downloading:
-            Button {
-                downloader.pauseDownload()
-            } label: {
-                Label("Pause Download", systemImage: "pause.circle")
-            }
-        case .paused:
-            HStack {
-                Button {
-                    downloader.resumeDownload()
-                } label: {
-                    Label("Resume", systemImage: "play.circle")
-                }
-                Button(role: .cancel) {
-                    downloader.cancelDownload()
-                } label: {
-                    Label("Cancel", systemImage: "xmark.circle")
-                        .foregroundStyle(.red)
-                }
-            }
-        case .bundled, .ready:
-            EmptyView()
-        }
-    }
-
-    private func downloadPhaseLabel(progress: Double) -> String {
-        let pct = Int(progress * 100)
-        if progress < 0.9 {
-            return "Downloading… \(pct)%"
-        } else {
-            return "Compiling for Neural Engine… \(pct)%"
         }
     }
 

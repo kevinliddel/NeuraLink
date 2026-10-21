@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  Auto-titles a conversation once it reaches a few turns, using whichever AI
-//  is currently active (SynapLink-style). OpenAI uses a one-shot Chat
+//  is currently active. OpenAI uses a one-shot Chat
 //  Completions call (the Realtime session is voice, so titling goes through a
 //  separate text model); the local LLM uses the existing silent-generation
 //  path. Falls back silently to the first-message title if generation fails.

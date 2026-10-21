@@ -94,7 +94,7 @@ struct ExpandableFABMenu: View {
                     }
                 } label: {
                     Image(systemName: isSecondaryExpanded ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.white)
                         .frame(width: 44, height: 44)
                         .background(.black.opacity(0.5))
@@ -131,6 +131,7 @@ struct ExpandableFABMenu: View {
 // MARK: - Unified FAB button
 
 private struct FABButton: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let icon: Image
     let label: String
     let showLabel: Bool
@@ -148,13 +149,13 @@ private struct FABButton: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
                     .shadow(color: .black.opacity(0.5), radius: 2)
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                    .transition(AppTheme.transition(.move(edge: .trailing).combined(with: .opacity), reduceMotion: reduceMotion))
             }
 
             Button(action: action) {
                 icon
                     .symbolRenderingMode(.monochrome)
-                    .font(.system(size: 17, weight: .regular))
+                    .font(.body.weight(.regular))
                     .imageScale(.large)
                     .foregroundStyle(.white)
                     .frame(width: 44, height: 44)

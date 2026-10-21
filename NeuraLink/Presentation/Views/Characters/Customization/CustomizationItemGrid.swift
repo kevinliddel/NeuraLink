@@ -35,7 +35,7 @@ struct CustomizationItemTile: View {
             .overlay(alignment: .topTrailing) {
                 if isSelected {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 17))
+                        .font(.body)
                         .foregroundStyle(.white, CustomizationTheme.accent)
                         .padding(4)
                 }
@@ -57,9 +57,9 @@ struct CustomizationItemTile: View {
         } else if isOriginal {
             VStack(spacing: 3) {
                 Image(systemName: "person.crop.circle")
-                    .font(.system(size: 22, weight: .light))
+                    .font(.title2.weight(.light))
                 Text("Original")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.caption2.weight(.semibold))
             }
             .foregroundColor(.black.opacity(0.45))
         } else {
@@ -98,7 +98,7 @@ struct CustomizationItemGrid<Item: Identifiable, Tile: View>: View {
             .padding(.vertical, 2)
             if let emptyHint, items.isEmpty, !isLoading {
                 Text(emptyHint)
-                    .font(.system(size: 13))
+                    .font(.footnote)
                     .foregroundColor(CustomizationTheme.secondaryLabel)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.top, 10)

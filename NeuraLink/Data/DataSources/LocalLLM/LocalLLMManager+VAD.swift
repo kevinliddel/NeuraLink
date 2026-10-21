@@ -145,6 +145,12 @@ extension LocalLLMManager: SileroVADDelegate {
             let whisperSamples = Array(
                 UnsafeBufferPointer(start: outChannelData[0], count: outLength))
 
+            // How they sounded, judged once the transcript arrives (AcousticAffect).
+            if !isPartial {
+                AcousticAffectState.shared.noteUtterance(
+                    AcousticFeatureExtractor.extract(samples: whisperSamples, sampleRate: 16_000))
+            }
+
             await whisperManager.transcribe(samples: whisperSamples, isPartial: isPartial)
         }
     }
@@ -159,10 +165,19 @@ extension LocalLLMManager: LocalWhisperManagerDelegate {
         }
     }
 
-    func whisperManager(didTranscribeText text: String) {
+    func whisperManager(didTranscribeText raw: String) {
         Task { @MainActor in
             // After a barge-in, drop transcripts that merely echo our own speech.
-            if consumeBargeInEcho(transcript: text) { return }
+            if consumeBargeInEcho(transcript: raw) { return }
+            // Whisper hallucinates on breaths and desk noise ("ね。", "(笑)",
+            // "ご視聴ありがとうございました"); those never reach the history or the model.
+            if let reason = PhantomTranscriptFilter.reason(transcript: raw) {
+                nlLogSensitive("[Local Transcript]: dropped phantom (\(reason.rawValue)): \"\(raw)\"", level: .info)
+                return
+            }
+            // "(笑) 本当に？" keeps only what was said.
+            let text = PhantomTranscriptFilter.spokenText(raw)
+            AcousticAffectState.shared.noteTranscript(text)
             // Feed the localized transcription directly to the Local LLM
             handleUserInput(text)
         }

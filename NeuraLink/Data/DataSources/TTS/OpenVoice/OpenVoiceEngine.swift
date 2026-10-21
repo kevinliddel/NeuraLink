@@ -7,12 +7,9 @@
 //  non-Japanese voice (VoiceVox stays for the JP model).
 //
 //  text -> G2P -> chunk at punctuation -> openvoice_bridge_say per chunk
-//  (22.05 kHz mono float) -> AVAudioPCMBuffer -> onBufferReady. Unlike
-//  SynapLink's VoiceCloner, this engine does NOT own an AVAudioEngine: it
-//  pushes buffers through `onBufferReady` and LocalLLMManager+TTS schedules
-//  playback (matching VoiceVox).
-//
-//  Ported from SynapLink's VoiceCloner (synth / chunkize / trimSilence).
+//  (22.05 kHz mono float) -> AVAudioPCMBuffer -> onBufferReady. This engine
+//  does NOT own an AVAudioEngine: it pushes buffers through `onBufferReady`
+//  and LocalLLMManager+TTS schedules playback (matching VoiceVox).
 //
 
 import AVFoundation
@@ -40,7 +37,7 @@ final class OpenVoiceEngine: NSObject, @unchecked Sendable, TTSEngineProtocol {
 
     // Sentence chunking — group whole sentences into ~minChunkChars…maxChunkChars
     // so MeloTTS+BERT get full sentences (good intonation) while no tiny chunk
-    // starves the player. Mirrors VoiceCloner.
+    // starves the player.
     private static let sentenceEnders: Set<Character> = [".", "!", "?"]
     private static let minChunkChars = 60
     private static let maxChunkChars = 220
@@ -136,13 +133,22 @@ final class OpenVoiceEngine: NSObject, @unchecked Sendable, TTSEngineProtocol {
     // MARK: - TTSEngineProtocol.speak
 
     func speak(_ text: String, persona: PersonaIdentifier) async throws {
+        try await speak(text, voiceName: Self.voiceName(for: persona)) { [weak self] buffer in
+            self?.onBufferReady?(buffer)
+        }
+    }
+
+    /// Speaks in a named voice and hands each chunk's audio to `deliver`, on
+    /// the synthesis queue. The voice preview uses it to try a voice before
+    /// it is saved, without borrowing the chat's `onBufferReady`.
+    func speak(_ text: String, voiceName voice: String,
+               deliver: @escaping @Sendable (AVAudioPCMBuffer) -> Void) async throws {
         guard isReady, let handle, let g2p else { throw TTSError.notInitialized }
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { return }
 
-        let voice = Self.voiceName(for: persona)
         guard let tgt = targetSE(voice) else {
-            throw TTSError.unsupportedPersona(persona)
+            throw TTSError.unsupportedPersona(voice)
         }
         let chunks = Self.chunkize(clean)
         guard !chunks.isEmpty else { return }
@@ -159,7 +165,7 @@ final class OpenVoiceEngine: NSObject, @unchecked Sendable, TTSEngineProtocol {
                     }
                     nlLog("[OpenVoice] chunk: raw=\(audio.count) trimmed=\(trimmed.count) sr=\(Int(self.sampleRate))", level: .info)
                     if let pcm = AudioDataConverter.toPCMBuffer(samples: trimmed, sampleRate: self.sampleRate) {
-                        self.onBufferReady?(pcm)
+                        deliver(pcm)
                     } else {
                         nlLog("[OpenVoice] toPCMBuffer returned nil — samples=\(trimmed.count) sr=\(self.sampleRate)", level: .error)
                     }
@@ -230,7 +236,7 @@ final class OpenVoiceEngine: NSObject, @unchecked Sendable, TTSEngineProtocol {
         return data.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
     }
 
-    // MARK: - Chunking / trimming (ported from VoiceCloner)
+    // MARK: - Chunking / trimming
 
     private struct Chunk { let text: String; let pause: Double }
 
@@ -264,8 +270,10 @@ final class OpenVoiceEngine: NSObject, @unchecked Sendable, TTSEngineProtocol {
                 flush(pauseMap[ch] ?? 0.05)
             }
         }
+        // Keep the closing pause: callers that speak one sentence at a time
+        // (live chat, the voice preview) would otherwise run sentences together.
         let tail = buf.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !tail.isEmpty { chunks.append(Chunk(text: tail, pause: 0)) }
+        if let end = tail.last { chunks.append(Chunk(text: tail, pause: pauseMap[end] ?? 0)) }
         return chunks
     }
 }

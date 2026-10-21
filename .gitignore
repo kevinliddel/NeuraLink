@@ -61,6 +61,7 @@ agents/
 
 # Local-only optimization backlog (working notes, not shipped)
 docs/OPT.md
+docs/COMPANION_EVOLUTION.md
 
 CustomSources/
 scripts/__pycache__

@@ -8,7 +8,7 @@
 //  a minimal VRM with just that part, so a hair donor loads in a fraction
 //  of the time the whole model took.
 //
-//  The files themselves are not in the app — 68 parts weigh 225 MB, more
+//  The files themselves are not in the app — 119 parts weigh 364 MB, more
 //  than everything else together — so the library is a MANIFEST
 //  (`RemoteAssetRegistry.libraryPartStems`) and each item resolves to a
 //  file on demand through `RemoteAssetCache`, exactly as the environment
@@ -101,14 +101,8 @@ final class PartsLibrary {
         return items.first { $0.stem == stem }
     }
 
-    static func isLibrarySlug(_ slug: String) -> Bool {
-        slug.lowercased().hasPrefix(slugPrefix)
-    }
-
     /// How much of the library is already on the device.
     var downloadedCount: Int { items.count { $0.isDownloaded } }
-
-    var isFullyDownloaded: Bool { downloadedCount == items.count }
 
     // MARK: - Discovery
 

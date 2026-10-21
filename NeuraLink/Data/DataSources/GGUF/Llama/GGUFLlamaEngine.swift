@@ -39,6 +39,8 @@ final class GGUFLlamaEngine: NSObject, @unchecked Sendable, LLMEngineProtocol {
     // llama.cpp is NOT thread-safe: two simultaneous decode calls corrupt
     // internal buffers and crash with GGML_ASSERT(buffer) failed.
     internal let generationLock = NSLock()
+    /// Background generations: KV snapshot/restore + preemption.
+    internal let silentGate = SilentGenerationGate()
     internal var _isGenerating = false
 
     // Held for the duration of any llama.cpp work (generate OR prefill) so

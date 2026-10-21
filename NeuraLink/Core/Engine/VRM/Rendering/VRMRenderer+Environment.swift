@@ -38,7 +38,8 @@ extension VRMRenderer {
             device: device,
             instanceConfig: option.instanceConfig,
             autoFitFootprint: option.autoFitFootprint,
-            bakedLighting: option.bakedLighting
+            bakedLighting: option.bakedLighting,
+            resolvesDuplicateFaces: option.resolvesDuplicateFaces
         )
         renderer.setup(config: config)
         environmentRenderer = renderer

@@ -30,7 +30,7 @@ nonisolated enum RemoteAssetRegistry: Hashable, Sendable {
     // Scenes — `name` is the GLB basename (resolves to `scenes/<name>.glb`).
     case scene(String)
     /// One cut-out donor part for character customization — resolves to
-    /// `Parts/<stem>.vrm`. The library is 225 MB, far too much to ship in
+    /// `Parts/<stem>.vrm`. The library is 364 MB, far too much to ship in
     /// the app, and nothing at startup needs it.
     case libraryPart(String)
 
@@ -201,9 +201,20 @@ nonisolated enum RemoteAssetRegistry: Hashable, Sendable {
         "city": .init(
             size: 101_226_320,
             sha256: "6434853fbcbe12c7cf5863680b92127109bdc18020af65638ee69fb0a7fe9832"),
+        // Added 2026-10-20 from the tree API's lfs.oid; each matched a
+        // fresh download byte for byte.
+        "modern_apartment": .init(
+            size: 10_063_128,
+            sha256: "56bb3c5bd59fa521fb220cd215259988ed29cbdc80932d59c75165991b0f45d3"),
+        "pool": .init(
+            size: 58_223_732,
+            sha256: "fb13cc12e2a819b456b3134450f43b54cb38154dcc3655483a5e3c1c1add1191"),
         "ruined_city": .init(
             size: 81_496_064,
-            sha256: "00c177807cb464e0488a6d53a5437f345285228ed6916575b0dd27cac4777bc8")
+            sha256: "00c177807cb464e0488a6d53a5437f345285228ed6916575b0dd27cac4777bc8"),
+        "st_bartholomew_cathedral": .init(
+            size: 70_653_940,
+            sha256: "db08bcf1fec24d53102496855b322b9095f569d4739f74a3e7fde94ba18c4ba9")
     ]
 
     /// Keyed by `.vvm` filename ID (see `voicevoxSpeakerIDs`).

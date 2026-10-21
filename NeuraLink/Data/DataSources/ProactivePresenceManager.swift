@@ -43,6 +43,9 @@ final class ProactivePresenceManager {
     private var smallTalkCount = 0
     private var lastEngagementAt: Date?
     private var lastEventNormalized = ""
+    /// Facts already woven into a small talk, so the next one leans on a
+    /// different memory instead of the same "mock trial win" twice.
+    private var usedFactSeeds: Set<String> = []
 
     private init() {}
 
@@ -127,13 +130,17 @@ final class ProactivePresenceManager {
 
         let character = RealtimeChatState.shared.selectedCharacterName
         let entry = MemoryStore.shared.latestUnusedOpener(character: character)
+        let hour = Calendar.current.component(.hour, from: Date())
         let event = Self.greetingEvent(
             opener: entry?.opener,
             hoursAway: hours,
-            timeOfDay: Self.timeOfDayDescriptor(hour: Calendar.current.component(.hour, from: Date()))
+            timeOfDay: Self.timeOfDayDescriptor(hour: hour)
         )
+        let japanese = Self.greetingEventJapanese(
+            name: Self.japaneseCueName(), opener: entry?.opener,
+            hoursAway: hours, timeOfDay: Self.timeOfDayJapanese(hour: hour))
 
-        guard engage(with: event) else { return false }
+        guard engage(with: event, japanese: japanese) else { return false }
         hasGreetedSinceForeground = true
         if let entry { MemoryStore.shared.markOpenerUsed(id: entry.id) }
         return true
@@ -155,34 +162,50 @@ final class ProactivePresenceManager {
             engagementsSoFar: smallTalkCount)
         guard silence >= required else { return }
 
-        let fact = MemoryStore.shared.fetchAllFacts().randomElement()
+        // A fact she hasn't used yet, a different angle each time, and her
+        // own previous line to steer away from — the second silence of a
+        // session must not get the same sentence as the first.
+        let fact = MemoryStore.shared.fetchAllFacts()
             .map { "\($0.subject) \($0.predicate) \($0.object)" }
+            .filter { !usedFactSeeds.contains($0) }
+            .randomElement()
+        let previousLine = Self.previousLine(RealtimeChatState.shared.aiTranscript)
+        let hour = Calendar.current.component(.hour, from: Date())
+        let angle = Self.smallTalkAngle(for: smallTalkCount)
         let event = Self.smallTalkEvent(
-            timeOfDay: Self.timeOfDayDescriptor(hour: Calendar.current.component(.hour, from: Date())),
+            timeOfDay: Self.timeOfDayDescriptor(hour: hour),
             stage: CompanionAffinity.compute().label,
-            factSeed: fact
+            factSeed: fact,
+            angle: angle,
+            previousLine: previousLine
         )
+        let japanese = Self.smallTalkEventJapanese(
+            name: Self.japaneseCueName(),
+            timeOfDay: Self.timeOfDayJapanese(hour: hour), angle: angle, previousLine: previousLine)
 
         let normalized = Self.normalize(event)
         guard normalized != lastEventNormalized else { return }
 
-        guard engage(with: event) else { return }
+        guard engage(with: event, japanese: japanese) else { return }
         lastEventNormalized = normalized
+        if let fact { usedFactSeeds.insert(fact) }
         smallTalkCount += 1
     }
 
     // MARK: - Engine-agnostic injection
 
+    /// `japanese`: the same instruction for the Japanese local model (LLM-jp);
+    /// without it the English goes in a short Japanese frame.
     @discardableResult
-    func engage(with event: String) -> Bool {
+    func engage(with event: String, japanese: String? = nil) -> Bool {
         let openAI = OpenAISettings.shared
         if openAI.isEnabled && openAI.hasValidKey {
             guard OpenAIRealtimeManager.shared.remoteDataChannel?.readyState == .open
             else { return false }
             OpenAIRealtimeManager.shared.sendInteractionEvent(event)
         } else if openAI.isLocalLLMEnabled {
-            guard LocalLLMManager.shared.llmEngine.isLoaded else { return false }
-            LocalLLMManager.shared.handleUserInput(event, logToTimeline: false)
+            // An instruction, not the user's words (LocalLLMManager+Cue).
+            guard LocalLLMManager.shared.handleCue(LocalCue(english: event, japanese: japanese)) else { return false }
         } else {
             return false
         }
@@ -220,15 +243,103 @@ final class ProactivePresenceManager {
             + "Greet them warmly back in character and ask what they've been up to.*"
     }
 
-    nonisolated static func smallTalkEvent(timeOfDay: String, stage: String, factSeed: String?) -> String {
-        var event = "*The user has gone quiet for a while. It's \(timeOfDay) and your "
-            + "relationship stage is \(stage). Break the silence in character with ONE short, "
-            + "casual line — don't ask whether they're still there."
+    nonisolated static func timeOfDayJapanese(hour: Int) -> String {
+        switch hour {
+        case 5..<9: return "早朝"
+        case 9..<12: return "朝"
+        case 12..<17: return "午後"
+        case 17..<22: return "夕方"
+        default: return "夜遅く"
+        }
+    }
+
+    /// The return greeting for LLM-jp. Measured on the real model: asked to
+    /// "talk to" the user, the 1.8B answered as if the instruction were a
+    /// question to it ("はい、現在もおります"); asked to WRITE the character's
+    /// line for a scene, it writes one. The saved opener only rides along when
+    /// it is itself Japanese.
+    nonisolated static func greetingEventJapanese(
+        name: String, opener: String?, hoursAway: Double, timeOfDay: String
+    ) -> String {
+        let away = hoursAway >= 48 ? "\(Int(hoursAway / 24))日" : "\(Int(hoursAway))時間"
+        var task = "温かく迎えて、最近どうしていたか尋ねる。"
+        if let opener, isJapanese(opener) { task = "温かく迎えて、「\(opener.prefix(60))」という話を自然に入れる。" }
+        return lineTask(name: name, scene: "相手が約\(away)ぶりに戻ってきた。今は\(timeOfDay)。", task: task, avoid: nil)
+    }
+
+    /// The silence break for LLM-jp, same two angles as the English one.
+    nonisolated static func smallTalkEventJapanese(
+        name: String, timeOfDay: String, angle: SmallTalkAngle, previousLine: String?
+    ) -> String {
+        let task: String
+        switch angle {
+        case .checkIn:
+            task = "\(name)から気軽な話題を一つ振る。「まだいますか」とは言わない。"
+        case .shareThought:
+            task = "\(name)自身のちょっとした考えや、今日の小さな出来事を一言で話す。質問はしない。"
+        }
+        let avoid = previousLine.flatMap { $0.isEmpty ? nil : "直前のセリフ「\($0.prefix(40))」とは違う内容にする。" }
+        return lineTask(name: name, scene: "今は\(timeOfDay)。相手との会話が少し途切れている。", task: task, avoid: avoid)
+    }
+
+    /// "Write <name>'s line for this scene" — the task shape LLM-jp follows.
+    nonisolated static func lineTask(name: String, scene: String, task: String, avoid: String?) -> String {
+        var text = "\(name)のセリフを一つだけ書いてください。\n場面：\(scene)\n内容：\(task)"
+        if let avoid { text += "\n" + avoid }
+        return text + "\nセリフだけを書くこと。"
+    }
+
+    /// The character's name as its Japanese persona says it, else its display name.
+    static func japaneseCueName() -> String {
+        let state = RealtimeChatState.shared
+        return LocalLLMPromptStore.shared.japaneseName(for: state.selectedCharacterName) ?? state.characterDisplayName
+    }
+
+    nonisolated static func isJapanese(_ text: String) -> Bool {
+        text.unicodeScalars.contains { (0x3040...0x30FF).contains($0.value) || (0x4E00...0x9FFF).contains($0.value) }
+    }
+
+    /// What a small talk is for: the first one checks in, the next offers
+    /// something of her own, so two silences never read the same.
+    enum SmallTalkAngle: Int, CaseIterable, Sendable {
+        case checkIn, shareThought
+    }
+
+    nonisolated static func smallTalkAngle(for engagementsSoFar: Int) -> SmallTalkAngle {
+        SmallTalkAngle.allCases[max(0, engagementsSoFar) % SmallTalkAngle.allCases.count]
+    }
+
+    nonisolated static func smallTalkEvent(
+        timeOfDay: String, stage: String, factSeed: String?,
+        angle: SmallTalkAngle = .checkIn, previousLine: String? = nil
+    ) -> String {
+        var event: String
+        switch angle {
+        case .checkIn:
+            event = "*The user has gone quiet for a while. It's \(timeOfDay) and your "
+                + "relationship stage is \(stage). Break the silence in character with ONE short, "
+                + "casual line — don't ask whether they're still there."
+        case .shareThought:
+            event = "*The user is still quiet. It's \(timeOfDay) and your relationship stage is "
+                + "\(stage). Don't check in on them again — offer one small thing of your own instead: "
+                + "a passing thought, something about this \(timeOfDay), or a tiny moment from your day, "
+                + "in one or two short lines, no question needed."
+        }
         if let factSeed, !factSeed.isEmpty {
             event += " If it feels natural, you could reference that \(factSeed)."
         }
+        if let previousLine, !previousLine.isEmpty {
+            event += " You already said: \"\(previousLine)\" — say something genuinely different, in different words."
+        }
         event += "*"
         return event
+    }
+
+    /// Her last line, trimmed to one breath, for the anti-repeat clause.
+    nonisolated static func previousLine(_ transcript: String, limit: Int = 160) -> String? {
+        let flat = transcript.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        guard !flat.isEmpty else { return nil }
+        return flat.count <= limit ? flat : String(flat.prefix(limit)) + "…"
     }
 
     /// Lowercase, punctuation collapsed — consecutive-duplicate guard (same

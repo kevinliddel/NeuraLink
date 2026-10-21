@@ -29,7 +29,12 @@ final class VoiceVoxEngine: NSObject, @unchecked Sendable, TTSEngineProtocol {
     // MARK: - Internals
 
     private let queue = DispatchQueue(label: "com.neuralink.voicevox.engine", qos: .userInitiated)
-    private var isInitializing = false
+    /// One shared initialisation: concurrent callers (a chat turn's first
+    /// chunks, the voice preview, a warm-up) all await it instead of
+    /// returning early and then failing with `.notInitialized`.
+    private var initTask: Task<Void, Error>?
+    /// Speakers whose model is loaded and has run once (see `warmUp`).
+    private var warmedSpeakers = Set<Int>()
 
     private var synthesizer: OpaquePointer?
     private var onnxRuntime: OpaquePointer?
@@ -52,10 +57,28 @@ final class VoiceVoxEngine: NSObject, @unchecked Sendable, TTSEngineProtocol {
 
     func initialize() async throws {
         if isReady { return }
-        guard !isInitializing else { return }
-        isInitializing = true
-        defer { isInitializing = false }
+        if let initTask { return try await initTask.value }
+        let task = Task { try await self.performInitialize() }
+        initTask = task
+        defer { initTask = nil }
+        try await task.value
+    }
 
+    /// Loads `speakerID`'s voice model and renders one mora, so the first
+    /// real line in that voice skips the model load and ONNX Runtime's
+    /// first-run setup. Once per speaker; failures are only logged.
+    func warmUp(speakerID: Int) async {
+        guard !warmedSpeakers.contains(speakerID) else { return }
+        do {
+            try await initialize()
+            _ = try await synthesize(text: "あ", speakerID: speakerID)
+            warmedSpeakers.insert(speakerID)
+        } catch {
+            nlLog("[VoiceVox] Warm-up failed for speaker \(speakerID): \(error)", level: .warning)
+        }
+    }
+
+    private func performInitialize() async throws {
         // Pre-resolve the Open JTalk dict path. Triggers a parallel
         // download of all dict files on first run for users whose
         // bundle has been stripped; returns instantly otherwise.
@@ -161,6 +184,7 @@ final class VoiceVoxEngine: NSObject, @unchecked Sendable, TTSEngineProtocol {
             }
             modelHandles.removeAll()
             loadedModelIDs.removeAll()
+            warmedSpeakers.removeAll()
             isReady = false
             nlLog("[VoiceVox] Engine shutdown.", level: .info)
         }
@@ -193,6 +217,8 @@ final class VoiceVoxEngine: NSObject, @unchecked Sendable, TTSEngineProtocol {
     /// Public so callers that want raw audio (unit tests, debug UIs) can use it
     /// without going through the streaming callback.
     func synthesize(text: String, speakerID: Int) async throws -> Data {
+        // Read on the caller: the synthesis closure runs on the engine's queue.
+        let modulation = AcousticAffectState.shared.modulation
         guard isReady else { throw TTSError.notInitialized }
 
         let cleanText = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -262,11 +288,15 @@ final class VoiceVoxEngine: NSObject, @unchecked Sendable, TTSEngineProtocol {
                 var queryJson = String(cString: originalJsonPtr)
                 voicevox_json_free(originalJsonPtr)
 
+                // House defaults (1.1 / 1.5), bent by how the user sounds
+                // right now (AcousticAffect, docs/LLM_VOICE.md).
                 queryJson = queryJson.replacingOccurrences(
-                    of: "\"speedScale\":1.0", with: "\"speedScale\":1.1"
+                    of: "\"speedScale\":1.0",
+                    with: String(format: "\"speedScale\":%.2f", 1.1 * modulation.speed)
                 )
                 queryJson = queryJson.replacingOccurrences(
-                    of: "\"intonationScale\":1.0", with: "\"intonationScale\":1.5"
+                    of: "\"intonationScale\":1.0",
+                    with: String(format: "\"intonationScale\":%.2f", 1.5 * modulation.intonation)
                 )
 
                 var outputSize: Int = 0

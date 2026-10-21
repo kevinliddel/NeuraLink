@@ -68,6 +68,13 @@ final class ImportedCharacterStore {
         lastUpdated = Date()
     }
 
+    /// Changes which clip pools the body uses; the registry refresh that
+    /// follows carries it, and it applies the next time the model is loaded.
+    func setGender(slug: String, _ gender: CharacterGender) {
+        MemoryStore.shared.updateImportedCharacterGender(slug: slug, gender: gender)
+        lastUpdated = Date()
+    }
+
     /// Marks a character whose file failed the integrity re-check. It stays
     /// in SQL (visible via includeQuarantined fetches) but leaves the registry.
     func quarantine(slug: String) {
@@ -133,12 +140,6 @@ final class ImportedCharacterStore {
     }
 
     // MARK: - Nonisolated reads (registry refresh during scene loads)
-
-    /// Thread-safe read for nonisolated contexts. SQL access is guarded by
-    /// MemoryStore's NSLock (same pattern as PersonaVoiceStore's mirrors).
-    nonisolated static func allFromSQL() -> [ImportedCharacter] {
-        MemoryStore.shared.fetchImportedCharacters()
-    }
 
     nonisolated static func fromSQL(slug: String) -> ImportedCharacter? {
         MemoryStore.shared.importedCharacter(slug: slug)

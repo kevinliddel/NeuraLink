@@ -13,7 +13,11 @@ import Foundation
 extension LocalLLMManager: LocalLLMEngineDelegate {
 
     func localLLM(didGenerateToken token: String) {
-        tagBuffer += token
+        // A cue's reply is checked whole before anything is shown or said.
+        if activeCueInstruction != nil { return }
+        let piece = replyLabelFilter.feed(token)
+        guard !piece.isEmpty else { return }
+        tagBuffer += piece
 
         let (cleanText, emotions) = drainTagBuffer()
 
@@ -157,6 +161,35 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
     }
 
     func localLLM(didFinishGeneration fullText: String) {
+        let names = replyLabelNames
+        if let instruction = activeCueInstruction {
+            activeCueInstruction = nil
+            guard let line = CueReplyValidator.clean(fullText, instruction: instruction, names: names) else {
+                nlLogSensitive("[LocalLLM] Cue reply dropped (echoed or narrated its instruction): \(fullText.prefix(80))",
+                               level: .info)
+                transcriptTypewriter.endGeneration()
+                if state.status == .thinking { state.status = .ready }
+                return
+            }
+            // Now through the normal path: emotion tags, typewriter, TTS chunks.
+            localLLM(didGenerateToken: line)
+            finishTurn(line, isCue: true)
+            return
+        }
+        let held = replyLabelFilter.flush()
+        if !held.isEmpty { localLLM(didGenerateToken: held) }
+        finishTurn(LeadingLabelFilter.strip(fullText, names: names), isCue: false)
+    }
+
+    /// Names a reply might be labelled with.
+    var replyLabelNames: [String] {
+        let character = state.selectedCharacterName
+        let names = [state.characterDisplayName, character.capitalized, CharacterPersona.forCharacter(named: character).name]
+        // The Japanese persona names itself in katakana (オズ), not "Oz".
+        return names + [LocalLLMPromptStore.shared.japaneseName(for: character)].compactMap { $0 }
+    }
+
+    private func finishTurn(_ fullText: String, isCue: Bool) {
         if let start = turnStartNs {
             let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000.0
             nlLog(
@@ -204,7 +237,8 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
         // degrade future RAG retrieval across all models sharing the same memory store.
         let userText = state.userTranscript
         let isLLMjp = LocalModelDownloadManager.shared.selectedConfig == .llmJp3
-        if !isLLMjp {
+        // A cue has no user words of its own (userTranscript is the previous turn's).
+        if !isLLMjp && !isCue {
             RAGManager.shared.store(text: userText, source: "user")
         }
         let stripped = LocalToolCallParser.strippedText(fullText)

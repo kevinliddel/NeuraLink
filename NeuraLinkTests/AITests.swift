@@ -92,6 +92,11 @@ final class AITests: XCTestCase {
         // Test Ekaterina
         let ekaterina = CharacterPersona.forCharacter(named: "Ekaterina")
         XCTAssertTrue(ekaterina.instructions.contains("Onee-san"))
+
+        // Test Oz (the factory default)
+        let oz = CharacterPersona.forCharacter(named: "Oz")
+        XCTAssertTrue(oz.instructions.contains("butler"))
+        XCTAssertEqual(oz.voice, "ballad")
     }
 
     // MARK: - Local LLM Engine Tests

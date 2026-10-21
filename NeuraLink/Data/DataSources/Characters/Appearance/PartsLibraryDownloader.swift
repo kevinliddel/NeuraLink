@@ -2,17 +2,18 @@
 //  PartsLibraryDownloader.swift
 //  NeuraLink
 //
-//  Brings the customization parts library down on first launch, the same
-//  way the 3D environment arrives: fetch through RemoteAssetCache, report
-//  progress to the loading screen, and release the gate when it is in.
+//  Brings the customization parts library down in the background: fetch
+//  through RemoteAssetCache, report progress to the loading screen while it
+//  is up, never hold the scene for it. The library is 364 MB across 119
+//  files — more than everything else put together — and nothing on screen
+//  needs it until the user opens customization; the pictures for the cards
+//  DO ship, so the picker looks complete either way, and a part that has
+//  not arrived is fetched when its tile is tapped.
 //
-//  The library is 225 MB across 68 files. It ships outside the app because
-//  that is more than everything else put together, and because nothing on
-//  screen needs it until the user opens customization. The pictures for the
-//  cards DO ship, so the picker looks complete either way.
-//
-//  A missing library costs the user the extra outfits, never the app, so
-//  the gate is released whether the download succeeded or gave up.
+//  Each file resumes from its partial (RemoteAssetCache.fetch), so a slow
+//  link makes progress across attempts and launches instead of starting
+//  the same outfit over. A file the server does not have (4xx) is not
+//  asked for again for `unavailableCooldown`.
 //
 
 import Foundation
@@ -24,17 +25,29 @@ enum PartsLibraryDownloader {
     private static var didStart = false
     private static var task: Task<Void, Never>?
 
-    /// Attempts per file. A part is small enough that starting over costs
-    /// little, and `RemoteAssetCache` already resumes within an attempt.
+    /// Attempts per file and launch; each one continues the partial.
     private static let maxAttempts = 3
 
-    /// Fetches everything not already on the device. Returns immediately;
-    /// the loading screen watches `EnvironmentLoadState.partsReady`.
+    /// A 4xx means the dataset simply does not have the file — a part
+    /// pinned before its upload landed, or taken down. Asking again on
+    /// every launch gains nothing, so the stem rests this long.
+    static let unavailableCooldown: TimeInterval = 6 * 60 * 60
+    private static let cooldownKey = "PartsLibraryDownloader.unavailableUntil"
+
+    /// Fetches everything not already on the device, in the background.
+    /// Returns immediately; the loading screen shows progress while it is
+    /// up but does not wait for it.
     static func start() {
         guard !didStart else { return }
         didStart = true
 
-        let missing = PartsLibrary.shared.items.filter { !$0.isDownloaded }
+        let now = Date()
+        let resting = cooldowns()
+        let missing = PartsLibrary.shared.items.filter { item in
+            guard !item.isDownloaded else { return false }
+            guard let until = resting[item.stem] else { return true }
+            return until <= now
+        }
         guard !missing.isEmpty else {
             EnvironmentLoadState.shared.partsDidLoad()
             return
@@ -103,6 +116,10 @@ enum PartsLibraryDownloader {
                     "[PartsDownload] \(item.stem) attempt \(attempt)/\(maxAttempts) failed:"
                         + " \(error.localizedDescription)",
                     level: .warning)
+                if isPermanentFailure(error) {
+                    markUnavailable(item.stem)
+                    return false
+                }
                 guard attempt < maxAttempts else { return false }
                 if VRMRenderer.isConnectivityError(error) {
                     await NetworkWaiter.waitForConnectivity(timeout: 60)
@@ -112,5 +129,27 @@ enum PartsLibraryDownloader {
             }
         }
         return false
+    }
+
+    // MARK: - Availability memo
+
+    /// A 4xx is the server's answer, not the network's: retrying it does
+    /// not help. Transport errors and 5xx keep their attempts.
+    nonisolated static func isPermanentFailure(_ error: Error) -> Bool {
+        if case RemoteAssetCache.CacheError.httpStatus(let code) = error {
+            return (400..<500).contains(code)
+        }
+        return false
+    }
+
+    private static func cooldowns() -> [String: Date] {
+        let raw = UserDefaults.standard.dictionary(forKey: cooldownKey) as? [String: Double] ?? [:]
+        return raw.mapValues { Date(timeIntervalSince1970: $0) }
+    }
+
+    private static func markUnavailable(_ stem: String) {
+        var raw = UserDefaults.standard.dictionary(forKey: cooldownKey) as? [String: Double] ?? [:]
+        raw[stem] = Date().addingTimeInterval(unavailableCooldown).timeIntervalSince1970
+        UserDefaults.standard.set(raw, forKey: cooldownKey)
     }
 }

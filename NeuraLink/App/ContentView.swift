@@ -10,6 +10,7 @@ import SwiftUI
 
 /// Root view that hosts the VRM Viewer.
 struct ContentView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var selectedModelURL: URL? = VRMModelRegistry.shared.initialSelection?.url
     @Bindable private var aiState = RealtimeChatState.shared
@@ -39,6 +40,7 @@ struct ContentView: View {
                     RealtimeChatOverlay()
                     CameraOverlayView()
                     PhotoshootShareCapsule()
+                    KeepsakeUnlockCapsule()
                 }
 
                 if showModelSelection {
@@ -93,7 +95,7 @@ struct ContentView: View {
                         .id(aiState.selectedCharacterName.lowercased())
                     }
                     .ignoresSafeArea(edges: .bottom)
-                    .transition(.move(edge: .bottom))
+                    .transition(AppTheme.transition(.move(edge: .bottom), reduceMotion: reduceMotion))
                     .zIndex(150)
                 }
 
@@ -135,7 +137,7 @@ struct ContentView: View {
                     RelationshipMeterBarOverlay()
                         .padding(.leading, 16)
                         .padding(.top, 12)
-                        .transition(.move(edge: .top).combined(with: .opacity))
+                        .transition(AppTheme.transition(.move(edge: .top).combined(with: .opacity), reduceMotion: reduceMotion))
                 }
             }
             // The companion's phone (GTA-style): slides in when a tool call
@@ -145,7 +147,7 @@ struct ContentView: View {
                     PhoneWidgetView(card: card)
                         .padding(.leading, 14)
                         .padding(.bottom, 150)
-                        .transition(.move(edge: .leading).combined(with: .opacity))
+                        .transition(AppTheme.transition(.move(edge: .leading).combined(with: .opacity), reduceMotion: reduceMotion))
                 }
             }
             .animation(
@@ -207,7 +209,7 @@ struct ContentView: View {
             .overlay {
                 if !envLoad.isReady {
                     EnvironmentLoadingScreen()
-                        .transition(.mist)
+                        .transition(AppTheme.transition(.mist, reduceMotion: reduceMotion))
                         .zIndex(999)
                 }
             }
@@ -255,10 +257,9 @@ struct ContentView: View {
                 Text("Removes the model file and its persona settings. Chat history is kept.")
             }
             .task {
-                // The parts library comes down alongside the environment on
-                // first launch, and gates the reveal the same way. On every
-                // later launch the files are already on disk and this
-                // finishes on the first runloop.
+                // The parts library comes down in the background; the reveal
+                // never waits for it. On every later launch the files are
+                // already on disk and this finishes on the first runloop.
                 EnvironmentLoadState.shared.setPartsRetryHandler {
                     PartsLibraryDownloader.reset()
                     PartsLibraryDownloader.start()

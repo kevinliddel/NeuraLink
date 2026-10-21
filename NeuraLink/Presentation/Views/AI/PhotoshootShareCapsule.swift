@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct PhotoshootShareCapsule: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var controller = PhotoshootShareController.shared
 
     var body: some View {
@@ -19,7 +20,7 @@ struct PhotoshootShareCapsule: View {
                         .resizable()
                         .scaledToFill()
                         .frame(width: 44, height: 44)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.small, style: .continuous))
                     Text("Nice shot!")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.white)
@@ -47,12 +48,11 @@ struct PhotoshootShareCapsule: View {
                 .tint(.white)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
-                .background(.black.opacity(0.55), in: Capsule())
-                .overlay(Capsule().strokeBorder(.white.opacity(0.18), lineWidth: 1))
+                .hudGlass(Capsule(), opacity: 0.55)
                 .padding(.horizontal, 24)
                 .padding(.bottom, 120)
             }
-            .transition(.move(edge: .bottom).combined(with: .opacity))
+            .transition(AppTheme.transition(.move(edge: .bottom).combined(with: .opacity), reduceMotion: reduceMotion))
             .animation(.spring(response: 0.4, dampingFraction: 0.8), value: controller.isCapsuleVisible)
         }
     }

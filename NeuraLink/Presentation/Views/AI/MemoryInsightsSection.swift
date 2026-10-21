@@ -47,19 +47,16 @@ struct MemoryHeroCard: View {
     let onRefresh: () -> Void
 
     @State private var companion = CompanionStateStore.shared
+    @State private var portrait: UIImage?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .center, spacing: 12) {
-                Image(systemName: "brain")
-                    .font(.system(size: 26, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 52, height: 52)
-                    .background(.white.opacity(0.18), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                heroIcon
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text("\(characterName)'s memory")
-                        .font(.system(size: 19, weight: .bold, design: .rounded))
+                        .font(.system(.title3, design: .rounded, weight: .bold))
                         .foregroundStyle(.white)
                     HStack(spacing: 6) {
                         Image(systemName: "heart.fill")
@@ -84,7 +81,7 @@ struct MemoryHeroCard: View {
             if !snapshot.upcoming.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("COMING UP")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.caption2.weight(.bold))
                         .foregroundStyle(.white.opacity(0.6))
                     ForEach(snapshot.upcoming) { item in
                         HStack(spacing: 6) {
@@ -103,7 +100,7 @@ struct MemoryHeroCard: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Text("WHAT \(characterName.uppercased()) KNOWS")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.caption2.weight(.bold))
                         .foregroundStyle(.white.opacity(0.6))
                     Spacer()
                     Button(action: onRefresh) {
@@ -133,28 +130,46 @@ struct MemoryHeroCard: View {
                         .foregroundStyle(.white.opacity(0.85))
                 } else {
                     ForEach(snapshot.models) { model in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(model.slug == MemoryMentalModels.userProfileSlug ? "About you" : "Between you")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.white.opacity(0.7))
-                            Text(RealtimeChatState.humanizingCharacterNames(model.content))
-                                .font(.subheadline)
-                                .foregroundStyle(.white)
-                        }
+                        let isProfile = model.slug == MemoryMentalModels.userProfileSlug
+                        MemoryModelTile(
+                            title: isProfile ? "About you" : "Between you",
+                            symbol: isProfile ? "person.crop.circle" : "person.2.fill",
+                            text: RealtimeChatState.humanizingCharacterNames(model.content))
                     }
                 }
             }
         }
         .padding(18)
         .background(
-            LinearGradient(
-                colors: [Color(red: 0.36, green: 0.22, blue: 0.86), Color(red: 0.62, green: 0.20, blue: 0.72),
-                         Color(red: 0.90, green: 0.32, blue: 0.55)],
-                startPoint: .topLeading, endPoint: .bottomTrailing),
-            in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(.white.opacity(0.15), lineWidth: 1))
-        .shadow(color: .purple.opacity(0.25), radius: 14, y: 6)
-        .onAppear { companion.refresh() }
+            AppTheme.Gradient.memory,
+            in: RoundedRectangle(cornerRadius: AppTheme.Radius.large, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: AppTheme.Radius.large, style: .continuous).strokeBorder(.white.opacity(0.15), lineWidth: 1))
+        .shadow(color: .blue.opacity(0.25), radius: 14, y: 6)
+        .onAppear {
+            companion.refresh()
+            portrait = CompanionPortrait.image(for: characterName)
+        }
+    }
+
+    /// The character's face when a portrait exists, else the nodes mark.
+    @ViewBuilder
+    private var heroIcon: some View {
+        if let portrait {
+            Image(uiImage: portrait)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 52, height: 52)
+                .background(.white.opacity(0.18))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous).strokeBorder(.white.opacity(0.35), lineWidth: 1))
+                .accessibilityLabel("\(characterName)'s portrait")
+        } else {
+            Image("nodes")
+                .font(.title.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(width: 52, height: 52)
+                .background(.white.opacity(0.18), in: RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous))
+        }
     }
 }
 
@@ -169,7 +184,7 @@ struct MemoryStatTile: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.white.opacity(0.8))
             Text("\(value)")
-                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .font(.system(.title2, design: .rounded, weight: .bold))
                 .foregroundStyle(.white)
                 .monospacedDigit()
                 .contentTransition(.numericText())
@@ -179,7 +194,7 @@ struct MemoryStatTile: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
-        .background(.white.opacity(0.14), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(.white.opacity(0.14), in: RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous))
     }
 }
 
@@ -201,7 +216,7 @@ struct MemoryObservationRow: View {
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(.purple)
                 .frame(width: 28, height: 28)
-                .background(Color.purple.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .background(Color.purple.opacity(0.12), in: RoundedRectangle(cornerRadius: AppTheme.Radius.chip, style: .continuous))
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(RealtimeChatState.humanizingCharacterNames(unit.text))
@@ -277,7 +292,7 @@ struct MemoryEmbeddingModelRow: View {
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(.white)
                         .frame(width: 28, height: 28)
-                        .background(Color.teal, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                        .background(Color.teal, in: RoundedRectangle(cornerRadius: AppTheme.Radius.chip, style: .continuous))
                 }
             }
             .disabled(isDownloading)

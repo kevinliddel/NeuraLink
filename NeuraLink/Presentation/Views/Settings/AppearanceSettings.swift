@@ -28,20 +28,6 @@ final class AppearanceSettings {
         }
     }
 
-    /// Saves a new custom background image to disk.
-    func saveBackgroundImage(_ data: Data?) {
-        guard let url = backgroundImageURL else { return }
-        if let data = data {
-            try? data.write(to: url)
-            self.backgroundImageData = data
-            self.backgroundUIImage = UIImage(data: data)
-        } else {
-            try? FileManager.default.removeItem(at: url)
-            self.backgroundImageData = nil
-            self.backgroundUIImage = nil
-        }
-    }
-
     private var backgroundImageURL: URL? {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.appendingPathComponent(backgroundImageFilename)
     }

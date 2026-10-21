@@ -46,9 +46,9 @@ struct CameraOverlayView: View {
         ZStack(alignment: .bottom) {
             CameraPreviewView(session: camera.session)
                 .frame(width: previewWidth, height: previewHeight)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.medium))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12)
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.medium)
                         .stroke(Color.white.opacity(0.3), lineWidth: 1)
                 )
                 .shadow(color: .black.opacity(0.4), radius: 8, x: 0, y: 4)
@@ -62,7 +62,7 @@ struct CameraOverlayView: View {
             camera.stop()
         } label: {
             Image(systemName: "xmark.circle.fill")
-                .font(.system(size: 20))
+                .font(.title3)
                 .foregroundStyle(.white)
                 .shadow(color: .black.opacity(0.5), radius: 2, x: 0, y: 1)
         }
@@ -74,7 +74,7 @@ struct CameraOverlayView: View {
             camera.switchCamera()
         } label: {
             Image(systemName: "camera.rotate.fill")
-                .font(.system(size: 16))
+                .font(.callout)
                 .foregroundStyle(.white)
                 .padding(6)
                 .background(.black.opacity(0.4), in: Circle())

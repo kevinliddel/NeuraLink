@@ -28,6 +28,8 @@ final class PresenceSettings {
     private static let backgroundIdleKey = "com.neuralink.presence.backgroundIdleMinutes"
     private static let showWidgetsKey = "com.neuralink.presence.showWidgets"
     private static let followUpsKey = "com.neuralink.presence.followUps"
+    private static let deskPresenceKey = "com.neuralink.presence.deskPresence"
+    private static let deskAwayMinutesKey = "com.neuralink.presence.deskAwayMinutes"
 
     @ObservationIgnored private var _isPresenceEnabled: Bool = false
     @ObservationIgnored private var _isNotificationsEnabled: Bool = false
@@ -38,6 +40,8 @@ final class PresenceSettings {
     @ObservationIgnored private var _backgroundIdleMinutes: Double = 10
     @ObservationIgnored private var _showWidgets: Bool = true
     @ObservationIgnored private var _followUpsEnabled: Bool = true
+    @ObservationIgnored private var _isDeskPresenceEnabled: Bool = false
+    @ObservationIgnored private var _deskAwayMinutes: Double = 10
 
     private init() {
         let defaults = UserDefaults.standard
@@ -50,6 +54,8 @@ final class PresenceSettings {
         _backgroundIdleMinutes = defaults.object(forKey: Self.backgroundIdleKey) as? Double ?? 10
         _showWidgets = defaults.object(forKey: Self.showWidgetsKey) as? Bool ?? true
         _followUpsEnabled = defaults.object(forKey: Self.followUpsKey) as? Bool ?? true
+        _isDeskPresenceEnabled = defaults.bool(forKey: Self.deskPresenceKey)
+        _deskAwayMinutes = defaults.object(forKey: Self.deskAwayMinutesKey) as? Double ?? 10
     }
 
     /// Character-initiated follow-ups on dated plans (docs/COMPANION_DEPTH.md).
@@ -191,6 +197,35 @@ final class PresenceSettings {
             withMutation(keyPath: \.silenceSmallTalkSec) {
                 _silenceSmallTalkSec = newValue
                 UserDefaults.standard.set(newValue, forKey: Self.silenceSecKey)
+            }
+        }
+    }
+
+    /// Camera-based desk presence: arrival greeting + away loop
+    /// (docs/LIVING_COMPANION.md, Desk presence). Works while the camera is on.
+    var isDeskPresenceEnabled: Bool {
+        get {
+            access(keyPath: \.isDeskPresenceEnabled)
+            return _isDeskPresenceEnabled
+        }
+        set {
+            withMutation(keyPath: \.isDeskPresenceEnabled) {
+                _isDeskPresenceEnabled = newValue
+                UserDefaults.standard.set(newValue, forKey: Self.deskPresenceKey)
+            }
+        }
+    }
+
+    /// Minutes with nobody in front of the phone before the resting loop.
+    var deskAwayMinutes: Double {
+        get {
+            access(keyPath: \.deskAwayMinutes)
+            return _deskAwayMinutes
+        }
+        set {
+            withMutation(keyPath: \.deskAwayMinutes) {
+                _deskAwayMinutes = newValue
+                UserDefaults.standard.set(newValue, forKey: Self.deskAwayMinutesKey)
             }
         }
     }

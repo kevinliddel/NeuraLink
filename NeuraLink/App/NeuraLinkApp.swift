@@ -70,6 +70,7 @@ struct NeuraLinkApp: App {
         // Proactive engagement loop (absence greeting + silence small talk),
         // only when the user opted in.
         ProactivePresenceManager.shared.startIfEnabled()
+        DeskPresenceManager.shared.startIfEnabled()
 
         // New session = new chat: every cold launch starts a fresh
         // conversation (created lazily on the first turn).

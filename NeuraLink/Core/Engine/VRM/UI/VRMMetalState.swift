@@ -8,7 +8,6 @@
 import MetalKit
 import SwiftUI
 import simd
-import Combine
 
 @Observable
 @MainActor
@@ -28,6 +27,9 @@ final class VRMMetalState {
     var isEnvironmentReady: Bool = false
     var errorMessage: String?
     var currentModel: VRMModel?
+    /// Gender of the character on screen; picks its clip pools
+    /// (AnimationCatalogue). Set by `display(_:gender:)`.
+    var characterGender: CharacterGender = .fallback
     let isMetalAvailable: Bool
 
     // Sky ticker — independent of model lifecycle so clouds never freeze
@@ -42,7 +44,6 @@ final class VRMMetalState {
     private var backgroundTimer: Timer?
     private var lastTickTimestamp: CFTimeInterval = 0
     private var isAppInBackground = false
-    private var cancellables = Set<AnyCancellable>()
     var isPlayingAppear = false
     var pendingDefaultClip: AnimationClip?
     var defaultClip: AnimationClip?
@@ -66,9 +67,14 @@ final class VRMMetalState {
     var randomAnimTimer: Float = -1
     var randomAnimElapsed: Float = 0
     var randomAnimDuration: Float = 0
-    static let randomAnimNames = ["default_state", "neutral_2", "neutral_3", "neutral_4", "relax", "waiting"]
     static let randomAnimIntervalRange: ClosedRange<Float> = 8...20
-    static let randomAnimDurationRange: ClosedRange<Float> = 5...12
+    /// An idle plays once, cut here if it runs longer; never looped, since
+    /// a clip wrapping back to its first frame pops.
+    static let randomAnimMaxHold: Float = 12
+    static let randomAnimMinHold: Float = 2
+    /// The blend back to the base loop starts this long before the idle
+    /// ends, so the body flows home instead of snapping from the last frame.
+    static let idleReturnCrossfade: Float = 1.0
 
     // Occasional talking gestures (VRMMetalState+TalkingGesture.swift)
     var talkingGestureEntries: [RandomAnimEntry] = []
@@ -102,6 +108,16 @@ final class VRMMetalState {
     /// True while the loop owns the body — false while a pose or the phone
     /// episode has borrowed it.
     var isPlayingListeningClip = false
+
+    // The "away from the desk" episode (VRMMetalState+AwayEpisode.swift)
+    var awayEpisode = AwayEpisodePolicy()
+    var awayEpisodeClip: AnimationClip?
+    var isPlayingAwayClip = false
+    /// Look-at target and smoothing before the desk gaze took over, restored
+    /// when the face is gone; the smoother filters the detector's jitter.
+    var faceGazeRestoreTarget: VRMLookAtTarget?
+    var faceGazeRestoreSmoothing: Float?
+    var faceGazeSmoother = FaceGazeSmoother()
 
     // Drives fade-in of the Metal view so T-pose is never visible
     var modelAlpha: Double = 0
@@ -163,6 +179,7 @@ final class VRMMetalState {
             setupPoseObserver()
             setupPhoneEpisodeObservers()
             setupListeningEpisodeObservers()
+            setupAwayEpisodeObservers()
             return
         }
         #endif
@@ -171,6 +188,7 @@ final class VRMMetalState {
         setupPoseObserver()
         setupPhoneEpisodeObservers()
         setupListeningEpisodeObservers()
+        setupAwayEpisodeObservers()
         startRenderRateObservation()
     }
 
@@ -187,13 +205,20 @@ final class VRMMetalState {
             self?.applyRenderRateForAIStatus()
         }
         
-        // Observe PiP state changes using Combine
-        PiPManager.shared.$isPiPActive
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.updateTickersForCurrentState()
+        // Observe PiP state changes (re-armed per change, like the render rate).
+        armPiPObservation()
+    }
+
+    private func armPiPObservation() {
+        withObservationTracking {
+            _ = PiPManager.shared.isPiPActive
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.updateTickersForCurrentState()
+                self.armPiPObservation()
             }
-            .store(in: &cancellables)
+        }
     }
     
     private func updateTickersForCurrentState() {
@@ -267,6 +292,7 @@ final class VRMMetalState {
             _ = aiState.status
             _ = OpenAISettings.shared.isLocalLLMEnabled
             _ = OpenAISettings.shared.isEnabled
+            _ = RuntimePressureMonitor.shared.tier
         } onChange: { [weak self] in
             // Fires in the property's `willSet`; defer so the read below sees
             // the new value, then re-arm for the next transition.
@@ -286,10 +312,15 @@ final class VRMMetalState {
         guard !isAppInBackground else { return }
         let localDecode = OpenAISettings.shared.isLocalLLMEnabled && !OpenAISettings.shared.isEnabled
         let decoding = aiState.status == .thinking || aiState.status == .speaking
-        let target = (localDecode && decoding) ? Self.decodeRenderFPS : Self.idleRenderFPS
+        // A hot or power-saving phone caps the rate and thins the rain
+        // (RuntimePressurePolicy, docs/OPT.md item 7).
+        let tier = RuntimePressureMonitor.shared.tier
+        let wanted = (localDecode && decoding) ? Self.decodeRenderFPS : Self.idleRenderFPS
+        let target = min(wanted, RuntimePressurePolicy.renderFPSCap(tier))
         if mtkView.preferredFramesPerSecond != target {
             mtkView.preferredFramesPerSecond = target
         }
+        renderer?.rainBudgetScale = RuntimePressurePolicy.rainScale(tier)
     }
 
     func clear() {
@@ -330,12 +361,17 @@ final class VRMMetalState {
         listeningEpisode = ListeningEpisodePolicy()
         listeningEpisodeClip = nil
         isPlayingListeningClip = false
+        AwayEpisode.end(reason: "scene cleared")
+        awayEpisode = AwayEpisodePolicy()
+        awayEpisodeClip = nil
+        isPlayingAwayClip = false
         currentExpressionWeights = [:]
         targetExpressionWeights = [:]
         lastAppliedEmotion = ""
     }
 
-    func display(_ model: VRMModel) {
+    func display(_ model: VRMModel, gender: CharacterGender = .fallback) {
+        characterGender = gender
         currentModel = model
         renderer?.loadModel(model)
         // Before the saved customization grafts, so the phone is part of

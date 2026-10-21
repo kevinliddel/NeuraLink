@@ -235,6 +235,23 @@ Items the OpenAI docs mention. Updated 2026-05-21 — the `noise_reduction` entr
   `.realtimeInstructionsDidChange`; the manager re-sends `session.update`
   (instructions + tools, never voice) after a 5 s debounce, deferred until the
   current reply finishes.
+- **Phantom transcripts** (`PhantomTranscriptFilter`, 2026-10-15): server
+  VAD opens turns on desk noise and breaths, and the transcription model
+  then hallucinates — it returns its own vocabulary prompt ("Casual voice
+  chat with an AI companion…") as if spoken, a lone "ね。" or "you", or a
+  trailing "That's…". The handler times every segment from
+  `speech_started.audio_start_ms` to `speech_stopped.audio_end_ms` (per
+  `item_id`) and judges each `input_audio_transcription.completed` against
+  it: dropped when empty, when it echoes the prompt (≥ 3 words contained in
+  it, or ≥ 60 % of a 6+-word transcript drawn from its vocabulary), when the
+  segment is under 350 ms, when the words-per-second exceed 8, when one or
+  two words trail off with an ellipsis, or when it is a known filler. A
+  dropped turn is never shown, stored or counted; the reply the server had
+  already started is cancelled (`response.cancel`, its `response.done` is
+  not logged) and the item is deleted from the conversation
+  (`conversation.item.delete`) so the model's context never held it. The
+  local path applies the text rules to whisper.cpp output before
+  `handleUserInput`.
 - **Models** (`OpenAIModelCatalog`, AI Settings → Models): the voice,
   transcription and background text models are user-selectable (catalog or
   custom id). A voice-model change applies on the next connect (Done

@@ -26,7 +26,7 @@ enum GGUFModelAccess {
     static let filename = "Llama-3.2-1B-Instruct-Q4_K_M.gguf"
 
     private static let pathKey  = "LocalModel_GGUFPath"
-    private static let hubSlug  = "models--bartowski--Llama-3.2-1B-Instruct-GGUF"
+    static let hubSlug  = "models--bartowski--Llama-3.2-1B-Instruct-GGUF"
 
     // MARK: - URL resolution
 

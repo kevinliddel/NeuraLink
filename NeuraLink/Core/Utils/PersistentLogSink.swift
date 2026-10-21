@@ -66,12 +66,6 @@ enum PersistentLogSink {
         }
     }
 
-    /// Returns the path the sink is currently writing to. Lets dev UI /
-    /// Xcode console code surface the location for retrieval.
-    static func currentLogFilePath() -> String? {
-        currentLogFileURL()?.path
-    }
-
     // MARK: - File I/O
 
     private static func append(_ data: Data) {

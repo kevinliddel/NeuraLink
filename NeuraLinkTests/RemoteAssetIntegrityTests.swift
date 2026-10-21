@@ -94,6 +94,7 @@ struct RemoteAssetIntegrityTests {
         assets += RemoteAssetRegistry.jtalkDictFilenames.map { .jtalkDictFile($0) }
         assets += ["apartment", "art_gallery", "campus", "city", "ruined_city"]
             .map { .scene($0) }
+        assets += EnvironmentCatalog.all.map { .scene($0.id) }
         assets += RemoteAssetRegistry.libraryPartStems.map { .libraryPart($0) }
 
         for asset in assets {
@@ -156,7 +157,7 @@ struct RemoteAssetIntegrityTests {
     @Test("The parts library manifest is complete and self-consistent")
     func partsManifest() {
         let stems = RemoteAssetRegistry.libraryPartStems
-        #expect(stems.count == 68)
+        #expect(stems.count == 119)  // 68 from the first library + 51 from the eleven donors added 2026-10-20
         #expect(Set(stems).count == stems.count, "no part is listed twice")
         // Every part is named `<model>__<kind>`, which is what both the
         // picker and the picture lookup rely on.

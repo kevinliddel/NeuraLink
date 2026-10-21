@@ -132,8 +132,7 @@ struct SongRecognitionOverlay: View {
         }
         .padding(.horizontal, 12)
         .frame(height: 44)
-        .background(.black.opacity(0.4), in: Capsule())
-        .overlay(Capsule().strokeBorder(.white.opacity(0.18), lineWidth: 1))
+        .hudGlass(Capsule())
     }
 
     private func artwork(_ url: URL?) -> some View {
@@ -148,14 +147,14 @@ struct SongRecognitionOverlay: View {
             }
         }
         .frame(width: 34, height: 34)
-        .clipShape(RoundedRectangle(cornerRadius: 9))
-        .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(.white.opacity(0.15), lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.chip))
+        .overlay(RoundedRectangle(cornerRadius: AppTheme.Radius.chip).strokeBorder(.white.opacity(0.15), lineWidth: 1))
     }
 
     private func linkIcon(url: URL, icon: String, tint: Color, label: String) -> some View {
         Link(destination: url) {
             Image(systemName: icon)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.footnote.weight(.semibold))
                 .foregroundStyle(.white)
                 .frame(width: 30, height: 30)
                 .background(tint.opacity(0.85), in: Circle())

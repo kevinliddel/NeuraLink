@@ -36,42 +36,16 @@ enum GGUFLlamaDownloader {
     ///   - progressHandler: Receives fractional progress in 0…0.95 on any thread.
     static func download(
         api: HubApi,
-        progressHandler: @escaping (Double) -> Void
+        progressHandler: @escaping @Sendable (Double) -> Void
     ) async throws {
-        let repo = Hub.Repo(id: GGUFModelAccess.repoID)
-        // CRITICAL: pass `matching:` so HubApi fetches ONLY the one quant we
-        // use (Q8_0). Without this, snapshot pulls every file in the repo
-        // — for bartowski's GGUF repos that's 18+ quantization variants
-        // totalling 10+ GB per "download" of a 1.32 GB model.
-        let snapshotDir = try await api.snapshot(
-            from: repo, matching: [GGUFModelAccess.filename]
-        ) { progress in
-            progressHandler(progress.fractionCompleted * 0.95)
-        }
-        try verifyAndSave(snapshotDir: snapshotDir)
+        // Direct fetch of the one file, with real byte progress and resume
+        // (GGUFDirectDownloader); `api` is kept for the call sites' signature.
+        _ = api
+        let file = try await GGUFDirectDownloader.download(
+            repoID: GGUFModelAccess.repoID, filename: GGUFModelAccess.filename, hubSlug: GGUFModelAccess.hubSlug,
+            progress: { progressHandler($0) })
+        GGUFModelAccess.setModelPath(file)
     }
 
     // MARK: - Private
-
-    private static func verifyAndSave(snapshotDir: URL) throws {
-        let direct = snapshotDir.appendingPathComponent(GGUFModelAccess.filename)
-        if FileManager.default.fileExists(atPath: direct.path) {
-            GGUFModelAccess.setModelPath(direct)
-            return
-        }
-
-        // Hub may place the file one level deeper — scan one level.
-        let entries = (try? FileManager.default.contentsOfDirectory(
-            at: snapshotDir, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
-
-        for entry in entries {
-            let candidate = entry.appendingPathComponent(GGUFModelAccess.filename)
-            if FileManager.default.fileExists(atPath: candidate.path) {
-                GGUFModelAccess.setModelPath(candidate)
-                return
-            }
-        }
-
-        throw DownloadError.fileMissing
-    }
 }

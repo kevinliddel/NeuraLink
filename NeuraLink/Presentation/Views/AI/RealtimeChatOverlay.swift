@@ -94,9 +94,7 @@ struct RealtimeChatOverlay: View {
             .multilineTextAlignment(.center)
             .padding(.horizontal, 18)
             .padding(.vertical, 9)
-            .background(.black.opacity(0.32), in: RoundedRectangle(cornerRadius: 20))
-            .overlay(
-                RoundedRectangle(cornerRadius: 20).strokeBorder(.white.opacity(0.18), lineWidth: 1))
+            .hudGlass(RoundedRectangle(cornerRadius: AppTheme.Radius.large), opacity: 0.32)
     }
 
     // MARK: - Reusable Atoms
@@ -113,8 +111,7 @@ struct RealtimeChatOverlay: View {
         .foregroundStyle(.white.opacity(0.88))
         .padding(.horizontal, 18)
         .padding(.vertical, 9)
-        .background(.black.opacity(0.32), in: Capsule())
-        .overlay(Capsule().strokeBorder(.white.opacity(0.18), lineWidth: 1))
+        .hudGlass(Capsule(), opacity: 0.32)
     }
 
     // MARK: - Phase Transitions

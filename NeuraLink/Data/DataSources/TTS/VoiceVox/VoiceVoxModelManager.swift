@@ -38,16 +38,4 @@ final class VoiceVoxModelManager {
         )
     }
 
-    func isSpeakerReady(_ id: Int) -> Bool {
-        isDictionaryAvailable && VoiceVoxModelAccess.isSpeakerAvailable(speakerID: id)
-    }
-
-    /// Placeholder for a direct `.vvm` download flow. (Speaker `.vvm` files are
-    /// currently fetched on demand via `RemoteAssetCache` / the bundled voice
-    /// download in `LocalModelDownloadManager`.)
-    func downloadModel(forSpeakerID id: Int) async throws {
-        nlLog("[VoiceVox] Stub download for speaker \(id)…", level: .info)
-        try await Task.sleep(for: .seconds(2))
-        downloadedSpeakerIDs.insert(id)
-    }
 }

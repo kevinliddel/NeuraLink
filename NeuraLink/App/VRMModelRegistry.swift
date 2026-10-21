@@ -35,7 +35,12 @@ final class VRMModelRegistry {
         let displayName: String
         let url: URL
         let isImported: Bool
+        /// Picks the idle, resting and pose clips (AnimationCatalogue).
+        let gender: CharacterGender
     }
+
+    /// The bundled characters' genders; anything unlisted is female.
+    static let bundledGenders: [String: CharacterGender] = ["oz": .male]
 
     private(set) var all: [Entry] = []
 
@@ -66,9 +71,9 @@ final class VRMModelRegistry {
         CompanionSnapshotWriter.shared.scheduleRefresh()
     }
 
-    /// Factory default: Ekaterina, else the first bundled model, else anything.
+    /// Factory default: Oz, else the first bundled model, else anything.
     var defaultModel: Entry? {
-        all.first { $0.name.lowercased() == "ekaterina" }
+        all.first { $0.name.lowercased() == "oz" }
             ?? all.first { !$0.isImported }
             ?? all.first
     }
@@ -91,14 +96,16 @@ final class VRMModelRegistry {
 
     private static func namedEntries() -> [Entry] {
         [
-            ("Sonya", "vrm"), ("Ekaterina", "vrm"),
-            ("Sonya", "glb"), ("Ekaterina", "glb")
+            ("Oz", "vrm"), ("Sonya", "vrm"), ("Ekaterina", "vrm"),
+            ("Oz", "glb"), ("Sonya", "glb"), ("Ekaterina", "glb")
         ]
         .compactMap { name, ext -> Entry? in
             guard let url = Bundle.main.url(forResource: name, withExtension: ext) else {
                 return nil
             }
-            return Entry(name: name, displayName: name, url: url, isImported: false)
+            return Entry(
+                name: name, displayName: name, url: url, isImported: false,
+                gender: bundledGenders[name.lowercased()] ?? .fallback)
         }
     }
 
@@ -115,7 +122,9 @@ final class VRMModelRegistry {
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
             .map {
                 let stem = $0.deletingPathExtension().lastPathComponent
-                return Entry(name: stem, displayName: stem, url: $0, isImported: false)
+                return Entry(
+                    name: stem, displayName: stem, url: $0, isImported: false,
+                    gender: bundledGenders[stem.lowercased()] ?? .fallback)
             }
     }
 
@@ -130,7 +139,8 @@ final class VRMModelRegistry {
                 name: character.slug,
                 displayName: resolvedDisplayName(of: character),
                 url: url,
-                isImported: true)
+                isImported: true,
+                gender: character.gender)
         }
     }
 

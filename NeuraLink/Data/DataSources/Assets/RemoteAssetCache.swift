@@ -196,9 +196,9 @@ actor RemoteAssetCache {
         let partURL = target.appendingPathExtension("part")
 
         for attempt in 0..<2 {
-            try? FileManager.default.removeItem(at: partURL)
             do {
-                try await fetch(from: remoteURL, to: partURL, onProgress: onProgress)
+                try await fetch(
+                    from: remoteURL, to: partURL, expectedSize: integrity?.size, onProgress: onProgress)
                 try verify(fileAt: partURL, against: integrity)
                 if FileManager.default.fileExists(atPath: target.path) {
                     try? FileManager.default.removeItem(at: target)
@@ -206,52 +206,80 @@ actor RemoteAssetCache {
                 try FileManager.default.moveItem(at: partURL, to: target)
                 return target
             } catch {
-                try? FileManager.default.removeItem(at: partURL)
-                // Only an integrity mismatch earns the single retry — it's the
-                // signature of a corrupt-in-transit fetch that a second attempt
-                // can plausibly fix. Transport/HTTP errors keep their original
-                // fail-fast behavior (callers own their own retry policy).
-                let isIntegrityFailure: Bool
                 switch error as? CacheError {
-                case .sizeMismatch, .checksumMismatch: isIntegrityFailure = true
-                default: isIntegrityFailure = false
+                case .sizeMismatch?, .checksumMismatch?:
+                    // Corrupt in transit, or a partial left by an older
+                    // version of the file: throw it away and go once more
+                    // from the start. Only this earns the retry.
+                    try? FileManager.default.removeItem(at: partURL)
+                    guard attempt == 0 else { throw error }
+                    nlLog(
+                        "[RemoteAssetCache] \(asset.pathInRepo) failed verification (\(error)) — retrying once.",
+                        level: .warning)
+                case .httpStatus(let code)? where (400..<500).contains(code):
+                    // Nothing to resume for a file the server will not give.
+                    try? FileManager.default.removeItem(at: partURL)
+                    throw error
+                default:
+                    // Transport trouble: the partial stays, and the next
+                    // attempt — or the next launch — continues from it.
+                    throw error
                 }
-                guard isIntegrityFailure, attempt == 0 else { throw error }
-                nlLog(
-                    "[RemoteAssetCache] \(asset.pathInRepo) failed verification (\(error)) — retrying once.",
-                    level: .warning)
             }
         }
         // Unreachable: the loop either returns or throws on the second pass.
         throw CacheError.assetNotFound
     }
 
-    /// Fetches `remoteURL` into `destination` (replacing it), via the
-    /// delegate-backed progress path or the plain one. Throws `CacheError`
-    /// on HTTP/transport failure.
-    private static func fetch(
+    // MARK: - Fetch (resumable)
+
+    /// Fetches `remoteURL` into `partURL`, continuing from whatever an
+    /// earlier attempt — or an earlier launch — left there, with an HTTP
+    /// Range request. The partial file IS the resume state, so a transfer
+    /// that died at 80% costs the last 20% next time, not a fresh start;
+    /// on a slow link that is the difference between the library arriving
+    /// and the same outfit being started over on every launch.
+    ///
+    /// Bytes arrive in the session's own chunks (`ResumableFetchDelegate`)
+    /// and go straight to disk on the delegate queue: a per-byte async loop
+    /// here was fine in release but crawled in the Debug builds tests run,
+    /// and starved a fresh install that pulls the whole parts library.
+    /// `nonisolated` so none of it can land on the main actor.
+    ///
+    /// Throws `CacheError` on HTTP/transport failure. The partial is kept on
+    /// transport errors (the caller verifies it when it completes).
+    /// `configuration` lets tests route the session through a stub protocol.
+    nonisolated static func fetch(
         from remoteURL: URL,
-        to destination: URL,
+        to partURL: URL,
+        expectedSize: Int64?,
+        configuration: URLSessionConfiguration = .default,
         onProgress: (@Sendable (Int64, Int64) -> Void)?
     ) async throws {
-        if let onProgress {
-            try await downloadWithProgress(
-                from: remoteURL, to: destination, onProgress: onProgress)
-            return
-        }
-        do {
-            let (downloadedTempURL, response) = try await URLSession.shared.download(
-                from: remoteURL)
-            if let http = response as? HTTPURLResponse,
-                !(200..<300).contains(http.statusCode) {
-                try? FileManager.default.removeItem(at: downloadedTempURL)
-                throw CacheError.httpStatus(http.statusCode)
+        var existing = max(0, fileSize(at: partURL))
+        if let expectedSize {
+            if existing > expectedSize {
+                // Longer than the whole file: stale bytes from another version.
+                try? FileManager.default.removeItem(at: partURL)
+                existing = 0
+            } else if existing == expectedSize {
+                return  // complete; the caller verifies it
             }
-            try FileManager.default.moveItem(at: downloadedTempURL, to: destination)
-        } catch let err as CacheError {
-            throw err
-        } catch {
-            throw CacheError.downloadFailed(error)
+        }
+        var request = URLRequest(url: remoteURL)
+        if existing > 0 {
+            request.setValue("bytes=\(existing)-", forHTTPHeaderField: "Range")
+        }
+        let delegate = ResumableFetchDelegate(
+            partURL: partURL, existing: existing, expectedSize: expectedSize, onProgress: onProgress)
+        let session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
+        defer { session.finishTasksAndInvalidate() }
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                delegate.start(session.dataTask(with: request), continuation: continuation)
+            }
+        } onCancel: {
+            delegate.cancel()
         }
     }
 
@@ -300,76 +328,44 @@ actor RemoteAssetCache {
         }
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
-
-    /// Downloads with byte-progress via a dedicated delegate-backed session.
-    /// The delegate moves the temp file to `destination` (it's deleted the
-    /// moment its callback returns) and resumes the continuation, so this
-    /// bridges the classic download-task API into async/await. Cancelling the
-    /// awaiting task cancels the underlying `URLSessionDownloadTask`.
-    private static func downloadWithProgress(
-        from remoteURL: URL,
-        to destination: URL,
-        onProgress: @escaping @Sendable (Int64, Int64) -> Void
-    ) async throws {
-        let delegate = DownloadProgressDelegate(
-            destination: destination, onProgress: onProgress)
-        let session = URLSession(
-            configuration: .default, delegate: delegate, delegateQueue: nil)
-        defer { session.finishTasksAndInvalidate() }
-        _ = try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL, Error>) in
-                delegate.setContinuation(continuation)
-                let task = session.downloadTask(with: remoteURL)
-                delegate.attach(task)
-                task.resume()
-            }
-        } onCancel: {
-            delegate.cancel()
-        }
-    }
 }
 
-// MARK: - Progress delegate
+// MARK: - Resumable fetch delegate
 
-/// Bridges a `URLSessionDownloadTask` into async/await while forwarding
-/// byte-progress. On completion it moves the temp file into `destination` (the
-/// system deletes it once `didFinishDownloadingTo` returns) and resumes the
-/// continuation exactly once. Progress is throttled so a multi-hundred-MB
-/// fetch doesn't flood the main actor.
-private final class DownloadProgressDelegate: NSObject, URLSessionDownloadDelegate,
-    @unchecked Sendable {
-    private let destination: URL
-    private let onProgress: @Sendable (Int64, Int64) -> Void
+/// Streams one ranged GET into the partial file, chunk by chunk, on the
+/// session's serial delegate queue. 206 appends to what is held; 200 starts
+/// the file over (the server ignored the range); 416 with bytes held means
+/// nothing is left to send.
+private final class ResumableFetchDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+    private let partURL: URL
+    private let expectedSize: Int64?
+    private let onProgress: (@Sendable (Int64, Int64) -> Void)?
     private let lock = NSLock()
-    private var lastReported: Int64 = 0
-    private var continuation: CheckedContinuation<URL, Error>?
-    private var didResume = false
-    private var task: URLSessionDownloadTask?
+    private var continuation: CheckedContinuation<Void, Error>?
+    private var task: URLSessionDataTask?
     private var wasCancelled = false
-    /// Transport-error recoveries left in this download: a dropped connection
-    /// mid-fetch continues from the partial bytes via URLSession resume data
-    /// instead of failing the whole 100 MB fetch back to the caller.
-    private var resumeAttemptsLeft = 2
+    private var handle: FileHandle?
+    private var existing: Int64
+    private var written: Int64 = 0
+    private var total: Int64 = -1
+    private var lastReported: Int64 = -1
+    private var failure: Error?
+    private var nothingLeft = false
 
-    init(destination: URL, onProgress: @escaping @Sendable (Int64, Int64) -> Void) {
-        self.destination = destination
+    init(partURL: URL, existing: Int64, expectedSize: Int64?, onProgress: (@Sendable (Int64, Int64) -> Void)?) {
+        self.partURL = partURL
+        self.existing = existing
+        self.expectedSize = expectedSize
         self.onProgress = onProgress
     }
 
-    func setContinuation(_ continuation: CheckedContinuation<URL, Error>) {
-        lock.lock()
-        self.continuation = continuation
-        lock.unlock()
-    }
-
-    func attach(_ task: URLSessionDownloadTask) {
+    func start(_ task: URLSessionDataTask, continuation: CheckedContinuation<Void, Error>) {
         lock.lock()
         self.task = task
+        self.continuation = continuation
         let cancelled = wasCancelled
         lock.unlock()
-        // Closes the race where cancel() lands between an errored task and its
-        // resume-data replacement being attached.
-        if cancelled { task.cancel() }
+        if cancelled { task.cancel() } else { task.resume() }
     }
 
     func cancel() {
@@ -380,88 +376,82 @@ private final class DownloadProgressDelegate: NSObject, URLSessionDownloadDelega
         task?.cancel()
     }
 
-    /// Resumes the continuation at most once (finish, HTTP error, or transport
-    /// error can all race).
-    private func resume(_ result: Result<URL, Error>) {
-        lock.lock()
-        guard !didResume, let continuation else { lock.unlock(); return }
-        didResume = true
-        self.continuation = nil
-        lock.unlock()
-        continuation.resume(with: result)
-    }
-
     func urlSession(
-        _ session: URLSession,
-        downloadTask: URLSessionDownloadTask,
-        didWriteData bytesWritten: Int64,
-        totalBytesWritten: Int64,
-        totalBytesExpectedToWrite: Int64
+        _ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse,
+        completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
     ) {
-        lock.lock()
-        let atEnd = totalBytesExpectedToWrite > 0
-            && totalBytesWritten >= totalBytesExpectedToWrite
-        // Report the first callback, then every ~64 KB, plus the final one. Small
-        // enough that a slow (but live) download still shows movement and keeps
-        // the stall detector fed; coarse enough not to flood the main actor.
-        let shouldReport = lastReported == 0
-            || totalBytesWritten - lastReported >= 65_536
-            || atEnd
-        if shouldReport { lastReported = totalBytesWritten }
-        lock.unlock()
-        if shouldReport { onProgress(totalBytesWritten, totalBytesExpectedToWrite) }
-    }
-
-    func urlSession(
-        _ session: URLSession,
-        downloadTask: URLSessionDownloadTask,
-        didFinishDownloadingTo location: URL
-    ) {
-        if let http = downloadTask.response as? HTTPURLResponse,
-            !(200..<300).contains(http.statusCode) {
-            resume(.failure(RemoteAssetCache.CacheError.httpStatus(http.statusCode)))
-            return
+        guard let http = response as? HTTPURLResponse else {
+            failure = RemoteAssetCache.CacheError.downloadFailed(URLError(.badServerResponse))
+            return completionHandler(.cancel)
+        }
+        switch http.statusCode {
+        case 206:
+            break
+        case 416 where existing > 0:
+            nothingLeft = true
+            return completionHandler(.cancel)
+        case 200..<300:
+            existing = 0  // the whole file is coming: start the partial over
+        default:
+            failure = RemoteAssetCache.CacheError.httpStatus(http.statusCode)
+            return completionHandler(.cancel)
         }
         do {
-            if FileManager.default.fileExists(atPath: destination.path) {
-                try? FileManager.default.removeItem(at: destination)
+            if !FileManager.default.fileExists(atPath: partURL.path) {
+                FileManager.default.createFile(atPath: partURL.path, contents: nil)
             }
-            try FileManager.default.moveItem(at: location, to: destination)
-            resume(.success(destination))
+            let handle = try FileHandle(forWritingTo: partURL)
+            try handle.truncate(atOffset: UInt64(existing))
+            try handle.seekToEnd()
+            self.handle = handle
         } catch {
-            resume(.failure(RemoteAssetCache.CacheError.downloadFailed(error)))
+            failure = RemoteAssetCache.CacheError.downloadFailed(error)
+            return completionHandler(.cancel)
+        }
+        written = existing
+        total = http.expectedContentLength > 0 ? existing + http.expectedContentLength : (expectedSize ?? -1)
+        report()
+        completionHandler(.allow)
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        guard let handle, failure == nil else { return }
+        do {
+            try handle.write(contentsOf: data)
+            written += Int64(data.count)
+            if written - lastReported >= 65_536 { report() }
+        } catch {
+            failure = RemoteAssetCache.CacheError.downloadFailed(error)
+            dataTask.cancel()
         }
     }
 
-    func urlSession(
-        _ session: URLSession,
-        task: URLSessionTask,
-        didCompleteWithError error: Error?
-    ) {
-        // Fires after `didFinishDownloadingTo` on success (a no-op then, since
-        // the continuation already resumed) or on transport failure/cancel.
-        guard let error else { return }
-
-        let nsError = error as NSError
-        let isCancel =
-            nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled
-        let resumeData = nsError.userInfo[NSURLSessionDownloadTaskResumeData] as? Data
-
-        lock.lock()
-        let canResume = !isCancel && !wasCancelled && !didResume
-            && resumeData != nil && resumeAttemptsLeft > 0
-        if canResume { resumeAttemptsLeft -= 1 }
-        lock.unlock()
-
-        if canResume, let resumeData {
-            nlLog(
-                "[RemoteAssetCache] Download interrupted (\(nsError.code)) — resuming from partial data.",
-                level: .warning)
-            let resumed = session.downloadTask(withResumeData: resumeData)
-            attach(resumed)
-            resumed.resume()
-            return
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        try? handle?.close()
+        handle = nil
+        let result: Result<Void, Error>
+        if nothingLeft {
+            result = .success(())
+        } else if let failure {
+            result = .failure(failure)
+        } else if let error {
+            let cancelled = (error as? URLError)?.code == .cancelled
+            lock.lock(); let byCaller = wasCancelled; lock.unlock()
+            result = .failure(
+                cancelled && byCaller ? CancellationError() : RemoteAssetCache.CacheError.downloadFailed(error))
+        } else {
+            report()
+            result = .success(())
         }
-        resume(.failure(RemoteAssetCache.CacheError.downloadFailed(error)))
+        lock.lock()
+        let continuation = self.continuation
+        self.continuation = nil
+        lock.unlock()
+        continuation?.resume(with: result)
+    }
+
+    private func report() {
+        lastReported = written
+        onProgress?(written, total)
     }
 }

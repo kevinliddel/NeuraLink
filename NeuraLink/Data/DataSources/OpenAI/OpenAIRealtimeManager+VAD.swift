@@ -30,6 +30,11 @@ extension OpenAIRealtimeManager: SileroVADDelegate {
     }
 
     func sileroVADDidDetectVoiceEnd(wavData: Data?) {
+        // How they sounded; judged when the server's transcript arrives.
+        if AffectSettings.shared.isEnabled, let wavData, let audio = WAVDecoder.decode(wavData), !audio.samples.isEmpty {
+            AcousticAffectState.shared.noteUtterance(
+                AcousticFeatureExtractor.extract(samples: audio.samples, sampleRate: audio.sampleRate))
+        }
         guard state.status == .listening else { return }
         state.status = .ready
         nlLog("[SileroVAD]: Voice ended → ready", level: .info)

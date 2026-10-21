@@ -34,7 +34,14 @@ extension VRMExtensionParser {
                             continue
                         }
 
-                        let offset = parseVRM0Vector3(colliderDict["offset"]) ?? .zero
+                        // VRM 0.x writes the offset in Unity's left-handed
+                        // node space while the exporter reversed Z for the
+                        // geometry, so Z is opposite here (three-vrm does the
+                        // same). Left as-is, every forward head collider sat
+                        // at the back of the head and pushed the back hair
+                        // about, which read as pulsating strands.
+                        var offset = parseVRM0Vector3(colliderDict["offset"]) ?? .zero
+                        offset.z = -offset.z
                         let radius = parseFloatValue(colliderDict["radius"]) ?? 0.0
                         let collider = VRMCollider(
                             node: node,
@@ -127,9 +134,9 @@ extension VRMExtensionParser {
 
         let gravityDir: SIMD3<Float>
         if let gd = dict["gravityDir"] as? [String: Any] {
-            let x = gd["x"] as? Float ?? 0
-            let y = gd["y"] as? Float ?? -1
-            let z = gd["z"] as? Float ?? 0
+            let x = parseFloatValue(gd["x"]) ?? 0
+            let y = parseFloatValue(gd["y"]) ?? -1
+            let z = parseFloatValue(gd["z"]) ?? 0
             gravityDir = SIMD3<Float>(x, y, z)
         } else {
             gravityDir = SIMD3<Float>(0, -1, 0)
@@ -225,11 +232,16 @@ extension VRMExtensionParser {
         return chain
     }
 
+    /// JSON numbers arrive as Double (or NSNumber), never as Float: a plain
+    /// `as? Float` read every component as 0, which put every VRM 0.x
+    /// collider at its bone's origin — head spheres on the neck, arm spheres
+    /// on the shoulder — and left hair tips fighting spheres that were never
+    /// meant to touch them.
     func parseVRM0Vector3(_ value: Any?) -> SIMD3<Float>? {
         guard let dict = value as? [String: Any] else { return nil }
-        let x = dict["x"] as? Float ?? 0
-        let y = dict["y"] as? Float ?? 0
-        let z = dict["z"] as? Float ?? 0
+        let x = parseFloatValue(dict["x"]) ?? 0
+        let y = parseFloatValue(dict["y"]) ?? 0
+        let z = parseFloatValue(dict["z"]) ?? 0
         return SIMD3<Float>(x, y, z)
     }
 

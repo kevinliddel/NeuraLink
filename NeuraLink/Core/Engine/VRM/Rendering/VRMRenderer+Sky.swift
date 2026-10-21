@@ -27,7 +27,7 @@ extension VRMRenderer {
     /// Advances rain simulation. Both 2D screen overlay and 3D world rain share the same RainController.
     func updateRain(deltaTime: Float) {
         rainRenderer?.update(deltaTime: deltaTime)
-        let intensity = rainRenderer?.intensity ?? 0
+        let intensity = (rainRenderer?.intensity ?? 0) * rainBudgetScale
         skyRenderer?.rainIntensity = intensity
 
         // 3D world rain is driven by the same intensity — synced with the 2D overlay

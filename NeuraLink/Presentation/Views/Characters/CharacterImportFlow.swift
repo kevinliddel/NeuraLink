@@ -66,8 +66,8 @@ struct CharacterImportFlow: ViewModifier {
             .sheet(item: $candidate, onDismiss: confirmSheetDismissed) { candidate in
                 CharacterImportConfirmSheet(
                     candidate: candidate,
-                    onConfirm: { displayName, cardImage in
-                        finalize(candidate, displayName: displayName, cardImage: cardImage)
+                    onConfirm: { displayName, gender, cardImage in
+                        finalize(candidate, displayName: displayName, gender: gender, cardImage: cardImage)
                     },
                     onCancel: { self.candidate = nil }
                 )
@@ -109,11 +109,13 @@ struct CharacterImportFlow: ViewModifier {
         }
     }
 
-    private func finalize(_ candidate: VRMImportCandidate, displayName: String, cardImage: Data?) {
+    private func finalize(
+        _ candidate: VRMImportCandidate, displayName: String, gender: CharacterGender, cardImage: Data?
+    ) {
         Task {
             do {
                 let row = try await VRMImportService.shared.finalize(
-                    candidate, displayName: displayName, customThumbnailPNG: cardImage)
+                    candidate, displayName: displayName, gender: gender, customThumbnailPNG: cardImage)
                 pendingDiscard = nil
                 self.candidate = nil
                 ImportedCharacterStore.shared.noteExternalMutation()
@@ -163,7 +165,7 @@ struct CharacterImportFlow: ViewModifier {
                     .foregroundStyle(.white.opacity(0.7))
             }
             .padding(28)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20))
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: AppTheme.Radius.large))
         }
         .transition(.opacity)
     }

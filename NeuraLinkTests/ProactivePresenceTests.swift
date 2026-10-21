@@ -78,6 +78,29 @@ struct ProactivePresenceTests {
         #expect(event.contains("don't ask whether they're still there"))
     }
 
+    @Test("The second small talk takes a different angle and steers away from the last line")
+    func smallTalkVaries() {
+        #expect(ProactivePresenceManager.smallTalkAngle(for: 0) == .checkIn)
+        #expect(ProactivePresenceManager.smallTalkAngle(for: 1) == .shareThought)
+        #expect(ProactivePresenceManager.smallTalkAngle(for: 2) == .checkIn)
+
+        let first = ProactivePresenceManager.smallTalkEvent(
+            timeOfDay: "evening", stage: "Friends", factSeed: "User won a mock trial", angle: .checkIn)
+        let second = ProactivePresenceManager.smallTalkEvent(
+            timeOfDay: "evening", stage: "Friends", factSeed: nil, angle: .shareThought,
+            previousLine: "Hey, I'm still here. If you want, we can shake things up.")
+        #expect(ProactivePresenceManager.normalize(first) != ProactivePresenceManager.normalize(second))
+        #expect(second.contains("one small thing of your own"))
+        #expect(!second.contains("don't ask whether they're still there"))
+        #expect(second.contains("You already said: \"Hey, I'm still here."))
+        #expect(second.contains("genuinely different"))
+        #expect(!first.contains("You already said"))
+
+        #expect(ProactivePresenceManager.previousLine("  ") == nil)
+        #expect(ProactivePresenceManager.previousLine("one\n two   three") == "one two three")
+        #expect(ProactivePresenceManager.previousLine(String(repeating: "a", count: 200))?.hasSuffix("…") == true)
+    }
+
     @Test("Small talk without a fact omits the reference clause")
     func smallTalkUnseeded() {
         let event = ProactivePresenceManager.smallTalkEvent(

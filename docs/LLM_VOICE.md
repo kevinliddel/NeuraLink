@@ -89,6 +89,24 @@ Notes on the flow:
 - **Persona voice resolution**: Each engine consults [`PersonaVoiceStore`](../NeuraLink/Data/DataSources/Memory/PersonaVoiceStore.swift) at synthesis time — now a thin facade over the `character_ai` SQL table (each engine's voice lives alongside that engine's prompt) — so changing the picker in `PersonaSettingsView` and saving immediately changes the voice for the next chunk without requiring an app restart.
 - **Buffer scheduling**: Each engine emits `AVAudioPCMBuffer`s in its native sample rate (OpenVoice at 22.05 kHz, VOICEVOX at 24 kHz, System at iOS-locale-dependent). [`scheduleBuffer`](../NeuraLink/Data/DataSources/LocalLLM/LocalLLMManager+TTS.swift) re-connects the player node with the right format on the fly when consecutive chunks have differing rates.
 
+### Voice preview and transcript playback
+
+The persona settings preview and the chat-history play button speak a text that
+is already complete, so the only wait is rendering. [`LocalVoicePreview`](../NeuraLink/Presentation/Views/AI/LocalVoicePreview.swift)
+keeps that wait short:
+
+- **Chunked.** [`SpeechChunker`](../NeuraLink/Domain/Entities/SpeechChunker.swift) splits the text like the live chat does: a short first clause, then whole sentences. VOICEVOX renders a whole call before returning any audio, so playback now starts after the first clause and the rest renders while it plays.
+- **Direct voice.** The picked voice goes straight to the engine (`VoiceVoxEngine.synthesize(text:speakerID:)`, `OpenVoiceEngine.speak(_:voiceName:deliver:)`). Trying an unsaved voice no longer rewrites the saved one or borrows the chat's `onBufferReady`.
+- **No CPU contention.** While it speaks, `LocalLLMManager.beginStandaloneSpeech` stops a running background memory generation and holds new ones, because they share the CPU cores VOICEVOX renders on.
+- **Warm voice.** The settings screen warms the picked voice shortly after it opens or changes (`VoiceVoxEngine.warmUp` loads the speaker and renders one mora). It never downloads a voice that isn't on disk.
+- **Stoppable.** The button is a stop button from the first tap, and a stopped run drops the chunk it was rendering.
+
+### Phantom transcripts from local Whisper
+
+Whisper was trained on subtitles. When the voice activity detector opens a turn on a breath, a desk thump or room noise, `ggml-base` writes what subtitles say there: "(笑)", "(音楽)", "(エンディング)", "[BLANK_AUDIO]", or a sign-off like "ご視聴ありがとうございました". [`PhantomTranscriptFilter`](../NeuraLink/Domain/Entities/PhantomTranscriptFilter.swift) drops a transcript that is only an annotation or a known filler, and `spokenText` cuts annotations out of real speech ("(笑) 本当に？" becomes "本当に？").
+
+The decoder's non-speech token suppression stays **off** on purpose. `WhisperPhantomDiagnostic` runs the bundled model on noise, a breath, a thump and real speech both ways. With suppression on, the same noise comes out as believable words ("アイス", "I'm going to start the engine.") that no filter can catch, and real speech is unchanged. whisper.cpp's per-segment no-speech probability reads about zero with `no_timestamps`, so it is not used.
+
 ### Voice cache & invalidation
 
 `TTSEngineSelector` caches one engine instance per persona. The cache is invalidated by `invalidateCache(for:)` whenever:
@@ -194,7 +212,7 @@ For the local LLM path the equivalent log starts at `֎ [FunctionCall] LocalLLM 
 - **Local STT**: [`LocalWhisperManager.swift`](../NeuraLink/Data/DataSources/LocalWhisperManager.swift) — whisper.cpp (`ggml-base`, multilingual, CPU), one-shot at voice-end.
 - **Local TTS engines**: [`TTSEngineProtocol.swift`](../NeuraLink/Domain/Interfaces/TTSEngineProtocol.swift), [`VoiceVoxEngine.swift`](../NeuraLink/Data/DataSources/TTS/VoiceVoxEngine.swift), [`OpenVoiceEngine.swift`](../NeuraLink/Data/DataSources/TTS/OpenVoice/OpenVoiceEngine.swift), [`SystemTTSEngine.swift`](../NeuraLink/Data/DataSources/TTS/SystemTTSEngine.swift).
 - **Engine selection & caching**: [`TTSEngineSelector.swift`](../NeuraLink/Data/DataSources/TTS/TTSEngineSelector.swift).
-- **Voice picker + preview**: [`PersonaSettingsView.swift`](../NeuraLink/Presentation/Views/AI/PersonaSettingsView.swift).
+- **Voice picker + preview**: [`PersonaSettingsView.swift`](../NeuraLink/Presentation/Views/AI/PersonaSettingsView.swift), [`LocalVoicePreview.swift`](../NeuraLink/Presentation/Views/AI/LocalVoicePreview.swift), [`SpeechChunker.swift`](../NeuraLink/Domain/Entities/SpeechChunker.swift).
 - **OpenAI handshake**: [`OpenAIRealtimeManager.swift`](../NeuraLink/Data/DataSources/OpenAI/OpenAIRealtimeManager.swift) (mint + SDP exchange), [`OpenAIRealtimeManager+Handlers.swift`](../NeuraLink/Data/DataSources/OpenAI/OpenAIRealtimeManager+Handlers.swift) (`sendInitialSessionUpdate`, data-channel event dispatch).
 - **Shared tool dispatch**: [`AppFunctionExecutor.swift`](../NeuraLink/Data/DataSources/AppFunctionExecutor.swift).
 
@@ -215,3 +233,40 @@ so that state keeps the original mic gate. Toggle: Autonomy → "Interrupt while
 speaking (local)" (`OpenAISettings.isLocalBargeInEnabled`, default on for
 ≥ 5 GB devices).
 
+## Acoustic affect (2026-10-16)
+
+The companion hears *how* the user sounds, not only what they said
+(Companion Evolution pillar 1). Both engines measure the utterance the VAD
+already brackets; nothing extra is recorded.
+
+- **Features** (`AcousticFeatureExtractor`, Accelerate): the audio is
+  decimated to ≤ 16 kHz, cut into 25 ms frames, and each frame gets an RMS.
+  Frames above 30 % of the loud frames' RMS are speech; on those a
+  normalised autocorrelation over 70–400 Hz gives a pitch when its peak
+  passes 0.5 (the shortest lag within 90 % of the best peak, so period
+  multiples don't halve the pitch). Per utterance: duration, pitch mean and spread, energy mean
+  and spread, inner pauses (≥ 150 ms of silence between the first and last
+  speech frame) and, once the transcript lands, words per second.
+- **Where the audio comes from**: local, the 16 kHz samples handed to
+  whisper.cpp at voice end; OpenAI, the WAV the Silero wrapper returns from
+  `voiceEnded(withWavData:)` (`WAVDecoder`, 16-bit PCM or float).
+- **Judgement** (`AcousticAffect`, pure): relative to the user's own
+  baseline, an exponential moving average over their utterances (two before
+  any judgement is made). Quiet (≤ 0.7× usual energy), slower and flat
+  (< 25 Hz spread) → **subdued**; loud (≥ 1.3×) or lively (≥ 60 Hz spread)
+  and quicker → **animated**; slow with ≥ 0.4 pauses/s → **hesitant**;
+  otherwise neutral. Utterances under 1 s are never judged.
+- **Prompt**: a one-line tag with a tone directive ("[User acoustic affect:
+  subdued — …] → Tone directive: speak softly, …"). Local: a per-turn
+  system block after the history (KV-safe, like the game reminder), empty
+  when neutral. OpenAI: a system `conversation.item.create` only when the
+  read **changes**, plus a "back to their usual voice" line on the return
+  to neutral; the reply already streaming is unaffected, the next ones are.
+- **Voice**: `AcousticAffectState.modulation` bends the local voices —
+  VoiceVox `speedScale` / `intonationScale` (house defaults 1.1 / 1.5 ×
+  the modulation) and the system voice's rate and pitch. OpenVoice has no
+  knob. Subdued 0.92 / 0.85 / 0.97, animated 1.06 / 1.15 / 1.03, hesitant
+  0.95 / 0.9 / 1.
+- **Setting**: AI Settings → Autonomy → Conversation → "Sense my tone"
+  (`AffectSettings`, on by default). Off, nothing is measured and the
+  voices use their defaults.

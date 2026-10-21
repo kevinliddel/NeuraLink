@@ -70,6 +70,10 @@ final class CameraManager: NSObject, @unchecked Sendable {
         }
     }
 
+    /// The newest camera buffer, for on-device analysis (face presence).
+    @MainActor
+    func latestFrame() -> CVPixelBuffer? { latestPixelBuffer }
+
     /// Captures a single frame from the latest camera buffer. Call on MainActor.
     @MainActor
     func captureCurrentFrame() -> UIImage? {
