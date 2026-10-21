@@ -52,8 +52,6 @@ final class LocalWhisperManager: NSObject, @unchecked Sendable {
     private static let threads: Int32 = 2
     /// GGML model filename (bundled or downloaded). Multilingual base model.
     private static let modelFileName = "ggml-base"
-    /// Max transcript bytes per utterance — ample for a spoken sentence.
-    private static let outputBufferBytes = 4096
 
     /// One-shot migration flag: pre-Phase-4 builds wrote raw user audio to
     /// `Documents/whisper_<ts>.wav`; sweep any backlog once. (The whisper.cpp
@@ -164,32 +162,15 @@ final class LocalWhisperManager: NSObject, @unchecked Sendable {
         let signpost = NLSignposts.speech.beginInterval("transcribe")
         defer { NLSignposts.speech.endInterval("transcribe", signpost) }
 
-        // 1. Remove DC offset (centre the signal).
-        let mean = samples.reduce(0, +) / Float(samples.count)
-        let centered = samples.map { $0 - mean }
-
-        // 2. Peak amplitude — gate out room noise (VAD false positives) and
-        //    normalise quiet speech.
-        let maxAmp = centered.reduce(0) { max($0, abs($1)) }
-        nlLog(
-            "[Whisper] Samples: \(samples.count), maxAmp: \(String(format: "%.4f", maxAmp)), DC Offset: \(String(format: "%.4f", mean))",
-            level: .info)
-
-        // Real speech at arm's length peaks above 0.05; below that it's silence
-        // or ambient noise — amplifying it only feeds loud noise to the encoder.
-        guard maxAmp >= 0.05 else {
-            nlLog(
-                "[Whisper] Skipping: maxAmp \(String(format: "%.4f", maxAmp)) below speech threshold.",
-                level: .info)
+        // Level gate + DC removal + quiet-speech normalisation (WhisperDecode).
+        guard let prepared = WhisperDecode.prepare(samples) else {
+            nlLog("[Whisper] Skipping: \(samples.count) samples below the speech level.", level: .info)
             return
         }
-
-        var normalized = centered
-        if maxAmp < 0.3 {
-            let gain = Float(0.3) / maxAmp
-            normalized = centered.map { $0 * gain }
-            nlLog("[Whisper] Normalized: gain \(String(format: "%.2f", gain))×", level: .info)
-        }
+        nlLog(
+            "[Whisper] Samples: \(samples.count), peak \(String(format: "%.4f", prepared.peak)), "
+            + "gain \(String(format: "%.2f", prepared.gain))×",
+            level: .info)
 
         let language = await MainActor.run { Self.currentLanguage() }
 
@@ -199,39 +180,26 @@ final class LocalWhisperManager: NSObject, @unchecked Sendable {
         // never dropped. No-op (returns immediately) when already loaded.
         if !isReadyToUse { _ = await setup() }
 
-        let text: String? = await withCheckedContinuation { (cont: CheckedContinuation<String?, Never>) in
+        let text: String? = await withCheckedContinuation { cont in
             queue.async { [weak self] in
                 guard let self, let handle = self.handle else {
                     nlLog("[Whisper] whisper.cpp not ready.", level: .info)
                     cont.resume(returning: nil)
                     return
                 }
-                var out = [CChar](repeating: 0, count: Self.outputBufferBytes)
-                let n: Int32 = normalized.withUnsafeBufferPointer { p in
-                    whisper_bridge_transcribe(
-                        handle, p.baseAddress, Int32(normalized.count),
-                        language, &out, Int32(out.count))
-                }
-                if n < 0 {
-                    nlLog("[Whisper] whisper_bridge_transcribe failed (code \(n)).", level: .error)
-                    cont.resume(returning: nil)
-                    return
-                }
-                cont.resume(returning: String(cString: out))
+                cont.resume(returning: WhisperDecode.run(handle: handle, samples: prepared.samples, language: language))
             }
         }
 
-        guard let fullText = text?.trimmingCharacters(in: .whitespacesAndNewlines),
-            !fullText.isEmpty
-        else {
+        guard let text, !text.isEmpty else {
             nlLog("[Whisper] Transcription empty (silence or noise).", level: .info)
             return
         }
 
-        nlLog("[Whisper] Transcription complete (\(fullText.count) chars, lang=\(language)).", level: .info)
-        nlLogSensitive("[Whisper] Transcription text: \(fullText)", level: .info)
+        nlLog("[Whisper] Transcription complete (\(text.count) chars, lang=\(language)).", level: .info)
+        nlLogSensitive("[Whisper] Transcription text: \(text)", level: .info)
         await MainActor.run { [weak self] in
-            self?.delegate?.whisperManager(didTranscribeText: fullText)
+            self?.delegate?.whisperManager(didTranscribeText: text)
         }
     }
 

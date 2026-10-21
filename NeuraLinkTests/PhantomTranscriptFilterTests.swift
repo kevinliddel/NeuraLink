@@ -60,4 +60,25 @@ struct PhantomTranscriptFilterTests {
         #expect(PhantomTranscriptFilter.speechUnits("今日はどんな一日だった") == 3)
         #expect(PhantomTranscriptFilter.normalized("That's... GREAT, right?!") == "that s great right")
     }
+
+    @Test("Local whisper's subtitle habits: annotations and sign-offs")
+    func whisperSubtitleHabits() {
+        // As seen on device, and what ggml-base writes for noise, a breath or a thump.
+        #expect(PhantomTranscriptFilter.reason(transcript: "(笑)") == .annotation)
+        #expect(PhantomTranscriptFilter.reason(transcript: "(エンディング)") == .annotation)
+        #expect(PhantomTranscriptFilter.reason(transcript: "[BLANK_AUDIO]") == .annotation)
+        #expect(PhantomTranscriptFilter.reason(transcript: "(drill whirring)") == .annotation)
+        #expect(PhantomTranscriptFilter.reason(transcript: "（拍手）") == .annotation)
+        #expect(PhantomTranscriptFilter.reason(transcript: "[音楽] ♪") == .annotation)
+        #expect(PhantomTranscriptFilter.reason(transcript: "*laughs*") == .annotation)
+        #expect(PhantomTranscriptFilter.reason(transcript: "笑") == .filler)
+        #expect(PhantomTranscriptFilter.reason(transcript: "ご視聴ありがとうございました。") == .filler)
+        #expect(PhantomTranscriptFilter.reason(transcript: "チャンネル登録よろしくお願いします！") == .filler)
+        #expect(PhantomTranscriptFilter.reason(transcript: "紅茶をお願いします。") == nil)
+        // An annotation next to real words leaves the words.
+        #expect(PhantomTranscriptFilter.reason(transcript: "(笑) 本当に？") == nil)
+        #expect(PhantomTranscriptFilter.spokenText("(ト) 私のメインは?") == "私のメインは?")
+        #expect(PhantomTranscriptFilter.spokenText("本当に（笑）面白いね") == "本当に 面白いね")
+        #expect(PhantomTranscriptFilter.spokenText("Thank you (applause)") == "Thank you")
+    }
 }

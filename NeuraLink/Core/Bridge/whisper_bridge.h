@@ -47,6 +47,11 @@ void whisper_bridge_free(WhisperBridge* whisper);
 int32_t whisper_bridge_transcribe(WhisperBridge* whisper, const float* samples, int32_t n_samples, const char* language,
                                   char* out_buf, int32_t out_buf_size);
 
+/// Suppress non-speech tokens ("(笑)", "[MUSIC]", "♪"). Off by default: the
+/// app drops those annotations, while suppressing them makes whisper invent
+/// words on noise. Exposed for WhisperPhantomDiagnostic.
+void whisper_bridge_set_suppress_non_speech(WhisperBridge* whisper, bool suppress);
+
 #ifdef __cplusplus
 }
 #endif

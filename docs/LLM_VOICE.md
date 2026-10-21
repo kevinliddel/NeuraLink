@@ -101,6 +101,12 @@ keeps that wait short:
 - **Warm voice.** The settings screen warms the picked voice shortly after it opens or changes (`VoiceVoxEngine.warmUp` loads the speaker and renders one mora). It never downloads a voice that isn't on disk.
 - **Stoppable.** The button is a stop button from the first tap, and a stopped run drops the chunk it was rendering.
 
+### Phantom transcripts from local Whisper
+
+Whisper was trained on subtitles. When the voice activity detector opens a turn on a breath, a desk thump or room noise, `ggml-base` writes what subtitles say there: "(笑)", "(音楽)", "(エンディング)", "[BLANK_AUDIO]", or a sign-off like "ご視聴ありがとうございました". [`PhantomTranscriptFilter`](../NeuraLink/Domain/Entities/PhantomTranscriptFilter.swift) drops a transcript that is only an annotation or a known filler, and `spokenText` cuts annotations out of real speech ("(笑) 本当に？" becomes "本当に？").
+
+The decoder's non-speech token suppression stays **off** on purpose. `WhisperPhantomDiagnostic` runs the bundled model on noise, a breath, a thump and real speech both ways. With suppression on, the same noise comes out as believable words ("アイス", "I'm going to start the engine.") that no filter can catch, and real speech is unchanged. whisper.cpp's per-segment no-speech probability reads about zero with `no_timestamps`, so it is not used.
+
 ### Voice cache & invalidation
 
 `TTSEngineSelector` caches one engine instance per persona. The cache is invalidated by `invalidateCache(for:)` whenever:

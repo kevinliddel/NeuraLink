@@ -9,6 +9,11 @@
 //  Those turns must not reach the chat history, the memory store or the
 //  model's context (docs/openai_realtime_chat.md). Pure and unit-tested.
 //
+//  Local whisper adds its subtitle habits: on noise it writes "(笑)",
+//  "(音楽)" or "ご視聴ありがとうございました". A transcript that is only an
+//  annotation is dropped, and annotations are cut out of real speech
+//  (`spokenText`).
+//
 //  Created by Dedicatus on 15/10/2026.
 //
 
@@ -29,6 +34,8 @@ enum PhantomTranscriptFilter {
         case fragment
         /// A known hallucination for silence ("you", "thank you", "ね").
         case filler
+        /// Only a subtitle annotation, like "(笑)" or "[音楽]".
+        case annotation
     }
 
     /// Server VAD pads a segment by ~300 ms before the speech, so a real
@@ -43,13 +50,31 @@ enum PhantomTranscriptFilter {
 
     /// What the transcription models say when they hear nothing.
     static let fillers: Set<String> = [
-        "you", "thank you", "thanks for watching", "thanks for listening", "bye", "ね", "ん", "あ", "え", "はい"
+        "you", "thank you", "thanks for watching", "thanks for listening", "thank you for watching", "bye",
+        "please subscribe", "subtitles by the amara org community",
+        "ね", "ん", "あ", "え", "はい", "笑", "拍手", "音楽", "字幕",
+        "ご視聴ありがとうございました", "ご視聴ありがとうございます", "ご清聴ありがとうございました",
+        "最後までご視聴いただきありがとうございました", "最後までご視聴ありがとうございました",
+        "チャンネル登録よろしくお願いします", "チャンネル登録お願いします", "チャンネル登録をお願いします"
     ]
+
+    /// Bracketed annotations whisper copies from subtitles: (笑) （拍手）
+    /// [音楽] 【字幕】 ♪…♪ *laughs*.
+    private static let annotationPattern = #"\([^)]*\)|（[^）]*）|\[[^\]]*\]|【[^】]*】|♪[^♪]*♪|♪|\*[^*]+\*"#
+
+    /// `transcript` without subtitle annotations, single-spaced.
+    static func spokenText(_ transcript: String) -> String {
+        transcript
+            .replacingOccurrences(of: annotationPattern, with: " ", options: .regularExpression)
+            .split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
 
     /// Nil when the transcript is genuine; otherwise why it is not.
     static func reason(transcript: String, speechMs: Int? = nil, prompt: String? = nil) -> Reason? {
-        let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.rangeOfCharacter(from: .alphanumerics) != nil else { return .empty }
+        let raw = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard raw.rangeOfCharacter(from: .alphanumerics) != nil else { return .empty }
+        let trimmed = spokenText(raw)
+        guard trimmed.rangeOfCharacter(from: .alphanumerics) != nil else { return .annotation }
 
         let normal = normalized(trimmed)
         if let prompt, isEcho(normal, ofPrompt: normalized(prompt)) { return .promptEcho }
