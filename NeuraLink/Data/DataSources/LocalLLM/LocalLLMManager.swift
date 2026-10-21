@@ -58,6 +58,9 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
 
     // Accumulate text for TTS chunking (e.g., speak sentence by sentence)
     var ttsBuffer = ""
+    /// Standalone speech in progress (voice preview, transcript playback):
+    /// background generations wait for it (see `beginStandaloneSpeech`).
+    var standaloneSpeechHolds = 0
 
     /// Drops a "Oz:" style speaker label off the front of each reply.
     var replyLabelFilter = LeadingLabelFilter(names: [])

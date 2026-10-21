@@ -153,6 +153,18 @@ nonisolated struct LeadingLabelFilter {
                 if full.hasPrefix(trimmed) && !trimmed.isEmpty { return "" }
             }
         }
+        // Any short katakana name ("オズ：") is a label too — the JP model
+        // writes the persona's name in katakana.
+        if let colon = trimmed.firstIndex(where: { $0 == "：" || $0 == ":" }) {
+            let head = trimmed[..<colon]
+            if (1...8).contains(head.count), head.allSatisfy({ $0.isKatakana }) {
+                decided = true
+                buffer = ""
+                return String(trimmed[trimmed.index(after: colon)...].drop { $0 == " " })
+            }
+        } else if trimmed.count < 9, !trimmed.isEmpty, trimmed.allSatisfy({ $0.isKatakana }) {
+            return ""   // could still be "オズ："
+        }
         decided = true
         defer { buffer = "" }
         return buffer
@@ -189,7 +201,7 @@ nonisolated struct LocalCue: Sendable, Equatable {
     func instruction(japaneseModel: Bool, characterName: String) -> String {
         guard japaneseModel else { return english }
         if let japanese, !japanese.isEmpty { return japanese }
-        return "次の状況に合わせて、\(characterName)として日本語で短く一言だけ話してください。状況：\(english)"
+        return "\(characterName)のセリフを一つだけ書いてください。\n場面：\(english)\nセリフだけを、日本語で書くこと。"
     }
 }
 
@@ -199,20 +211,81 @@ nonisolated struct LocalCue: Sendable, Equatable {
 nonisolated enum CueReplyValidator {
     static let narrationMarkers = [
         "the user", "in character", "relationship stage", "break the silence", "instruction",
-        "ユーザーが", "ユーザーは", "ユーザーに", "指示", "状況："
+        // The companion never calls the person it talks to "ユーザー", and the
+        // rest are the cue's own scaffolding coming back.
+        "ユーザー", "指示", "状況：", "場面：", "内容：", "セリフ",
+        // Placeholders for a name the model doesn't know ("○○様").
+        "○○", "〇〇", "××"
     ]
+
+    /// Words that only appear when the model describes the line instead of
+    /// saying it ("…と返答します", "セリフを書きます").
+    static let narrationVerbs = ["セリフ", "返答", "答えます", "書きます", "迎えます", "感じで", "場合は", "として"]
 
     /// The line to say, or nil when it echoes or narrates the instruction or
     /// is empty.
     static func clean(_ reply: String, instruction: String, names: [String]) -> String? {
-        let text = LeadingLabelFilter.strip(reply, names: names).trimmingCharacters(in: .whitespacesAndNewlines)
+        let stripped = LeadingLabelFilter.strip(reply, names: names).trimmingCharacters(in: .whitespacesAndNewlines)
+        // A line written for a scene often comes in Japanese quotes, labelled
+        // or wrapped in narration: keep only the quoted line then.
+        let text = quotedLine(in: stripped, names: names)
         guard !text.isEmpty else { return nil }
         if text.hasPrefix("*") || (text.hasPrefix("（") && text.hasSuffix("）")) { return nil }
         let lowered = text.lowercased()
         if narrationMarkers.contains(where: { lowered.contains($0) }) { return nil }
         let cjk = text.unicodeScalars.contains { (0x3040...0x30FF).contains($0.value) || (0x4E00...0x9FFF).contains($0.value) }
         if longestCommonSubstring(lowered, instruction.lowercased()) >= (cjk ? 8 : 18) { return nil }
+        // A paraphrased scene ("今は午後で、会話が途切れています") copies the
+        // cue in short runs rather than one long one.
+        if cjk, echoCoverage(text, instruction) >= 0.5 { return nil }
         return text
+    }
+
+    /// The quoted line when `text` is only a quote, a labelled quote
+    /// ("オズ「…」") or narration around one ("オズは…「…」と返答します"),
+    /// else `text` unchanged. An unclosed quote at the end counts.
+    static func quotedLine(in text: String, names: [String]) -> String {
+        var quotes: [String] = []
+        var outside = ""
+        var open: String?
+        for char in text {
+            if char == "「", open == nil {
+                open = ""
+            } else if char == "」", let quote = open {
+                quotes.append(quote)
+                open = nil
+            } else if open != nil {
+                open?.append(char)
+            } else {
+                outside.append(char)
+            }
+        }
+        if let open { quotes.append(open) }
+        guard let longest = quotes.map({ $0.trimmingCharacters(in: .whitespacesAndNewlines) })
+                .max(by: { $0.count < $1.count }),
+              longest.count >= 6 else { return text }
+        let rest = outside.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+        let narrated = rest.isEmpty
+            || names.contains { !$0.isEmpty && rest.localizedCaseInsensitiveContains($0) }
+            || narrationVerbs.contains { rest.contains($0) }
+        return narrated ? longest : text
+    }
+
+    /// Share of `reply`'s characters inside a run of 3+ characters that also
+    /// appears in `instruction`.
+    static func echoCoverage(_ reply: String, _ instruction: String) -> Double {
+        let chars = Array(reply)
+        guard !chars.isEmpty else { return 0 }
+        var covered = [Bool](repeating: false, count: chars.count)
+        for start in chars.indices {
+            var length = 0
+            while start + length < chars.count,
+                  instruction.contains(String(chars[start...(start + length)])) {
+                length += 1
+            }
+            if length >= 3 { for index in start..<(start + length) { covered[index] = true } }
+        }
+        return Double(covered.filter { $0 }.count) / Double(chars.count)
     }
 
     static func longestCommonSubstring(_ a: String, _ b: String) -> Int {
@@ -229,5 +302,12 @@ nonisolated enum CueReplyValidator {
             previous = current
         }
         return best
+    }
+}
+
+private extension Character {
+    /// Katakana letters and the long-vowel mark.
+    nonisolated var isKatakana: Bool {
+        unicodeScalars.allSatisfy { (0x30A0...0x30FF).contains($0.value) }
     }
 }

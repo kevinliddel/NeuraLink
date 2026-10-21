@@ -91,6 +91,18 @@ final class LocalTTSPreviewPlayer: @unchecked Sendable {
     private let playerNode = AVAudioPlayerNode()
     private var didAttach = false
     private var pendingBuffers = 0
+    /// More chunks are still being rendered: a gap between two chunks is
+    /// not the end, so `isSpeaking` stays true until `endStream`.
+    private var streamOpen = false
+    /// Bumped by `stop()` so completions of stopped buffers are ignored.
+    private var epoch = 0
+
+    func beginStream() { streamOpen = true }
+
+    func endStream() {
+        streamOpen = false
+        if pendingBuffers == 0 { isSpeaking = false }
+    }
 
     func schedule(_ buffer: AVAudioPCMBuffer) {
         guard buffer.format.sampleRate > 0, buffer.format.channelCount > 0 else {
@@ -111,13 +123,14 @@ final class LocalTTSPreviewPlayer: @unchecked Sendable {
 
         pendingBuffers += 1
         isSpeaking = true
+        let scheduledEpoch = epoch
         playerNode.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in
             DispatchQueue.main.async {
-                guard let self else { return }
+                guard let self, self.epoch == scheduledEpoch else { return }
                 self.pendingBuffers -= 1
                 if self.pendingBuffers <= 0 {
                     self.pendingBuffers = 0
-                    self.isSpeaking = false
+                    if !self.streamOpen { self.isSpeaking = false }
                 }
             }
         }
@@ -130,7 +143,9 @@ final class LocalTTSPreviewPlayer: @unchecked Sendable {
         if audioEngine.isRunning {
             audioEngine.stop()
         }
+        epoch += 1
         pendingBuffers = 0
+        streamOpen = false
         isSpeaking = false
     }
 

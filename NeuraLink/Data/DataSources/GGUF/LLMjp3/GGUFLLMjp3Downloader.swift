@@ -28,39 +28,16 @@ enum GGUFLLMjp3Downloader {
 
     static func download(
         api: HubApi,
-        progressHandler: @escaping (Double) -> Void
+        progressHandler: @escaping @Sendable (Double) -> Void
     ) async throws {
-        let repo = Hub.Repo(id: GGUFLLMjp3ModelAccess.repoID)
-        // Fetch only the one quant we use — see GGUFLlamaDownloader for the
-        // full rationale (multi-quant repos balloon to 4–8 GB without this).
-        let snapshotDir = try await api.snapshot(
-            from: repo, matching: [GGUFLLMjp3ModelAccess.filename]
-        ) { progress in
-            progressHandler(progress.fractionCompleted * 0.95)
-        }
-        try verifyAndSave(snapshotDir: snapshotDir)
+        // Direct fetch of the one file, with real byte progress and resume
+        // (GGUFDirectDownloader); `api` is kept for the call sites' signature.
+        _ = api
+        let file = try await GGUFDirectDownloader.download(
+            repoID: GGUFLLMjp3ModelAccess.repoID, filename: GGUFLLMjp3ModelAccess.filename, hubSlug: GGUFLLMjp3ModelAccess.hubSlug,
+            progress: { progressHandler($0) })
+        GGUFLLMjp3ModelAccess.setModelPath(file)
     }
 
     // MARK: - Private
-
-    private static func verifyAndSave(snapshotDir: URL) throws {
-        let direct = snapshotDir.appendingPathComponent(GGUFLLMjp3ModelAccess.filename)
-        if FileManager.default.fileExists(atPath: direct.path) {
-            GGUFLLMjp3ModelAccess.setModelPath(direct)
-            return
-        }
-
-        let entries = (try? FileManager.default.contentsOfDirectory(
-            at: snapshotDir, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
-
-        for entry in entries {
-            let candidate = entry.appendingPathComponent(GGUFLLMjp3ModelAccess.filename)
-            if FileManager.default.fileExists(atPath: candidate.path) {
-                GGUFLLMjp3ModelAccess.setModelPath(candidate)
-                return
-            }
-        }
-
-        throw DownloadError.fileMissing
-    }
 }

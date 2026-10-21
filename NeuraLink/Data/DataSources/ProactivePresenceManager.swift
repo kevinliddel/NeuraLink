@@ -137,7 +137,7 @@ final class ProactivePresenceManager {
             timeOfDay: Self.timeOfDayDescriptor(hour: hour)
         )
         let japanese = Self.greetingEventJapanese(
-            name: RealtimeChatState.shared.characterDisplayName, opener: entry?.opener,
+            name: Self.japaneseCueName(), opener: entry?.opener,
             hoursAway: hours, timeOfDay: Self.timeOfDayJapanese(hour: hour))
 
         guard engage(with: event, japanese: japanese) else { return false }
@@ -180,7 +180,7 @@ final class ProactivePresenceManager {
             previousLine: previousLine
         )
         let japanese = Self.smallTalkEventJapanese(
-            name: RealtimeChatState.shared.characterDisplayName,
+            name: Self.japaneseCueName(),
             timeOfDay: Self.timeOfDayJapanese(hour: hour), angle: angle, previousLine: previousLine)
 
         let normalized = Self.normalize(event)
@@ -253,40 +253,46 @@ final class ProactivePresenceManager {
         }
     }
 
-    /// The return greeting for LLM-jp: short, imperative Japanese a 1.8B model
-    /// follows instead of echoing. The saved opener only rides along when it is
-    /// itself Japanese.
+    /// The return greeting for LLM-jp. Measured on the real model: asked to
+    /// "talk to" the user, the 1.8B answered as if the instruction were a
+    /// question to it ("はい、現在もおります"); asked to WRITE the character's
+    /// line for a scene, it writes one. The saved opener only rides along when
+    /// it is itself Japanese.
     nonisolated static func greetingEventJapanese(
         name: String, opener: String?, hoursAway: Double, timeOfDay: String
     ) -> String {
         let away = hoursAway >= 48 ? "\(Int(hoursAway / 24))日" : "\(Int(hoursAway))時間"
-        var event = "相手が約\(away)ぶりに戻ってきました。今は\(timeOfDay)です。"
-            + "\(name)として、温かく短い挨拶で迎えてください。"
-        if let opener, isJapanese(opener) {
-            event += "伝えたかった「\(opener.prefix(60))」という話も自然に入れてください。"
-        } else {
-            event += "最近どうしていたか聞いてください。"
-        }
-        return event
+        var task = "温かく迎えて、最近どうしていたか尋ねる。"
+        if let opener, isJapanese(opener) { task = "温かく迎えて、「\(opener.prefix(60))」という話を自然に入れる。" }
+        return lineTask(name: name, scene: "相手が約\(away)ぶりに戻ってきた。今は\(timeOfDay)。", task: task, avoid: nil)
     }
 
     /// The silence break for LLM-jp, same two angles as the English one.
     nonisolated static func smallTalkEventJapanese(
         name: String, timeOfDay: String, angle: SmallTalkAngle, previousLine: String?
     ) -> String {
-        var event: String
+        let task: String
         switch angle {
         case .checkIn:
-            event = "今は\(timeOfDay)で、しばらく会話が途切れています。\(name)として、自分から短く自然な一言で話しかけてください。"
-                + "「まだいますか」とは聞かないでください。"
+            task = "\(name)から気軽な話題を一つ振る。「まだいますか」とは言わない。"
         case .shareThought:
-            event = "今は\(timeOfDay)で、まだ静かです。\(name)として、自分のちょっとした考えや今日の小さな出来事を一言か二言で話してください。"
-                + "質問は不要です。"
+            task = "\(name)自身のちょっとした考えや、今日の小さな出来事を一言で話す。質問はしない。"
         }
-        if let previousLine, !previousLine.isEmpty {
-            event += "さっきは「\(previousLine.prefix(40))」と言ったので、違う言葉で別のことを話してください。"
-        }
-        return event
+        let avoid = previousLine.flatMap { $0.isEmpty ? nil : "直前のセリフ「\($0.prefix(40))」とは違う内容にする。" }
+        return lineTask(name: name, scene: "今は\(timeOfDay)。相手との会話が少し途切れている。", task: task, avoid: avoid)
+    }
+
+    /// "Write <name>'s line for this scene" — the task shape LLM-jp follows.
+    nonisolated static func lineTask(name: String, scene: String, task: String, avoid: String?) -> String {
+        var text = "\(name)のセリフを一つだけ書いてください。\n場面：\(scene)\n内容：\(task)"
+        if let avoid { text += "\n" + avoid }
+        return text + "\nセリフだけを書くこと。"
+    }
+
+    /// The character's name as its Japanese persona says it, else its display name.
+    static func japaneseCueName() -> String {
+        let state = RealtimeChatState.shared
+        return LocalLLMPromptStore.shared.japaneseName(for: state.selectedCharacterName) ?? state.characterDisplayName
     }
 
     nonisolated static func isJapanese(_ text: String) -> Bool {

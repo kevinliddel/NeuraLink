@@ -41,7 +41,7 @@ enum GGUFLLMjp3ModelAccess {
     static let filename = "llm-jp-3-1.8b-instruct3-Q3_K_M.gguf"
 
     private static let pathKey = "LocalModel_GGUFLLMjp3Path"
-    private static let hubSlug = "models--mmnga--llm-jp-3-1.8b-instruct3-gguf"
+    static let hubSlug = "models--mmnga--llm-jp-3-1.8b-instruct3-gguf"
 
     // MARK: - URL resolution
 

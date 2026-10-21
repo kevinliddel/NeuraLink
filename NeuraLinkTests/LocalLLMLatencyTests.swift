@@ -79,7 +79,7 @@ struct LocalLLMLatencyTests {
         #expect(LLMRuntimeProfile.resolvedContextLength(for: .llama1b) >= 2048)
     }
 
-    @Test("A GPU load that never confirmed keeps this build on the CPU")
+    @Test("Two unconfirmed GPU loads in a row keep this build on the CPU; a reset clears it")
     func gpuSentinel() throws {
         let defaults = try #require(UserDefaults(suiteName: "nl.test.gpuSentinel.\(UUID().uuidString)"))
         LLMGPUSentinel.resetForTesting()
@@ -89,9 +89,15 @@ struct LocalLLMLatencyTests {
         LLMGPUSentinel.resetForTesting()           // next launch
         #expect(LLMGPUSentinel.gpuAllowed(defaults: defaults), "a confirmed load stays allowed")
         LLMGPUSentinel.beginGPULoad(defaults: defaults)
-        LLMGPUSentinel.resetForTesting()           // the app died before confirming
-        #expect(!LLMGPUSentinel.gpuAllowed(defaults: defaults), "an unconfirmed load disables the GPU")
+        LLMGPUSentinel.resetForTesting()           // died (or Xcode stopped it) before confirming
+        #expect(LLMGPUSentinel.gpuAllowed(defaults: defaults), "one unconfirmed load is a strike, not a verdict")
+        LLMGPUSentinel.beginGPULoad(defaults: defaults)
+        LLMGPUSentinel.resetForTesting()           // died again
+        #expect(!LLMGPUSentinel.gpuAllowed(defaults: defaults), "two in a row disable the GPU")
         #expect(!LLMGPUSentinel.gpuAllowed(defaults: defaults), "for the rest of this build")
+        LLMGPUSentinel.reset(defaults: defaults)   // a fresh model download
+        LLMGPUSentinel.resetForTesting()
+        #expect(LLMGPUSentinel.gpuAllowed(defaults: defaults), "a reset tries the GPU again")
         LLMGPUSentinel.resetForTesting()
     }
 

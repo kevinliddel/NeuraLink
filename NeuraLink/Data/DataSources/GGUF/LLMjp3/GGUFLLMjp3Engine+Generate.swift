@@ -92,6 +92,10 @@ extension GGUFLLMjp3Engine {
         return await silentGate.run(bridge: bridge, bridgeLock: bridgeLock, prompt: prompt, maxTokens: maxTokens)
     }
 
+    func preemptSilentWork() {
+        silentGate.preemptIfActive()
+    }
+
     // MARK: - LLMEngineProtocol — prefill (background warmup)
 
     func prefill(messages: [LLMChatMessage]) async {

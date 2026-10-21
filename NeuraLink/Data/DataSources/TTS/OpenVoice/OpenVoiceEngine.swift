@@ -136,13 +136,22 @@ final class OpenVoiceEngine: NSObject, @unchecked Sendable, TTSEngineProtocol {
     // MARK: - TTSEngineProtocol.speak
 
     func speak(_ text: String, persona: PersonaIdentifier) async throws {
+        try await speak(text, voiceName: Self.voiceName(for: persona)) { [weak self] buffer in
+            self?.onBufferReady?(buffer)
+        }
+    }
+
+    /// Speaks in a named voice and hands each chunk's audio to `deliver`, on
+    /// the synthesis queue. The voice preview uses it to try a voice before
+    /// it is saved, without borrowing the chat's `onBufferReady`.
+    func speak(_ text: String, voiceName voice: String,
+               deliver: @escaping @Sendable (AVAudioPCMBuffer) -> Void) async throws {
         guard isReady, let handle, let g2p else { throw TTSError.notInitialized }
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else { return }
 
-        let voice = Self.voiceName(for: persona)
         guard let tgt = targetSE(voice) else {
-            throw TTSError.unsupportedPersona(persona)
+            throw TTSError.unsupportedPersona(voice)
         }
         let chunks = Self.chunkize(clean)
         guard !chunks.isEmpty else { return }
@@ -159,7 +168,7 @@ final class OpenVoiceEngine: NSObject, @unchecked Sendable, TTSEngineProtocol {
                     }
                     nlLog("[OpenVoice] chunk: raw=\(audio.count) trimmed=\(trimmed.count) sr=\(Int(self.sampleRate))", level: .info)
                     if let pcm = AudioDataConverter.toPCMBuffer(samples: trimmed, sampleRate: self.sampleRate) {
-                        self.onBufferReady?(pcm)
+                        deliver(pcm)
                     } else {
                         nlLog("[OpenVoice] toPCMBuffer returned nil — samples=\(trimmed.count) sr=\(self.sampleRate)", level: .error)
                     }
@@ -264,8 +273,10 @@ final class OpenVoiceEngine: NSObject, @unchecked Sendable, TTSEngineProtocol {
                 flush(pauseMap[ch] ?? 0.05)
             }
         }
+        // Keep the closing pause: callers that speak one sentence at a time
+        // (live chat, the voice preview) would otherwise run sentences together.
         let tail = buf.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !tail.isEmpty { chunks.append(Chunk(text: tail, pause: 0)) }
+        if let end = tail.last { chunks.append(Chunk(text: tail, pause: pauseMap[end] ?? 0)) }
         return chunks
     }
 }

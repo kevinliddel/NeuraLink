@@ -86,6 +86,10 @@ protocol LLMEngineProtocol: AnyObject {
     /// a user turn. Nil when no model is loaded or a user turn preempted it.
     func generateSilently(prompt: String, maxTokens: Int) async -> String?
 
+    /// Stop a running silent generation at its next token (it returns nil and
+    /// its caller retries later). Used when standalone speech needs the CPU.
+    func preemptSilentWork()
+
     /// Constrain tool-call output with a lazy GBNF grammar. Engines that do
     /// not support grammars default to a no-op returning false.
     func setToolGrammar(gbnf: String, root: String, triggerPatterns: [String]) -> Bool
@@ -97,4 +101,5 @@ extension LLMEngineProtocol {
     func saveKVCache(to path: String) async -> Bool { false }
     func loadKVCache(from path: String) async -> Int { 0 }
     func generateSilently(prompt: String, maxTokens: Int) async -> String? { nil }
+    func preemptSilentWork() { /* no-op */ }
 }

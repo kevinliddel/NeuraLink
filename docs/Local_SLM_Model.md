@@ -9,7 +9,7 @@ pipeline from microphone to spoken reply.
 > use the Apple Neural Engine. It runs through **llama.cpp** on the **Metal GPU** on
 > every real device, the 4 GB tier (iPhone 11/12/13) included — as SynapLink does.
 > It falls back to the **CPU** on the Simulator, and on a 4 GB build whose GPU load
-> was once killed by the system (`LLMGPUSentinel`). Speech-to-text (whisper.cpp)
+> was killed by the system twice in a row (`LLMGPUSentinel`). Speech-to-text (whisper.cpp)
 > always runs on the **CPU**.
 
 ## Why llama.cpp (and not CoreML / ANE)
@@ -40,7 +40,10 @@ Two models ship today — one English, one Japanese. Both are sized to stay
 `LocalModelDownloadManager.defaultConfigForCurrentDevice()` defaults **every**
 device to Llama-3.2-1B; the Japanese model is opt-in via Settings. Models are
 downloaded on-demand from the shared Hugging Face dataset (`LocalModelDownloadManager`
-→ `GGUF…Downloader` → `GGUF…ModelAccess`), and the **matching voice pack is bundled
+→ `GGUF…Downloader` → `GGUFDirectDownloader` → `GGUF…ModelAccess`). The direct
+downloader streams the `.gguf` with `RemoteAssetCache.fetch`, so the progress bar
+moves as bytes arrive and a paused download resumes from where it stopped; the
+file is checked for the `GGUF` magic before it is used. The **matching voice pack is bundled
 into the same download** (VOICEVOX dict + speaker for Japanese, OpenVoice
 MeloTTS + converter for English) so the user never fetches voices separately.
 
@@ -141,15 +144,18 @@ per-device rules in `LLMRuntimeProfile.tuned`, aligned with SynapLink:
 
 | Device | Where | Threads | KV cache | Context |
 |---|---|---|---|---|
-| < 5 GB (iPhone 11/12/13) | Metal (CPU if a GPU load once died) | 2 | q4_0 | 2048 (Llama-1B), 1024 (LLM-jp) |
+| < 5 GB (iPhone 11/12/13) | Metal (CPU if GPU loads died twice in a row) | 2 | q4_0 | 2048 (Llama-1B), 1024 (LLM-jp) |
 | ≥ 5 GB | Metal | 4 | q8_0 | grows with RAM (2048 / 4096) |
 | Simulator | CPU | 2 | q4_0 | as the model's baseline |
 
 **GPU sentinel.** A load the system kills for memory (jetsam) can't be caught, so
 `LlamaBridge` marks a GPU load pending before creating the context and
 `LLMGPUSentinel` confirms it after the first forward pass completes. A launch that
-finds a load still pending keeps that build on the CPU; a new build tries the GPU
-again once. `[Bench]` lines end the model label with `·gpu` or `·cpu`.
+finds a load still pending counts a strike. Xcode stopping the app mid-load looks
+the same as a kill, so it takes two strikes in a row before that build stays on
+the CPU, and a confirmed load clears them. A new build, a fresh model download, or
+the DEBUG launch argument `-nl.llm.resetGPU YES` tries the GPU again. `[Bench]`
+lines end the model label with `·gpu` or `·cpu`, and `[LLMGPU]` lines say why.
 
 ## Turn latency
 

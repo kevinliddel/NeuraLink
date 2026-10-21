@@ -9,8 +9,10 @@
 //  model, and a load that pushes past the memory limit is killed by the
 //  system (jetsam), which no code can catch. So a GPU load is marked pending
 //  before it starts and confirmed after the first forward pass completes; a
-//  launch that finds a load still pending knows the last one died, and keeps
-//  that build on the CPU. A new build tries the GPU again once.
+//  launch that finds a load still pending knows the last one died. Xcode
+//  stopping or re-running the app mid-load looks the same, so it takes TWO
+//  unconfirmed loads in a row before the build stays on the CPU. A new build,
+//  a fresh model download, or `-nl.llm.resetGPU YES` (DEBUG) tries again.
 //
 //  Created by Dedicatus on 20/10/2026.
 //
@@ -20,6 +22,9 @@ import Foundation
 nonisolated enum LLMGPUSentinel {
     private static let pendingKey = "nl.llm.gpu.pendingBuild"
     private static let unsafeKey = "nl.llm.gpu.unsafeBuild"
+    private static let strikesKey = "nl.llm.gpu.strikes"
+    /// Unconfirmed GPU loads in a row before this build stays on the CPU.
+    static let strikesToDisable = 2
     private static let lock = NSLock()
     private nonisolated(unsafe) static var checkedThisLaunch = false
     private nonisolated(unsafe) static var confirmedThisLaunch = false
@@ -36,14 +41,26 @@ nonisolated enum LLMGPUSentinel {
         defer { lock.unlock() }
         if !checkedThisLaunch {
             checkedThisLaunch = true
+            #if DEBUG
+            if defaults.bool(forKey: "nl.llm.resetGPU") { resetLocked(defaults) }
+            #endif
             if let pending = defaults.string(forKey: pendingKey) {
-                defaults.set(pending, forKey: unsafeKey)
                 defaults.removeObject(forKey: pendingKey)
-                nlLog("[LLMGPU] The last GPU load (build \(pending)) never finished — staying on the CPU for this build.",
-                      level: .warning)
+                let strikes = defaults.integer(forKey: strikesKey) + 1
+                defaults.set(strikes, forKey: strikesKey)
+                if strikes >= strikesToDisable {
+                    defaults.set(pending, forKey: unsafeKey)
+                    nlLog("[LLMGPU] \(strikes) GPU loads in a row never finished (build \(pending)) — staying on the CPU for this build.",
+                          level: .warning)
+                } else {
+                    nlLog("[LLMGPU] The last GPU load never finished (strike \(strikes)/\(strikesToDisable)) — trying the GPU again.",
+                          level: .warning)
+                }
             }
         }
-        return defaults.string(forKey: unsafeKey) != currentBuild
+        let allowed = defaults.string(forKey: unsafeKey) != currentBuild
+        if !allowed { nlLog("[LLMGPU] GPU disabled for build \(currentBuild) after repeated failed loads.", level: .info) }
+        return allowed
     }
 
     /// Marks a GPU load as in flight. Call just before creating the context.
@@ -60,7 +77,19 @@ nonisolated enum LLMGPUSentinel {
         }
         guard first, defaults.string(forKey: pendingKey) != nil else { return }
         defaults.removeObject(forKey: pendingKey)
+        defaults.removeObject(forKey: strikesKey)
         nlLog("[LLMGPU] GPU load confirmed (build \(currentBuild)).", level: .info)
+    }
+
+    /// Forget past failures — a fresh model download gets a clean slate.
+    static func reset(defaults: UserDefaults = .standard) {
+        lock.withLock { resetLocked(defaults) }
+    }
+
+    private static func resetLocked(_ defaults: UserDefaults) {
+        defaults.removeObject(forKey: pendingKey)
+        defaults.removeObject(forKey: unsafeKey)
+        defaults.removeObject(forKey: strikesKey)
     }
 
     /// Test seam: forget this launch's bookkeeping.

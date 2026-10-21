@@ -63,6 +63,15 @@ final class LocalLLMPromptStore {
             character: characterName, engine: engineKey(for: config), prompt: nil)
     }
 
+    /// The name the Japanese prompt gives the character ("私はオズ、…" →
+    /// "オズ"), so Japanese cues address it the way its persona does.
+    func japaneseName(for characterName: String) -> String? {
+        let prompt = effectivePrompt(for: characterName, config: .llmJp3)
+        guard let range = prompt.range(of: #"私は([^、。\s]{1,12})[、。]"#, options: .regularExpression) else { return nil }
+        let match = prompt[range].dropFirst(2).dropLast()
+        return match.isEmpty ? nil : String(match)
+    }
+
     // MARK: - Built-in defaults
 
     static func defaultPrompt(

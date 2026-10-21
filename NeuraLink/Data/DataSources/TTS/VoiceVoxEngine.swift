@@ -29,7 +29,12 @@ final class VoiceVoxEngine: NSObject, @unchecked Sendable, TTSEngineProtocol {
     // MARK: - Internals
 
     private let queue = DispatchQueue(label: "com.neuralink.voicevox.engine", qos: .userInitiated)
-    private var isInitializing = false
+    /// One shared initialisation: concurrent callers (a chat turn's first
+    /// chunks, the voice preview, a warm-up) all await it instead of
+    /// returning early and then failing with `.notInitialized`.
+    private var initTask: Task<Void, Error>?
+    /// Speakers whose model is loaded and has run once (see `warmUp`).
+    private var warmedSpeakers = Set<Int>()
 
     private var synthesizer: OpaquePointer?
     private var onnxRuntime: OpaquePointer?
@@ -52,10 +57,28 @@ final class VoiceVoxEngine: NSObject, @unchecked Sendable, TTSEngineProtocol {
 
     func initialize() async throws {
         if isReady { return }
-        guard !isInitializing else { return }
-        isInitializing = true
-        defer { isInitializing = false }
+        if let initTask { return try await initTask.value }
+        let task = Task { try await self.performInitialize() }
+        initTask = task
+        defer { initTask = nil }
+        try await task.value
+    }
 
+    /// Loads `speakerID`'s voice model and renders one mora, so the first
+    /// real line in that voice skips the model load and ONNX Runtime's
+    /// first-run setup. Once per speaker; failures are only logged.
+    func warmUp(speakerID: Int) async {
+        guard !warmedSpeakers.contains(speakerID) else { return }
+        do {
+            try await initialize()
+            _ = try await synthesize(text: "あ", speakerID: speakerID)
+            warmedSpeakers.insert(speakerID)
+        } catch {
+            nlLog("[VoiceVox] Warm-up failed for speaker \(speakerID): \(error)", level: .warning)
+        }
+    }
+
+    private func performInitialize() async throws {
         // Pre-resolve the Open JTalk dict path. Triggers a parallel
         // download of all dict files on first run for users whose
         // bundle has been stripped; returns instantly otherwise.
@@ -161,6 +184,7 @@ final class VoiceVoxEngine: NSObject, @unchecked Sendable, TTSEngineProtocol {
             }
             modelHandles.removeAll()
             loadedModelIDs.removeAll()
+            warmedSpeakers.removeAll()
             isReady = false
             nlLog("[VoiceVox] Engine shutdown.", level: .info)
         }

@@ -9,9 +9,9 @@
 //
 //    - OpenAI mode  -> /v1/audio/speech with the current character's persona
 //                      voice, played via AVAudioPlayer (VoicePreviewPlayer).
-//    - Local mode   -> TTSEngineSelector's engine for the current character
-//                      (VoiceVox for the Japanese model, else OpenVoice with a
-//                      System-TTS fallback), streamed via LocalTTSPreviewPlayer.
+//    - Local mode   -> the current character's VOICEVOX/OpenVoice voice,
+//                      spoken chunk by chunk via LocalVoicePreview; the
+//                      selector's engine (System-TTS fallback) otherwise.
 //
 //  One message plays at a time; starting another stops the current one.
 //
@@ -37,6 +37,9 @@ final class TranscriptSpeechPlayer {
 
     private let cloudPlayer = VoicePreviewPlayer()
     private let localPlayer = LocalTTSPreviewPlayer()
+    /// Chunked VOICEVOX/OpenVoice playback (the System-TTS fallback keeps
+    /// `localPlayer`).
+    private let localVoice = LocalVoicePreview()
     /// True from start until the synthesis task finishes (success or failure).
     /// Distinguishes "fetching/synthesizing" from "audio draining" and from
     /// a failed fetch that never produced audio.
@@ -69,7 +72,7 @@ final class TranscriptSpeechPlayer {
 
     func phase(for messageID: Int64) -> Phase {
         guard speakingMessageID == messageID else { return .idle }
-        if cloudPlayer.isSpeaking || localPlayer.isSpeaking { return .playing }
+        if cloudPlayer.isSpeaking || localPlayer.isSpeaking || localVoice.player.isSpeaking { return .playing }
         return isWorking ? .loading : .idle
     }
 
@@ -121,6 +124,7 @@ final class TranscriptSpeechPlayer {
         activeEngine = nil
         cloudPlayer.stop()
         localPlayer.stop()
+        localVoice.stop()
         speakingMessageID = nil
         isWorking = false
     }
@@ -170,6 +174,11 @@ final class TranscriptSpeechPlayer {
     /// PCM buffers aren't routed to the transcript player.
     private func speakLocal(_ text: String) async {
         let character = currentCharacter
+        // Installed voice: chunked, so audio starts after the first clause.
+        if let voice = LocalVoicePreview.Voice.current(for: character) {
+            await localVoice.speak(text, voice: voice)
+            return
+        }
         guard let engine = TTSEngineSelector.shared.engine(for: character) else {
             nlLog("[TranscriptSpeech] No TTS engine resolved for '\(character)'", level: .error)
             return

@@ -89,6 +89,18 @@ Notes on the flow:
 - **Persona voice resolution**: Each engine consults [`PersonaVoiceStore`](../NeuraLink/Data/DataSources/Memory/PersonaVoiceStore.swift) at synthesis time — now a thin facade over the `character_ai` SQL table (each engine's voice lives alongside that engine's prompt) — so changing the picker in `PersonaSettingsView` and saving immediately changes the voice for the next chunk without requiring an app restart.
 - **Buffer scheduling**: Each engine emits `AVAudioPCMBuffer`s in its native sample rate (OpenVoice at 22.05 kHz, VOICEVOX at 24 kHz, System at iOS-locale-dependent). [`scheduleBuffer`](../NeuraLink/Data/DataSources/LocalLLM/LocalLLMManager+TTS.swift) re-connects the player node with the right format on the fly when consecutive chunks have differing rates.
 
+### Voice preview and transcript playback
+
+The persona settings preview and the chat-history play button speak a text that
+is already complete, so the only wait is rendering. [`LocalVoicePreview`](../NeuraLink/Presentation/Views/AI/LocalVoicePreview.swift)
+keeps that wait short:
+
+- **Chunked.** [`SpeechChunker`](../NeuraLink/Domain/Entities/SpeechChunker.swift) splits the text like the live chat does: a short first clause, then whole sentences. VOICEVOX renders a whole call before returning any audio, so playback now starts after the first clause and the rest renders while it plays.
+- **Direct voice.** The picked voice goes straight to the engine (`VoiceVoxEngine.synthesize(text:speakerID:)`, `OpenVoiceEngine.speak(_:voiceName:deliver:)`). Trying an unsaved voice no longer rewrites the saved one or borrows the chat's `onBufferReady`.
+- **No CPU contention.** While it speaks, `LocalLLMManager.beginStandaloneSpeech` stops a running background memory generation and holds new ones, because they share the CPU cores VOICEVOX renders on.
+- **Warm voice.** The settings screen warms the picked voice shortly after it opens or changes (`VoiceVoxEngine.warmUp` loads the speaker and renders one mora). It never downloads a voice that isn't on disk.
+- **Stoppable.** The button is a stop button from the first tap, and a stopped run drops the chunk it was rendering.
+
 ### Voice cache & invalidation
 
 `TTSEngineSelector` caches one engine instance per persona. The cache is invalidated by `invalidateCache(for:)` whenever:
@@ -194,7 +206,7 @@ For the local LLM path the equivalent log starts at `֎ [FunctionCall] LocalLLM 
 - **Local STT**: [`LocalWhisperManager.swift`](../NeuraLink/Data/DataSources/LocalWhisperManager.swift) — whisper.cpp (`ggml-base`, multilingual, CPU), one-shot at voice-end.
 - **Local TTS engines**: [`TTSEngineProtocol.swift`](../NeuraLink/Domain/Interfaces/TTSEngineProtocol.swift), [`VoiceVoxEngine.swift`](../NeuraLink/Data/DataSources/TTS/VoiceVoxEngine.swift), [`OpenVoiceEngine.swift`](../NeuraLink/Data/DataSources/TTS/OpenVoice/OpenVoiceEngine.swift), [`SystemTTSEngine.swift`](../NeuraLink/Data/DataSources/TTS/SystemTTSEngine.swift).
 - **Engine selection & caching**: [`TTSEngineSelector.swift`](../NeuraLink/Data/DataSources/TTS/TTSEngineSelector.swift).
-- **Voice picker + preview**: [`PersonaSettingsView.swift`](../NeuraLink/Presentation/Views/AI/PersonaSettingsView.swift).
+- **Voice picker + preview**: [`PersonaSettingsView.swift`](../NeuraLink/Presentation/Views/AI/PersonaSettingsView.swift), [`LocalVoicePreview.swift`](../NeuraLink/Presentation/Views/AI/LocalVoicePreview.swift), [`SpeechChunker.swift`](../NeuraLink/Domain/Entities/SpeechChunker.swift).
 - **OpenAI handshake**: [`OpenAIRealtimeManager.swift`](../NeuraLink/Data/DataSources/OpenAI/OpenAIRealtimeManager.swift) (mint + SDP exchange), [`OpenAIRealtimeManager+Handlers.swift`](../NeuraLink/Data/DataSources/OpenAI/OpenAIRealtimeManager+Handlers.swift) (`sendInitialSessionUpdate`, data-channel event dispatch).
 - **Shared tool dispatch**: [`AppFunctionExecutor.swift`](../NeuraLink/Data/DataSources/AppFunctionExecutor.swift).
 

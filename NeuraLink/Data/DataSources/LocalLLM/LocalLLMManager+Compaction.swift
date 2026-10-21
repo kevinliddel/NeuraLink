@@ -47,11 +47,25 @@ extension LocalLLMManager {
         return await llmEngine.generateSilently(prompt: prompt, maxTokens: maxTokens)
     }
 
+    /// Standalone speech (voice preview, transcript playback) renders on the
+    /// same CPU cores as the model: stop a background generation that is
+    /// running and hold new ones until `endStandaloneSpeech`.
+    func beginStandaloneSpeech() {
+        standaloneSpeechHolds += 1
+        llmEngine.preemptSilentWork()
+    }
+
+    func endStandaloneSpeech() {
+        standaloneSpeechHolds = max(0, standaloneSpeechHolds - 1)
+    }
+
     private func waitUntilIdle() async -> Bool {
         let deadline = Date().addingTimeInterval(Self.silentIdleTimeout)
         var idleSince: Date?
         while Date() < deadline {
-            let quiet = await MainActor.run { state.status == .ready || state.status == .disconnected }
+            let quiet = await MainActor.run {
+                (state.status == .ready || state.status == .disconnected) && standaloneSpeechHolds == 0
+            }
             let recording = recordingLock.withLock { isRecordingVoice }
             if quiet && !recording {
                 let since = idleSince ?? Date()

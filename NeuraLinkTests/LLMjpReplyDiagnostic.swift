@@ -59,14 +59,24 @@ struct LLMjpReplyDiagnostic {
             report += "- NEW (native) raw: \(new.raw.debugDescription)\n- NEW shown: \(new.shown.debugDescription)\n\n"
         }
 
-        let cue = ProactivePresenceManager.smallTalkEventJapanese(
-            name: "Oz", timeOfDay: "午後", angle: .checkIn, previousLine: nil)
-        let cueMessages = await hierarchy.buildCueMessages(
-            instruction: cue, config: .llmJp3, characterName: character, baseSystemPrompt: base)
-        for attempt in 1...3 {
-            let reply = run(LLMjpPromptFormat.render(cueMessages, addGenerationPrompt: true), filtered: true)
-            let said = CueReplyValidator.clean(reply.shown, instruction: cue, names: ["Oz", "オズ"])
-            report += "## Silence cue #\(attempt)\n- raw: \(reply.raw.debugDescription)\n- spoken: \((said ?? "⟨dropped⟩").debugDescription)\n\n"
+        let name = LocalLLMPromptStore.shared.japaneseName(for: character) ?? "Oz"
+        let cues: [(String, String)] = [
+            ("check-in", ProactivePresenceManager.smallTalkEventJapanese(
+                name: name, timeOfDay: "午後", angle: .checkIn, previousLine: nil)),
+            ("share-thought", ProactivePresenceManager.smallTalkEventJapanese(
+                name: name, timeOfDay: "夕方", angle: .shareThought, previousLine: "紅茶はいかがですか。")),
+            ("greeting", ProactivePresenceManager.greetingEventJapanese(
+                name: name, opener: nil, hoursAway: 30, timeOfDay: "朝"))
+        ]
+        report += "Cue name: \(name)\n\n"
+        for (label, cue) in cues {
+            let cueMessages = await hierarchy.buildCueMessages(
+                instruction: cue, config: .llmJp3, characterName: character, baseSystemPrompt: base)
+            for attempt in 1...3 {
+                let reply = run(LLMjpPromptFormat.render(cueMessages, addGenerationPrompt: true), filtered: true)
+                let said = CueReplyValidator.clean(reply.shown, instruction: cue, names: ["Oz", "オズ", name])
+                report += "## Cue \(label) #\(attempt)\n- raw: \(reply.raw.debugDescription)\n- spoken: \((said ?? "⟨dropped⟩").debugDescription)\n\n"
+            }
         }
         let oldCue = "（日本語で回答）" + ProactivePresenceManager.smallTalkEvent(timeOfDay: "afternoon", stage: "Friends", factSeed: nil)
         let old = run(llama3([.init(role: "system", content: base), .init(role: "user", content: oldCue)]), filtered: false)

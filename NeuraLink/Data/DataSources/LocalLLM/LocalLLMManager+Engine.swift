@@ -184,7 +184,9 @@ extension LocalLLMManager: LocalLLMEngineDelegate {
     /// Names a reply might be labelled with.
     var replyLabelNames: [String] {
         let character = state.selectedCharacterName
-        return [state.characterDisplayName, character.capitalized, CharacterPersona.forCharacter(named: character).name]
+        let names = [state.characterDisplayName, character.capitalized, CharacterPersona.forCharacter(named: character).name]
+        // The Japanese persona names itself in katakana (オズ), not "Oz".
+        return names + [LocalLLMPromptStore.shared.japaneseName(for: character)].compactMap { $0 }
     }
 
     private func finishTurn(_ fullText: String, isCue: Bool) {

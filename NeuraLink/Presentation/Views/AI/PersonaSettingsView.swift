@@ -28,7 +28,7 @@ struct PersonaSettingsView: View {
     /// Imported characters only; bundled ones are fixed in the registry.
     @State var gender: CharacterGender
     @State private var previewPlayer = VoicePreviewPlayer()
-    @State private var localPreviewPlayer = LocalTTSPreviewPlayer()
+    @State private var localVoice = LocalVoicePreview()
     @State private var isLoadingPreview = false
     @State var voicevoxAvailable: Bool = VoiceVoxModelAccess.isDictionaryAvailable
     @State var isDownloadingVoiceVox = false
@@ -43,7 +43,17 @@ struct PersonaSettingsView: View {
 
     /// Whichever player the active mode uses. Centralises the isSpeaking flag.
     private var activeIsSpeaking: Bool {
-        isLocalLLMMode ? localPreviewPlayer.isSpeaking : previewPlayer.isSpeaking
+        isLocalLLMMode ? localVoice.isActive : previewPlayer.isSpeaking
+    }
+
+    /// Waiting for audio: the OpenAI request, or the first local chunk.
+    private var previewIsLoading: Bool {
+        isLocalLLMMode ? localVoice.isLoading : isLoadingPreview
+    }
+
+    /// The voice picked on this screen, saved or not.
+    private var previewVoice: LocalVoicePreview.Voice {
+        isJapaneseModel ? .voicevox(speakerID: voicevoxSpeakerID) : .openVoice(name: openVoiceVoiceID)
     }
 
     init(modelID: String) {
@@ -168,7 +178,14 @@ struct PersonaSettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onDisappear {
             previewPlayer.stop()
-            localPreviewPlayer.stop()
+            localVoice.stop()
+        }
+        .task(id: previewVoice) {
+            // Load the picked voice before the first tap (debounced while browsing).
+            guard isLocalLLMMode else { return }
+            try? await Task.sleep(for: .milliseconds(600))
+            guard !Task.isCancelled else { return }
+            await localVoice.warmUp(previewVoice)
         }
     }
 
@@ -288,7 +305,7 @@ struct PersonaSettingsView: View {
                                     .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.large))
                             )
                     )
-                    .disabled(isLoadingPreview)
+                    .disabled(previewIsLoading)
 
                 HStack(alignment: .bottom) {
                     Spacer()
@@ -350,7 +367,7 @@ struct PersonaSettingsView: View {
         Button {
             if isActive {
                 previewPlayer.stop()
-                localPreviewPlayer.stop()
+                localVoice.stop()
             } else {
                 Task { await startPreview() }
             }
@@ -360,7 +377,7 @@ struct PersonaSettingsView: View {
                     .fill(buttonTint(isActive: isActive).opacity(0.12))
                     .frame(width: 40, height: 40)
 
-                if isLoadingPreview {
+                if previewIsLoading {
                     ProgressView()
                         .tint(Color.secondary)
                         .scaleEffect(0.85)
@@ -371,7 +388,7 @@ struct PersonaSettingsView: View {
                 }
             }
             .animation(.easeInOut(duration: 0.18), value: isActive)
-            .animation(.easeInOut(duration: 0.18), value: isLoadingPreview)
+            .animation(.easeInOut(duration: 0.18), value: previewIsLoading)
         }
         .buttonStyle(.borderless)
         .disabled(!canTap || isLoadingPreview)
@@ -401,7 +418,7 @@ struct PersonaSettingsView: View {
         guard !text.isEmpty else { return }
 
         if isLocalLLMMode {
-            await startLocalPreview(text: text)
+            startLocalPreview(text: text)
         } else {
             await startOpenAIPreview(text: text)
         }
@@ -437,59 +454,10 @@ struct PersonaSettingsView: View {
         previewPlayer.start(data: data)
     }
 
-    /// Synthesises through the local engine that would otherwise run during a
-    /// chat turn. Uses temporary `PersonaVoiceStore` overrides to honour the
-    /// current picker value even before the user hits Save, then restores any
-    /// prior override when synthesis finishes.
-    private func startLocalPreview(text: String) async {
-        isLoadingPreview = true
-        defer { isLoadingPreview = false }
-
-        // Temporarily apply the picker selection so the engine sees it.
-        let previousVoicevox = PersonaVoiceStore.shared.voicevoxSpeakerID(for: modelID)
-        let previousOpenVoice = PersonaVoiceStore.shared.openVoiceVoiceID(for: modelID)
-        if isJapaneseModel {
-            PersonaVoiceStore.shared.setVoicevoxSpeakerID(voicevoxSpeakerID, for: modelID)
-        } else {
-            PersonaVoiceStore.shared.setOpenVoiceVoiceID(openVoiceVoiceID, for: modelID)
-        }
-        TTSEngineSelector.shared.invalidateCache(for: modelID)
-
-        guard let engine = TTSEngineSelector.shared.engine(for: modelID) else {
-            nlLog("[Preview] No TTS engine resolved for persona '\(modelID)'", level: .error)
-            // Restore overrides before bailing.
-            if isJapaneseModel {
-                PersonaVoiceStore.shared.setVoicevoxSpeakerID(previousVoicevox, for: modelID)
-            } else {
-                PersonaVoiceStore.shared.setOpenVoiceVoiceID(previousOpenVoice, for: modelID)
-            }
-            TTSEngineSelector.shared.invalidateCache(for: modelID)
-            return
-        }
-
-        // Save the engine's existing callback (LocalLLMManager wires this up
-        // for chat synthesis) so we can restore it when the preview ends.
-        // Without this, the next chat turn's PCM buffers would be routed to
-        // the freed preview player.
-        let previousCallback = engine.onBufferReady
-        engine.onBufferReady = { [weak localPreviewPlayer] buffer in
-            DispatchQueue.main.async { localPreviewPlayer?.schedule(buffer) }
-        }
-
-        do {
-            try await engine.initialize()
-            try await engine.speak(text, persona: modelID)
-        } catch {
-            nlLog("[Preview] Local TTS preview failed: \(error)", level: .error)
-        }
-
-        // Restore both the engine callback and the persona voice override.
-        engine.onBufferReady = previousCallback
-        if isJapaneseModel {
-            PersonaVoiceStore.shared.setVoicevoxSpeakerID(previousVoicevox, for: modelID)
-        } else {
-            PersonaVoiceStore.shared.setOpenVoiceVoiceID(previousOpenVoice, for: modelID)
-        }
-        TTSEngineSelector.shared.invalidateCache(for: modelID)
+    /// Speaks through the local engine in the voice picked on this screen
+    /// (saved or not), chunk by chunk so audio starts after the first clause.
+    /// Tapping again while it renders or plays stops it.
+    private func startLocalPreview(text: String) {
+        localVoice.start(text, voice: previewVoice)
     }
 }

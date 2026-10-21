@@ -89,6 +89,8 @@ struct LocalReplyFormatTests {
         #expect(LeadingLabelFilter.strip("Oz：かしこまりました。", names: ["Oz"]) == "かしこまりました。")
         #expect(LeadingLabelFilter.strip("Ozone is nice.", names: ["Oz"]) == "Ozone is nice.")
         #expect(LeadingLabelFilter.strip("Assistant: Hi", names: []) == "Hi")
+        #expect(LeadingLabelFilter.strip("オズ：かしこまりました。", names: []) == "かしこまりました。")
+        #expect(LeadingLabelFilter.strip("カレーは好き？", names: []) == "カレーは好き？")
     }
 
     // MARK: - Cue replies
@@ -100,12 +102,44 @@ struct LocalReplyFormatTests {
         #expect(CueReplyValidator.clean("今は午後で、しばらく会話が途切れています。", instruction: jp, names: ["Oz"]) == nil)
         #expect(CueReplyValidator.clean("ユーザーが静かにしている。", instruction: jp, names: ["Oz"]) == nil)
         #expect(CueReplyValidator.clean("Oz：紅茶でもお淹れしましょうか。", instruction: jp, names: ["Oz"]) == "紅茶でもお淹れしましょうか。")
+        #expect(CueReplyValidator.clean("オズ：「午後の紅茶はいかがでしょう。」", instruction: jp, names: ["Oz"]) == "午後の紅茶はいかがでしょう。")
+        #expect(CueReplyValidator.clean("まだユーザー様はいらっしゃいません。", instruction: jp, names: []) == nil)
+        #expect(CueReplyValidator.clean("オズのセリフ：こんにちは", instruction: jp, names: []) == nil)
 
         let en = ProactivePresenceManager.smallTalkEvent(timeOfDay: "afternoon", stage: "Friends", factSeed: nil)
         #expect(CueReplyValidator.clean("*The user has gone quiet for a while.*", instruction: en, names: ["Oz"]) == nil)
         #expect(CueReplyValidator.clean("Break the silence in character with one line.", instruction: en, names: ["Oz"]) == nil)
         #expect(CueReplyValidator.clean("Shall I put the kettle on, Sir?", instruction: en, names: ["Oz"]) == "Shall I put the kettle on, Sir?")
         #expect(CueReplyValidator.clean("   ", instruction: en, names: []) == nil)
+    }
+
+    @Test("Real LLM-jp cue replies: narration and labels around a quote keep only the quote")
+    func narratedQuotes() {
+        let names = ["Oz", "オズ"]
+        let checkIn = ProactivePresenceManager.smallTalkEventJapanese(
+            name: "オズ", timeOfDay: "午後", angle: .checkIn, previousLine: nil)
+        #expect(CueReplyValidator.clean(
+            "もちろんです。オズのセリフを書きます。\n「もう少しでお休みの時間ですね。まだお話したいことはありますか？」というような感じでいかがでしょうか。",
+            instruction: checkIn, names: names) == "もう少しでお休みの時間ですね。まだお話したいことはありますか？")
+        #expect(CueReplyValidator.clean(
+            "オズ「お久しぶりですね、○○様。もう一度ご挨拶させていただきます。」",
+            instruction: checkIn, names: names) == nil, "a placeholder name is never spoken")
+
+        let greeting = ProactivePresenceManager.greetingEventJapanese(
+            name: "オズ", opener: nil, hoursAway: 30, timeOfDay: "朝")
+        #expect(CueReplyValidator.clean(
+            "オズ(Oz)は貴族の家に仕える執事なので、この場合は「おはようございます。ご無事でなによりです。」と返答します。",
+            instruction: greeting, names: names) == "おはようございます。ご無事でなによりです。")
+        #expect(CueReplyValidator.clean(
+            "オズ（Oz）は執事として迎えます。\n「おかえりなさいませ、ご主人様。最近はいかがお過ごしでしたか？",
+            instruction: greeting, names: names) == "おかえりなさいませ、ご主人様。最近はいかがお過ごしでしたか？",
+            "an unclosed quote at the end still counts")
+
+        // Speech that merely contains a quote is left alone.
+        #expect(CueReplyValidator.quotedLine(in: "昨日「星の王子さま」を読み返しました。", names: names)
+                == "昨日「星の王子さま」を読み返しました。")
+        #expect(CueReplyValidator.quotedLine(in: "オズです。「紅茶」をお持ちしました。", names: names)
+                == "オズです。「紅茶」をお持ちしました。", "a short quote is a word, not the line")
     }
 
     @Test("Japanese cues are Japanese; an English-only cue gets a Japanese frame for LLM-jp")
@@ -116,10 +150,10 @@ struct LocalReplyFormatTests {
         #expect(!small.lowercased().contains("the user"))
         let greet = ProactivePresenceManager.greetingEventJapanese(
             name: "Oz", opener: "I saved a thought for you", hoursAway: 50, timeOfDay: "朝")
-        #expect(greet.contains("2日") && !greet.contains("I saved"))
+        #expect(greet.contains("2日") && !greet.contains("I saved") && greet.hasPrefix("Ozのセリフ"))
         let cue = LocalCue(english: "Announce the song.")
         #expect(cue.instruction(japaneseModel: false, characterName: "Oz") == "Announce the song.")
-        #expect(cue.instruction(japaneseModel: true, characterName: "Oz").hasPrefix("次の状況に合わせて"))
+        #expect(cue.instruction(japaneseModel: true, characterName: "オズ").hasPrefix("オズのセリフを一つだけ書いてください。"))
         #expect(LocalCue(english: "x", japanese: "日本語").instruction(japaneseModel: true, characterName: "Oz") == "日本語")
         #expect(ProactivePresenceManager.timeOfDayJapanese(hour: 14) == "午後")
     }
