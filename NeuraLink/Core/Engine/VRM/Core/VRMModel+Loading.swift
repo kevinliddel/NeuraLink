@@ -112,6 +112,7 @@ extension VRMModel {
                         textures.append(VRMTexture(name: textureName))
                     }
                 }
+                textureLoader.waitForMipmaps()
             }
         } else {
             // No device, create empty texture placeholders

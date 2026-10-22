@@ -18,6 +18,8 @@ public class TextureLoader {
     private let document: GLTFDocument
     private let baseURL: URL?
     private lazy var mipmapCommandQueue: MTLCommandQueue? = device.makeCommandQueue()
+    /// Mip blits committed by `loadTexture`; see `waitForMipmaps`.
+    private let mipmapWork = MipmapWork()
 
     public init(
         device: MTLDevice, bufferLoader: BufferLoader, document: GLTFDocument, baseURL: URL? = nil
@@ -27,6 +29,12 @@ public class TextureLoader {
         self.bufferLoader = bufferLoader
         self.document = document
         self.baseURL = baseURL
+    }
+
+    /// Blocks until every mip chain this loader started is generated. Call
+    /// once after the last `loadTexture(withMipmaps: true)`, before drawing.
+    public func waitForMipmaps() {
+        mipmapWork.wait()
     }
 
     /// Load a texture at the given index
@@ -198,7 +206,7 @@ public class TextureLoader {
         // only for formats neither decoder reads.
         if let texture = TextureUploader.makeTexture(
             device: device, imageData: imageData, sRGB: sRGB, maxSize: maxSize,
-            withMipmaps: withMipmaps, commandQueue: mipmapCommandQueue) {
+            withMipmaps: withMipmaps, commandQueue: mipmapCommandQueue, pending: mipmapWork) {
             return texture
         }
 

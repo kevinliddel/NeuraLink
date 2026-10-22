@@ -21,6 +21,7 @@ public final class ParallelTextureLoader: @unchecked Sendable {
     /// Mip generation; MTLCommandQueue is thread-safe, so the concurrent
     /// loads share it.
     private let mipmapCommandQueue: MTLCommandQueue?
+    private let mipmapWork = MipmapWork()
 
     public init(
         device: MTLDevice,
@@ -71,6 +72,8 @@ public final class ParallelTextureLoader: @unchecked Sendable {
             await group.waitForAll()
         }
 
+        // The mip blits run while the remaining images decode; wait once.
+        mipmapWork.wait()
         return results.getAll()
     }
 
@@ -188,7 +191,8 @@ public final class ParallelTextureLoader: @unchecked Sendable {
     private func createTexture(from imageData: Data, textureIndex: Int, sRGB: Bool) async throws
         -> MTLTexture? {
         guard let texture = TextureUploader.makeTexture(
-            device: device, imageData: imageData, sRGB: sRGB, withMipmaps: true, commandQueue: mipmapCommandQueue)
+            device: device, imageData: imageData, sRGB: sRGB, withMipmaps: true,
+            commandQueue: mipmapCommandQueue, pending: mipmapWork)
         else {
             throw VRMError.invalidImageData(
                 textureIndex: textureIndex,

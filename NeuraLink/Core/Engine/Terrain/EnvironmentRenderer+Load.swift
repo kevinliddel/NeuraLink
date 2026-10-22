@@ -300,6 +300,9 @@ extension EnvironmentRenderer {
             let layered = layers.count { $0 > 0 }
             nlLog("[EnvironmentRenderer] Duplicate faces: \(layered) of \(groups.count) group(s) layered over a coplanar copy")
         }
+        // Every texture is loaded by now; their mip chains must be done
+        // before the renderer (another queue) samples them.
+        texLoader.waitForMipmaps()
         meshGroups = groups.enumerated().map { index, group in
             let transform = instanceTransform * group.transform
             let linear = simd_float3x3(
