@@ -67,6 +67,10 @@ final class VRMMetalState {
     var randomAnimTimer: Float = -1
     var randomAnimElapsed: Float = 0
     var randomAnimDuration: Float = 0
+    /// MSAA samples for the live scene. Memoryless targets (VRMRenderer+MSAA)
+    /// keep 4× free of RAM on the 4 GB tier.
+    static let sceneSampleCount = 4
+
     static let randomAnimIntervalRange: ClosedRange<Float> = 8...20
     /// An idle plays once, cut here if it runs longer; never looped, since
     /// a clip wrapping back to its first frame pops.
@@ -160,7 +164,7 @@ final class VRMMetalState {
 
         guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
 
-        let config = RendererConfig(strict: .off)
+        let config = RendererConfig(strict: .off, sampleCount: Self.sceneSampleCount)
         renderer = VRMRenderer(device: device, config: config)
         mtkView.delegate = renderer
         mtkView.preferredFramesPerSecond = 60

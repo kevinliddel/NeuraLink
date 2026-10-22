@@ -18,6 +18,9 @@ public final class ParallelTextureLoader: @unchecked Sendable {
     private let baseURL: URL?
 
     private let maxConcurrentLoads: Int
+    /// Mip generation; MTLCommandQueue is thread-safe, so the concurrent
+    /// loads share it.
+    private let mipmapCommandQueue: MTLCommandQueue?
 
     public init(
         device: MTLDevice,
@@ -32,12 +35,13 @@ public final class ParallelTextureLoader: @unchecked Sendable {
         self.document = document
         self.baseURL = baseURL
         self.maxConcurrentLoads = maxConcurrentLoads
+        self.mipmapCommandQueue = device.makeCommandQueue()
     }
 
     /// Load all textures in parallel using TaskGroup.
     public func loadTexturesParallel(
         indices: [Int],
-        normalMapIndices: Set<Int>,
+        linearIndices: Set<Int>,
         progressCallback: (@Sendable (Int, Int) -> Void)? = nil
     ) async -> [Int: MTLTexture] {
         // Use unchecked sendable wrapper for results
@@ -49,8 +53,8 @@ public final class ParallelTextureLoader: @unchecked Sendable {
         await withTaskGroup(of: Void.self) { group in
             for textureIndex in indices {
                 group.addTask { [unowned self] in
-                    let isNormalMap = normalMapIndices.contains(textureIndex)
-                    let texture = try? await self.loadTexture(at: textureIndex, sRGB: !isNormalMap)
+                    let isLinear = linearIndices.contains(textureIndex)
+                    let texture = try? await self.loadTexture(at: textureIndex, sRGB: !isLinear)
 
                     if let texture = texture {
                         results.set(texture, for: textureIndex)
@@ -183,8 +187,8 @@ public final class ParallelTextureLoader: @unchecked Sendable {
 
     private func createTexture(from imageData: Data, textureIndex: Int, sRGB: Bool) async throws
         -> MTLTexture? {
-        guard let imageSource = CGImageSourceCreateWithData(imageData as CFData, nil),
-            let cgImage = CGImageSourceCreateImageAtIndex(imageSource, 0, nil)
+        guard let texture = TextureUploader.makeTexture(
+            device: device, imageData: imageData, sRGB: sRGB, withMipmaps: true, commandQueue: mipmapCommandQueue)
         else {
             throw VRMError.invalidImageData(
                 textureIndex: textureIndex,
@@ -192,55 +196,6 @@ public final class ParallelTextureLoader: @unchecked Sendable {
                 filePath: baseURL?.path
             )
         }
-
-        let width = cgImage.width
-        let height = cgImage.height
-        let pixelFormat: MTLPixelFormat = sRGB ? .rgba8Unorm_srgb : .rgba8Unorm
-
-        let textureDescriptor = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: pixelFormat,
-            width: width,
-            height: height,
-            mipmapped: false
-        )
-        textureDescriptor.usage = [.shaderRead]
-        textureDescriptor.storageMode = .shared
-
-        guard let texture = device.makeTexture(descriptor: textureDescriptor) else {
-            return nil
-        }
-
-        let bytesPerRow = width * 4
-        guard let bitmapData = malloc(height * bytesPerRow) else {
-            return nil
-        }
-        defer { free(bitmapData) }
-
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-        guard
-            let context = CGContext(
-                data: bitmapData,
-                width: width,
-                height: height,
-                bitsPerComponent: 8,
-                bytesPerRow: bytesPerRow,
-                space: colorSpace,
-                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-            )
-        else {
-            return nil
-        }
-
-        context.setBlendMode(.copy)
-        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
-
-        texture.replace(
-            region: MTLRegionMake2D(0, 0, width, height),
-            mipmapLevel: 0,
-            withBytes: bitmapData,
-            bytesPerRow: bytesPerRow
-        )
-
         return texture
     }
 }

@@ -153,17 +153,20 @@ public struct AnyCodable: Codable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
 
-        // Try decoding in order of most common types
+        // Try decoding in order of most common types. Numbers are kept as
+        // NSNumber, which casts to Int, Double and Float alike (as
+        // JSONSerialization's do): exporters write `1` where they mean 1.0,
+        // and a Swift Int fails every `as? Double` / `as? [Double]` read —
+        // VRM 1.0 MToon factors like `rimLightingMixFactor: 1` or
+        // `shadeColorFactor: [1, 0.8, 0.9]` silently fell back to defaults.
         if container.decodeNil() {
             value = NSNull()
         } else if let boolValue = try? container.decode(Bool.self) {
             value = boolValue
         } else if let intValue = try? container.decode(Int.self) {
-            value = intValue
+            value = NSNumber(value: intValue)
         } else if let doubleValue = try? container.decode(Double.self) {
-            value = doubleValue
-        } else if let floatValue = try? container.decode(Float.self) {
-            value = floatValue
+            value = NSNumber(value: doubleValue)
         } else if let stringValue = try? container.decode(String.self) {
             value = stringValue
         } else if let dictValue = try? container.decode([String: AnyCodable].self) {
@@ -181,8 +184,16 @@ public struct AnyCodable: Codable {
         switch value {
         case is NSNull:
             try container.encodeNil()
-        case let boolValue as Bool:
+        // A Swift Bool also bridges to NSNumber (and an NSNumber 0/1 to
+        // Bool), so the dynamic type decides which one this is.
+        case let boolValue as Bool where type(of: value) == Bool.self:
             try container.encode(boolValue)
+        case let number as NSNumber where type(of: value) != Bool.self:
+            if CFNumberIsFloatType(number) {
+                try container.encode(number.doubleValue)
+            } else {
+                try container.encode(number.int64Value)
+            }
         case let intValue as Int:
             try container.encode(intValue)
         case let doubleValue as Double:

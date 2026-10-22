@@ -64,6 +64,11 @@ public final class VRMPipelineCache: @unchecked Sendable {
         descriptor: MTLRenderPipelineDescriptor,
         key: String
     ) throws -> MTLRenderPipelineState {
+        // The key names the shader setup; the targets it renders into are
+        // part of it too. Renderers with different MSAA (the 4× live scene,
+        // the 1× thumbnail/portrait renderer) must not share a pipeline —
+        // Metal validation aborts on a sample-count mismatch.
+        let key = Self.qualifiedKey(key, descriptor: descriptor)
         return try lock.withLock {
             // Return cached pipeline state if available
             if let cached = pipelineStates[key] {
@@ -85,6 +90,13 @@ public final class VRMPipelineCache: @unchecked Sendable {
             pipelineStates[key] = state
             return state
         }
+    }
+
+    /// `key` plus the sample count and attachment formats the pipeline renders into.
+    static func qualifiedKey(_ key: String, descriptor: MTLRenderPipelineDescriptor) -> String {
+        let color = descriptor.colorAttachments[0].pixelFormat.rawValue
+        let depth = descriptor.depthAttachmentPixelFormat.rawValue
+        return "\(key)|samples:\(descriptor.rasterSampleCount)|color:\(color)|depth:\(depth)"
     }
 
     /// Clear all cached libraries and pipeline states

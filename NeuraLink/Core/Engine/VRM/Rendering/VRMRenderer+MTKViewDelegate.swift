@@ -18,9 +18,7 @@ extension VRMRenderer: MTKViewDelegate {
     }
 
     public func draw(in view: MTKView) {
-        guard let commandBuffer = commandQueue.makeCommandBuffer(),
-            let descriptor = view.currentRenderPassDescriptor
-        else {
+        guard let commandBuffer = commandQueue.makeCommandBuffer(), let descriptor = scenePass(for: view) else {
             return
         }
 
@@ -74,6 +72,16 @@ extension VRMRenderer: MTKViewDelegate {
         }
 
         commandBuffer.commit()
+    }
+}
+
+extension VRMRenderer {
+    /// The view's own pass, or — with MSAA on — memoryless multisampled
+    /// targets resolving into the drawable (VRMRenderer+MSAA).
+    func scenePass(for view: MTKView) -> MTLRenderPassDescriptor? {
+        guard usesMultisampling else { return view.currentRenderPassDescriptor }
+        guard let drawable = view.currentDrawable else { return nil }
+        return multisamplePassDescriptor(resolvingInto: drawable.texture, clearColor: view.clearColor)
     }
 }
 

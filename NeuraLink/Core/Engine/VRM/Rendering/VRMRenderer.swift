@@ -40,6 +40,7 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
 
     // Multisample texture for MSAA render targets
     var multisampleTexture: MTLTexture?
+    var multisampleDepthTexture: MTLTexture?
 
     /// Returns true if multisampling is enabled (sampleCount > 1)
     var usesMultisampling: Bool { config.sampleCount > 1 }

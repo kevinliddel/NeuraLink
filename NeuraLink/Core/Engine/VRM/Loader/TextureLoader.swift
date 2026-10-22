@@ -194,16 +194,12 @@ public class TextureLoader {
         from imageData: Data, mimeType: String?, textureIndex: Int, sRGB: Bool,
         maxSize: Int = Int.max, withMipmaps: Bool = false
     ) async throws -> MTLTexture? {
-        // Try using CGImage directly to avoid MTKTextureLoader async crash
-        if let cgImage = createCGImage(from: imageData) {
-            do {
-                let texture = try createTexture(
-                    from: cgImage, textureIndex: textureIndex, sRGB: sRGB, maxSize: maxSize,
-                    withMipmaps: withMipmaps)
-                return texture
-            } catch {
-                nlLog("[TextureLoader] Failed to create texture from CGImage: \(error)")
-            }
+        // Straight alpha + optional mips (TextureUploader); MTKTextureLoader
+        // only for formats neither decoder reads.
+        if let texture = TextureUploader.makeTexture(
+            device: device, imageData: imageData, sRGB: sRGB, maxSize: maxSize,
+            withMipmaps: withMipmaps, commandQueue: mipmapCommandQueue) {
+            return texture
         }
 
         // Fallback to MTKTextureLoader if CGImage fails (but this might crash in async context)
@@ -225,136 +221,6 @@ public class TextureLoader {
                 filePath: baseURL?.path
             )
         }
-    }
-
-    private func createCGImage(from data: Data) -> CGImage? {
-        guard let imageSource = CGImageSourceCreateWithData(data as CFData, nil),
-            let cgImage = CGImageSourceCreateImageAtIndex(imageSource, 0, nil)
-        else {
-            return nil
-        }
-        return cgImage
-    }
-
-    private func createTexture(from cgImage: CGImage, textureIndex: Int, sRGB: Bool,
-                               maxSize: Int = Int.max, withMipmaps: Bool = false) throws -> MTLTexture? {
-        nlLog("[TextureLoader] createTexture(from CGImage) called, sRGB=\(sRGB)")
-
-        // MTKTextureLoader seems to crash when called from background async context
-        // Let's create the texture manually instead
-
-        nlLog("[TextureLoader] Getting image dimensions...")
-        let srcWidth = cgImage.width
-        let srcHeight = cgImage.height
-
-        // Downscale if a maxSize cap is set (e.g. 1024 for background environment meshes).
-        let scale = maxSize < Int.max ? min(1.0, Double(maxSize) / Double(max(srcWidth, srcHeight))) : 1.0
-        let width  = max(1, Int(Double(srcWidth)  * scale))
-        let height = max(1, Int(Double(srcHeight) * scale))
-        if scale < 1.0 {
-            nlLog("[TextureLoader] Downscaled \(srcWidth)x\(srcHeight) → \(width)x\(height)")
-        }
-        nlLog("[TextureLoader] Image size: \(width)x\(height)")
-
-        nlLog("[TextureLoader] Creating texture descriptor...")
-        let pixelFormat: MTLPixelFormat = sRGB ? .rgba8Unorm_srgb : .rgba8Unorm
-
-        // Upload to a shared staging texture (CPU-writable)
-        let stagingDesc = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: pixelFormat, width: width, height: height, mipmapped: false)
-        stagingDesc.usage       = [.shaderRead]
-        stagingDesc.storageMode = .shared
-
-        nlLog("[TextureLoader] Creating Metal texture...")
-        guard let stagingTexture = device.makeTexture(descriptor: stagingDesc) else {
-            nlLog("[TextureLoader] Failed to create staging texture")
-            return nil
-        }
-        nlLog("[TextureLoader] Metal texture created")
-
-        // Pass data:nil and bytesPerRow:0 so CG allocates its own buffer with the alignment
-        // vImage requires. When we provide our own malloc'd buffer CG's internal vImage
-        // scaling path fires an alignment assertion for any non-identity scale factor.
-        nlLog("[TextureLoader] Creating CGContext...")
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-        guard let context = CGContext(
-            data: nil,
-            width: width,
-            height: height,
-            bitsPerComponent: 8,
-            bytesPerRow: 0,   // 0 = CG chooses optimal (aligned) stride
-            space: colorSpace,
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else {
-            nlLog("[TextureLoader] Failed to create bitmap context")
-            return nil
-        }
-        nlLog("[TextureLoader] CGContext created")
-
-        nlLog("[TextureLoader] Drawing image to context...")
-        context.setBlendMode(.copy)
-        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: CGFloat(width), height: CGFloat(height)))
-        nlLog("[TextureLoader] Image drawn")
-
-        guard let bitmapData = context.data else {
-            nlLog("[TextureLoader] CGContext has no backing data")
-            return nil
-        }
-        let bytesPerRow = context.bytesPerRow
-
-        nlLog("[TextureLoader] Replacing texture data...")
-        stagingTexture.replace(
-            region: MTLRegionMake2D(0, 0, width, height),
-            mipmapLevel: 0,
-            withBytes: bitmapData,
-            bytesPerRow: bytesPerRow
-        )
-        nlLog("[TextureLoader] Texture data replaced")
-
-        // Mipmap path: blit staging → private mipmapped texture, then generate all mip levels.
-        // Requires .renderTarget usage on the private texture (Metal requirement for generateMipmaps).
-        if withMipmaps,
-           let cmdQueue = mipmapCommandQueue,
-           let cmdBuf   = cmdQueue.makeCommandBuffer() {
-            let mipDesc = MTLTextureDescriptor.texture2DDescriptor(
-                pixelFormat: pixelFormat, width: width, height: height, mipmapped: true)
-            mipDesc.usage       = [.shaderRead, .renderTarget]
-            mipDesc.storageMode = .private
-            if let mipTex = device.makeTexture(descriptor: mipDesc),
-               let blit   = cmdBuf.makeBlitCommandEncoder() {
-                blit.copy(from: stagingTexture,
-                          sourceSlice: 0, sourceLevel: 0,
-                          sourceOrigin: MTLOrigin(x: 0, y: 0, z: 0),
-                          sourceSize: MTLSize(width: width, height: height, depth: 1),
-                          to: mipTex,
-                          destinationSlice: 0, destinationLevel: 0,
-                          destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0))
-                blit.generateMipmaps(for: mipTex)
-                blit.endEncoding()
-                cmdBuf.commit()
-                cmdBuf.waitUntilCompleted()
-                nlLog("[TextureLoader] Mipmaps generated (\(mipTex.mipmapLevelCount) levels)")
-                return mipTex
-            }
-        }
-
-        // DEBUG: Sample first pixel to check for extreme values
-        #if DEBUG
-            let firstPixel = bitmapData.assumingMemoryBound(to: UInt8.self)
-            let r = Float(firstPixel[0]) / 255.0
-            let g = Float(firstPixel[1]) / 255.0
-            let b = Float(firstPixel[2]) / 255.0
-            let a = Float(firstPixel[3]) / 255.0
-            nlLog(
-                "[TextureLoader] First pixel RGBA: (\(String(format: "%.3f", r)), \(String(format: "%.3f", g)), \(String(format: "%.3f", b)), \(String(format: "%.3f", a)))"
-            )
-            if r > 1.0 || g > 1.0 || b > 1.0 {
-                nlLog("  ⚠️ WARNING: Pixel values exceed 1.0!")
-            }
-        #endif
-
-        nlLog("[TextureLoader] Texture created successfully")
-        return stagingTexture
     }
 
     public func createSampler(from gltfSampler: GLTFSampler?) -> MTLSamplerState? {

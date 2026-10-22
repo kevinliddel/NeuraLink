@@ -35,13 +35,9 @@ extension VRMModel {
             preloadedData: preloadedBuffers
         )
 
-        // Identify which textures are used as normal maps (need linear format, not sRGB)
-        var normalMapTextureIndices = Set<Int>()
-        for (_, material) in (gltf.materials ?? []).enumerated() {
-            if let normalTexture = material.normalTexture {
-                normalMapTextureIndices.insert(normalTexture.index)
-            }
-        }
+        // Textures holding data rather than colour load as linear, not sRGB:
+        // normal maps and the MToon data maps (VRMModel+TextureRoles).
+        let linearTextureIndices = Self.linearTextureIndices(in: gltf)
 
         // === Loading Phase: Textures ===
         let textureCount = gltf.textures?.count ?? 0
@@ -65,7 +61,7 @@ extension VRMModel {
                 let indices = Array(0..<textureCount).filter { textureFilter?.contains($0) ?? true }
                 let loadedTextures = await parallelLoader.loadTexturesParallel(
                     indices: indices,
-                    normalMapIndices: normalMapTextureIndices
+                    linearIndices: linearTextureIndices
                 ) { completed, total in
                     Task {
                         await context?.updateProgress(
@@ -98,8 +94,7 @@ extension VRMModel {
                         totalItems: textureCount
                     )
 
-                    let isNormalMap = normalMapTextureIndices.contains(textureIndex)
-                    let useSRGB = !isNormalMap
+                    let useSRGB = !linearTextureIndices.contains(textureIndex)
                     let textureName =
                         gltf.textures?[safe: textureIndex]?.name ?? "texture_\(textureIndex)"
 
@@ -107,8 +102,9 @@ extension VRMModel {
                         textures.append(VRMTexture(name: textureName))
                         continue
                     }
+                    // Mipmapped: a texture seen small on screen would alias.
                     if let mtlTexture = try await textureLoader.loadTexture(
-                        at: textureIndex, sRGB: useSRGB) {
+                        at: textureIndex, sRGB: useSRGB, withMipmaps: true) {
                         let vrmTexture = VRMTexture(name: textureName)
                         vrmTexture.mtlTexture = mtlTexture
                         textures.append(vrmTexture)
