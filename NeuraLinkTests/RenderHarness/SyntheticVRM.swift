@@ -26,6 +26,9 @@ struct SyntheticVRM {
     /// Shading normal of every vertex. The quad still faces +Z on screen;
     /// tilting this only changes how it is lit.
     var normal = SIMD3<Float>(0, 0, 1)
+    /// A smooth UV sphere of this radius instead of the quad: outlines need
+    /// a closed surface (a flat quad's inverted hull is culled away).
+    var sphereRadius: Float?
     /// glTF sampler for every texture (default: linear, mipmapped, repeat).
     var sampler: [String: Any] = ["magFilter": 9729, "minFilter": 9987, "wrapS": 10497, "wrapT": 10497]
 
@@ -73,31 +76,29 @@ struct SyntheticVRM {
             views.append(view)
             return views.count - 1
         }
-        let half = size / 2
-        let corners: [SIMD3<Float>] = [
-            center + [-half.x, half.y, 0], center + [half.x, half.y, 0],
-            center + [half.x, -half.y, 0], center + [-half.x, -half.y, 0]
-        ]
+        let mesh = sphereRadius.map { Self.sphere(center: center, radius: $0) } ?? quadMesh()
+        let corners = mesh.positions
+        let count = corners.count
         let positions = addView(Self.floats(corners.flatMap { [$0.x, $0.y, $0.z] }), target: 34_962)
-        let normals = addView(Self.floats(Array(repeating: [normal.x, normal.y, normal.z], count: 4).flatMap { $0 }), target: 34_962)
-        let uvs = addView(Self.floats([0, 0, 1, 0, 1, 1, 0, 1]), target: 34_962)
-        let joints = addView(Self.shorts(Array(repeating: 0, count: 16)), target: 34_962)
-        let weights = addView(Self.floats(Array(repeating: [Float(1), 0, 0, 0], count: 4).flatMap { $0 }), target: 34_962)
-        let indices = addView(Self.shorts([0, 3, 2, 0, 2, 1]), target: 34_963)
+        let normals = addView(Self.floats(mesh.normals.flatMap { [$0.x, $0.y, $0.z] }), target: 34_962)
+        let uvs = addView(Self.floats(mesh.uvs.flatMap { [$0.x, $0.y] }), target: 34_962)
+        let joints = addView(Self.shorts(Array(repeating: 0, count: count * 4)), target: 34_962)
+        let weights = addView(Self.floats(Array(repeating: [Float(1), 0, 0, 0], count: count).flatMap { $0 }), target: 34_962)
+        let indices = addView(Self.shorts(mesh.indices), target: 34_963)
         let inverseBind = addView(Self.floats([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]))
         let imageViews = images.map { addView($0) }
 
         let minCorner = corners.reduce(corners[0]) { simd_min($0, $1) }
         let maxCorner = corners.reduce(corners[0]) { simd_max($0, $1) }
         let accessors: [[String: Any]] = [
-            ["bufferView": positions, "componentType": 5126, "count": 4, "type": "VEC3",
+            ["bufferView": positions, "componentType": 5126, "count": count, "type": "VEC3",
              "min": [minCorner.x, minCorner.y, minCorner.z].map(Double.init),
              "max": [maxCorner.x, maxCorner.y, maxCorner.z].map(Double.init)],
-            ["bufferView": normals, "componentType": 5126, "count": 4, "type": "VEC3"],
-            ["bufferView": uvs, "componentType": 5126, "count": 4, "type": "VEC2"],
-            ["bufferView": joints, "componentType": 5123, "count": 4, "type": "VEC4"],
-            ["bufferView": weights, "componentType": 5126, "count": 4, "type": "VEC4"],
-            ["bufferView": indices, "componentType": 5123, "count": 6, "type": "SCALAR"],
+            ["bufferView": normals, "componentType": 5126, "count": count, "type": "VEC3"],
+            ["bufferView": uvs, "componentType": 5126, "count": count, "type": "VEC2"],
+            ["bufferView": joints, "componentType": 5123, "count": count, "type": "VEC4"],
+            ["bufferView": weights, "componentType": 5126, "count": count, "type": "VEC4"],
+            ["bufferView": indices, "componentType": 5123, "count": mesh.indices.count, "type": "SCALAR"],
             ["bufferView": inverseBind, "componentType": 5126, "count": 1, "type": "MAT4"]
         ]
 
@@ -149,6 +150,47 @@ struct SyntheticVRM {
         glb.appendLE(0x004E_4942)  // "BIN\0"
         glb.append(bin)
         return glb
+    }
+
+    private struct Mesh {
+        var positions: [SIMD3<Float>]
+        var normals: [SIMD3<Float>]
+        var uvs: [SIMD2<Float>]
+        var indices: [UInt16]
+    }
+
+    private func quadMesh() -> Mesh {
+        let half = size / 2
+        return Mesh(
+            positions: [center + [-half.x, half.y, 0], center + [half.x, half.y, 0],
+                        center + [half.x, -half.y, 0], center + [-half.x, -half.y, 0]],
+            normals: Array(repeating: normal, count: 4),
+            uvs: [[0, 0], [1, 0], [1, 1], [0, 1]],
+            indices: [0, 3, 2, 0, 2, 1])
+    }
+
+    /// Latitude/longitude sphere, counter-clockwise from outside.
+    private static func sphere(center: SIMD3<Float>, radius: Float, rings: Int = 32, segments: Int = 48) -> Mesh {
+        var mesh = Mesh(positions: [], normals: [], uvs: [], indices: [])
+        for ring in 0...rings {
+            let theta = Float.pi * Float(ring) / Float(rings)
+            for segment in 0...segments {
+                let phi = 2 * Float.pi * Float(segment) / Float(segments)
+                let unit = SIMD3<Float>(sin(theta) * sin(phi), cos(theta), sin(theta) * cos(phi))
+                mesh.positions.append(center + unit * radius)
+                mesh.normals.append(unit)
+                mesh.uvs.append([Float(segment) / Float(segments), Float(ring) / Float(rings)])
+            }
+        }
+        let stride = segments + 1
+        for ring in 0..<rings {
+            for segment in 0..<segments {
+                let top = UInt16(ring * stride + segment)
+                let bottom = UInt16((ring + 1) * stride + segment)
+                mesh.indices += [top, bottom, top + 1, top + 1, bottom, bottom + 1]
+            }
+        }
+        return mesh
     }
 
     static let requiredBones = [

@@ -84,6 +84,13 @@ fragment float4 mtoon_fragment_v2(VertexOut in [[stage_in]],
     }
     if (material.alphaMode == 0) { baseColor.a = 1.0; }
     if (material.alphaMode == 1 && baseColor.a < material.alphaCutoff) { discard_fragment(); }
+    if (material.alphaMode == 3) {
+        // Cutout through alpha-to-coverage: alpha sharpened around the cutoff
+        // over one pixel's worth of change, so the edge covers 0…4 samples.
+        float edge = max(fwidth(baseColor.a), 1e-4);
+        baseColor.a = saturate((baseColor.a - material.alphaCutoff) / edge + 0.5);
+        if (baseColor.a <= 0.0) { discard_fragment(); }
+    }
     // Character customization: recolour after the sample so alpha cutout
     // and every lighting term below see the adjusted colour.
     baseColor.rgb = nl_applyRecolor(baseColor.rgb, material);

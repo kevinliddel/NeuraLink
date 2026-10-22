@@ -363,6 +363,13 @@ extension VRMRenderer {
                 }
             }
 
+            // With MSAA, cutout draws through the alpha-to-coverage pipeline:
+            // the shader turns alpha into a sharpened coverage (mode 3)
+            // instead of discarding, so hair-strand edges are anti-aliased.
+            if mtoonUniforms.alphaMode == 1, usesMultisampling {
+                mtoonUniforms.alphaMode = 3
+            }
+
             // Bind textures in MToon order
             // Index 0: Base color texture
             // (Texture binding is done inline in drawCore since it requires the encoder)

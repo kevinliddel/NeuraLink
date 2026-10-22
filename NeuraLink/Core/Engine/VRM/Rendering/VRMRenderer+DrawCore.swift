@@ -270,8 +270,18 @@ extension VRMRenderer {
 
         // DRAW LIST BISECT: Filter by draw index if requested
         var drawIndex = 0
+        // Opaque/cutout outlines go in once the first transparent item is
+        // reached (or after the loop when there is none), writing depth.
+        var opaqueOutlinesDrawn = false
+        let drawOpaqueOutlines = {
+            opaqueOutlinesDrawn = true
+            self.renderMToonOutlines(
+                encoder: encoder, renderItems: allItems.filter { $0.effectiveAlphaMode != "blend" },
+                model: model, morphedBuffers: morphedBuffers, writesDepth: true)
+        }
 
         for (index, item) in itemsToRender.enumerated() {
+            if !opaqueOutlinesDrawn, item.effectiveAlphaMode == "blend" { drawOpaqueOutlines() }
             let meshName = item.mesh.name ?? "unnamed"
             let materialName = item.materialName
 
@@ -341,6 +351,10 @@ extension VRMRenderer {
             } else if materialAlphaMode == "blend" {
                 // Standard 3D BLEND mode requires blending-enabled PSO
                 activePipelineState = isSkinned ? skinnedBlendPipelineState : blendPipelineState
+            } else if materialAlphaMode == "mask", usesMultisampling,
+                let coverage = isSkinned ? skinnedMaskAlphaToCoveragePipelineState : maskAlphaToCoveragePipelineState {
+                // Cutout with MSAA: alpha-to-coverage (shader alpha mode 3).
+                activePipelineState = coverage
             } else {
                 // Standard 3D OPAQUE and MASK modes can share the same PSO (no blending)
                 activePipelineState = isSkinned ? skinnedOpaquePipelineState : opaquePipelineState
@@ -364,12 +378,12 @@ extension VRMRenderer {
         // Increment frame counter
         frameCounter += 1
 
-        // Render outlines for MToon mode (inverted hull technique)
+        // Render outlines for MToon mode (inverted hull technique): the
+        // opaque ones if no transparent item came, then the transparent ones.
+        if !opaqueOutlinesDrawn { drawOpaqueOutlines() }
         renderMToonOutlines(
-            encoder: encoder,
-            renderItems: allItems,
-            model: model
-        )
+            encoder: encoder, renderItems: allItems.filter { $0.effectiveAlphaMode == "blend" },
+            model: model, morphedBuffers: morphedBuffers, writesDepth: false)
 
         // 3D World rain (streaks and ripples) — skipped in interior environments
         // (apartment / art gallery) where rain falling through the ceiling would

@@ -12,11 +12,20 @@ import simd
 
 extension VRMRenderer {
 
+    /// Inverted-hull outlines for `renderItems`. Opaque and cutout outlines
+    /// draw right after the opaque surfaces with depth writes on, so a
+    /// transparent surface behind them is hidden as it is behind the surface;
+    /// transparent materials' outlines draw last without writing depth.
+    /// The encoder's cached state is reset afterwards: this pass binds its
+    /// own pipeline, textures and depth state.
     func renderMToonOutlines(
         encoder: MTLRenderCommandEncoder,
         renderItems: [RenderItem],
-        model: VRMModel
+        model: VRMModel,
+        morphedBuffers: [MorphKey: MTLBuffer],
+        writesDepth: Bool
     ) {
+        defer { resetEncoderStateCache() }
         guard mtoonOutlinePipelineState != nil || mtoonSkinnedOutlinePipelineState != nil else {
             return
         }
@@ -27,7 +36,7 @@ extension VRMRenderer {
         encoder.setCullMode(.front)
         encoder.setFrontFacing(.counterClockwise)
 
-        if let outlineDepthState = depthStencilStates["blend"] {
+        if let outlineDepthState = depthStencilStates[writesDepth ? "opaque" : "blend"] {
             encoder.setDepthStencilState(outlineDepthState)
         }
 
@@ -76,6 +85,8 @@ extension VRMRenderer {
             mtoonUniforms.baseColorFactor = material.baseColorFactor
             mtoonUniforms.vrmVersion = material.vrmVersion == .v0_0 ? 0 : 1
             mtoonUniforms.outlineWidthFactor *= self.outlineWidth / 0.02
+            // The fragment lights the outline with the surface's colour.
+            mtoonUniforms.hasShadeMultiplyTexture = mtoon.shadeMultiplyTexture != nil ? 1 : 0
 
             // The hull must honor the same alpha cutout as the main pass.
             // VRoid hides unused outfit geometry (long skirts, pant legs) with
@@ -130,6 +141,9 @@ extension VRMRenderer {
             encoder.setFragmentBytes(
                 &mtoonUniforms, length: MemoryLayout<MToonMaterialUniforms>.stride, index: 8)
 
+            if isSkinned {
+                bindMorphedPositions(for: item, morphedBuffers: morphedBuffers, encoder: encoder)
+            }
             if isSkinned, let skinIndex = item.node.skin, skinIndex < model.skins.count {
                 let skin = model.skins[skinIndex]
                 if let jointBuffer = skinningSystem?.getJointMatricesBuffer() {
@@ -154,5 +168,36 @@ extension VRMRenderer {
         if let opaqueState = depthStencilStates["opaque"] {
             encoder.setDepthStencilState(opaqueState)
         }
+    }
+
+    /// The hull starts from the same morphed positions as the surface, so
+    /// mouth and eye outlines follow expressions.
+    private func bindMorphedPositions(
+        for item: RenderItem, morphedBuffers: [MorphKey: MTLBuffer], encoder: MTLRenderCommandEncoder
+    ) {
+        let key: MorphKey = (UInt64(item.meshIndex) << 32) | UInt64(item.primIdxInMesh)
+        var hasMorphed: UInt32 = 0
+        if let morphed = morphedBuffers[key] {
+            encoder.setVertexBuffer(morphed, offset: 0, index: ResourceIndices.morphedPositionsBuffer)
+            hasMorphed = 1
+        } else {
+            if emptyFloat3Buffer == nil {
+                emptyFloat3Buffer = device.makeBuffer(
+                    length: MemoryLayout<SIMD3<Float>>.stride, options: .storageModeShared)
+            }
+            encoder.setVertexBuffer(emptyFloat3Buffer, offset: 0, index: ResourceIndices.morphedPositionsBuffer)
+        }
+        encoder.setVertexBytes(
+            &hasMorphed, length: MemoryLayout<UInt32>.size, index: ResourceIndices.hasMorphedPositionsFlag)
+    }
+
+    /// Forget what the item loop believes is bound; the next draw rebinds.
+    func resetEncoderStateCache() {
+        lastPipelineState = nil
+        lastDepthStencilState = nil
+        lastCullMode = nil
+        lastFrontFacing = nil
+        lastDepthBias = nil
+        lastTextureIds.removeAll(keepingCapacity: true)
     }
 }

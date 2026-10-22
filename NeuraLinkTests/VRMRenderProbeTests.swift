@@ -178,4 +178,81 @@ struct VRMRenderProbeTests {
         let downEqualized = try await brightness(normalY: -1, equalization: 1)
         #expect(abs(upEqualized - downEqualized) < 0.01, "full equalization flattens it")
     }
+
+    // MARK: - Phase 3
+
+    /// A red sphere (radius 0.3 m at y = 1) with a green or white outline.
+    private func outlinedSphere(
+        mode: String, width: Double, colour: [Double] = [0, 1, 0], lightingMix: Double = 0
+    ) -> SyntheticVRM {
+        var probe = SyntheticVRM(material: SyntheticVRM.mtoon(base: Self.red, mtoon: [
+            "outlineWidthMode": mode, "outlineWidthFactor": width,
+            "outlineColorFactor": colour, "outlineLightingMixFactor": lightingMix
+        ]))
+        probe.sphereRadius = 0.3
+        return probe
+    }
+
+    /// Outline pixels (green, not red) across the middle row.
+    private func outlinePixels(_ image: RenderedImage) -> Int {
+        image.row(image.height / 2).filter { $0.y > 0.5 && $0.x < 0.5 }.count
+    }
+
+    /// Screen radius in pixels of a sphere of `radius` at `distance`, 60° FOV.
+    private func projectedRadius(_ radius: Float, distance: Float, size: Int) -> Float {
+        tan(asin(radius / distance)) / tan(Float.pi / 6) * Float(size) / 2
+    }
+
+    @Test("A world-coordinates outline is as wide in meters as the material says")
+    func worldOutlineWidth() async throws {
+        let harness = try #require(VRMRenderHarness(size: 256))
+        let model = try await harness.load(outlinedSphere(mode: "worldCoordinates", width: 0.05))
+        let image = try #require(harness.render(model))
+        // The hull is a sphere 5 cm larger: a ring of this many pixels each side.
+        let ring = projectedRadius(0.35, distance: 1.6, size: 256) - projectedRadius(0.3, distance: 1.6, size: 256)
+        let measured = Float(outlinePixels(image)) / 2
+        #expect(abs(measured - ring) <= 1.5, "ring \(measured) px, spec \(ring) px")
+    }
+
+    @Test("A screen-coordinates outline keeps its on-screen width at any distance")
+    func screenOutlineWidth() async throws {
+        let harness = try #require(VRMRenderHarness(size: 256))
+        let model = try await harness.load(outlinedSphere(mode: "screenCoordinates", width: 0.05))
+        let near = outlinePixels(try #require(harness.render(model, eye: [0, 1, 1.6])))
+        let far = outlinePixels(try #require(harness.render(model, eye: [0, 1, 3.2])))
+        #expect(near >= 6, "visible at all: \(near)")
+        #expect(abs(near - far) <= 3, "near \(near) px, far \(far) px")
+    }
+
+    @Test("Outline lighting mix 1 takes the surface's lit colour; 0 keeps the outline colour")
+    func outlineLightingMix() async throws {
+        let harness = try #require(VRMRenderHarness(size: 256))
+        func ringPixel(mix: Double) async throws -> SIMD4<Float> {
+            let model = try await harness.load(outlinedSphere(
+                mode: "worldCoordinates", width: 0.05, colour: [1, 1, 1], lightingMix: mix))
+            let image = try #require(harness.render(model))
+            let row = image.row(image.height / 2)
+            let firstOpaque = try #require(row.firstIndex { $0.w > 0.5 })
+            return row[firstOpaque + 2]
+        }
+        let lit = try await ringPixel(mix: 1)
+        #expect(lit.x > 0.8 && lit.y < 0.2, "white × red surface = red: \(lit)")
+        let flat = try await ringPixel(mix: 0)
+        #expect(flat.x > 0.9 && flat.y > 0.9, "pure outline colour: \(flat)")
+    }
+
+    @Test("With MSAA, a cutout edge inside the texture is anti-aliased (alpha to coverage)")
+    func cutoutCoverage() async throws {
+        let harness = try #require(VRMRenderHarness(sampleCount: 4))
+        // Left half opaque white, right half fully transparent.
+        let halves = (0..<64).flatMap { index -> [UInt8] in index % 8 < 4 ? [255, 255, 255, 255] : [255, 255, 255, 0] }
+        var probe = SyntheticVRM(material: SyntheticVRM.mtoon(baseTexture: 0, alphaMode: "MASK"))
+        probe.images = [TestPNG.encode(width: 8, height: 8, rgba: halves)]
+        let image = try #require(harness.render(try await harness.load(probe)))
+        // Rows through the quad's middle, columns around its centre line.
+        let partial = (44..<84).reduce(0) { count, y in
+            count + (56..<72).filter { let r = image.pixel($0, y).x; return r > 0.08 && r < 0.92 }.count
+        }
+        #expect(partial >= 30, "the cut edge has partial pixels: \(partial)")
+    }
 }

@@ -43,8 +43,12 @@ vertex VertexOut mtoon_outline_vertex(VertexIn in [[stage_in]],
 }
 
 // Outline fragment shader.
-// spec: outlineColor_final = outlineColor × lerp(1, lighting, outlineLightingMixFactor)
-// 0 = pure outline colour (unaffected by light), 1 = outline tinted by lighting.
+// Spec (UniVRM, three-vrm): outline = outlineColor × lerp(1, litColor,
+// outlineLightingMixFactor), where litColor is the surface's own MToon result
+// at that point — a dark-hair outline is a darker hair colour, not black.
+// This pass binds only the base texture, so the shade side is
+// shadeColor × base when the material multiplies its shade by a texture
+// (VRoid binds the base texture there) — close to the main pass, not exact.
 fragment float4 mtoon_outline_fragment(VertexOut in [[stage_in]],
                                 constant MToonMaterial& material [[buffer(8)]],
                                 constant Uniforms& uniforms [[buffer(1)]],
@@ -53,23 +57,35 @@ fragment float4 mtoon_outline_fragment(VertexOut in [[stage_in]],
     // Same alpha cutout as the main pass: the hull of alpha-hidden geometry
     // must not paint solid outline-colored panels where the surface itself
     // was discarded.
-    float alpha = material.baseColorFactor.a;
+    float4 base = material.baseColorFactor;
     if (material.hasBaseColorTexture > 0) {
-        alpha *= baseColorTexture.sample(textureSampler, in.texCoord).a;
+        base *= baseColorTexture.sample(textureSampler, in.texCoord);
     }
-    if (material.alphaMode == 1 && alpha < material.alphaCutoff) { discard_fragment(); }
-    if (material.alphaMode == 2 && alpha < 0.004) { discard_fragment(); }
+    if (material.alphaMode == 1 && base.a < material.alphaCutoff) { discard_fragment(); }
+    if (material.alphaMode == 2 && base.a < 0.004) { discard_fragment(); }
+    float3 baseRGB = nl_applyRecolor(base.rgb, material);
 
-    float3 outlineMaterial = float3(material.outlineColorR,
-                                    material.outlineColorG,
-                                    material.outlineColorB);
+    float3 shade = float3(material.shadeColorR, material.shadeColorG, material.shadeColorB);
+    if (material.hasShadeMultiplyTexture > 0) { shade *= baseRGB; }
 
-    // Directional lighting contribution at this surface
-    float3 normal  = normalize(in.worldNormal);
-    float  ndotl   = max(dot(normal, -uniforms.lightDirection.xyz), 0.0);
-    float3 lighting = uniforms.lightColor.xyz * ndotl * uniforms.lightNormalizationFactor;
+    // The surface's lit colour: the same toon step per light as the main pass.
+    float3 normal = normalize(in.worldNormal);
+    float toony = material.shadingToonyFactor;
+    float total = max(uniforms.lightColor.w + uniforms.light1Color.w + uniforms.light2Color.w, 0.001f);
+    float3 lit = float3(0.0);
+    float4 colors[3] = { uniforms.lightColor, uniforms.light1Color, uniforms.light2Color };
+    float3 directions[3] = { uniforms.lightDirection.xyz, uniforms.light1Direction.xyz, uniforms.light2Direction.xyz };
+    for (int i = 0; i < 3; i++) {
+        if (colors[i].w <= 0.0) { continue; }
+        float shading = dot(normal, -directions[i]) + material.shadingShiftFactor;
+        float lightStep = linearstep(-1.0 + toony, 1.0 - toony, shading);
+        lit += mix(shade, baseRGB, lightStep) * colors[i].xyz * (colors[i].w / total);
+    }
+    float3 ambient = uniforms.ambientColor.xyz;
+    float3 gi = mix(ambient * (1.0 + kMToonHemisphere * normal.y), ambient, saturate(1.0 - material.giIntensityFactor));
+    float3 surface = lit * uniforms.lightNormalizationFactor + gi * baseRGB;
 
-    // spec: lerp(1, lighting, factor) — 0=pure, 1=lit
-    float3 outlineColor = outlineMaterial * mix(float3(1.0), lighting, material.outlineLightingMixFactor);
-    return float4(outlineColor, material.alphaMode == 2 ? alpha : 1.0);
+    float3 outlineColor = float3(material.outlineColorR, material.outlineColorG, material.outlineColorB)
+                        * mix(float3(1.0), surface, material.outlineLightingMixFactor);
+    return float4(saturate(outlineColor), material.alphaMode == 2 ? base.a : 1.0);
 }
