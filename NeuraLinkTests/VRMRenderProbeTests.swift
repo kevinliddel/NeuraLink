@@ -255,4 +255,35 @@ struct VRMRenderProbeTests {
         }
         #expect(partial >= 30, "the cut edge has partial pixels: \(partial)")
     }
+
+    // MARK: - Phase 4
+
+    @Test("A part between the key light and the body casts the authored shade onto it")
+    func receivedShadow() async throws {
+        let harness = try #require(VRMRenderHarness())
+        // Red when lit, blue in shade; the key light comes from +X.
+        harness.renderer.setLight(0, direction: [-1, 0, 0], color: [1, 1, 1], intensity: 1)
+        defer { harness.renderer.setLight(0, direction: [0, 0, -1], color: [1, 1, 1], intensity: 1) }
+        func litSide(occluded: Bool, selfShadows: Bool = true) async throws -> SIMD4<Float> {
+            var probe = SyntheticVRM(material: SyntheticVRM.mtoon(base: Self.red, mtoon: [
+                "shadeColorFactor": [0.0, 0.0, 1.0], "shadingToonyFactor": 0.95
+            ]))
+            probe.sphereRadius = 0.3
+            // A card 0.6 m toward the light, covering the sphere's lit cap.
+            if occluded { probe.occluder = (center: [0.6, 1, 0], size: [0.7, 0.4]) }
+            harness.renderer.avatarSelfShadowsEnabled = selfShadows
+            defer { harness.renderer.avatarSelfShadowsEnabled = true }
+            // From the front the lit cap is right of centre; the card is edge-on.
+            let image = try #require(harness.render(try await harness.load(probe)))
+            let patch = (60..<68).flatMap { y in (72..<79).map { x in image.pixel(x, y) } }
+            return patch.reduce(.zero, +) / Float(patch.count)
+        }
+        let open = try await litSide(occluded: false)
+        #expect(open.x > 0.8 && open.z < 0.2, "nothing in the way: lit red \(open)")
+        let shadowed = try await litSide(occluded: true)
+        // Red stays at the shader's 8 % base-colour floor (0.08 linear ≈ 0.31 sRGB).
+        #expect(shadowed.z > 0.8 && shadowed.x < 0.35, "behind the card: the shade colour \(shadowed)")
+        let disabled = try await litSide(occluded: true, selfShadows: false)
+        #expect(disabled.x > 0.8, "self-shadows off (minimal pressure tier): lit again \(disabled)")
+    }
 }

@@ -51,7 +51,10 @@ fragment float4 mtoon_fragment_v2(VertexOut in [[stage_in]],
                         texture2d<float> matcapTexture [[texture(5)]],
                         texture2d<float> rimMultiplyTexture [[texture(6)]],
                         texture2d<float> uvAnimationMaskTexture [[texture(7)]],
-                        sampler textureSampler [[sampler(0)]]) {
+                        depth2d<float> avatarShadowMap [[texture(8)]],
+                        constant AvatarShadowParams& avatarShadowParams [[buffer(9)]],
+                        sampler textureSampler [[sampler(0)]],
+                        sampler avatarShadowSampler [[sampler(1)]]) {
 
     // ── UV selection ────────────────────────────────────────────
     float2 uv = in.texCoord;
@@ -157,9 +160,14 @@ fragment float4 mtoon_fragment_v2(VertexOut in [[stage_in]],
     if (intensity0 > 0.0) {
         float ndotl0  = dot(normal, -uniforms.lightDirection.xyz);
         float shading0 = ndotl0 + shadingShift;
-        float step0   = linearstep(-1.0 + toony, 1.0 - toony, shading0);
+        // Received shadow (three-vrm: shading *= shadow): the key light only,
+        // the light the self-shadow map is built from.
+        float3 geometricNormal = normalize(in.worldNormal) * (isFrontFace ? 1.0 : -1.0);
+        float shadow0 = avatarShadow(avatarShadowMap, avatarShadowSampler, avatarShadowParams,
+                                     in.worldPosition, geometricNormal);
+        float step0   = linearstep(-1.0 + toony, 1.0 - toony, shading0) * shadow0;
         lit0 = mix(shadeColor, baseColor.rgb, step0) * uniforms.lightColor.xyz * (intensity0 / totalIntensity);
-        lightingForRim += uniforms.lightColor.xyz * max(ndotl0, 0.0) * (intensity0 / totalIntensity);
+        lightingForRim += uniforms.lightColor.xyz * max(ndotl0, 0.0) * shadow0 * (intensity0 / totalIntensity);
     }
  
     float3 lit1 = float3(0.0);

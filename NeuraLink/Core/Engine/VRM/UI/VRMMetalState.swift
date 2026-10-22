@@ -325,6 +325,7 @@ final class VRMMetalState {
             mtkView.preferredFramesPerSecond = target
         }
         renderer?.rainBudgetScale = RuntimePressurePolicy.rainScale(tier)
+        renderer?.avatarSelfShadowsEnabled = RuntimePressurePolicy.avatarSelfShadows(tier)
     }
 
     func clear() {

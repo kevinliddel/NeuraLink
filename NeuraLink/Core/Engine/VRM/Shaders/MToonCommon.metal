@@ -131,6 +131,36 @@ struct VertexOut {
 // Hemisphere GI: ambient × (1 ± this) along world up (MToonMain).
 constant float kMToonHemisphere = 0.35;
 
+// ── Avatar self-shadow (VRMRenderer+AvatarShadow) ───────────────
+/// Mirrors `AvatarShadowParams` (Swift).
+struct AvatarShadowParams {
+    float4x4 lightViewProjection;
+    float normalOffset;
+    float depthBias;
+    float texelSize;
+    int enabled;
+};
+
+/// How much key light reaches `worldPos`: 1 lit, 0 in the avatar's own
+/// shadow. Nine hardware 2×2 compares (a 4×4-texel footprint) soften the
+/// edge enough for the toon step without blurring the shape.
+static inline float avatarShadow(depth2d<float> shadowMap, sampler shadowSampler,
+                                 constant AvatarShadowParams& params, float3 worldPos, float3 normal) {
+    if (params.enabled == 0) { return 1.0; }
+    float4 clip = params.lightViewProjection * float4(worldPos + normal * params.normalOffset, 1.0);
+    float3 ndc = clip.xyz / clip.w;
+    if (any(abs(ndc.xy) > 1.0) || ndc.z < 0.0 || ndc.z > 1.0) { return 1.0; }
+    float2 uv = float2(ndc.x * 0.5 + 0.5, -ndc.y * 0.5 + 0.5);
+    float depth = ndc.z - params.depthBias;
+    float lit = 0.0;
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+            lit += shadowMap.sample_compare(shadowSampler, uv + float2(x, y) * params.texelSize, depth);
+        }
+    }
+    return lit / 9.0;
+}
+
 // ── Outline (VRMC_materials_mtoon 1.0) ──────────────────────────
 // World mode: `width` is meters along the normal. Screen mode: a fraction
 // of the half screen height, which three-vrm gets by scaling with

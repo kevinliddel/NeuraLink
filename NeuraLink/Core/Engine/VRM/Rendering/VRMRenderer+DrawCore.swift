@@ -91,6 +91,8 @@ extension VRMRenderer {
 
         // Shadow map depth pass — must happen before the main render encoder opens
         drawShadowPass(commandBuffer: commandBuffer)
+        // The avatar's own shadow map (received shadows, VRMRenderer+AvatarShadow).
+        encodeAvatarShadowPass(commandBuffer: commandBuffer, model: model, morphedBuffers: morphedBuffers)
         if UserSettings.shared.showEnvironment {
             drawEnvironmentShadow(commandBuffer: commandBuffer)
         } else {
@@ -107,6 +109,8 @@ extension VRMRenderer {
             }
             return
         }
+        // The MToon fragment reads the avatar shadow map on every draw.
+        bindAvatarShadow(encoder: encoder)
 
         // 1. Sky (depth test = always, no depth write — always behind everything)
         drawSky(encoder: encoder)

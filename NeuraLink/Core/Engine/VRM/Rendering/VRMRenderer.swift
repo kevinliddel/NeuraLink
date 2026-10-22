@@ -41,6 +41,18 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
     // Multisample texture for MSAA render targets
     var multisampleTexture: MTLTexture?
     var multisampleDepthTexture: MTLTexture?
+    // Avatar self-shadows (VRMRenderer+AvatarShadow).
+    var avatarShadowMap: MTLTexture?
+    var avatarShadowPipeline: MTLRenderPipelineState?
+    var avatarShadowDepthState: MTLDepthStencilState?
+    var avatarShadowSampler: MTLSamplerState?
+    var avatarShadowWhiteTexture: MTLTexture?
+    var avatarShadowPlaceholderBuffer: MTLBuffer?
+    var avatarShadowParams = AvatarShadowParams()
+    /// Off on the minimal pressure tier (RuntimePressurePolicy).
+    var avatarSelfShadowsEnabled = true
+    /// The skinned pipelines' vertex layout, reused by the shadow pass.
+    var skinnedVertexDescriptor: MTLVertexDescriptor?
     /// Start of the material clock (MToon UV animation).
     let materialClockStart = CACurrentMediaTime()
     /// Fixed material time for render tests; nil = the clock.

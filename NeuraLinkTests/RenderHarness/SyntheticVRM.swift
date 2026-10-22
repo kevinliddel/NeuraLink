@@ -29,6 +29,10 @@ struct SyntheticVRM {
     /// A smooth UV sphere of this radius instead of the quad: outlines need
     /// a closed surface (a flat quad's inverted hull is culled away).
     var sphereRadius: Float?
+    /// An extra card merged into the same mesh — a shadow caster. It faces
+    /// +X (spanning Z and Y), so it can stand between a light from +X and
+    /// the body while the default camera sees it edge-on.
+    var occluder: (center: SIMD3<Float>, size: SIMD2<Float>)?
     /// glTF sampler for every texture (default: linear, mipmapped, repeat).
     var sampler: [String: Any] = ["magFilter": 9729, "minFilter": 9987, "wrapS": 10497, "wrapT": 10497]
 
@@ -76,7 +80,17 @@ struct SyntheticVRM {
             views.append(view)
             return views.count - 1
         }
-        let mesh = sphereRadius.map { Self.sphere(center: center, radius: $0) } ?? quadMesh()
+        var mesh = sphereRadius.map { Self.sphere(center: center, radius: $0) } ?? quadMesh()
+        if let occluder {
+            var extra = Self.quad(center: .zero, size: occluder.size, normal: [1, 0, 0])
+            // Turn the +Z quad to face +X: (x, y, z) → (−z, y, x), then place it.
+            extra.positions = extra.positions.map { occluder.center + SIMD3<Float>(-$0.z, $0.y, $0.x) }
+            let base = UInt16(mesh.positions.count)
+            mesh.positions += extra.positions
+            mesh.normals += extra.normals
+            mesh.uvs += extra.uvs
+            mesh.indices += extra.indices.map { $0 + base }
+        }
         let corners = mesh.positions
         let count = corners.count
         let positions = addView(Self.floats(corners.flatMap { [$0.x, $0.y, $0.z] }), target: 34_962)
@@ -160,6 +174,10 @@ struct SyntheticVRM {
     }
 
     private func quadMesh() -> Mesh {
+        Self.quad(center: center, size: size, normal: normal)
+    }
+
+    private static func quad(center: SIMD3<Float>, size: SIMD2<Float>, normal: SIMD3<Float>) -> Mesh {
         let half = size / 2
         return Mesh(
             positions: [center + [-half.x, half.y, 0], center + [half.x, half.y, 0],
