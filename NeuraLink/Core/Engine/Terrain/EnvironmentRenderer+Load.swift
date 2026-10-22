@@ -359,6 +359,12 @@ extension EnvironmentRenderer {
         return Tm * Rm * Sm
     }
 
+    /// Longest side an environment texture is loaded at. The cathedral ships
+    /// one 8192² atlas: 268 MB decoded, ~1.2 GB while it uploads, which a
+    /// phone running the local model can't spare. 4096² is a quarter of that
+    /// and still sharper than the screen it lands on.
+    static let maxTextureSize = 4_096
+
     /// Loads a texture by index with per-index caching; logs and returns nil on
     /// failure. Shared by base-colour and the PBR maps (normal / MR / emissive).
     private static func cachedTexture(
@@ -369,7 +375,8 @@ extension EnvironmentRenderer {
         let key = "\(index):\(sRGB)"
         if let cached = cache[key] { return cached }
         do {
-            if let tex = try await loader.loadTexture(at: index, sRGB: sRGB, withMipmaps: true) {
+            if let tex = try await loader.loadTexture(
+                at: index, sRGB: sRGB, maxSize: maxTextureSize, withMipmaps: true) {
                 cache[key] = tex
                 return tex
             }

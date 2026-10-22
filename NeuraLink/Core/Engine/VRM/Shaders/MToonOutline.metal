@@ -11,10 +11,8 @@ vertex VertexOut mtoon_outline_vertex(VertexIn in [[stage_in]],
                                sampler textureSampler [[sampler(0)]]) {
     VertexOut out;
 
-    float outlineWidth = material.outlineWidthFactor;
-    if (material.hasOutlineWidthMultiplyTexture > 0) {
-        outlineWidth *= outlineWidthMultiplyTexture.sample(textureSampler, in.texCoord).r;
-    }
+    float outlineWidth = material.outlineWidthFactor
+                       * mtoonOutlineWidthMask(outlineWidthMultiplyTexture, textureSampler, in.texCoord, material);
 
     float3 worldNormal = normalize((uniforms.normalMatrix * float4(in.normal, 0.0)).xyz);
     float3x3 viewRotation = float3x3(uniforms.viewMatrix[0].xyz,
@@ -24,25 +22,15 @@ vertex VertexOut mtoon_outline_vertex(VertexIn in [[stage_in]],
     float3 worldPos = (uniforms.modelMatrix * float4(in.position, 1.0)).xyz;
     float3 viewDir = normalize(cameraPos - worldPos);
 
-    if (material.outlineMode == 1.0) {
-        float distanceScale = length(worldPos - cameraPos) * 0.01;
-        worldPos += worldNormal * outlineWidth * distanceScale;
-        out.worldPosition = worldPos;
-        out.position = uniforms.projectionMatrix * uniforms.viewMatrix * float4(worldPos, 1.0);
-    } else if (material.outlineMode == 2.0) {
-        float4 worldPos4 = uniforms.modelMatrix * float4(in.position, 1.0);
-        out.worldPosition = worldPos4.xyz;
-        float4 clipPos = uniforms.projectionMatrix * uniforms.viewMatrix * worldPos4;
-        float3 viewNormal = normalize((uniforms.viewMatrix * uniforms.normalMatrix * float4(in.normal, 0.0)).xyz);
-        float2 screenNormal = normalize(viewNormal.xy);
-        float2 offsetNDC = screenNormal * outlineWidth * (2.0 / uniforms.viewportSize.xy);
-        clipPos.xy += offsetNDC * clipPos.w;
-        out.position = clipPos;
-    } else {
-        float4 worldPos4 = uniforms.modelMatrix * float4(in.position, 1.0);
-        out.worldPosition = worldPos4.xyz;
-        out.position = uniforms.projectionMatrix * uniforms.viewMatrix * worldPos4;
+    if (material.outlineMode == 1.0 || material.outlineMode == 2.0) {
+        float viewDepth = -(uniforms.viewMatrix * float4(worldPos, 1.0)).z;
+        worldPos += mtoonOutlineOffset(worldNormal, outlineWidth, material.outlineMode,
+                                       viewDepth, uniforms.projectionMatrix[1][1]);
     }
+    out.worldPosition = worldPos;
+    out.position = uniforms.projectionMatrix * uniforms.viewMatrix * float4(worldPos, 1.0);
+    // Where the shell meets its own surface the surface must win (three-vrm).
+    out.position.z += 1e-6 * out.position.w;
 
     out.worldNormal = worldNormal;
     out.viewNormal = normalize((uniforms.viewMatrix * uniforms.normalMatrix * float4(in.normal, 0.0)).xyz);

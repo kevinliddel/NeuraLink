@@ -51,6 +51,9 @@ nonisolated final class MipmapWork: @unchecked Sendable {
 
 nonisolated enum TextureUploader {
 
+    /// Above this (a 4096² RGBA texture) the mip blit is waited for at once.
+    static let largeUploadBytes = 64 * 1_024 * 1_024
+
     /// A texture for `imageData`, or nil when it can't be decoded. `sRGB` is
     /// false for normal maps and MToon data textures (shading shift, outline
     /// width, UV-animation mask). `maxSize` caps the longer side. With
@@ -74,7 +77,8 @@ nonisolated enum TextureUploader {
 
     private static func decode(_ data: Data, maxSize: Int) -> Pixels? {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
+              let image = downscaledImage(source, maxSize: maxSize) ?? CGImageSourceCreateImageAtIndex(source, 0, nil)
+        else { return nil }
         let scale = maxSize < .max ? min(1.0, Double(maxSize) / Double(max(image.width, image.height))) : 1.0
         let width = max(1, Int(Double(image.width) * scale))
         let height = max(1, Int(Double(image.height) * scale))
@@ -95,6 +99,25 @@ nonisolated enum TextureUploader {
             return vImageUnpremultiplyData_RGBA8888(&vImage, &vImage, vImage_Flags(kvImageNoFlags)) == kvImageNoError
         }
         return decoded ? pixels : nil
+    }
+
+    /// An image larger than `maxSize`, decoded straight at the smaller size
+    /// (JPEG decodes subsampled), so an 8192² atlas never exists in memory at
+    /// full size. Nil when no downscale is needed.
+    private static func downscaledImage(_ source: CGImageSource, maxSize: Int) -> CGImage? {
+        guard maxSize < .max,
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue,
+              let height = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue,
+              max(width, height) > maxSize
+        else { return nil }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxSize,
+            kCGImageSourceCreateThumbnailWithTransform: false,
+            kCGImageSourceShouldCacheImmediately: true
+        ]
+        return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
     }
 
     // MARK: - Upload
@@ -131,7 +154,9 @@ nonisolated enum TextureUploader {
         blit.generateMipmaps(for: texture)
         blit.endEncoding()
         commandBuffer.commit()
-        if let pending {
+        // Defer the wait for ordinary textures; a huge one waits now so its
+        // staging copy and pixels are freed before the next image decodes.
+        if let pending, pixels.rgba.count <= largeUploadBytes {
             pending.add(commandBuffer)
         } else {
             commandBuffer.waitUntilCompleted()

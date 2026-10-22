@@ -131,6 +131,25 @@ struct VertexOut {
 // Hemisphere GI: ambient × (1 ± this) along world up (MToonMain).
 constant float kMToonHemisphere = 0.35;
 
+// ── Outline (VRMC_materials_mtoon 1.0) ──────────────────────────
+// World mode: `width` is meters along the normal. Screen mode: a fraction
+// of the half screen height, which three-vrm gets by scaling with
+// viewDepth / P[1][1] — so the line keeps its on-screen size at any distance.
+static inline float3 mtoonOutlineOffset(float3 worldNormal, float width, float mode,
+                                        float viewDepth, float projectionYScale) {
+    float scale = (mode == 2.0) ? viewDepth / max(projectionYScale, 1e-4) : 1.0;
+    return worldNormal * width * scale;
+}
+
+// Width multiplier: VRM 1.0 reads G (spec, three-vrm), VRM 0.x MToon read R.
+// Vertex stage, so an explicit LOD.
+static inline float mtoonOutlineWidthMask(texture2d<float> widthTexture, sampler textureSampler,
+                                          float2 uv, constant MToonMaterial& material) {
+    if (material.hasOutlineWidthMultiplyTexture == 0) { return 1.0; }
+    float4 sample = widthTexture.sample(textureSampler, uv, level(0));
+    return material.vrmVersion == 0 ? sample.r : sample.g;
+}
+
 // UV Animation utility function
 static inline float2 animateUV(float2 uv, constant MToonMaterial& material) {
     float2 result = uv;
