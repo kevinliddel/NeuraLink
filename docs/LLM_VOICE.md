@@ -89,6 +89,19 @@ Notes on the flow:
 - **Persona voice resolution**: Each engine consults [`PersonaVoiceStore`](../NeuraLink/Data/DataSources/Memory/PersonaVoiceStore.swift) at synthesis time — now a thin facade over the `character_ai` SQL table (each engine's voice lives alongside that engine's prompt) — so changing the picker in `PersonaSettingsView` and saving immediately changes the voice for the next chunk without requiring an app restart.
 - **Buffer scheduling**: Each engine emits `AVAudioPCMBuffer`s in its native sample rate (OpenVoice at 22.05 kHz, VOICEVOX at 24 kHz, System at iOS-locale-dependent). [`scheduleBuffer`](../NeuraLink/Data/DataSources/LocalLLM/LocalLLMManager+TTS.swift) re-connects the player node with the right format on the fly when consecutive chunks have differing rates.
 
+### English voices (OpenVoice)
+
+OpenVoice clones MeloTTS speech into a target voice from a 256-float speaker embedding bundled in `App/Resources` (`se_<name>.f32`). [`OpenVoiceVoicePreset`](../NeuraLink/Data/DataSources/TTS/OpenVoice/OpenVoiceVoicePreset.swift) lists four:
+
+| Voice | Gender | Embedding |
+|---|---|---|
+| Riko · soft | female | `se_riko` |
+| Akira · calm | female | `se_akira` |
+| Kamijou · lively | male | `se_touma` |
+| Ayanokouji · composed | male | `se_ayanokoji` |
+
+A character with no saved voice gets one that matches its gender: Ayanokouji for male characters, Oz included, and Riko otherwise. A voice picked in the persona settings always wins.
+
 ### Voice preview and transcript playback
 
 The persona settings preview and the chat-history play button speak a text that

@@ -57,7 +57,7 @@ struct DefaultCharacterTests {
             #expect(prompt.contains("Oz") || prompt.contains("オズ"), "\(String(describing: config))")
         }
         #expect(VoiceVoxSpeaker.speakerID(for: "Oz") == VoiceVoxSpeaker.ritsu.id)
-        #expect(OpenVoiceVoicePreset.builtInDefault(for: "Oz") == .akira)
+        #expect(OpenVoiceVoicePreset.builtInDefault(for: "Oz") == .ayanokoji, "the butler speaks with a male voice")
     }
 
     @Test(
