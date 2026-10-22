@@ -23,6 +23,9 @@ struct SyntheticVRM {
     /// Quad centre and size in meters; the quad faces +Z.
     var center = SIMD3<Float>(0, 1, 0)
     var size = SIMD2<Float>(1, 1)
+    /// Shading normal of every vertex. The quad still faces +Z on screen;
+    /// tilting this only changes how it is lit.
+    var normal = SIMD3<Float>(0, 0, 1)
     /// glTF sampler for every texture (default: linear, mipmapped, repeat).
     var sampler: [String: Any] = ["magFilter": 9729, "minFilter": 9987, "wrapS": 10497, "wrapT": 10497]
 
@@ -76,7 +79,7 @@ struct SyntheticVRM {
             center + [half.x, -half.y, 0], center + [-half.x, -half.y, 0]
         ]
         let positions = addView(Self.floats(corners.flatMap { [$0.x, $0.y, $0.z] }), target: 34_962)
-        let normals = addView(Self.floats(Array(repeating: [Float(0), 0, 1], count: 4).flatMap { $0 }), target: 34_962)
+        let normals = addView(Self.floats(Array(repeating: [normal.x, normal.y, normal.z], count: 4).flatMap { $0 }), target: 34_962)
         let uvs = addView(Self.floats([0, 0, 1, 0, 1, 1, 0, 1]), target: 34_962)
         let joints = addView(Self.shorts(Array(repeating: 0, count: 16)), target: 34_962)
         let weights = addView(Self.floats(Array(repeating: [Float(1), 0, 0, 0], count: 4).flatMap { $0 }), target: 34_962)

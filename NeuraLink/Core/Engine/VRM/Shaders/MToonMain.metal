@@ -58,13 +58,23 @@ fragment float4 mtoon_fragment_v2(VertexOut in [[stage_in]],
     if (material.uvOffsetX != 0.0 || material.uvOffsetY != 0.0 || material.uvScale != 1.0) {
         uv = uv * material.uvScale + float2(material.uvOffsetX, material.uvOffsetY);
     }
-    if (material.hasUvAnimationMaskTexture > 0) {
-        float mask = uvAnimationMaskTexture.sample(textureSampler, in.texCoord).r;
-        uv = mix(in.texCoord, in.animatedTexCoord, mask);
-    } else if (material.uvAnimationScrollXSpeedFactor != 0.0 ||
-               material.uvAnimationScrollYSpeedFactor != 0.0 ||
-               material.uvAnimationRotationSpeedFactor != 0.0) {
-        uv = in.animatedTexCoord;
+    // ── UV animation (spec: per fragment, the mask scales both the
+    //    rotation about (0.5, 0.5) and the scroll) ────────────────
+    if (material.uvAnimationScrollXSpeedFactor != 0.0 ||
+        material.uvAnimationScrollYSpeedFactor != 0.0 ||
+        material.uvAnimationRotationSpeedFactor != 0.0) {
+        float mask = 1.0;
+        if (material.hasUvAnimationMaskTexture > 0) {
+            // 1.0 reads the B channel (spec, three-vrm); 0.x MToon read R.
+            float4 maskSample = uvAnimationMaskTexture.sample(textureSampler, uv);
+            mask = material.vrmVersion == 0 ? maskSample.r : maskSample.b;
+        }
+        float angle = material.uvAnimationRotationSpeedFactor * material.time * mask;
+        float2 centered = uv - 0.5;
+        uv = float2(cos(angle) * centered.x - sin(angle) * centered.y,
+                    sin(angle) * centered.x + cos(angle) * centered.y) + 0.5;
+        uv += float2(material.uvAnimationScrollXSpeedFactor, material.uvAnimationScrollYSpeedFactor)
+              * material.time * mask;
     }
 
     // ── Base + shade colour ─────────────────────────────────────
@@ -166,14 +176,17 @@ fragment float4 mtoon_fragment_v2(VertexOut in [[stage_in]],
     lightingForRim *= uniforms.lightNormalizationFactor;
 
     // ── GI / ambient ────────────────────────────────────────────
-    // Spec: `color = color + gi × baseColorTerm` — indirect light is added at
-    // FULL strength. giEqualizationFactor only blends directional (SH) GI
-    // against its uniform average; with a single uniform ambient colour that
-    // blend is a no-op, so the factor must NOT scale the ambient. Scaling it
-    // (×0.05–0.1) starved the shade side, which read darker/more saturated
-    // than reference viewers — most visible on skin.
+    // Spec: `color += gi × baseColorTerm`, gi = lerp(SH(normal), SH average,
+    // giEqualizationFactor), added at FULL strength (scaling it by the factor
+    // starved the shade side). The scene gives one ambient colour, so a
+    // hemisphere around it stands in for the SH probe: brighter from above,
+    // darker from below, same average — under a chin or a brim reads a touch
+    // darker, as with a sky. giIntensityFactor holds 1 − giEqualizationFactor.
+    float3 ambient = uniforms.ambientColor.xyz;
+    float3 giAlongNormal = ambient * (1.0 + kMToonHemisphere * normal.y);
+    float3 gi = mix(giAlongNormal, ambient, saturate(1.0 - material.giIntensityFactor));
     float3 litColor = (lit0 + lit1 + lit2) * uniforms.lightNormalizationFactor
-                    + uniforms.ambientColor.xyz * baseColor.rgb;
+                    + gi * baseColor.rgb;
 
     // ── Emissive ────────────────────────────────────────────────
     float3 emissive = float3(material.emissiveR, material.emissiveG, material.emissiveB);

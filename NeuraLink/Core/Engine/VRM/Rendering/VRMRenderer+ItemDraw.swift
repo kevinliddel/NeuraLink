@@ -264,12 +264,7 @@ extension VRMRenderer {
             mtoonUniforms.baseColorFactor = material.baseColorFactor
             mtoonUniforms.normalScale = material.normalScale
             mtoonUniforms.roughnessFactor = material.roughnessFactor
-            mtoonUniforms.emissiveFactor = material.emissiveFactor
-
-            // LIGHTING FIX: Zero out emissive to prevent washout (props keep theirs)
-            if !material.preservesEmissive {
-                mtoonUniforms.emissiveFactor = SIMD3<Float>(0, 0, 0)
-            }
+            mtoonUniforms.emissiveFactor = material.effectiveEmissiveFactor
 
             // Force face materials to render with full brightness
             if isFaceMaterial {
@@ -328,8 +323,10 @@ extension VRMRenderer {
                     mtoonUniforms.uvScale = 0.5  // Scale down to fit lip texture
                 }
 
-                // LIGHTING FIX: Zero emissive AFTER MToon init to prevent washout
-                mtoonUniforms.emissiveFactor = SIMD3<Float>(0, 0, 0)
+                // Emission from the glTF material (spec: factor × map); the
+                // MToon init doesn't carry it. UV animation runs on the clock.
+                mtoonUniforms.emissiveFactor = material.effectiveEmissiveFactor
+                mtoonUniforms.time = materialTime
 
                 // ALPHA FIX: Restore effectiveAlphaMode AFTER MToon init
                 // MToon extension may have wrong alphaMode; use our detected/fixed value

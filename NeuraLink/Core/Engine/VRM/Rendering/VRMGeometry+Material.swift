@@ -55,9 +55,18 @@ public class VRMMaterial {
     /// (its `name` may be a generic "VRM/MToon" on older VRoid exports).
     public var slotHint: VRoidMaterialSlot?
 
-    /// The renderer zeroes emissive on every character material to avoid
-    /// washout; a prop (the phone's lit screen) opts out.
-    public var preservesEmissive = false
+    /// KHR_materials_emissive_strength multiplier (glTF default 1).
+    public var emissiveStrength: Float = 1
+    /// The material names an emission map. If that map didn't load, the
+    /// factor alone (often 1,1,1 on VRoid hair) would wash the surface white.
+    public var emissiveMapExpected = false
+
+    /// Emission the shader adds (spec: factor × strength × map): nothing when
+    /// an expected map is missing.
+    public var effectiveEmissiveFactor: SIMD3<Float> {
+        if emissiveMapExpected, emissiveTexture?.mtlTexture == nil { return .zero }
+        return emissiveFactor * emissiveStrength
+    }
 
     /// Computed property: Is this material transparent but should write to depth?
     /// Used for proper layering of overlapping transparent materials (e.g., eyebrows over face skin)
@@ -102,7 +111,8 @@ public class VRMMaterial {
         zWriteEnabled = other.zWriteEnabled
         blendMode = other.blendMode
         slotHint = other.slotHint
-        preservesEmissive = other.preservesEmissive
+        emissiveStrength = other.emissiveStrength
+        emissiveMapExpected = other.emissiveMapExpected
     }
 
     public init(
@@ -136,13 +146,19 @@ public class VRMMaterial {
         }
 
         // Load emissive texture (for glow effects)
-        if let emissiveTextureInfo = gltfMaterial.emissiveTexture,
-            emissiveTextureInfo.index < textures.count {
-            emissiveTexture = textures[emissiveTextureInfo.index]
+        if let emissiveTextureInfo = gltfMaterial.emissiveTexture {
+            emissiveMapExpected = true
+            if emissiveTextureInfo.index < textures.count {
+                emissiveTexture = textures[emissiveTextureInfo.index]
+            }
         }
 
         if let emissive = gltfMaterial.emissiveFactor, emissive.count == 3 {
             emissiveFactor = SIMD3<Float>(emissive[0], emissive[1], emissive[2])
+        }
+        if let strength = gltfMaterial.extensions?["KHR_materials_emissive_strength"] as? [String: Any],
+            let value = strength["emissiveStrength"] as? NSNumber {
+            emissiveStrength = value.floatValue
         }
 
         doubleSided = gltfMaterial.doubleSided ?? false
@@ -207,6 +223,18 @@ public class VRMMaterial {
 
             // Also get base color from VRM 0.x _Color vector property if present (sRGB to Linear)
             // (applies to MToon and Unlit alike — both use _Color/_MainTex)
+            // VRM 0.x emission when the glTF fields are absent (UniVRM
+            // writes both; other exporters only the MToon properties).
+            if gltfMaterial.emissiveFactor == nil,
+                let emission = vrm0Prop.vectorProperties["_EmissionColor"], emission.count >= 3 {
+                emissiveFactor = SIMD3<Float>(
+                    sRGBToLinear(emission[0]), sRGBToLinear(emission[1]), sRGBToLinear(emission[2]))
+            }
+            if gltfMaterial.emissiveTexture == nil, let index = vrm0Prop.textureProperties["_EmissionMap"] {
+                emissiveMapExpected = true
+                if index < textures.count { emissiveTexture = textures[index] }
+            }
+
             if let colorVec = vrm0Prop.vectorProperties["_Color"], colorVec.count >= 4 {
                 // Convert RGB from sRGB to linear, alpha stays linear
                 let r = sRGBToLinear(colorVec[0])

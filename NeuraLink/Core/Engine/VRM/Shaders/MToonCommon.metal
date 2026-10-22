@@ -128,6 +128,9 @@ struct VertexOut {
     float3 viewNormal;
 };
 
+// Hemisphere GI: ambient × (1 ± this) along world up (MToonMain).
+constant float kMToonHemisphere = 0.35;
+
 // UV Animation utility function
 static inline float2 animateUV(float2 uv, constant MToonMaterial& material) {
     float2 result = uv;

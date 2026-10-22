@@ -166,9 +166,8 @@ public enum VRMPropLoader {
         let materials = (document.materials ?? []).map { gltfMaterial -> VRMMaterial in
             // Built as VRM 1.0 whatever the host is: under 0.x rules a BLEND
             // material would be promoted to the depth-writing path.
-            let material = VRMMaterial(from: gltfMaterial, textures: textures, vrmVersion: .v1_0)
-            material.preservesEmissive = true  // the screen glows
-            return material
+            // The screen glows through its own emissive factor and map.
+            VRMMaterial(from: gltfMaterial, textures: textures, vrmVersion: .v1_0)
         }
 
         var parts: [VRMProp.Part] = []

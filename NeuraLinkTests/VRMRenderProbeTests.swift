@@ -120,4 +120,62 @@ struct VRMRenderProbeTests {
         let center = image.pixel(64, 64)
         #expect(center.x > 0.9 && center.z < 0.1, "lit side expected: \(center)")
     }
+
+    // MARK: - Phase 2
+
+    @Test("Emission adds factor × map; a referenced map that didn't load adds nothing")
+    func emission() async throws {
+        let harness = try #require(VRMRenderHarness())
+        func centre(emissiveTexture: Int?, images: [Data]) async throws -> SIMD4<Float> {
+            var extra: [String: Any] = ["emissiveFactor": [1.0, 0.0, 0.0]]
+            if let emissiveTexture { extra["emissiveTexture"] = ["index": emissiveTexture] }
+            var probe = SyntheticVRM(material: SyntheticVRM.mtoon(base: [0, 0, 0, 1], extra: extra))
+            probe.images = images
+            let image = try #require(harness.render(try await harness.load(probe)))
+            return image.pixel(64, 64)
+        }
+        let white = TestPNG.solid(size: 4, (255, 255, 255, 255))
+        let withMap = try await centre(emissiveTexture: 0, images: [white])
+        #expect(withMap.x > 0.95 && withMap.y < 0.05, "factor × white map glows red: \(withMap)")
+        let factorOnly = try await centre(emissiveTexture: nil, images: [])
+        #expect(factorOnly.x > 0.95, "no map: the factor alone glows (glTF spec): \(factorOnly)")
+        let missingMap = try await centre(emissiveTexture: 3, images: [white])
+        #expect(missingMap.x < 0.05, "a map that didn't load must not wash the surface: \(missingMap)")
+    }
+
+    @Test("UV animation scrolls the texture on the skinned path")
+    func uvAnimation() async throws {
+        let harness = try #require(VRMRenderHarness())
+        // Left half red, right half blue; scrolling half a texture swaps them.
+        let stripes = (0..<16).flatMap { index -> [UInt8] in index % 4 < 2 ? [255, 0, 0, 255] : [0, 0, 255, 255] }
+        var probe = SyntheticVRM(material: SyntheticVRM.mtoon(baseTexture: 0, mtoon: ["uvAnimationScrollXSpeedFactor": 0.5]))
+        probe.images = [TestPNG.encode(width: 4, height: 4, rgba: stripes)]
+        let model = try await harness.load(probe)
+        harness.renderer.materialTimeOverride = 0
+        let start = try #require(harness.render(model)).pixel(47, 64)
+        harness.renderer.materialTimeOverride = 1
+        let later = try #require(harness.render(model)).pixel(47, 64)
+        harness.renderer.materialTimeOverride = nil
+        #expect(start.x > 0.9 && start.z < 0.1, "t = 0: the left quarter is red: \(start)")
+        #expect(later.z > 0.9 && later.x < 0.1, "t = 1 s at 0.5/s: blue has scrolled in: \(later)")
+    }
+
+    @Test("Ambient light is brighter from above unless the material equalizes it")
+    func hemisphereGI() async throws {
+        let harness = try #require(VRMRenderHarness())
+        harness.renderer.setAmbientColor(SIMD3<Float>(repeating: 0.5))
+        defer { harness.renderer.setAmbientColor(.zero) }
+        func brightness(normalY: Float, equalization: Double) async throws -> Float {
+            var probe = SyntheticVRM(material: SyntheticVRM.mtoon(
+                base: [0.25, 0.25, 0.25, 1], mtoon: ["giEqualizationFactor": equalization]))
+            probe.normal = [0, normalY, 0]
+            return try #require(harness.render(try await harness.load(probe))).pixel(64, 64).x
+        }
+        let up = try await brightness(normalY: 1, equalization: 0)
+        let down = try await brightness(normalY: -1, equalization: 0)
+        #expect(up > down + 0.05, "facing the sky reads brighter: up \(up), down \(down)")
+        let upEqualized = try await brightness(normalY: 1, equalization: 1)
+        let downEqualized = try await brightness(normalY: -1, equalization: 1)
+        #expect(abs(upEqualized - downEqualized) < 0.01, "full equalization flattens it")
+    }
 }

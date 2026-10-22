@@ -41,6 +41,12 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
     // Multisample texture for MSAA render targets
     var multisampleTexture: MTLTexture?
     var multisampleDepthTexture: MTLTexture?
+    /// Start of the material clock (MToon UV animation).
+    let materialClockStart = CACurrentMediaTime()
+    /// Fixed material time for render tests; nil = the clock.
+    var materialTimeOverride: Float?
+    /// Seconds on the material clock.
+    var materialTime: Float { materialTimeOverride ?? Float(CACurrentMediaTime() - materialClockStart) }
 
     /// Returns true if multisampling is enabled (sampleCount > 1)
     var usesMultisampling: Bool { config.sampleCount > 1 }
