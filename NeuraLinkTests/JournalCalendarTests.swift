@@ -88,21 +88,26 @@ struct JournalCalendarTests {
             of: activity, in: JournalCalendarModel.Month(year: 2026, month: 9), calendar: cal).daysTalked == 0)
     }
 
-    @Test("Turn stamps and the last-turn-before query read the messages table")
+    @Test("Turn stamps and the last-turn-before query read the messages table, per character")
     func storeQueries() {
         let store = MemoryStore.shared
+        let character = "calendar-test-\(UUID().uuidString.prefix(8))"
         let id = store.insertConversation(title: "calendar-test")
         defer { store.deleteConversation(id: id) }
-        store.insertMessage(conversationID: id, role: "user", kind: "message", content: "hi")
-        store.insertMessage(conversationID: id, role: "assistant", kind: "message", content: "hello")
+        store.insertMessage(conversationID: id, role: "user", kind: "message", content: "hi", character: character)
+        store.insertMessage(conversationID: id, role: "assistant", kind: "message", content: "hello", character: character)
         let now = Date()
 
-        let stamps = store.userTurnStamps(between: now.addingTimeInterval(-120), and: now.addingTimeInterval(120))
-            .filter { $0.conversationID == id }
-        #expect(stamps.count == 1)
+        let stamps = store.userTurnStamps(
+            between: now.addingTimeInterval(-120), and: now.addingTimeInterval(120), character: character)
+        #expect(stamps.count == 1 && stamps.first?.conversationID == id)
+        #expect(store.userTurnStamps(
+            between: now.addingTimeInterval(-120), and: now.addingTimeInterval(120), character: character + "-other").isEmpty)
 
-        #expect((store.lastUserMessageAt(before: now.addingTimeInterval(120)) ?? .distantPast) >= now.addingTimeInterval(-120))
+        let later = now.addingTimeInterval(120)
+        #expect((store.lastUserMessageAt(before: later, character: character) ?? .distantPast) >= now.addingTimeInterval(-120))
+        #expect(store.lastUserMessageAt(before: later, character: character + "-other") == nil)
         let cutoff = now.addingTimeInterval(-3_600)
-        #expect((store.lastUserMessageAt(before: cutoff) ?? .distantPast) < cutoff)
+        #expect(store.lastUserMessageAt(before: cutoff, character: character) == nil)
     }
 }

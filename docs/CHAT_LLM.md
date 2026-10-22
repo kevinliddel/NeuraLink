@@ -197,6 +197,9 @@ test run. Every unit it inserts is deleted afterwards. The DEBUG launch argument
 - **"Characters share memories"** (Memory page,
   `MemorySettings.charactersShareMemories`, default on). On: recall reads every
   bank. Off: recall reads only the shared bank plus the active character's.
+  This controls what a character knows, not how close you are: the
+  relationship meter is always per character (docs/LIVING_COMPANION.md,
+  One bond per character).
 
 ## Flow
 

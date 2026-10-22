@@ -375,6 +375,13 @@ final class MemoryStore {
         // Agentic memory (fact types, temporal fields, entities, links,
         // mental models). See MemoryStore+Units.swift.
         migrateAgenticMemoryIfNeeded()
+
+        // One bond per character: messages and facts record who they were
+        // shared with. Last, so rows folded in above are attributed too.
+        // Fallback owner: the last character the user picked, else Oz.
+        migrateCharacterAttribution {
+            UserDefaults.standard.string(forKey: "com.neuralink.user.selectedCharacter") ?? "Oz"
+        }
     }
 
     func columnExists(table: String, column: String) -> Bool {

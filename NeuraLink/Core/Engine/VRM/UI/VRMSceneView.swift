@@ -200,6 +200,8 @@ public struct VRMSceneView: View {
         // only shows up in the registry's display name.
         RealtimeChatState.shared.selectedCharacterDisplayName =
             VRMModelRegistry.shared.entry(named: characterName)?.displayName ?? characterName
+        // The meter shows the bond with whoever is on screen now.
+        CompanionStateStore.shared.refresh()
 
         // Stop any active AI before switching characters.
         OpenAIRealtimeManager.shared.disconnect()

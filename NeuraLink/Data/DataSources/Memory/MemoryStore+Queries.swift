@@ -106,15 +106,18 @@ extension MemoryStore {
 
     // MARK: - Knowledge Graph
 
-    func insertFact(subject: String, predicate: String, object: String) {
+    /// `character` is who the user told it to; the meter's depth counts the
+    /// facts each character learned (MemoryStore+CharacterBond).
+    func insertFact(subject: String, predicate: String, object: String, character: String) {
         lock.lock()
         defer { lock.unlock() }
-        let query = "INSERT INTO knowledge_graph (subject, predicate, object) VALUES (?, ?, ?);"
+        let query = "INSERT INTO knowledge_graph (subject, predicate, object, character) VALUES (?, ?, ?, ?);"
         var statement: OpaquePointer?
         if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
             sqlite3_bind_text(statement, 1, (subject as NSString).utf8String, -1, nil)
             sqlite3_bind_text(statement, 2, (predicate as NSString).utf8String, -1, nil)
             sqlite3_bind_text(statement, 3, (object as NSString).utf8String, -1, nil)
+            sqlite3_bind_text(statement, 4, (character as NSString).utf8String, -1, nil)
             if sqlite3_step(statement) != SQLITE_DONE {
                 let errmsg = String(cString: sqlite3_errmsg(db)!)
                 nlLog("[MemoryStore] Error inserting fact: \(errmsg)", level: .info)

@@ -282,7 +282,7 @@ struct PersonaSettingsView: View {
         } header: {
             Text("Voice (OpenVoice)")
         } footer: {
-            Text("Cloned voice via OpenVoice. Models (~285 MB) download on first use. The voices listed are placeholders until NeuraLink persona voices are added.")
+            Text("Cloned voice via OpenVoice: two female and two male voices. Models (~285 MB) download on first use.")
         }
     }
 

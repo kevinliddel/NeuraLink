@@ -194,7 +194,7 @@ struct CompanionJournalView: View {
         milestones = store.milestones(character: character)
         traits = store.traits(character: character)
         conversations = Dictionary(uniqueKeysWithValues: store.fetchConversations().map { ($0.id, $0) })
-        daysTogether = store.distinctUserMessageDays()
+        daysTogether = store.distinctUserMessageDays(character: character)
         portrait = CompanionPortrait.image(for: character)
         reloadMonth()
     }
@@ -204,7 +204,8 @@ struct CompanionJournalView: View {
     private func reloadMonth() {
         let turns = MemoryStore.shared.userTurnStamps(
             between: JournalCalendarModel.start(of: month, calendar: calendar),
-            and: JournalCalendarModel.end(of: month, calendar: calendar))
+            and: JournalCalendarModel.end(of: month, calendar: calendar),
+            character: character)
         activity = JournalCalendarModel.activity(turns: turns, entries: entries, keepsakes: milestones, calendar: calendar)
     }
 

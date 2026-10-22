@@ -2,7 +2,8 @@
 //  CompanionStateStore.swift
 //  NeuraLink
 //
-//  Observable relationship meter state for UI.
+//  Observable relationship meter state for UI: the bond with the character
+//  on screen. Refreshed after every turn and on a character switch.
 //
 
 import Foundation
@@ -14,6 +15,8 @@ final class CompanionStateStore {
 
     var score: Double = 0.0  // 0...1
     var label: String = "New"
+    /// Whose bond `score` and `label` describe (identity key).
+    private(set) var character: String = ""
 
     private let store = MemoryStore.shared
 
@@ -25,7 +28,9 @@ final class CompanionStateStore {
         // Single source of truth for the curve — shared with the prompt
         // block (CompanionStateManager) so the meter and the model never
         // disagree about the relationship stage.
-        let state = CompanionAffinity.compute(store: store)
+        let key = RealtimeChatState.shared.selectedCharacterName
+        let state = CompanionAffinity.compute(store: store, character: key)
+        character = key
         score = state.score
         label = state.label
         // Count-based keepsakes (first hello, shared days) read the same

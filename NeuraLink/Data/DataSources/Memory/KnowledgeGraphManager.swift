@@ -16,7 +16,9 @@ final class KnowledgeGraphManager {
     
     /// Stores a new fact in the structured memory.
     func remember(subject: String, predicate: String, object: String) {
-        store.insertFact(subject: subject, predicate: predicate, object: object)
+        store.insertFact(
+            subject: subject, predicate: predicate, object: object,
+            character: RealtimeChatState.shared.selectedCharacterName)
         CompanionStateStore.shared.refresh()
         OpenAIRealtimeManager.postInstructionsChanged(reason: "remember_fact")
         // Mirror into agentic memory so the entity graph and recall see it.
