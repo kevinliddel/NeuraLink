@@ -63,16 +63,6 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
     /// Returns true if multisampling is enabled (sampleCount > 1)
     var usesMultisampling: Bool { config.sampleCount > 1 }
 
-    // MARK: - Depth Bias
-
-    /// Calculator for material-specific depth bias values
-    ///
-    /// Depth bias resolves true Z-fighting between coplanar surfaces
-    /// by pushing fragments toward the camera in depth buffer space.
-    public lazy var depthBiasCalculator: DepthBiasCalculator = {
-        DepthBiasCalculator(scale: config.depthBiasScale)
-    }()
-
     // MARK: - Configuration
 
     /// Renderer configuration including strict mode validation level.
@@ -275,44 +265,32 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
     var cachedRenderItems: [RenderItem]?
     var cacheNeedsRebuild = true
 
-    // RENDER ITEM: Structure for sorting and rendering primitives
+    /// One primitive to draw, with the material settings the draw needs.
+    /// Everything comes from the material as authored (alpha mode, culling,
+    /// render queue); nothing is inferred from names.
     struct RenderItem {
         let node: VRMNode
         let mesh: VRMMesh
         let primitive: VRMPrimitive
-        let alphaMode: String  // Original material alpha mode
         let materialName: String
         let meshIndex: Int
-        var effectiveAlphaMode: String  // Override-able alpha mode
-        var effectiveDoubleSided: Bool  // Override-able double sided
-        var effectiveAlphaCutoff: Float  // Override-able alpha cutoff for MASK mode
-        var faceCategory: String?  // Face sub-category: skin, eyebrow, eyeline, eye, highlight
-
-        // OPTIMIZATION: Cached lowercased strings to avoid repeated allocations
-        let materialNameLower: String
-        let nodeNameLower: String
-        let meshNameLower: String
-        let isFaceMaterial: Bool
-        let isEyeMaterial: Bool
-        var isMouthOrLip: Bool
-
-        // OPTIMIZATION: Render order for single-array sorting (avoids concatenation)
-        var renderOrder: Int  // 0=opaque, 1=faceSkin, 2=faceEyebrow, 3=faceEyeline, 4=mask, 5=faceEye, 6=faceHighlight, 7=blend
-
-        // VRM material renderQueue for primary sorting (computed from base + offset)
-        // OPAQUE base=2000, MASK base=2450, BLEND base=3000
+        /// "opaque", "mask" or "blend".
+        let alphaMode: String
+        let doubleSided: Bool
+        let alphaCutoff: Float
+        /// VRM 1.0 base + offset, or the 0.x Unity queue.
         let materialRenderQueue: Int
-
-        // Material declares TransparentWithZWrite (VRM 1.0 flag or 0.x
-        // BlendMode 3 / _ZWrite): BLEND items draw with depth write ON so
-        // layered cloth occludes correctly instead of double-blending.
+        /// TransparentWithZWrite (VRM 1.0 flag or 0.x BlendMode 3 / _ZWrite):
+        /// BLEND that still writes depth, so layered cloth occludes instead
+        /// of double-blending.
         let transparentZWrite: Bool
-
-        // Scene graph order for stable tie-breaking in sort (global)
+        /// Scene-graph order across the model (stable sort tie-break).
         let primitiveIndex: Int
-
-        // Per-mesh primitive index for morph buffer lookup (matches compute pass key)
+        /// Index within the mesh (morph buffer key, as the compute pass).
         let primIdxInMesh: Int
+        /// Centre of the triangles this primitive draws, in the mesh's
+        /// space: the transparent sort's distance point.
+        let boundsCentre: SIMD3<Float>
     }
 
     // State caching to reduce allocations

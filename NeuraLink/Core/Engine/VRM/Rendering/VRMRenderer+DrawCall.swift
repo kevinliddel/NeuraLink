@@ -27,8 +27,8 @@ extension VRMRenderer {
         let prim = primitive
         let meshName = item.mesh.name ?? "unnamed"
         let meshPrimIndex = item.mesh.primitives.firstIndex(where: { $0 === primitive }) ?? -1
-        let materialAlphaMode = item.effectiveAlphaMode
-        let isDoubleSided = item.effectiveDoubleSided
+        let materialAlphaMode = item.alphaMode
+        let isDoubleSided = item.doubleSided
         let meshUsesSkinning = primitive.hasJoints && primitive.hasWeights
         let isSkinned = ((item.node.skin != nil) || meshUsesSkinning) && hasSkinning
 
@@ -130,7 +130,7 @@ extension VRMRenderer {
             lastMaterialId = materialIndex
         }
 
-        // Build base MToon uniforms (color factors, face category, outline settings)
+        // Build base MToon uniforms (color factors, alpha mode, outline settings)
         var mtoonUniforms = buildMaterialUniforms(
             for: item, model: model, materialAlphaMode: materialAlphaMode)
 

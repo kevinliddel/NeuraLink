@@ -12,9 +12,8 @@
 //  (three-vrm: `shading *= shadow`), which turns shadowed areas into the
 //  authored shade colour.
 //
-//  Casters: every visible part except transparent ones and the eyes (they
-//  sit under the lids and would shadow themselves). Cutout parts discard
-//  their transparent texels.
+//  Casters: every visible part except transparent ones. Cutout parts
+//  discard their transparent texels.
 //
 //  Created by Dedicatus on 23/10/2026.
 //
@@ -95,7 +94,7 @@ extension VRMRenderer {
         if let sampler = samplerStates["default"] { encoder.setFragmentSamplerState(sampler, index: 0) }
 
         let items = (cacheNeedsRebuild ? nil : cachedRenderItems) ?? buildRenderItems(model: model)
-        for item in items where item.effectiveAlphaMode != "blend" && !item.isEyeMaterial {
+        for item in items where item.alphaMode != "blend" {
             encodeAvatarShadowCaster(item, model: model, lightMatrix: lightMatrix, white: white,
                                      morphedBuffers: morphedBuffers, encoder: encoder)
         }
@@ -133,8 +132,8 @@ extension VRMRenderer {
             lightViewProjection: lightMatrix,
             modelMatrix: skinned ? vrmVersionRotation : simd_mul(vrmVersionRotation, item.node.worldMatrix),
             baseColorFactor: material?.baseColorFactor ?? [1, 1, 1, 1],
-            alphaCutoff: item.effectiveAlphaCutoff,
-            alphaTest: item.effectiveAlphaMode == "mask" ? 1 : 0,
+            alphaCutoff: item.alphaCutoff,
+            alphaTest: item.alphaMode == "mask" ? 1 : 0,
             skinned: skinned ? 1 : 0,
             hasMorphed: morphed != nil ? 1 : 0)
         encoder.setVertexBuffer(vertexBuffer, offset: 0, index: 0)

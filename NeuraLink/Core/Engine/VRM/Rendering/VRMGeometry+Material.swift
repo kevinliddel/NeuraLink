@@ -175,24 +175,16 @@ public class VRMMaterial {
             if let twzw = mtoonExt["transparentWithZWrite"] as? Bool {
                 transparentWithZWrite = twzw
             }
-            // VRM 1.0: renderQueueOffsetNumber for sorting within category
-            // Compute final renderQueue from base + offset per VRM 1.0 spec
-            if let rqOffset = mtoonExt["renderQueueOffsetNumber"] as? Int {
-                renderQueueOffset = rqOffset
-
-                // VRM 1.0 base render queue values per alpha mode
-                let base: Int
-                switch alphaMode.uppercased() {
-                case "OPAQUE":
-                    base = 2000
-                case "MASK":
-                    base = 2450
-                case "BLEND":
-                    base = 3000
-                default:
-                    base = 2000
-                }
-                renderQueue = base + rqOffset
+            // VRM 1.0 render queue (VRMC_materials_mtoon): OPAQUE 2000, MASK
+            // 2450 (the offset is ignored for both), BLEND 3000 + offset in
+            // [-9, 0], or 2501 + offset in [0, 9] with transparentWithZWrite.
+            let rqOffset = (mtoonExt["renderQueueOffsetNumber"] as? NSNumber)?.intValue ?? 0
+            renderQueueOffset = rqOffset
+            switch alphaMode.uppercased() {
+            case "MASK": renderQueue = 2450
+            case "BLEND":
+                renderQueue = transparentWithZWrite ? 2501 + min(max(rqOffset, 0), 9) : 3000 + min(max(rqOffset, -9), 0)
+            default: renderQueue = 2000
             }
         }
         // VRM 0.x: material properties from document-level VRM extension.

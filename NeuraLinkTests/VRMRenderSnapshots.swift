@@ -3,15 +3,17 @@
 //  NeuraLinkTests
 //
 //  Review renders, not assertions: the three bundled characters (Oz and
-//  Ekaterina are VRM 0.x, Sonya 1.0) drawn through the app's renderer with a
-//  fixed light rig and camera — face, three-quarter and full figure — and
-//  written as PNGs for side-by-side comparison of a rendering change.
+//  Ekaterina are VRM 0.x, Sonya 1.0), plus any imported ones, drawn through
+//  the app's renderer with a fixed light rig and camera — face, mouth open,
+//  smiling (eyes closed), three-quarter and full figure — and written as
+//  PNGs for side-by-side comparison of a rendering change.
 //
 //  Self-contained on purpose (only APIs older than the change it reviews), so
 //  the same file can render the "before" from the previous commit.
 //
 //  NL_RENDER_SNAPSHOT_DIR: output folder (unset = skip).
 //  NL_RENDER_SNAPSHOT_SAMPLES: MSAA samples (default 1).
+//  NL_RENDER_SNAPSHOT_EXTRA: more .vrm paths, colon-separated.
 //
 //  Created by Dedicatus on 22/10/2026.
 //
@@ -41,19 +43,27 @@ struct VRMRenderSnapshots {
         renderer.terrainRenderer = nil
         renderer.environmentRenderer = nil
         renderer.enableSpringBone = false
+        renderer.materialTimeOverride = 0
         renderer.setLight(0, direction: [0.25, -0.35, -0.90], color: [1.00, 0.99, 0.97], intensity: 0.95)
         renderer.setLight(1, direction: [-0.45, -0.15, -0.85], color: [0.88, 0.90, 0.96], intensity: 0.55)
         renderer.setLight(2, direction: [0.0, 0.75, -0.65], color: [0.95, 0.95, 1.00], intensity: 0.45)
         renderer.setAmbientColor(SIMD3<Float>(repeating: 0.42))
 
-        for name in ["Oz", "Sonya", "Ekaterina"] {
-            let url = try #require(Bundle.main.url(forResource: name, withExtension: "vrm"))
+        var urls = try ["Oz", "Sonya", "Ekaterina"].map {
+            try #require(Bundle.main.url(forResource: $0, withExtension: "vrm"))
+        }
+        urls += (env["NL_RENDER_SNAPSHOT_EXTRA"] ?? "").split(separator: ":").map { URL(fileURLWithPath: String($0)) }
+
+        for url in urls {
+            let name = url.deletingPathExtension().lastPathComponent
             let model = try await VRMModel.load(from: url, device: device)
             model.updateNodeTransforms()
             renderer.loadModel(model)
             renderer.isModelVisible = true
             renderer.lookAtController?.enabled = false
             for shot in Self.shots(for: model) {
+                if let expression = shot.expression { renderer.expressionController?.setExpressionWeight(expression, weight: 1) }
+                defer { if let expression = shot.expression { renderer.expressionController?.setExpressionWeight(expression, weight: 0) } }
                 renderer.viewMatrix = OrthographicCamera.makeLookAt(eye: shot.eye, target: shot.target, up: [0, 1, 0])
                 renderer.projectionMatrix = renderer.makeProjectionMatrix(aspectRatio: 1)
                 let png = try #require(Self.render(renderer, device: device, samples: samples))
@@ -67,6 +77,7 @@ struct VRMRenderSnapshots {
         let name: String
         let eye: SIMD3<Float>
         let target: SIMD3<Float>
+        var expression: VRMExpressionPreset?
     }
 
     private static func shots(for model: VRMModel) -> [Shot] {
@@ -84,6 +95,9 @@ struct VRMRenderSnapshots {
         let figureDistance = (height * 0.60) / tan(Float.pi / 6) + 0.3
         return [
             Shot(name: "face", eye: face + [0, 0, faceDistance], target: face),
+            // Where mouth and eye layers meet: teeth and tongue, closed lids.
+            Shot(name: "mouthOpen", eye: face + [0, 0, faceDistance], target: face, expression: .aa),
+            Shot(name: "smile", eye: face + [0, 0, faceDistance], target: face, expression: .happy),
             Shot(name: "threeQuarter", eye: face + [sin(angle), 0, cos(angle)] * (faceDistance * 1.6), target: face),
             Shot(name: "figure", eye: figure + [0, 0, figureDistance], target: figure)
         ]

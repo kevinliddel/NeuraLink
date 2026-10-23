@@ -73,14 +73,10 @@ public struct RendererConfig {
     /// Alpha-to-coverage for MASK materials requires sampleCount > 1
     public var sampleCount: Int = 1
 
-    /// Global scale factor for depth bias values (1.0 = default)
-    /// Higher values push coplanar surfaces further apart in depth buffer
-    public var depthBiasScale: Float = 1.0
-
     public init(
         strict: StrictLevel = .off, colorPixelFormat: MTLPixelFormat = .bgra8Unorm_srgb,
         renderFilter: RenderFilter? = nil, drawUntil: Int? = nil, drawOnlyIndex: Int? = nil,
-        testIdentityPalette: Int? = nil, sampleCount: Int = 1, depthBiasScale: Float = 1.0
+        testIdentityPalette: Int? = nil, sampleCount: Int = 1
     ) {
         self.strict = strict
         self.colorPixelFormat = colorPixelFormat
@@ -89,7 +85,6 @@ public struct RendererConfig {
         self.drawOnlyIndex = drawOnlyIndex
         self.testIdentityPalette = testIdentityPalette
         self.sampleCount = sampleCount
-        self.depthBiasScale = depthBiasScale
     }
 }
 

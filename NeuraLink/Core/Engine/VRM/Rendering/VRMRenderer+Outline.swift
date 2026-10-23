@@ -93,10 +93,10 @@ extension VRMRenderer {
             // alpha-0 texels under MASK; the main pass discards them and writes
             // no depth, so an outline hull without cutout paints them as solid
             // outline-colored panels.
-            switch item.effectiveAlphaMode {
+            switch item.alphaMode {
             case "mask":
                 mtoonUniforms.alphaMode = 1
-                mtoonUniforms.alphaCutoff = item.effectiveAlphaCutoff
+                mtoonUniforms.alphaCutoff = item.alphaCutoff
             case "blend":
                 mtoonUniforms.alphaMode = 2
             default:

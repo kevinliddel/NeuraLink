@@ -125,7 +125,6 @@ struct VRMPropTests {
         let items = renderer.buildRenderItems(model: model).filter { propNodes.contains(ObjectIdentifier($0.node)) }
         #expect(items.count == prop.parts.reduce(0) { $0 + $1.mesh.primitives.count })
         #expect(items.allSatisfy { $0.node.skin == nil && !$0.primitive.hasJoints }, "no skin, no joints → rigid branch")
-        #expect(items.allSatisfy { !$0.isFaceMaterial && !$0.isEyeMaterial }, "phone names must not trip the face heuristics")
     }
 
     @Test("Shown, the phone is actually drawn through the rigid path; hidden, the frame is unchanged")

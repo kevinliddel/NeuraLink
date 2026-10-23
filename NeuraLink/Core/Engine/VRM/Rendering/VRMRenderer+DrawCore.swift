@@ -235,29 +235,10 @@ extension VRMRenderer {
         if let cached = cachedRenderItems, !cacheNeedsRebuild {
             allItems = cached
             
-            // PERFORMANCE: Re-sort ONLY the transparent items (order >= 7) every frame for correct depth
-            // Use a subset sort or just re-sort the whole array if small (usually 20-50 items)
-            // For VRM, we only care about materials with queue >= 2500 (transparency)
-            let hasTransparency = allItems.contains { $0.materialRenderQueue >= 2500 }
-            if hasTransparency {
-                // Re-calculate viewZ for transparent items
-                var viewZByIndex = [Int: Float]()
-                for item in allItems where item.materialRenderQueue >= 2500 {
-                    let worldPos = item.node.worldMatrix.columns.3
-                    viewZByIndex[item.primitiveIndex] = (viewMatrix * worldPos).z
-                }
-                
-                // Re-sort the whole array (fast for <100 items)
-                allItems.sort { a, b in
-                    if a.renderOrder != b.renderOrder { return a.renderOrder < b.renderOrder }
-                    if a.materialRenderQueue != b.materialRenderQueue { return a.materialRenderQueue < b.materialRenderQueue }
-                    if a.materialRenderQueue >= 2500 {
-                        let aViewZ = viewZByIndex[a.primitiveIndex] ?? 0
-                        let bViewZ = viewZByIndex[b.primitiveIndex] ?? 0
-                        return aViewZ < bViewZ
-                    }
-                    return a.primitiveIndex < b.primitiveIndex
-                }
+            // Transparent order depends on the camera: re-sort every frame
+            // (fast for the usual 20–50 items).
+            if allItems.contains(where: { $0.alphaMode == "blend" }) {
+                sortRenderItems(&allItems)
             }
         } else {
             allItems = buildRenderItems(model: model)
@@ -280,12 +261,12 @@ extension VRMRenderer {
         let drawOpaqueOutlines = {
             opaqueOutlinesDrawn = true
             self.renderMToonOutlines(
-                encoder: encoder, renderItems: allItems.filter { $0.effectiveAlphaMode != "blend" },
+                encoder: encoder, renderItems: allItems.filter { $0.alphaMode != "blend" },
                 model: model, morphedBuffers: morphedBuffers, writesDepth: true)
         }
 
         for (index, item) in itemsToRender.enumerated() {
-            if !opaqueOutlinesDrawn, item.effectiveAlphaMode == "blend" { drawOpaqueOutlines() }
+            if !opaqueOutlinesDrawn, item.alphaMode == "blend" { drawOpaqueOutlines() }
             let meshName = item.mesh.name ?? "unnamed"
             let materialName = item.materialName
 
@@ -331,8 +312,8 @@ extension VRMRenderer {
             let primitive = item.primitive
 
             // Use effective properties from RenderItem (includes overrides)
-            let materialAlphaMode = item.effectiveAlphaMode
-            let isDoubleSided = item.effectiveDoubleSided
+            let materialAlphaMode = item.alphaMode
+            let isDoubleSided = item.doubleSided
 
             // Contract validation: effective alpha mode should be valid
             precondition(
@@ -386,7 +367,7 @@ extension VRMRenderer {
         // opaque ones if no transparent item came, then the transparent ones.
         if !opaqueOutlinesDrawn { drawOpaqueOutlines() }
         renderMToonOutlines(
-            encoder: encoder, renderItems: allItems.filter { $0.effectiveAlphaMode == "blend" },
+            encoder: encoder, renderItems: allItems.filter { $0.alphaMode == "blend" },
             model: model, morphedBuffers: morphedBuffers, writesDepth: false)
 
         // 3D World rain (streaks and ripples) — skipped in interior environments
