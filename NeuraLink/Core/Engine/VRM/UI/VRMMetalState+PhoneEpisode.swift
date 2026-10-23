@@ -33,22 +33,27 @@ extension VRMMetalState {
     static let phonePropUpsideDownTextureMaterials: Set<String> = []
 
     /// Where the phone sits in the right hand, in the VRM 1.0 hand frame
-    /// (T-pose: fingers −X, thumb +Z, palm −Y). Derived by
-    /// CheckingPhoneClipDiagnostic at the clip's hold pose: SHE is reading
-    /// it, so the screen (the file's −Z after the loader's chain; +Z carries
-    /// the camera module) faces up and back into her eyes and the top of the
-    /// phone (the file's −Y end — +Y runs toward the bottom) leans 45° away
-    /// from her toward the viewer, who sees its back. Rolled about 12°
-    /// toward the fingertips, the back resting on the upturned palm — centre
-    /// just above the palm's centre, 1 cm toward the screen side — the fist
-    /// closed around its lower half. 85% of life size. Re-run the diagnostic
-    /// to re-derive if the clip or the prop file changes; it renders derived
-    /// vs shipped from both cameras, and NL_PHONE_GRIP_VARIANTS renders
-    /// refinement variants.
+    /// (T-pose: fingers −X, thumb +Z, palm −Y), tuned on Sonya at the clip's
+    /// hold. SHE is reading it: the screen (the file's −Z after the loader's
+    /// chain; +Z carries the camera module) faces up and back into her eyes,
+    /// the top leans away from her, and the viewer sees its back. The bottom
+    /// rests in the cupped hand, the fingers round its lower half, the rest
+    /// standing above the hand: the seat VRMPropSeat finds on Sonya (it moved
+    /// the first hand-derived grip 29 mm up and turned it 13°, out of her
+    /// fingers and off the heel of her hand). 85% of life size.
+    ///
+    /// Sonya's palm (measured by VRMPalm, printed by PhoneGripDiagnostic)
+    /// rides along: every character gets the same seat on its own palm,
+    /// scaled to its hand, then refined against the hand its outfit actually
+    /// draws (`VRMModel.seatProp`, when the phone is shown).
     static let phoneGrip = VRMPropGrip(
-        translation: SIMD3<Float>(-0.037, -0.011, 0.010),
-        rotation: simd_quatf(ix: -0.5507, iy: -0.3996, iz: -0.1957, r: 0.7062),
-        scale: 0.85)
+        translation: SIMD3<Float>(-0.05259, -0.02852, 0.02751),
+        rotation: simd_quatf(ix: -0.60202, iy: -0.30548, iz: -0.17450, r: 0.71680),
+        scale: 0.85,
+        authoredOn: VRMPalm(
+            origin: SIMD3<Float>(-0.03424, 0.00069, 0.00581),
+            rotation: simd_quatf(ix: 0.01502, iy: -0.00581, iz: 0.99833, r: 0.05541),
+            size: 0.06682))
 
     /// Loads the phone GLB once, off the main thread, and attaches it to
     /// whatever character is on screen by the time it is in.
@@ -85,11 +90,32 @@ extension VRMMetalState {
         }
     }
 
+    /// The clip's steady hold (it raises the phone until ~0.8 s and lowers
+    /// it from ~17.4 s): the finger pose the phone is seated against.
+    static let phoneHoldTime: Float = 4
+
     func setPhonePropVisible(_ visible: Bool) {
         guard let model = currentModel, let attachment = phonePropAttachment, attachment.isVisible != visible else { return }
+        // Against the hand this outfit draws, fingers as the clip holds it.
+        if visible, let clip = phoneEpisodeClip {
+            model.seatProp(attachment, holding: Self.fingerPose(of: clip, at: Self.phoneHoldTime, hand: attachment.bone))
+        }
         model.setProp(attachment, visible: visible)
         renderer?.invalidateRenderItems()
         nlLog("[PhoneEpisode] phone \(visible ? "in hand" : "put away")")
+    }
+
+    /// The rotations `clip` gives the fingers of `hand` at `time`.
+    static func fingerPose(of clip: AnimationClip, at time: Float, hand: VRMHumanoidBone) -> [VRMHumanoidBone: simd_quatf] {
+        let side = hand == .leftHand ? "left" : "right"
+        var pose: [VRMHumanoidBone: simd_quatf] = [:]
+        for track in clip.jointTracks {
+            let name = track.bone.rawValue
+            guard name.hasPrefix(side), ["Thumb", "Index", "Middle", "Ring", "Little"].contains(where: name.contains),
+                  let rotation = track.sample(at: time).0 else { continue }
+            pose[track.bone] = rotation
+        }
+        return pose
     }
 
     // MARK: - Episode

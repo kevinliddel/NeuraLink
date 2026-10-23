@@ -110,7 +110,7 @@ struct VRMRenderSnapshots {
         ]
     }
 
-    private static func render(_ renderer: VRMRenderer, device: MTLDevice, samples: Int) -> Data? {
+    static func render(_ renderer: VRMRenderer, device: MTLDevice, samples: Int) -> Data? {
         func target(_ format: MTLPixelFormat, multisample: Bool, storage: MTLStorageMode) -> MTLTexture? {
             let descriptor = MTLTextureDescriptor()
             descriptor.textureType = multisample ? .type2DMultisample : .type2D
