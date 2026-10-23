@@ -388,36 +388,32 @@ struct VRMGraftCompatibilityTests {
         #expect(checked > 0)
     }
 
-    @Test("Spring buffers are resized for the grafted chains before they are filled")
+    @Test("The spring solver is rebuilt for the grafted chains on its next step")
     @MainActor
-    func springBuffersTrackTheGraft() async throws {
+    func springSolverTracksTheGraft() async throws {
         guard let device = MTLCreateSystemDefaultDevice(),
             let hostURL = Bundle.main.url(forResource: "Sonya", withExtension: "vrm"),
             let item = PartsLibrary.shared.item(slug: "lib:school_uniform__hair")
         else { return }
         let host = try await VRMModel.load(from: hostURL, device: device)
         let donor = try await VRMModel.load(from: item.resolvedURL(), device: device)
+        let renderer = VRMRenderer(device: device, config: RendererConfig(strict: .off))
+        renderer.loadModel(host)
         let baseJoints = host.springBoneJointCount
-        #expect(host.springBoneBuffersMatchSprings, "a freshly loaded model is consistent")
+        renderer.springBoneSolver.update(model: host, deltaTime: 1.0 / 60.0)
+        #expect(renderer.springBoneSolver.builtJointCount == baseJoints)
 
         try VRMPartGrafter.graft(.hair, from: donor, donorSlug: item.donorSlug, onto: host)
         #expect(host.springBoneJointCount > baseJoints, "the donor's chains came along")
-        #expect(!host.springBoneBuffersMatchSprings,
-                "buffers are stale until something re-allocates them — filling them here would write out of bounds")
-
-        // Both paths that fill those buffers must re-allocate first. This is
-        // the crash the repeated graft/restore cycle used to hit.
-        let renderer = VRMRenderer(device: device, config: RendererConfig(strict: .off))
-        renderer.loadModel(host)
-        #expect(host.springBoneBuffersMatchSprings, "loadModel re-allocated for the grafted chains")
-
         renderer.refreshModelStructure()
-        #expect(host.springBoneBuffersMatchSprings)
+        renderer.springBoneSolver.update(model: host, deltaTime: 1.0 / 60.0)
+        #expect(renderer.springBoneSolver.builtJointCount == host.springBoneJointCount)
 
         host.restoreBaseComposition()
         #expect(host.springBoneJointCount == baseJoints)
         renderer.refreshModelStructure()
-        #expect(host.springBoneBuffersMatchSprings, "and shrank again on restore")
+        renderer.springBoneSolver.update(model: host, deltaTime: 1.0 / 60.0)
+        #expect(renderer.springBoneSolver.builtJointCount == baseJoints, "and shrank again on restore")
     }
 
     @Test("Swapping parts repeatedly leaves the model consistent")
@@ -446,7 +442,8 @@ struct VRMGraftCompatibilityTests {
                 host.restoreBaseComposition()
                 try VRMPartGrafter.graft(.hair, from: donor, donorSlug: stem, onto: host)
                 renderer.refreshModelStructure()
-                #expect(host.springBoneBuffersMatchSprings, "\(stem): buffers match after the swap")
+                renderer.springBoneSolver.update(model: host, deltaTime: 1.0 / 60.0)
+                #expect(renderer.springBoneSolver.builtJointCount == host.springBoneJointCount, "\(stem): solver rebuilt")
                 for skin in host.skins {
                     #expect(skin.joints.count == skin.inverseBindMatrices.count)
                     #expect(skin.joints.allSatisfy { joint in host.nodes.contains { $0 === joint } })

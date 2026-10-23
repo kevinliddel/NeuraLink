@@ -78,6 +78,9 @@ extension VRMMetalState {
                 if let appearURL {
                     let appearClip = try await VRMAnimationLoader.loadVRMA(from: appearURL, model: model)
                     await MainActor.run {
+                        // Retargeted for `model`: if the user switched character
+                        // while they loaded, they'd twist the new one's bones.
+                        guard self.currentModel === model else { return }
                         self.randomAnimEntries = loadedEntries
                         self.talkingGestureEntries = gestureEntries
                         self.phoneEpisodeClip = phoneClip
@@ -93,6 +96,7 @@ extension VRMMetalState {
                     }
                 } else {
                     await MainActor.run {
+                        guard self.currentModel === model else { return }
                         self.randomAnimEntries = loadedEntries
                         self.talkingGestureEntries = gestureEntries
                         self.phoneEpisodeClip = phoneClip
@@ -106,7 +110,9 @@ extension VRMMetalState {
                     }
                 }
             } catch {
-                await MainActor.run { self.renderer?.isModelVisible = true }
+                await MainActor.run {
+                    if self.currentModel === model { self.renderer?.isModelVisible = true }
+                }
                 nlLog("[VRMMetalState] ⚠️ Failed to load animation: \(error)")
             }
         }
@@ -374,6 +380,7 @@ extension VRMMetalState {
             do {
                 let clip = try await VRMAnimationLoader.loadVRMA(from: url, model: model)
                 await MainActor.run {
+                    guard self.currentModel === model else { return }  // the character changed meanwhile
                     self.isPlayingPose = true
                     self.poseStartedAt = Date()
                     self.isPlayingTalkingGesture = false  // a pose outranks a gesture

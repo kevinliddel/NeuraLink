@@ -14,6 +14,8 @@
 //  NL_RENDER_SNAPSHOT_DIR: output folder (unset = skip).
 //  NL_RENDER_SNAPSHOT_SAMPLES: MSAA samples (default 1).
 //  NL_RENDER_SNAPSHOT_EXTRA: more .vrm paths, colon-separated.
+//  NL_RENDER_SNAPSHOT_SPRINGS=1: spring bones on, settled for a second of
+//  frames before the shots (files get a "_springs" suffix).
 //
 //  Created by Dedicatus on 22/10/2026.
 //
@@ -42,6 +44,7 @@ struct VRMRenderSnapshots {
         renderer.skyRenderer = nil
         renderer.terrainRenderer = nil
         renderer.environmentRenderer = nil
+        let springs = env["NL_RENDER_SNAPSHOT_SPRINGS"] == "1"
         renderer.enableSpringBone = false
         renderer.materialTimeOverride = 0
         renderer.setLight(0, direction: [0.25, -0.35, -0.90], color: [1.00, 0.99, 0.97], intensity: 0.95)
@@ -61,13 +64,17 @@ struct VRMRenderSnapshots {
             renderer.loadModel(model)
             renderer.isModelVisible = true
             renderer.lookAtController?.enabled = false
+            if springs {
+                renderer.enableSpringBone = true
+                for _ in 0..<60 { _ = Self.render(renderer, device: device, samples: samples) }
+            }
             for shot in Self.shots(for: model) {
                 if let expression = shot.expression { renderer.expressionController?.setExpressionWeight(expression, weight: 1) }
                 defer { if let expression = shot.expression { renderer.expressionController?.setExpressionWeight(expression, weight: 0) } }
                 renderer.viewMatrix = OrthographicCamera.makeLookAt(eye: shot.eye, target: shot.target, up: [0, 1, 0])
                 renderer.projectionMatrix = renderer.makeProjectionMatrix(aspectRatio: 1)
                 let png = try #require(Self.render(renderer, device: device, samples: samples))
-                try png.write(to: dir.appendingPathComponent("\(name)_\(shot.name).png"))
+                try png.write(to: dir.appendingPathComponent("\(name)_\(shot.name)\(springs ? "_springs" : "").png"))
             }
             renderer.clearModel()
         }

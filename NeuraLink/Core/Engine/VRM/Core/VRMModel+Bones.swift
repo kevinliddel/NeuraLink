@@ -89,12 +89,15 @@ extension VRMModel {
         }
     }
 
-    // MARK: - SpringBone GPU System
+    // MARK: - Spring Bones
 
-    /// Expand VRM 0.0 spring bone chains by traversing node hierarchy
-    /// In VRM 0.0, the bones array contains ROOT bone indices, and all descendants should become joints
+    /// VRM 0.x names only the root of each chain; every node under it is a
+    /// joint. Expands each root into its chain, once, at load. VRM 1.0 lists
+    /// every joint already: expanding it made each joint the root of another
+    /// copy of the rest of its chain, so the same bones were simulated by
+    /// several chains at once.
     public func expandVRM0SpringBoneChains() {
-        guard var springBone = springBone else { return }
+        guard isVRM0, var springBone = springBone else { return }
 
         var expandedSprings: [VRMSpring] = []
 
@@ -152,95 +155,5 @@ extension VRMModel {
     /// Total spring-bone joints the current spring data needs room for.
     public var springBoneJointCount: Int {
         springBone?.springs.reduce(0) { $0 + $1.joints.count } ?? 0
-    }
-
-    /// False once a part graft has added (or a restore removed) spring
-    /// chains — the GPU buffers were sized for the old count, and filling
-    /// them with the new one writes out of bounds.
-    public var springBoneBuffersMatchSprings: Bool {
-        (springBoneBuffers?.numBones ?? 0) == springBoneJointCount
-    }
-
-    /// - Parameter expandChains: run the VRM 0.x root→chain expansion. Pass
-    ///   `false` when re-allocating for an already-expanded model (part
-    ///   grafts) — re-expanding would treat every chain joint as a new root
-    ///   and duplicate the chains.
-    public func initializeSpringBoneGPUSystem(device: MTLDevice, expandChains: Bool = true) throws {
-        guard springBone != nil else {
-            // No SpringBone data in this model
-            return
-        }
-
-        // Expand VRM 0.0 chains (no-op for VRM 1.0 which already has full joint lists)
-        if expandChains { expandVRM0SpringBoneChains() }
-
-        // Re-read after expansion
-        guard let expandedSpringBone = self.springBone else { return }
-
-        // Count total bones from all springs
-        var totalBones = 0
-        for spring in expandedSpringBone.springs {
-            totalBones += spring.joints.count
-        }
-
-        // Count colliders
-        let totalSpheres = expandedSpringBone.colliders.filter {
-            if case .sphere = $0.shape { return true }
-            return false
-        }.count
-
-        let totalCapsules = expandedSpringBone.colliders.filter {
-            if case .capsule = $0.shape { return true }
-            return false
-        }.count
-
-        // Initialize buffers
-        springBoneBuffers = SpringBoneBuffers(device: device)
-        springBoneBuffers?.allocateBuffers(
-            numBones: totalBones,
-            numSpheres: totalSpheres,
-            numCapsules: totalCapsules
-        )
-
-        // Initialize global parameters
-        // settlingFrames: 120 frames (~1 second) to let bones settle with gravity before enabling inertia compensation
-        springBoneGlobalParams = SpringBoneGlobalParams(
-            gravity: SIMD3<Float>(0, -9.8, 0),  // Standard gravity
-            dtSub: 1.0 / 120.0,  // 120Hz fixed substeps
-            windAmplitude: 0.0,
-            windFrequency: 1.0,
-            windPhase: 0.0,
-            windDirection: SIMD3<Float>(1, 0, 0),
-            substeps: 2,
-            numBones: UInt32(totalBones),
-            numSpheres: UInt32(totalSpheres),
-            numCapsules: UInt32(totalCapsules),
-            settlingFrames: 120
-        )
-
-        // TODO: Populate bone parameters, rest lengths, and colliders
-        // This will be implemented in the compute system
-    }
-
-    // MARK: - Floor Plane Colliders
-
-    /// Adds a horizontal floor plane collider at the specified Y position.
-    public func setFloorPlane(at floorY: Float) {
-        let floor = PlaneCollider(floorY: floorY)
-        springBoneBuffers?.setPlaneColliders([floor])
-        springBoneGlobalParams?.numPlanes = 1
-    }
-
-    /// Adds a floor plane collider from an ARKit plane anchor transform.
-    public func setFloorPlane(arkitTransform transform: simd_float4x4) {
-        let floor = PlaneCollider(arkitTransform: transform)
-        springBoneBuffers?.setPlaneColliders([floor])
-        springBoneGlobalParams?.numPlanes = 1
-    }
-
-    /// Removes the floor plane collider.
-    public func removeFloorPlane() {
-        springBoneBuffers?.setPlaneColliders([])
-        springBoneGlobalParams?.numPlanes = 0
     }
 }

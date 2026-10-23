@@ -247,33 +247,6 @@ public struct ResourceIndices {
 
     // Sampler indices
     public static let defaultSampler = 0
-
-    // MARK: - SpringBone Compute Shader Buffer Indices
-    // These indices are used by the SpringBone GPU compute kernels
-    // and are separate from the vertex/fragment shader indices above.
-
-    /// SpringBone: Previous frame bone positions (read/write)
-    public static let springBonePosPrev = 0
-    /// SpringBone: Current frame bone positions (read/write)
-    public static let springBonePosCurr = 1
-    /// SpringBone: Per-bone parameters (stiffness, drag, etc.)
-    public static let springBoneParams = 2
-    /// SpringBone: Global simulation parameters (gravity, wind, etc.)
-    public static let springBoneGlobalParams = 3
-    /// SpringBone: Rest length constraints between bones
-    public static let springBoneRestLengths = 4
-    /// SpringBone: Sphere colliders array
-    public static let springBoneSphereColliders = 5
-    /// SpringBone: Capsule colliders array
-    public static let springBoneCapsuleColliders = 6
-    /// SpringBone: Plane colliders array
-    public static let springBonePlaneColliders = 7
-    /// SpringBone: Animated root positions (kinematic kernel)
-    public static let springBoneAnimatedRootPositions = 8
-    /// SpringBone: Root bone indices (kinematic kernel)
-    public static let springBoneRootIndices = 9
-    /// SpringBone: Number of root bones (kinematic kernel)
-    public static let springBoneNumRootBones = 10
 }
 
 // MARK: - Strict Mode Validator

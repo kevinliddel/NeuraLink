@@ -139,19 +139,33 @@ public class VRMMorphTargetSystem {
 
     // MARK: - Morphed Output Buffers
 
+    // Keyed by the primitive's object address. Once a model is freed, a new
+    // model's primitive can reuse that address, so a cached buffer is only
+    // handed out when it is big enough; and the renderer drops them all
+    // when its model changes. A buffer sized for a smaller old mesh made the
+    // morph pass write past its end (a mangled face after a switch).
+
     public func getOrCreateMorphedPositionBuffer(primitiveID: Int, vertexCount: Int) -> MTLBuffer? {
-        if let buffer = morphedPositionBuffers[primitiveID] { return buffer }
-        let buffer = device.makeBuffer(
-            length: vertexCount * MemoryLayout<SIMD3<Float>>.stride, options: .storageModePrivate)
-        morphedPositionBuffers[primitiveID] = buffer
-        return buffer
+        Self.buffer(in: &morphedPositionBuffers, key: primitiveID, vertexCount: vertexCount, device: device)
     }
 
     public func getOrCreateMorphedNormalBuffer(primitiveID: Int, vertexCount: Int) -> MTLBuffer? {
-        if let buffer = morphedNormalBuffers[primitiveID] { return buffer }
-        let buffer = device.makeBuffer(
-            length: vertexCount * MemoryLayout<SIMD3<Float>>.stride, options: .storageModePrivate)
-        morphedNormalBuffers[primitiveID] = buffer
+        Self.buffer(in: &morphedNormalBuffers, key: primitiveID, vertexCount: vertexCount, device: device)
+    }
+
+    /// Forgets every morphed output buffer (the model changed).
+    public func releaseMorphedBuffers() {
+        morphedPositionBuffers.removeAll()
+        morphedNormalBuffers.removeAll()
+    }
+
+    private static func buffer(
+        in cache: inout [Int: MTLBuffer], key: Int, vertexCount: Int, device: MTLDevice
+    ) -> MTLBuffer? {
+        let length = vertexCount * MemoryLayout<SIMD3<Float>>.stride
+        if let buffer = cache[key], buffer.length >= length { return buffer }
+        let buffer = device.makeBuffer(length: max(length, 16), options: .storageModePrivate)
+        cache[key] = buffer
         return buffer
     }
 
@@ -237,6 +251,20 @@ public class VRMExpressionController: @unchecked Sendable {
 
     public func setMorphTargetSystem(_ system: VRMMorphTargetSystem) {
         morphTargetSystem = system
+    }
+
+    /// Forgets the previous model's expressions, weights and colours. Its
+    /// binds name meshes and materials by index, so a preset the next model
+    /// lacks would otherwise drive the next model's meshes with them.
+    public func reset() {
+        animationTimer?.invalidate()
+        animationTimer = nil
+        expressions.removeAll()
+        customExpressions.removeAll()
+        for preset in VRMExpressionPreset.allCases { currentWeights[preset] = 0 }
+        meshMorphWeights.removeAll()
+        materialColorOverrides.removeAll()
+        baseMaterialColors.removeAll()
     }
 
     public func registerExpression(_ expression: VRMExpression, for preset: VRMExpressionPreset) {

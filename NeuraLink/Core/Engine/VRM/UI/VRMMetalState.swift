@@ -336,6 +336,9 @@ final class VRMMetalState {
         errorMessage = nil
         currentModel = nil
         renderer?.clearModel()
+        // Its clips were retargeted for the model that left, and a
+        // crossfade snapshot holds that model's bone poses by node index.
+        animationPlayer.reset()
         isPlayingAppear = false
         pendingDefaultClip = nil
         defaultClip = nil

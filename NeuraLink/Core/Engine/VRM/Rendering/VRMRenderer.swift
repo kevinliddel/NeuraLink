@@ -206,18 +206,12 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
 
     // MARK: - Spring Bone Physics
 
-    var springBoneComputeSystem: SpringBoneComputeSystem?
+    let springBoneSolver = SpringBoneSolver()
 
-    /// Enables GPU-accelerated spring bone physics simulation.
+    /// Enables spring bone physics (hair, skirts, accessories).
     public var enableSpringBone: Bool = false
 
-    /// Quality preset for spring bone physics simulation.
-    public var springBoneQuality: VRMConstants.SpringBoneQuality = .ultra
-
     var lastUpdateTime: CFTimeInterval = 0
-    var temporaryGravity: SIMD3<Float>?
-    var temporaryWind: SIMD3<Float>?
-    var forceTimer: Float = 0
     
     // OPTIMIZATION: Static zero weights array (avoids allocation per primitive)
     static let zeroMorphWeights = [Float](repeating: 0, count: 8)

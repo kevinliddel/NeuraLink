@@ -39,72 +39,9 @@ public enum VRMConstants {
 
     // MARK: - Physics
 
-    /// Quality levels for spring bone physics simulation
-    public enum SpringBoneQuality: Int, Sendable {
-        case ultra = 0  // 120Hz, 4 iterations - highest quality
-        case high = 1  // 90Hz, 3 iterations
-        case medium = 2  // 60Hz, 2 iterations
-        case low = 3  // 30Hz, 1 iteration - battery saver
-        case off = 4  // Physics disabled
-
-        /// Substep rate in Hz for this quality level
-        public var substepRateHz: Double {
-            switch self {
-            case .ultra: return 120.0
-            case .high: return 90.0
-            case .medium: return 60.0
-            case .low: return 30.0
-            case .off: return 0.0
-            }
-        }
-
-        /// Number of constraint iterations per substep
-        public var constraintIterations: Int {
-            switch self {
-            case .ultra: return 4
-            case .high: return 3
-            case .medium: return 2
-            case .low: return 1
-            case .off: return 0
-            }
-        }
-
-        /// Maximum substeps per frame
-        public var maxSubstepsPerFrame: Int {
-            switch self {
-            case .ultra: return 10
-            case .high: return 8
-            case .medium: return 6
-            case .low: return 4
-            case .off: return 0
-            }
-        }
-    }
-
     public enum Physics {
-        /// SpringBone simulation substep rate in Hz for stable physics
-        public static let substepRateHz: Double = 120.0
-
-        /// Maximum number of substeps to process per frame to avoid spiral of death
-        public static let maxSubstepsPerFrame: Int = 10
-
-        /// Number of XPBD constraint iterations per substep
-        public static let constraintIterations: Int = 4
-
-        /// Default gravity vector in world space (m/s²)
-        public static let defaultGravity = SIMD3<Float>(0, -9.8, 0)
-
         /// Epsilon for morph target weight comparison (weights below this are considered zero)
         public static let morphEpsilon: Float = 1e-4
-
-        /// Enable linear interpolation of root positions across substeps
-        /// When true, root bone positions are smoothly interpolated from previous frame to current,
-        /// preventing "velocity sledgehammer" that causes hair/cloth explosion
-        public static let enableRootInterpolation: Bool = true
-
-        /// Minimum model scale for threshold calculation
-        /// Prevents division issues and ensures very small models still have reasonable teleportation detection
-        public static let minScaleForThreshold: Float = 0.1
     }
 
     // MARK: - Animation

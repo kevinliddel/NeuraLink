@@ -138,32 +138,6 @@ extension VRMRenderer {
     }
 }
 
-// MARK: - Spring Bone Physics API
-
-extension VRMRenderer {
-
-    public func resetPhysics() {
-        springBoneComputeSystem?.requestPhysicsReset = true
-    }
-
-    public func setColliderRadius(at index: Int, radius: Float) {
-        springBoneComputeSystem?.setSphereColliderRadius(index: index, radius: radius)
-    }
-
-    public func clearColliderRadiusOverride(at index: Int) {
-        springBoneComputeSystem?.clearSphereColliderRadiusOverride(index: index)
-    }
-
-    public func clearAllColliderRadiusOverrides() {
-        springBoneComputeSystem?.clearAllColliderRadiusOverrides()
-    }
-
-    public func warmupPhysics(steps: Int = 30) {
-        guard let model = model else { return }
-        springBoneComputeSystem?.warmupPhysics(model: model, steps: steps)
-    }
-}
-
 // MARK: - Draw Entry Points
 
 extension VRMRenderer {

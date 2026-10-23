@@ -145,8 +145,7 @@ extension VRMRenderer {
 
         }
 
-        // Update SpringBone GPU physics if enabled
-        // IMPORTANT: Must be done BEFORE skinning matrix update so SpringBone transforms are included
+        // Spring bones, before the joint palettes so their poses are skinned
         if enableSpringBone, model.springBone != nil {
 
             // Calculate actual deltaTime
@@ -157,19 +156,8 @@ extension VRMRenderer {
             // Clamp deltaTime to reasonable values (prevent huge jumps)
             let clampedDeltaTime = min(deltaTime, 1.0 / 30.0)  // Max 30ms per frame
 
-            // Update temporary forces if any
-            updateSpringBoneForces(deltaTime: clampedDeltaTime)
-
-            // Run GPU physics simulation
-            if let springBoneCompute = springBoneComputeSystem {
-                springBoneCompute.update(model: model, deltaTime: TimeInterval(clampedDeltaTime))
-
-                // Read back GPU positions and update node transforms
-                springBoneCompute.writeBonesToNodes(model: model)
-            }
-
-            // CRITICAL: Propagate spring bone transforms through entire hierarchy before skinning
-            model.updateNodeTransforms()
+            // Solved and posed in this frame, before the joint palettes.
+            springBoneSolver.update(model: model, deltaTime: clampedDeltaTime)
         }
 
         // Update all joint palettes before any draw calls to ensure consistent state.

@@ -56,12 +56,10 @@ struct SpringBoneRingingDiagnostic {
         for (name, url) in models {
             let model = try await VRMModel.load(from: url, device: device)
             guard model.springBone != nil else { continue }
-            // The loader already expanded the 0.x chains; expanding again duplicates them.
-            if model.springBoneBuffers == nil { try model.initializeSpringBoneGPUSystem(device: device) }
-            let system = try SpringBoneComputeSystem(device: device)
-            try system.populateSpringBoneData(model: model)
-            system.warmupPhysics(model: model, steps: 120)
-            let chains = try Self.measureChains(model: model, system: system)
+            let solver = SpringBoneSolver()
+            solver.setUp(model: model)
+            solver.warmUp(steps: 120)
+            let chains = Self.measureChains(model: model, solver: solver)
             for c in chains {
                 report += "\(name)\t\(c.root)\t\(c.joints)\t\(c.stiffness)\t\(c.drag)\t"
                     + String(
@@ -132,11 +130,11 @@ struct SpringBoneRingingDiagnostic {
     private static let frameDT: TimeInterval = 1.0 / 60.0
 
     @MainActor
-    private static func measureChains(model: VRMModel, system: SpringBoneComputeSystem) throws -> [ChainReport] {
-        guard let springBone = model.springBone, let buffers = model.springBoneBuffers,
+    private static func measureChains(model: VRMModel, solver: SpringBoneSolver) -> [ChainReport] {
+        guard let springBone = model.springBone,
               let hipsIndex = model.humanoid?.getBoneNode(.hips), let hips = model.nodes[safe: hipsIndex]
         else { return [] }
-        // Global joint order matches populateSpringBoneData: springs in order, joints in order.
+        // Global joint order: springs in order, joints in order.
         var chainRanges: [(spring: VRMSpring, first: Int, last: Int)] = []
         var index = 0
         for spring in springBone.springs {
@@ -145,42 +143,40 @@ struct SpringBoneRingingDiagnostic {
         }
         let baseLocal = hips.localMatrix
 
-        func step(dy: Float) throws -> [SIMD3<Float>] {
+        let jointNodes = springBone.springs.flatMap { $0.joints.map { model.nodes[safe: $0.node] } }
+        func step(dy: Float) -> [SIMD3<Float>] {
             var local = baseLocal
             local.columns.3.y = baseLocal.columns.3.y + dy
             hips.localMatrix = local
             model.updateNodeTransforms()
-            system.update(model: model, deltaTime: frameDT)
-            guard let fence = system.commandQueue.makeCommandBuffer() else { throw CancellationError() }
-            fence.commit()
-            fence.waitUntilCompleted()
-            guard let buffer = buffers.bonePosCurr else { return [] }
-            let ptr = buffer.contents().bindMemory(to: SIMD3<Float>.self, capacity: buffers.numBones)
-            return Array(UnsafeBufferPointer(start: ptr, count: buffers.numBones))
+            solver.update(deltaTime: Float(frameDT))
+            return jointNodes.map { $0?.worldPosition ?? .zero }
         }
 
         // Phase A: nothing moves.
         var restFrames: [[SIMD3<Float>]] = []
-        for _ in 0..<120 { restFrames.append(try step(dy: 0)) }
+        for _ in 0..<120 { restFrames.append(step(dy: 0)) }
         // Phase A2: nothing moves and nothing collides.
-        let savedParams = model.springBoneGlobalParams
-        model.springBoneGlobalParams?.numSpheres = 0
-        model.springBoneGlobalParams?.numCapsules = 0
-        model.springBoneGlobalParams?.numPlanes = 0
+        let saved = model.springBone
+        for index in springBone.springs.indices { model.springBone?.springs[index].colliderGroups = [] }
+        solver.setUp(model: model)
+        solver.warmUp(steps: 120)
         var noColliderFrames: [[SIMD3<Float>]] = []
-        for _ in 0..<120 { noColliderFrames.append(try step(dy: 0)) }
-        model.springBoneGlobalParams = savedParams
-        for _ in 0..<60 { _ = try step(dy: 0) }  // settle back with colliders on
+        for _ in 0..<120 { noColliderFrames.append(step(dy: 0)) }
+        model.springBone = saved
+        solver.setUp(model: model)
+        solver.warmUp(steps: 120)
+        for _ in 0..<60 { _ = step(dy: 0) }  // settle back with colliders on
         let penetrations = Self.tipPenetrations(model: model, springBone: springBone)
         // Phase B: breathing bob, ±8 mm at 0.33 Hz for 6 s.
         var bobFrames: [[SIMD3<Float>]] = []
         for f in 0..<360 {
             let t = Float(f) * Float(frameDT)
-            bobFrames.append(try step(dy: 0.008 * sin(2 * .pi * 0.33 * t)))
+            bobFrames.append(step(dy: 0.008 * sin(2 * .pi * 0.33 * t)))
         }
         // Phase C: hold still and let it settle.
         var settleFrames: [[SIMD3<Float>]] = []
-        for _ in 0..<600 { settleFrames.append(try step(dy: 0)) }
+        for _ in 0..<600 { settleFrames.append(step(dy: 0)) }
 
         var reports: [ChainReport] = []
         for (spring, first, last) in chainRanges where last > first {

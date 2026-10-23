@@ -67,30 +67,19 @@ struct SpringBoneColliderTests {
     @Test("A chain with no collider groups collides with nothing; the others get exactly their groups")
     @MainActor
     func emptyColliderGroupsMeanNoCollision() async throws {
-        guard let device = MTLCreateSystemDefaultDevice(),
-              let url = Bundle.main.url(forResource: "Ekaterina", withExtension: "vrm")
-        else { return }
-        let model = try await VRMModel.load(from: url, device: device)
-        if model.springBoneBuffers == nil { try model.initializeSpringBoneGPUSystem(device: device) }
-        let system = try SpringBoneComputeSystem(device: device)
-        try system.populateSpringBoneData(model: model)
+        guard let url = Bundle.main.url(forResource: "Ekaterina", withExtension: "vrm") else { return }
+        let model = try await VRMModel.load(from: url, device: MTLCreateSystemDefaultDevice())
         let springBone = try #require(model.springBone)
-        let buffers = try #require(model.springBoneBuffers)
-        let params = try #require(buffers.boneParams)
-        let masks = Array(UnsafeBufferPointer(
-            start: params.contents().bindMemory(to: BoneParams.self, capacity: buffers.numBones), count: buffers.numBones))
-            .map(\.colliderGroupMask)
+        let solver = SpringBoneSolver()
+        solver.setUp(model: model)
+        let chains = solver.chainColliders
+        #expect(chains.count == springBone.springs.count)
 
-        var index = 0
         var emptyChains = 0
-        for spring in springBone.springs {
-            var expected: UInt32 = 0
-            for group in spring.colliderGroups where group < 32 { expected |= 1 << UInt32(group) }
+        for (spring, colliders) in zip(springBone.springs, chains) {
+            let expected = Set(spring.colliderGroups.flatMap { springBone.colliderGroups[$0].colliders })
             if spring.colliderGroups.isEmpty { emptyChains += 1 }
-            for _ in spring.joints {
-                #expect(masks[index] == expected, "joint \(index)")
-                index += 1
-            }
+            #expect(Set(colliders) == expected)
         }
         #expect(emptyChains > 0, "the fixture must have chains that name no collider groups")
     }
