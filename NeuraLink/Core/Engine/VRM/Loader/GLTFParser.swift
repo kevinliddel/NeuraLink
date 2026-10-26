@@ -281,11 +281,14 @@ public struct GLTFPBRMetallicRoughness: Codable {
 public struct GLTFTextureInfo: Codable {
     public let index: Int
     public let texCoord: Int?
+    /// KHR_texture_transform lives here.
+    public let extensions: [String: AnyCodable]?
 }
 public struct GLTFNormalTextureInfo: Codable {
     public let index: Int
     public let texCoord: Int?
     public let scale: Float?
+    public let extensions: [String: AnyCodable]?
 }
 public struct GLTFOcclusionTextureInfo: Codable {
     public let index: Int

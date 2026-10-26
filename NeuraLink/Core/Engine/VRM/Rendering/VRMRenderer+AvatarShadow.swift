@@ -147,6 +147,9 @@ extension VRMRenderer {
             encoder.setVertexBuffer(avatarShadowPlaceholderBuffer, offset: 0, index: ResourceIndices.jointMatricesBuffer)
         }
         encoder.setFragmentTexture(material?.baseColorTexture?.mtlTexture ?? white, index: 0)
+        if let sampler = material?.baseColorTexture?.sampler ?? samplerStates["default"] {
+            encoder.setFragmentSamplerState(sampler, index: 0)
+        }
         encoder.drawIndexedPrimitives(
             type: primitive.primitiveType, indexCount: primitive.indexCount, indexType: primitive.indexType,
             indexBuffer: indexBuffer, indexBufferOffset: primitive.indexBufferOffset)

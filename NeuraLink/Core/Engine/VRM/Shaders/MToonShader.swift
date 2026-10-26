@@ -83,11 +83,19 @@ public struct MToonMaterialUniforms {
     public var alphaMode: UInt32 = 0
     public var alphaCutoff: Float = 0.5
 
-    // Block 12: 16 bytes - Version flag and UV offset
+    // Block 12: 16 bytes - Version flag and the UV transform's first row
     public var vrmVersion: UInt32 = 1  // Default to VRM 1.0
-    public var uvOffsetX: Float = 0.0  // UV offset for texture remapping (e.g., face overlays)
-    public var uvOffsetY: Float = 0.0  // UV offset for texture remapping
-    public var uvScale: Float = 1.0  // UV scale for texture remapping
+    // UV transform (VRMTextureTransform, KHR_texture_transform) as a 2×3
+    // matrix, rows u' = (00, 01, 02)·(u, v, 1), v' = (10, 11, 12)·(u, v, 1).
+    public var uvMatrix00: Float = 1.0
+    public var uvMatrix01: Float = 0.0
+    public var uvMatrix02: Float = 0.0
+
+    // Block 12b: 16 bytes - the UV transform's second row
+    public var uvMatrix10: Float = 0.0
+    public var uvMatrix11: Float = 1.0
+    public var uvMatrix12: Float = 0.0
+    public var _uvPadding: Float = 0.0
 
     // Block 13: 16 bytes - Appearance recolour (character customization).
     // HSV adjustment applied in the fragment shader right after the base
@@ -98,6 +106,18 @@ public struct MToonMaterialUniforms {
     public var recolorEnabled: Int32 = 0
 
     public init() {}
+
+    /// Loads `transform` into the 2×3 UV matrix the shaders apply after the
+    /// UV animation.
+    public mutating func setUVTransform(_ transform: VRMTextureTransform) {
+        let (row0, row1) = transform.rows
+        uvMatrix00 = row0.x
+        uvMatrix01 = row0.y
+        uvMatrix02 = row0.z
+        uvMatrix10 = row1.x
+        uvMatrix11 = row1.y
+        uvMatrix12 = row1.z
+    }
 
     // Computed properties for convenient SIMD3 access
     public var shadeColorFactor: SIMD3<Float> {

@@ -228,7 +228,8 @@ public struct ResourceIndices {
     public static let morphNormalDeltas = 13...19
     public static let morphedPositionsBuffer = 20
     public static let vertexOffsetBuffer = 21
-    public static let hasMorphedPositionsFlag = 22
+    public static let hasMorphedPositionsFlag = 22  // bit 1 positions, bit 2 normals
+    public static let morphedNormalsBuffer = 23
     // Joint matrices - moved to high index to avoid argument table collision
     public static let jointMatricesBuffer = 25
 

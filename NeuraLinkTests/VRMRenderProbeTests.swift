@@ -160,6 +160,33 @@ struct VRMRenderProbeTests {
         #expect(later.z > 0.9 && later.x < 0.1, "t = 1 s at 0.5/s: blue has scrolled in: \(later)")
     }
 
+    @Test("KHR_texture_transform scales the UVs, and the texture's glTF sampler decides what lies past the edge")
+    func textureTransformAndWrap() async throws {
+        let harness = try #require(VRMRenderHarness())
+        // Left half red, right half blue; the transform doubles u.
+        let stripes = (0..<16).flatMap { index -> [UInt8] in index % 4 < 2 ? [255, 0, 0, 255] : [0, 0, 255, 255] }
+        func probe(wrapS: Int) -> SyntheticVRM {
+            var material = SyntheticVRM.mtoon(baseTexture: 0)
+            var pbr = material["pbrMetallicRoughness"] as? [String: Any] ?? [:]
+            pbr["baseColorTexture"] = ["index": 0, "extensions": ["KHR_texture_transform": ["scale": [2.0, 1.0]]]]
+            material["pbrMetallicRoughness"] = pbr
+            var probe = SyntheticVRM(material: material)
+            probe.images = [TestPNG.encode(width: 4, height: 4, rgba: stripes)]
+            probe.sampler = ["magFilter": 9729, "minFilter": 9987, "wrapS": wrapS, "wrapT": 10_497]
+            return probe
+        }
+        let repeated = try #require(harness.render(try await harness.load(probe(wrapS: 10_497))))
+        let clamped = try #require(harness.render(try await harness.load(probe(wrapS: 33_071))))
+        func isRed(_ pixel: SIMD4<Float>) -> Bool { pixel.x > 0.9 && pixel.z < 0.1 }
+        func isBlue(_ pixel: SIMD4<Float>) -> Bool { pixel.z > 0.9 && pixel.x < 0.1 }
+        // The quad spans x ≈ 29.5 + 69u. At u 0.375 the transform reads
+        // texture u 0.75 (blue); untransformed it would be red.
+        #expect(isBlue(repeated.pixel(55, 64)), "scaled: \(repeated.pixel(55, 64))")
+        // At u 0.625 it reads u 1.25: repeat wraps to red, clamp holds the edge.
+        #expect(isRed(repeated.pixel(73, 64)), "repeat: \(repeated.pixel(73, 64))")
+        #expect(isBlue(clamped.pixel(73, 64)), "clamp to edge: \(clamped.pixel(73, 64))")
+    }
+
     @Test("Ambient light is brighter from above unless the material equalizes it")
     func hemisphereGI() async throws {
         let harness = try #require(VRMRenderHarness())

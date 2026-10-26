@@ -249,6 +249,8 @@ public final class AnimationPlayer: @unchecked Sendable {
 
             // 5. Solve node constraints (twist bones, etc.)
             if !model.nodeConstraints.isEmpty {
+                // Aim reads world positions: bring them up to this frame first.
+                model.updateNodeTransforms()
                 constraintSolver.solve(constraints: model.nodeConstraints, nodes: model.nodes)
             }
 

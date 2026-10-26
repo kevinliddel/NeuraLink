@@ -31,8 +31,13 @@ public struct VRMCollider {
 
 public enum VRMColliderShape {
     case sphere(offset: SIMD3<Float>, radius: Float)
+    /// Head (`offset`) and `tail` are both points in the collider node's space.
     case capsule(offset: SIMD3<Float>, radius: Float, tail: SIMD3<Float>)
     case plane(offset: SIMD3<Float>, normal: SIMD3<Float>)
+    /// VRMC_springBone_extended_collider `inside`: keeps joints IN the
+    /// sphere / capsule rather than out of it.
+    case insideSphere(offset: SIMD3<Float>, radius: Float)
+    case insideCapsule(offset: SIMD3<Float>, radius: Float, tail: SIMD3<Float>)
 }
 
 public struct VRMColliderGroup {

@@ -78,6 +78,8 @@ extension VRMRenderer {
         // init doesn't carry it. UV animation runs on the clock.
         mtoonUniforms.emissiveFactor = material.effectiveEmissiveFactor
         mtoonUniforms.time = materialTime
+        mtoonUniforms.setUVTransform(
+            expressionController?.textureTransformOverride(forMaterial: materialIndex) ?? material.uvTransform)
 
         switch materialAlphaMode {
         case "mask":

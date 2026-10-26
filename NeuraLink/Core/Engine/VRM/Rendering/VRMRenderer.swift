@@ -300,6 +300,8 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
     var lastTextureIds: [Int: MTLTexture] = [:] // index -> texture
     // Dummy buffer to satisfy Metal validation when morphs are not used
     var emptyFloat3Buffer: MTLBuffer?
+    /// This frame's morphed normals by primitive (VRMRenderer+Morphs).
+    var morphedNormalBuffers: [MorphKey: MTLBuffer] = [:]
 
     // MARK: - MSAA / Drawable Size
 

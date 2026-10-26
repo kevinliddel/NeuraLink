@@ -72,9 +72,14 @@ struct MToonMaterial {
     uint32_t alphaMode;
     float alphaCutoff;
     uint32_t vrmVersion;
-    float uvOffsetX;
-    float uvOffsetY;
-    float uvScale;
+    // UV transform rows (VRMTextureTransform): u' = (00,01,02)·(u,v,1).
+    float uvMatrix00;
+    float uvMatrix01;
+    float uvMatrix02;
+    float uvMatrix10;
+    float uvMatrix11;
+    float uvMatrix12;
+    float _uvPadding;
     // Block 13: appearance recolour (see MToonShader.swift)
     float recolorHueShift;
     float recolorSaturation;
@@ -195,6 +200,13 @@ static inline float2 animateUV(float2 uv, constant MToonMaterial& material) {
     result.x += material.uvAnimationScrollXSpeedFactor * material.time;
     result.y += material.uvAnimationScrollYSpeedFactor * material.time;
     return result;
+}
+
+// The material's UV transform (VRMTextureTransform: KHR_texture_transform,
+// or VRM 0.x _MainTex), applied after the UV animation.
+static inline float2 mtoonTransformUV(float2 uv, constant MToonMaterial& material) {
+    return float2(material.uvMatrix00 * uv.x + material.uvMatrix01 * uv.y + material.uvMatrix02,
+                  material.uvMatrix10 * uv.x + material.uvMatrix11 * uv.y + material.uvMatrix12);
 }
 
 // VRMC_materials_mtoon-1.0 spec matcap UV.

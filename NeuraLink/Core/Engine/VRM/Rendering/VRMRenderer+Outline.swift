@@ -102,6 +102,8 @@ extension VRMRenderer {
             default:
                 mtoonUniforms.alphaMode = 0
             }
+            mtoonUniforms.setUVTransform(
+                expressionController?.textureTransformOverride(forMaterial: materialIndex) ?? material.uvTransform)
             if let baseTexture = material.baseColorTexture?.mtlTexture {
                 mtoonUniforms.hasBaseColorTexture = 1
                 encoder.setFragmentTexture(baseTexture, index: 0)
@@ -112,16 +114,21 @@ extension VRMRenderer {
             // Width-multiply texture: bind it, or clear the flag. The vertex
             // shader multiplies the width by the sample, so a set flag with
             // no bound texture zeroed the outline on those materials.
+            var widthSampler: MTLSamplerState?
             if let widthIndex = mtoon.outlineWidthMultiplyTexture,
                widthIndex < model.textures.count,
                let widthTexture = model.textures[widthIndex].mtlTexture {
                 mtoonUniforms.hasOutlineWidthMultiplyTexture = 1
                 encoder.setVertexTexture(widthTexture, index: 0)
+                widthSampler = model.textures[widthIndex].sampler
             } else {
                 mtoonUniforms.hasOutlineWidthMultiplyTexture = 0
             }
-            if let sampler = samplerStates["default"] {
+            // Each texture's own glTF sampler (VRMSamplerCache).
+            if let sampler = material.baseColorTexture?.sampler ?? samplerStates["default"] {
                 encoder.setFragmentSamplerState(sampler, index: 0)
+            }
+            if let sampler = widthSampler ?? samplerStates["default"] {
                 encoder.setVertexSamplerState(sampler, index: 0)
             }
 
@@ -170,25 +177,14 @@ extension VRMRenderer {
         }
     }
 
-    /// The hull starts from the same morphed positions as the surface, so
-    /// mouth and eye outlines follow expressions.
+    /// The hull starts from the same morphed positions and normals as the
+    /// surface, so mouth and eye outlines follow expressions.
     private func bindMorphedPositions(
         for item: RenderItem, morphedBuffers: [MorphKey: MTLBuffer], encoder: MTLRenderCommandEncoder
     ) {
-        let key: MorphKey = (UInt64(item.meshIndex) << 32) | UInt64(item.primIdxInMesh)
-        var hasMorphed: UInt32 = 0
-        if let morphed = morphedBuffers[key] {
-            encoder.setVertexBuffer(morphed, offset: 0, index: ResourceIndices.morphedPositionsBuffer)
-            hasMorphed = 1
-        } else {
-            if emptyFloat3Buffer == nil {
-                emptyFloat3Buffer = device.makeBuffer(
-                    length: MemoryLayout<SIMD3<Float>>.stride, options: .storageModeShared)
-            }
-            encoder.setVertexBuffer(emptyFloat3Buffer, offset: 0, index: ResourceIndices.morphedPositionsBuffer)
-        }
-        encoder.setVertexBytes(
-            &hasMorphed, length: MemoryLayout<UInt32>.size, index: ResourceIndices.hasMorphedPositionsFlag)
+        bindMorphedVertexData(
+            for: (UInt64(item.meshIndex) << 32) | UInt64(item.primIdxInMesh), morphedPositions: morphedBuffers,
+            encoder: encoder)
     }
 
     /// Forget what the item loop believes is bound; the next draw rebinds.

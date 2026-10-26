@@ -104,6 +104,8 @@ extension VRMRenderer {
 
         // Initialize base material colors for expression-driven material color binds
         for (materialIndex, material) in model.materials.enumerated() {
+            // …and the UV transform that texture transform binds move from.
+            expressionController?.setBaseTextureTransform(materialIndex: materialIndex, material.uvTransform)
             // Store base color factor (RGBA)
             expressionController?.setBaseMaterialColor(
                 materialIndex: materialIndex,

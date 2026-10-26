@@ -313,7 +313,8 @@ final class SpringBoneSolver {
     }
 
     /// Pushes the tail out of every collider of the joint's chain (spec
-    /// order), keeping the bone's length after each push.
+    /// order) — or, for an inside collider, back into it — keeping the
+    /// bone's length after each push.
     private func collide(_ tail: inout SIMD3<Float>, head: SIMD3<Float>, length: Float, joint: Joint) {
         for index in chains[joint.chain].colliders {
             guard let node = colliderNodes[index] else { continue }
@@ -323,13 +324,15 @@ final class SpringBoneSolver {
             case .sphere(let offset, let radius):
                 pushed = Self.pushOut(&tail, from: Self.transform(matrix, offset), radius: radius + joint.hitRadius)
             case .capsule(let offset, let radius, let capsuleTail):
-                // Head and tail are both points in the collider node's space.
-                let start = Self.transform(matrix, offset)
-                let end = Self.transform(matrix, capsuleTail)
-                let segment = end - start
-                let lengthSquared = simd_length_squared(segment)
-                let along = lengthSquared > 1e-10 ? min(max(simd_dot(tail - start, segment) / lengthSquared, 0), 1) : 0
-                pushed = Self.pushOut(&tail, from: start + segment * along, radius: radius + joint.hitRadius)
+                let axisPoint = Self.closestPoint(
+                    to: tail, from: Self.transform(matrix, offset), to: Self.transform(matrix, capsuleTail))
+                pushed = Self.pushOut(&tail, from: axisPoint, radius: radius + joint.hitRadius)
+            case .insideSphere(let offset, let radius):
+                pushed = Self.pullIn(&tail, toward: Self.transform(matrix, offset), radius: radius - joint.hitRadius)
+            case .insideCapsule(let offset, let radius, let capsuleTail):
+                let axisPoint = Self.closestPoint(
+                    to: tail, from: Self.transform(matrix, offset), to: Self.transform(matrix, capsuleTail))
+                pushed = Self.pullIn(&tail, toward: axisPoint, radius: radius - joint.hitRadius)
             case .plane(let offset, let normal):
                 let point = Self.transform(matrix, offset)
                 let worldNormal = Self.rotation(of: matrix) * normal
@@ -346,6 +349,27 @@ final class SpringBoneSolver {
     }
 
     // MARK: - Math
+
+    /// The point of segment start…end nearest `point` (a capsule's axis; its
+    /// head and tail are both points in the collider node's space).
+    private static func closestPoint(
+        to point: SIMD3<Float>, from start: SIMD3<Float>, to end: SIMD3<Float>
+    ) -> SIMD3<Float> {
+        let segment = end - start
+        let lengthSquared = simd_length_squared(segment)
+        let along = lengthSquared > 1e-10 ? min(max(simd_dot(point - start, segment) / lengthSquared, 0), 1) : 0
+        return start + segment * along
+    }
+
+    /// An inside collider (extended collider): a point farther than `radius`
+    /// from `center` comes back onto that sphere.
+    private static func pullIn(_ point: inout SIMD3<Float>, toward center: SIMD3<Float>, radius: Float) -> Bool {
+        let delta = point - center
+        let distance = simd_length(delta)
+        guard radius > 0, distance > radius, distance > 1e-6 else { return false }
+        point = center + delta / distance * radius
+        return true
+    }
 
     private static func pushOut(_ point: inout SIMD3<Float>, from center: SIMD3<Float>, radius: Float) -> Bool {
         let delta = point - center

@@ -61,6 +61,10 @@ public class VRMMaterial {
     /// factor alone (often 1,1,1 on VRoid hair) would wash the surface white.
     public var emissiveMapExpected = false
 
+    /// UV transform shared by the material's UV-mapped textures
+    /// (KHR_texture_transform, or VRM 0.x `_MainTex`).
+    public var uvTransform = VRMTextureTransform()
+
     /// Emission the shader adds (spec: factor × strength × map): nothing when
     /// an expected map is missing.
     public var effectiveEmissiveFactor: SIMD3<Float> {
@@ -113,6 +117,7 @@ public class VRMMaterial {
         slotHint = other.slotHint
         emissiveStrength = other.emissiveStrength
         emissiveMapExpected = other.emissiveMapExpected
+        uvTransform = other.uvTransform
     }
 
     public init(
@@ -152,6 +157,8 @@ public class VRMMaterial {
                 emissiveTexture = textures[emissiveTextureInfo.index]
             }
         }
+
+        if let transform = VRMTextureTransform.declared(by: gltfMaterial) { uvTransform = transform }
 
         if let emissive = gltfMaterial.emissiveFactor, emissive.count == 3 {
             emissiveFactor = SIMD3<Float>(emissive[0], emissive[1], emissive[2])
@@ -227,6 +234,11 @@ public class VRMMaterial {
                 if index < textures.count { emissiveTexture = textures[index] }
             }
 
+            // `_MainTex` [offsetX, offsetY, scaleX, scaleY], Unity UV space.
+            if let mainTex = vrm0Prop.vectorProperties["_MainTex"],
+               let transform = VRMTextureTransform(vrm0MainTex: mainTex) {
+                uvTransform = transform
+            }
             if let colorVec = vrm0Prop.vectorProperties["_Color"], colorVec.count >= 4 {
                 // Convert RGB from sRGB to linear, alpha stays linear
                 let r = sRGBToLinear(colorVec[0])

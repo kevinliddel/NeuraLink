@@ -406,6 +406,10 @@ public enum VRMPartGrafter {
             return .capsule(offset: yaw.act(offset), radius: radius, tail: yaw.act(tail))
         case .plane(let offset, let normal):
             return .plane(offset: yaw.act(offset), normal: yaw.act(normal))
+        case .insideSphere(let offset, let radius):
+            return .insideSphere(offset: yaw.act(offset), radius: radius)
+        case .insideCapsule(let offset, let radius, let tail):
+            return .insideCapsule(offset: yaw.act(offset), radius: radius, tail: yaw.act(tail))
         }
     }
 }

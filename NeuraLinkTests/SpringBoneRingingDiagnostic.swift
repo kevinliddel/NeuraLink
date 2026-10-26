@@ -104,7 +104,7 @@ struct SpringBoneRingingDiagnostic {
             case .capsule(let offset, let radius, let tail):
                 let p0 = node.worldPosition + rot * offset
                 capsules.append((p0, p0 + rot * tail, radius))
-            case .plane: break
+            case .plane, .insideSphere, .insideCapsule: break
             }
         }
         var result: [Int: Float] = [:]

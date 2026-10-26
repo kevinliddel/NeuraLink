@@ -69,7 +69,7 @@ extension VRMRenderer {
                     opaquePipelineState, name: "opaque_pipeline")
                 try strictValidator?.validateUniformBuffer(
                     uniformsBuffer, requiredSize: MemoryLayout<Uniforms>.size)
-                if morphTargetSystem?.morphAccumulatePipelineState == nil {
+                if morphTargetSystem?.isReady != true {
                     throw StrictModeError.missingComputeFunction(name: "morph_accumulate")
                 }
             } catch {
@@ -81,9 +81,7 @@ extension VRMRenderer {
             // Legacy asserts for non-strict mode
             assert(opaquePipelineState != nil, "[VRMRenderer] Opaque pipeline state is nil")
             assert(!uniformsBuffers.isEmpty, "[VRMRenderer] Uniforms buffers are empty")
-            assert(
-                morphTargetSystem?.morphAccumulatePipelineState != nil,
-                "[VRMRenderer] Compute pipeline state is nil")
+            assert(morphTargetSystem?.isReady == true, "[VRMRenderer] Morph compute pipelines are missing")
         }
 
         // Run compute pass for morphs BEFORE render encoder

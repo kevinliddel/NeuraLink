@@ -12,7 +12,8 @@ vertex VertexOut mtoon_outline_vertex(VertexIn in [[stage_in]],
     VertexOut out;
 
     float outlineWidth = material.outlineWidthFactor
-                       * mtoonOutlineWidthMask(outlineWidthMultiplyTexture, textureSampler, in.texCoord, material);
+                       * mtoonOutlineWidthMask(outlineWidthMultiplyTexture, textureSampler,
+                                               mtoonTransformUV(animateUV(in.texCoord, material), material), material);
 
     float3 worldNormal = normalize((uniforms.normalMatrix * float4(in.normal, 0.0)).xyz);
     float3x3 viewRotation = float3x3(uniforms.viewMatrix[0].xyz,
@@ -59,7 +60,7 @@ fragment float4 mtoon_outline_fragment(VertexOut in [[stage_in]],
     // was discarded.
     float4 base = material.baseColorFactor;
     if (material.hasBaseColorTexture > 0) {
-        base *= baseColorTexture.sample(textureSampler, in.texCoord);
+        base *= baseColorTexture.sample(textureSampler, mtoonTransformUV(animateUV(in.texCoord, material), material));
     }
     if (material.alphaMode == 1 && base.a < material.alphaCutoff) { discard_fragment(); }
     if (material.alphaMode == 2 && base.a < 0.004) { discard_fragment(); }

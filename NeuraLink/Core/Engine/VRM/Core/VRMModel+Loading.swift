@@ -122,6 +122,15 @@ extension VRMModel {
             }
         }
 
+        // Each texture samples with its own glTF sampler (wrap, filter).
+        if let device {
+            for (index, texture) in textures.enumerated() {
+                let samplerIndex = gltf.textures?[safe: index]?.sampler
+                texture.sampler = VRMSamplerCache.sampler(
+                    for: samplerIndex.flatMap { gltf.samplers?[safe: $0] }, device: device)
+            }
+        }
+
         // === Loading Phase: Materials ===
         let materialCount = gltf.materials?.count ?? 0
         await context?.updatePhase(.loadingMaterials, totalItems: materialCount)
