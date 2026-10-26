@@ -56,4 +56,21 @@ extension VRMPartGrafter {
         }
         return count > 30 ? total / Float(count) : nil
     }
+
+    /// A donor collider's shape turned by the version yaw, like every other
+    /// bone-local quantity the graft carries across.
+    static func rotated(_ shape: VRMColliderShape, by yaw: simd_quatf) -> VRMColliderShape {
+        switch shape {
+        case .sphere(let offset, let radius):
+            return .sphere(offset: yaw.act(offset), radius: radius)
+        case .capsule(let offset, let radius, let tail):
+            return .capsule(offset: yaw.act(offset), radius: radius, tail: yaw.act(tail))
+        case .plane(let offset, let normal):
+            return .plane(offset: yaw.act(offset), normal: yaw.act(normal))
+        case .insideSphere(let offset, let radius):
+            return .insideSphere(offset: yaw.act(offset), radius: radius)
+        case .insideCapsule(let offset, let radius, let tail):
+            return .insideCapsule(offset: yaw.act(offset), radius: radius, tail: yaw.act(tail))
+        }
+    }
 }

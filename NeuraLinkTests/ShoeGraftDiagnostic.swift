@@ -4,7 +4,11 @@
 //
 //  Temporary developer tool: grafts every library shoe onto the bundled
 //  characters and writes a picture of the result, so the fit can be looked
-//  at rather than inferred from bounding boxes. Set NL_SHOE_DIAG_DIR to run.
+//  at rather than inferred from bounding boxes. Set NL_SHOE_DIAG_DIR to run;
+//  NL_SHOE_DIAG_HOSTS picks the hosts (default "Sonya,Ekaterina,Oz"),
+//  NL_SHOE_DIAG_DONORS limits the shoes (default all), and
+//  NL_SHOE_DIAG_PARTS_DIR reads `<stem>__shoes.vrm` from a local folder —
+//  freshly extracted parts, before they are uploaded and pinned.
 //
 
 import Testing
@@ -17,28 +21,30 @@ import simd
 @Suite("Shoe graft diagnostic", .serialized)
 struct ShoeGraftDiagnostic {
 
-    /// Root local matrices as loaded, so a turn is applied to the rest pose
-    /// rather than to the previous turn.
-    @MainActor private static var restPose: [ObjectIdentifier: float4x4] = [:]
-
     @Test("Render grafted shoes when NL_SHOE_DIAG_DIR is set")
     @MainActor
     func render() async throws {
         guard let path = ProcessInfo.processInfo.environment["NL_SHOE_DIAG_DIR"], !path.isEmpty else { return }
-        guard let device = MTLCreateSystemDefaultDevice(),
-            let renderer = VRMPartThumbnailRenderer(size: 512)
-        else { return }
+        guard let device = MTLCreateSystemDefaultDevice() else { return }
+        let renderer = Self.makeRenderer(device: device)
         let outputDir = URL(fileURLWithPath: path, isDirectory: true)
         try FileManager.default.createDirectory(at: outputDir, withIntermediateDirectories: true)
 
         var report = ""
-        Self.restPose = [:]
+        let only = Set((ProcessInfo.processInfo.environment["NL_SHOE_DIAG_DONORS"] ?? "")
+            .split(separator: ",").map(String.init))
         // Library parts AND the bundled characters: the picker offers both,
         // and Sonya's own high-tops are the pair actually reported broken.
         // By bundle URL, not VRMModelRegistry, which is empty in tests.
         var donors: [(label: String, url: URL)] = []
+        let localParts = ProcessInfo.processInfo.environment["NL_SHOE_DIAG_PARTS_DIR"]
         for item in PartsLibrary.shared.items where item.kind == .shoes {
-            if let url = try? await item.resolvedURL() { donors.append((item.modelStem, url)) }
+            if let localParts {
+                let url = URL(fileURLWithPath: localParts).appendingPathComponent("\(item.modelStem)__shoes.vrm")
+                if FileManager.default.fileExists(atPath: url.path) { donors.append((item.modelStem, url)) }
+            } else if let url = try? await item.resolvedURL() {
+                donors.append((item.modelStem, url))
+            }
         }
         for name in ["Sonya", "Ekaterina"] {
             if let url = Bundle.main.url(forResource: name, withExtension: "vrm") {
@@ -47,9 +53,11 @@ struct ShoeGraftDiagnostic {
         }
         #expect(donors.count >= 14, "library shoes plus both characters")
 
-        for hostName in ["Sonya", "Ekaterina"] {
+        for hostName in (ProcessInfo.processInfo.environment["NL_SHOE_DIAG_HOSTS"] ?? "Sonya,Ekaterina,Oz")
+            .split(separator: ",").map(String.init) {
             guard let hostURL = Bundle.main.url(forResource: hostName, withExtension: "vrm") else { continue }
-            for entry in donors where entry.label != hostName.lowercased() {
+            for entry in donors where entry.label != hostName.lowercased()
+                && (only.isEmpty || only.contains(entry.label)) {
                 let host = try await VRMModel.load(from: hostURL, device: device)
                 let donor = try await VRMModel.load(from: entry.url, device: device)
                 let hostFoot = host.referenceFootLength ?? 0
@@ -61,17 +69,18 @@ struct ShoeGraftDiagnostic {
                 host.updateNodeTransforms()
                 let ownShoe = skinnedBounds(host, slots: AppearancePartKind.shoes.slots)
                 let baseMeshes = host.meshes.count
+                // Measured before the graft, as the grafter does.
+                let fit = VRMPartGrafter.fitScale(.shoes, donor: donor, host: host)
+                let cut = VRMPartGrafter.skinCutLine(.shoes, donor: donor, host: host, fit: fit)
                 try VRMPartGrafter.graft(.shoes, from: donor, donorSlug: entry.label, onto: host)
                 host.updateNodeTransforms()
 
                 let skin = bounds(host, slots: [.bodySkin], below: 0.18)
                 let shoe = skinnedBounds(
                     host, slots: AppearancePartKind.shoes.slots, fromMesh: baseMeshes)
-                let fit = VRMPartGrafter.fitScale(.shoes, donor: donor, host: host)
                 let box = donor.restBounds(ofSlots: AppearancePartKind.shoes.slots)
                 let collar = VRMPartGrafter.collarHeight(
                     of: donor, slots: AppearancePartKind.shoes.slots)
-                let cut = VRMPartGrafter.skinCutLine(.shoes, donor: donor, host: host, fit: fit)
                 report += """
                     == \(hostName) + \(entry.label)
                        boxTop=\(fmt(box?.max.y)) collar=\(fmt(collar)) \
@@ -91,16 +100,22 @@ struct ShoeGraftDiagnostic {
 
                     """
 
-                // Front AND side. A heel left outside the shoe is invisible
-                // head-on — the first sheet I judged this on was front-only.
-                for (turn, suffix) in [(Float(0), ""), (Float.pi / 2, "_side")] {
-                    turnModel(host, by: turn)
-                    guard let image = renderer.render(model: host, subject: .shoes),
-                        let png = image.pngData() else { continue }
+                // Close on the feet from four sides. A heel left outside the
+                // shoe is invisible head-on, and missing toes only from the
+                // front; the part-tile framing cropped both away.
+                guard let shoe else { continue }
+                renderer.loadModel(host)
+                renderer.isModelVisible = true
+                renderer.lookAtController?.enabled = false
+                for shot in Self.footShots(around: shoe, isVRM0: host.isVRM0) {
+                    renderer.viewMatrix = OrthographicCamera.makeLookAt(
+                        eye: shot.eye, target: shot.target, up: [0, 1, 0])
+                    renderer.projectionMatrix = renderer.makeProjectionMatrix(aspectRatio: 1)
+                    guard let png = VRMRenderSnapshots.render(renderer, device: device, samples: 1) else { continue }
                     try png.write(to: outputDir.appendingPathComponent(
-                        "\(hostName.lowercased())_\(entry.label)\(suffix).png"), options: .atomic)
+                        "\(hostName.lowercased())_\(entry.label)_\(shot.name).png"), options: .atomic)
                 }
-                turnModel(host, by: 0)
+                renderer.clearModel()
             }
         }
         try report.write(
@@ -148,30 +163,40 @@ struct ShoeGraftDiagnostic {
         model.updateNodeTransforms()
     }
 
-    /// Yaws every root node so the offscreen camera, which is fixed on +Z,
-    /// can look at the model from another angle.
-    ///
-    /// `updateWorldTransform` reads the CACHED `localMatrix`, so setting
-    /// `rotation` alone changes nothing — the matrix has to be rebuilt from
-    /// the one the model loaded with, or repeated turns compound.
     @MainActor
-    private func turnModel(_ model: VRMModel, by radians: Float) {
-        let roots = model.nodes.filter { $0.parent == nil }
-        // Per NODE, not once for the suite: every combination loads a fresh
-        // model, so a cache keyed on the first one's nodes silently left all
-        // the others unturned.
-        for node in roots where Self.restPose[ObjectIdentifier(node)] == nil {
-            Self.restPose[ObjectIdentifier(node)] = node.localMatrix
+    private static func makeRenderer(device: MTLDevice) -> VRMRenderer {
+        let renderer = VRMRenderer(device: device, config: RendererConfig(strict: .off, sampleCount: 1))
+        renderer.skyRenderer = nil
+        renderer.terrainRenderer = nil
+        renderer.environmentRenderer = nil
+        renderer.enableSpringBone = false
+        renderer.materialTimeOverride = 0
+        renderer.setLight(0, direction: [0.25, -0.35, -0.90], color: [1.00, 0.99, 0.97], intensity: 0.95)
+        renderer.setLight(1, direction: [-0.45, -0.15, -0.85], color: [0.88, 0.90, 0.96], intensity: 0.55)
+        renderer.setLight(2, direction: [0.0, 0.75, -0.65], color: [0.95, 0.95, 1.00], intensity: 0.45)
+        renderer.setAmbientColor(SIMD3<Float>(repeating: 0.42))
+        return renderer
+    }
+
+    /// Front, three-quarter, outer side and back of the pair, aimed at the
+    /// SKINNED shoe box. The renderer yaws 0.x models 180°, so the box is
+    /// yawed with them.
+    private static func footShots(
+        around box: (min: SIMD3<Float>, max: SIMD3<Float>), isVRM0: Bool
+    ) -> [(name: String, eye: SIMD3<Float>, target: SIMD3<Float>)] {
+        var centre = (box.min + box.max) * 0.5
+        if isVRM0 { centre = SIMD3<Float>(-centre.x, centre.y, -centre.z) }
+        let span = box.max - box.min
+        let distance = max(max(span.x, span.z), 0.2) * 1.5
+        func eye(yaw: Float, rise: Float) -> SIMD3<Float> {
+            centre + SIMD3<Float>(sin(yaw), rise, cos(yaw)) * distance
         }
-        var turn = matrix_identity_float4x4
-        let c = cos(radians), s = sin(radians)
-        turn.columns.0 = SIMD4<Float>(c, 0, -s, 0)
-        turn.columns.2 = SIMD4<Float>(s, 0, c, 0)
-        for node in roots {
-            guard let original = Self.restPose[ObjectIdentifier(node)] else { continue }
-            node.localMatrix = turn * original
-        }
-        model.updateNodeTransforms()
+        return [
+            ("front", eye(yaw: 0, rise: 0.45), centre),
+            ("threeQuarter", eye(yaw: 0.7, rise: 0.3), centre),
+            ("side", eye(yaw: .pi / 2, rise: 0.15), centre),
+            ("back", eye(yaw: .pi * 0.85, rise: 0.3), centre)
+        ]
     }
 
     /// Share of the host's remaining foot skin that ends up OUTSIDE the

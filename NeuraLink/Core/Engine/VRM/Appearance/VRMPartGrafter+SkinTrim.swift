@@ -25,22 +25,24 @@ import simd
 
 extension VRMPartGrafter {
 
-    /// Drops host skin triangles below `cut`, in the host's own rest space.
-    /// Returns how many primitives were trimmed.
+    /// Drops host skin triangles below `cut`, in the host's own rest space,
+    /// leaving the meshes in `sparing` (the part just grafted, whose
+    /// borrowed foot is skin too) alone. Returns how many primitives were
+    /// trimmed.
     @discardableResult
     static func trimHostSkin(
-        under kind: AppearancePartKind, in host: VRMModel, donor: VRMModel, fit: Float,
-        below cut: Float
+        under kind: AppearancePartKind, in host: VRMModel, below cut: Float,
+        sparing: Set<ObjectIdentifier> = []
     ) -> Int {
         guard kind.trimsHostSkinUnderneath, let device = host.device else { return 0 }
         // Restricting this to the shoe's ground plan was tried and is far
         // worse: it spares the toes but leaves every bit of foot the shoe
         // fails to cover, and measured exposure went from 2 pairs at 1.7% to
         // 9 pairs at 58%. The skin outside the shell is exactly what has to
-        // go — which is why a heel the foot cannot fit into reads as missing
-        // toes whichever way this is set.
+        // go. An open shoe shows where it went, so the foot the shoe was
+        // modelled around comes with it (VRMPartGrafter+BareFoot).
         var trimmed = 0
-        for mesh in host.meshes {
+        for mesh in host.meshes where !sparing.contains(ObjectIdentifier(mesh)) {
             for primitive in mesh.primitives {
                 guard let materialIndex = primitive.materialIndex,
                     host.slot(ofMaterial: materialIndex) == .bodySkin,
@@ -385,13 +387,48 @@ extension VRMPrimitive {
     /// every other primitive on a VRoid body. Returns false when nothing
     /// qualified, so the caller can tell a no-op from a trim.
     func dropTriangles(device: MTLDevice, where isHidden: (SIMD3<Float>) -> Bool) -> Bool {
+        guard let filtered = filteredIndices(device: device, test: isHidden, keep: { !($0 && $1 && $2) }),
+            filtered.count < indexCount,
+            // Everything gone would mean the measurement was wrong, not that
+            // the body should vanish. Leave it alone.
+            filtered.count >= 3
+        else { return false }
+        untrimmedIndices = UntrimmedIndices(
+            buffer: indexBuffer, count: indexCount, offset: indexBufferOffset)
+        indexBuffer = filtered.buffer
+        indexCount = filtered.count
+        indexBufferOffset = 0
+        return true
+    }
+
+    /// A new primitive over the same vertices drawing only the triangles
+    /// with at least one corner `keep` accepts, so the edge of the cut
+    /// reaches just past the line rather than stopping short of it. Nil
+    /// when no triangle qualifies. Unlike `dropTriangles` it is not a trim:
+    /// nothing records an original to restore.
+    func clippedClone(device: MTLDevice, keeping keep: (SIMD3<Float>) -> Bool) -> VRMPrimitive? {
+        guard let filtered = filteredIndices(device: device, test: keep, keep: { $0 || $1 || $2 }),
+            filtered.count >= 3
+        else { return nil }
+        let clone = shallowClone()
+        clone.indexBuffer = filtered.buffer
+        clone.indexCount = filtered.count
+        clone.indexBufferOffset = 0
+        return clone
+    }
+
+    /// An index buffer (same index type) of the triangles `keep` accepts,
+    /// given whether each corner passes `test`.
+    private func filteredIndices(
+        device: MTLDevice, test: (SIMD3<Float>) -> Bool, keep: (Bool, Bool, Bool) -> Bool
+    ) -> (buffer: MTLBuffer, count: Int)? {
         guard primitiveType == .triangle,
             let positionOffset = MemoryLayout<VRMVertex>.offset(of: \VRMVertex.position),
             let vertexBuffer, vertexBuffer.storageMode == .shared,
             let indexBuffer, indexBuffer.storageMode == .shared,
             indexCount >= 3, vertexCount > 0,
             vertexBuffer.length >= vertexCount * MemoryLayout<VRMVertex>.stride
-        else { return false }
+        else { return nil }
 
         let stride = MemoryLayout<VRMVertex>.stride
         let vertexBase = vertexBuffer.contents()
@@ -403,9 +440,9 @@ extension VRMPrimitive {
                 ? Int(indexBase.load(fromByteOffset: n * 4, as: UInt32.self))
                 : Int(indexBase.load(fromByteOffset: n * 2, as: UInt16.self))
         }
-        func isUnder(_ vertex: Int) -> Bool {
+        func passes(_ vertex: Int) -> Bool {
             guard vertex < vertexCount else { return false }
-            return isHidden(vertexBase.load(
+            return test(vertexBase.load(
                 fromByteOffset: vertex * stride + positionOffset, as: SIMD3<Float>.self))
         }
 
@@ -413,36 +450,21 @@ extension VRMPrimitive {
         var kept16: [UInt16] = []
         kept32.reserveCapacity(wide ? indexCount : 0)
         kept16.reserveCapacity(wide ? 0 : indexCount)
-        var dropped = 0
         for triangle in stride2(indexCount) {
             let a = index(triangle), b = index(triangle + 1), c = index(triangle + 2)
-            if isUnder(a), isUnder(b), isUnder(c) {
-                dropped += 1
-                continue
-            }
+            guard keep(passes(a), passes(b), passes(c)) else { continue }
             if wide {
                 kept32.append(contentsOf: [UInt32(a), UInt32(b), UInt32(c)])
             } else {
                 kept16.append(contentsOf: [UInt16(a), UInt16(b), UInt16(c)])
             }
         }
-        guard dropped > 0 else { return false }
-
         let keptCount = wide ? kept32.count : kept16.count
-        // Everything gone would mean the measurement was wrong, not that the
-        // body should vanish. Leave it alone.
-        guard keptCount >= 3 else { return false }
+        guard keptCount > 0 else { return (indexBuffer, 0) }
         let newBuffer: MTLBuffer? = wide
             ? kept32.withUnsafeBytes { device.makeBuffer(bytes: $0.baseAddress!, length: $0.count) }
             : kept16.withUnsafeBytes { device.makeBuffer(bytes: $0.baseAddress!, length: $0.count) }
-        guard let newBuffer else { return false }
-
-        untrimmedIndices = UntrimmedIndices(
-            buffer: indexBuffer, count: indexCount, offset: indexBufferOffset)
-        self.indexBuffer = newBuffer
-        indexCount = keptCount
-        indexBufferOffset = 0
-        return true
+        return newBuffer.map { ($0, keptCount) }
     }
 
     /// Puts the full index buffer back. No-op when never trimmed.

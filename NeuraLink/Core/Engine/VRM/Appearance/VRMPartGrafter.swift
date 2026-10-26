@@ -69,19 +69,26 @@ public enum VRMPartGrafter {
             return ObjectIdentifier(host.nodes[index])
         })
         let counts = Counts()
+        // Where the host's skin will be cut away under the part, measured
+        // before anything is appended: grafted geometry keeps the donor's
+        // rest positions, which would otherwise count as the host's.
+        let cut = skinCutLine(kind, donor: donor, host: host, fit: fit)
+        let feet = bareFoot(kind, donor: donor, host: host, fit: fit, cut: cut)
 
-        // 1. Donor primitives by slot, grouped by their mesh node (skin).
+        // 1. Donor primitives by slot (plus the foot a shoe was modelled
+        // around), grouped by their mesh node (skin).
         var selection: [(node: VRMNode, mesh: VRMMesh, primitives: [VRMPrimitive])] = []
         for node in donor.nodes {
             guard let meshIndex = node.mesh, meshIndex < donor.meshes.count else { continue }
             let mesh = donor.meshes[meshIndex]
             let picked = mesh.primitives.filter { primitive in
                 guard let m = primitive.materialIndex, m < donor.materials.count else { return false }
-                return kind.slots.contains(donor.slot(ofMaterial: m))
+                return kind.slots.contains(donor.slot(ofMaterial: m)) || feet.clones[ObjectIdentifier(primitive)] != nil
             }
             if !picked.isEmpty { selection.append((node, mesh, picked)) }
         }
-        guard !selection.isEmpty else { throw VRMPartGraftError.donorHasNoPart(kind) }
+        guard selection.contains(where: { $0.primitives.contains { feet.clones[ObjectIdentifier($0)] == nil } })
+        else { throw VRMPartGraftError.donorHasNoPart(kind) }
 
         // 2 + 3. Re-home materials/textures, resolve skins, append meshes.
         var textureMap: [Int: Int] = [:]
@@ -90,7 +97,14 @@ public enum VRMPartGrafter {
         for (donorNode, donorMesh, primitives) in selection {
             let newMesh = VRMMesh(name: donorMesh.name)
             var usedJoints = Set<Int>()
+            var borrowedFeet: [VRMPrimitive] = []
             for primitive in primitives {
+                // Already cut to the foot and drawn with the host's skin.
+                if let foot = feet.clones[ObjectIdentifier(primitive)] {
+                    usedJoints.formUnion(foot.referencedJoints())
+                    borrowedFeet.append(foot)
+                    continue
+                }
                 let clone = primitive.shallowClone()
                 if let m = primitive.materialIndex {
                     clone.materialIndex = rehomeMaterial(m, donor: donor, host: host,
@@ -104,6 +118,12 @@ public enum VRMPartGrafter {
                 let skin = resolveSkin(donor.skins[donorSkinIndex], usedJoints: usedJoints, donor: donor,
                                        host: host, nodeMap: &nodeMap, yaw: yaw, fit: fit,
                                        fitAnchors: fitAnchors, counts: counts)
+                rebindToAnchors(skin, kind: kind, host: host)
+                if let hostSkin = feet.hostSkin {
+                    newMesh.primitives += borrowedFeet.filter {
+                        wearHostSkin($0, skin: skin, host: host, hostSkin: hostSkin)
+                    }
+                }
                 host.skins.append(skin)
                 skinIndex = host.skins.count - 1
                 counts.skins += 1
@@ -147,19 +167,17 @@ public enum VRMPartGrafter {
 
         host.buildNodeLookupTable()
         host.updateNodeTransforms()
-        // Now that the new geometry is in and the old is hidden, take the
-        // host's own skin out from under it where the part can't cover it.
-        if let cut = skinCutLine(kind, donor: donor, host: host, fit: fit) {
-            // The sole meets the ground by raising the FIGURE, not by sliding the
+        // The sole meets the ground by raising the FIGURE, not by sliding the
         // shoe up off the foot. Measured across the library, that slide was
         // the whole story: every shoe needing less than ~23mm of it looked
         // right, and every shoe needing more left the foot hanging outside.
         raiseFigure(by: ground, in: host)
-        if let cut = skinCutLine(kind, donor: donor, host: host, fit: fit) {
-            // No `ground` term: the figure moves, not the geometry, so the
-            // host's rest positions this cut is compared against never shift.
-            trimHostSkin(under: kind, in: host, donor: donor, fit: fit, below: cut)
-        }
+        // Now that the new geometry is in and the old is hidden, take the
+        // host's own skin out from under it where the part can't cover it.
+        // No `ground` term: the figure moves, not the geometry, so the host's
+        // rest positions this cut is compared against never shift.
+        if let cut {
+            trimHostSkin(under: kind, in: host, below: cut, sparing: justAdded)
         }
         let receipt = GraftReceipt(
             kind: kind, donorSlug: donorSlug.lowercased(), meshCount: counts.meshes,
@@ -396,21 +414,6 @@ public enum VRMPartGrafter {
         host.colliderGroups.append(VRMColliderGroup(name: group.name, colliders: colliders))
         groupMap[groupIndex] = host.colliderGroups.count - 1
         return host.colliderGroups.count - 1
-    }
-
-    private static func rotated(_ shape: VRMColliderShape, by yaw: simd_quatf) -> VRMColliderShape {
-        switch shape {
-        case .sphere(let offset, let radius):
-            return .sphere(offset: yaw.act(offset), radius: radius)
-        case .capsule(let offset, let radius, let tail):
-            return .capsule(offset: yaw.act(offset), radius: radius, tail: yaw.act(tail))
-        case .plane(let offset, let normal):
-            return .plane(offset: yaw.act(offset), normal: yaw.act(normal))
-        case .insideSphere(let offset, let radius):
-            return .insideSphere(offset: yaw.act(offset), radius: radius)
-        case .insideCapsule(let offset, let radius, let tail):
-            return .insideCapsule(offset: yaw.act(offset), radius: radius, tail: yaw.act(tail))
-        }
     }
 }
 

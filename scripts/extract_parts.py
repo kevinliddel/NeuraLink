@@ -8,7 +8,7 @@ For every input model it writes up to three minimal VRMs next to each other:
     <stem>__outfit.vrm   body skin + every garment (the whole look)
     <stem>__tops.vrm     top / one-piece only
     <stem>__bottoms.vrm  bottoms only
-    <stem>__shoes.vrm    shoes only
+    <stem>__shoes.vrm    shoes (+ the legwear and bare foot that go with them)
     <stem>__eyes.vrm     iris/white/highlight (+ eyeline, lashes) — a texture donor
 
 Each part keeps the FULL skeleton (node indices unchanged, so skins, humanoid
@@ -391,6 +391,75 @@ def legwear(g, binary, slots, kept):
     return extra
 
 
+def bone_height(g, bone):
+    """Rest-pose height of a humanoid bone (VRM 0.x or 1.0), or None."""
+    exts = g.get("extensions", {})
+    node = next((hb.get("node") for hb in exts.get("VRM", {}).get("humanoid", {}).get("humanBones", [])
+                 if hb.get("bone") == bone), None)
+    if node is None:
+        node = exts.get("VRMC_vrm", {}).get("humanoid", {}).get("humanBones", {}).get(bone, {}).get("node")
+    if node is None:
+        return None
+    parents = {child: i for i, n in enumerate(g.get("nodes", [])) for child in n.get("children", [])}
+    world = np.eye(4)
+    while node is not None:
+        n = g["nodes"][node]
+        if "matrix" in n:
+            local = np.array(n["matrix"], dtype=np.float64).reshape(4, 4).T
+        else:
+            x, y, z, w = n.get("rotation", [0, 0, 0, 1])
+            rotation = np.array([
+                [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+                [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+                [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]])
+            local = np.eye(4)
+            local[:3, :3] = rotation * np.array(n.get("scale", [1, 1, 1]))
+            local[:3, 3] = n.get("translation", [0, 0, 0])
+        world = local @ world
+        node = parents.get(node)
+    return float(world[1, 3])
+
+
+def bare_foot(g, binary, slots, kept):
+    """The model's own foot, from the sole to just above the ankle.
+
+    The app trims the host's foot out from under a borrowed shoe — a flat
+    foot cannot sit inside a heel — so an open shoe showed a leg ending in a
+    sole with no toes. The skin this model drew inside its shoe is the foot
+    that shoe was shaped around, arched and toed to match, so it travels
+    with it. The app draws it with the HOST's skin material (VRoid bodies
+    share one UV layout), so the body textures are left behind.
+    """
+    spans, _height = vertical_extents(g, binary)
+    tops = [spans[p["material"]][1] for _, p, _c in kept if p.get("material") in spans]
+    ankles = [h for h in (bone_height(g, "leftFoot"), bone_height(g, "rightFoot")) if h is not None]
+    if not tops:
+        return []
+    # The app keeps the borrowed foot below its own cut, which is always
+    # under the ankle; past the shoe's top and the ankle there is nothing
+    # it could use.
+    clip = max(tops + ankles) + 0.01
+    return [(mi, prim, clip)
+            for mi, mesh in enumerate(g.get("meshes", []))
+            for prim in mesh["primitives"]
+            if slots.get(prim.get("material")) == "bodySkin"]
+
+
+def without_textures(material):
+    """The material with every texture reference removed."""
+    m = json.loads(json.dumps(material))
+    pbr = m.get("pbrMetallicRoughness", {})
+    for key in ("baseColorTexture", "metallicRoughnessTexture"):
+        pbr.pop(key, None)
+    for key in ("normalTexture", "emissiveTexture", "occlusionTexture"):
+        m.pop(key, None)
+    for ext in m.get("extensions", {}).values():
+        if isinstance(ext, dict):
+            for key in [k for k, v in ext.items() if k.endswith("Texture") and isinstance(v, dict)]:
+                ext.pop(key)
+    return m
+
+
 def extract(g, binary, slots, wanted, kind):
     """Returns (json, binary) for the part, or None when the model lacks it."""
     kept_prims = []  # (mesh index, primitive, clip height or None)
@@ -415,8 +484,12 @@ def extract(g, binary, slots, wanted, kind):
     # Socks come along AFTER the span check above: the stockings run from
     # ankle to knee, and counting them would make every shoe look like
     # whole-look geometry and drop it from the library entirely.
+    # Materials drawn with the host's own textures in the app.
+    textureless = set()
     if kind == "shoes":
-        kept_prims += legwear(g, binary, slots, kept_prims)
+        foot = bare_foot(g, binary, slots, kept_prims)
+        kept_prims += legwear(g, binary, slots, kept_prims) + foot
+        textureless = {p["material"] for _, p, _c in foot}
 
     # An outfit needs at least one garment. Some VRoid models paint the
     # clothes into the body-skin texture and keep only shoes as geometry —
@@ -441,6 +514,8 @@ def extract(g, binary, slots, wanted, kind):
             mat_order.append(prim["material"])
     tex_order = []
     for mi in mat_order:
+        if mi in textureless:
+            continue
         prop = vrm0_props[mi] if mi < len(vrm0_props) else None
         for t in sorted(texture_refs(materials[mi], prop)):
             if t < len(g.get("textures", [])) and t not in tex_order:
@@ -540,7 +615,8 @@ def extract(g, binary, slots, wanted, kind):
         "scenes": g.get("scenes", [{"nodes": [0]}]),
         "nodes": new_nodes,
         "meshes": new_meshes,
-        "materials": [remap_material(materials[mi], tex_map, slots.get(mi)) for mi in mat_order],
+        "materials": [remap_material(without_textures(materials[mi]) if mi in textureless else materials[mi],
+                                     tex_map, slots.get(mi)) for mi in mat_order],
         "textures": new_textures,
         "images": new_images,
         "samplers": g.get("samplers", []),
@@ -570,7 +646,8 @@ def extract(g, binary, slots, wanted, kind):
         props = []
         for mi in mat_order:
             prop = json.loads(json.dumps(vrm0_props[mi])) if mi < len(vrm0_props) else {"name": materials[mi].get("name"), "shader": "VRM/MToon"}
-            prop["textureProperties"] = {k: tex_map[t] for k, t in prop.get("textureProperties", {}).items() if t in tex_map}
+            prop["textureProperties"] = {} if mi in textureless else {
+                k: tex_map[t] for k, t in prop.get("textureProperties", {}).items() if t in tex_map}
             slot = slots.get(mi)
             if slot and slot != "other" and is_generic(prop.get("name")):
                 prop["name"] = CANONICAL[slot]

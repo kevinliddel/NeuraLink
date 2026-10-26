@@ -208,9 +208,11 @@ struct VRMGraftCompatibilityTests {
         let before = try #require(skinFloorSamples(host))
         #expect(before > 0, "Sonya draws a bare foot before anything is grafted")
 
+        let baseMeshes = host.meshes.count
         try VRMPartGrafter.graft(.shoes, from: donor, donorSlug: "lib:casual__shoes", onto: host)
         host.updateNodeTransforms()
-        let after = skinFloorSamples(host) ?? 0
+        // Sonya's own skin only: the foot the shoe brings is skin too.
+        let after = skinFloorSamples(host, meshes: baseMeshes) ?? 0
         // The foot under the shoe is gone; the leg above the collar stays.
         #expect(after < before / 4, "foot skin removed: \(after) of \(before) samples left")
 
@@ -219,14 +221,15 @@ struct VRMGraftCompatibilityTests {
         #expect(restored == before, "restore puts the whole foot back")
     }
 
-    /// How many sampled body-skin positions sit in the bottom 4% of the
-    /// model — the foot, and nothing else.
+    /// How many sampled body-skin positions in the first `meshes` meshes
+    /// (all by default) sit in the bottom 4% of the model — the foot, and
+    /// nothing else.
     @MainActor
-    private func skinFloorSamples(_ model: VRMModel) -> Int? {
+    private func skinFloorSamples(_ model: VRMModel, meshes: Int = .max) -> Int? {
         let whole = model.calculateBoundingBox()
         let cut = whole.min.y + (whole.max.y - whole.min.y) * 0.04
         var count = 0
-        for mesh in model.meshes {
+        for mesh in model.meshes.prefix(meshes) {
             for primitive in mesh.primitives {
                 guard let m = primitive.materialIndex,
                     model.slot(ofMaterial: m) == .bodySkin,

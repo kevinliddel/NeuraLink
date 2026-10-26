@@ -128,6 +128,26 @@ extension VRMModel {
     /// rest-space geometry (`restBounds`) put grafted shoes through the
     /// floor. Everything a graft measures has to be in one space, and the
     /// bind pose is the one the geometry is stored in.
+    /// A bone's world transform in the bind pose, from the model's own
+    /// (pre-graft) skins: pose-independent, like `bindPosition(of:)`.
+    public func bindMatrix(of bone: VRMHumanoidBone) -> simd_float4x4? {
+        guard let index = humanoid?.getBoneNode(bone), index < nodes.count else { return nil }
+        return bindMatrix(ofNode: nodes[index])
+    }
+
+    /// `bindMatrix(of:)` for any node the model's own skins bind.
+    public func bindMatrix(ofNode node: VRMNode) -> simd_float4x4? {
+        for skin in composition?.snapshot.skins ?? skins {
+            guard let joint = skin.joints.firstIndex(where: { $0 === node }),
+                joint < skin.inverseBindMatrices.count
+            else { continue }
+            let bind = skin.inverseBindMatrices[joint].inverse
+            guard bind.columns.3.y.isFinite else { continue }
+            return bind
+        }
+        return nil
+    }
+
     public func bindPosition(of bone: VRMHumanoidBone) -> SIMD3<Float>? {
         guard let index = humanoid?.getBoneNode(bone), index < nodes.count else { return nil }
         let node = nodes[index]

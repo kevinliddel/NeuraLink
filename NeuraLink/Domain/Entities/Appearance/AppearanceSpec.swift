@@ -98,6 +98,19 @@ nonisolated public enum AppearancePartKind: String, Codable, CaseIterable, Senda
         }
     }
 
+    /// Bones a rigid part rides together with its anchor: each is re-bound
+    /// to sit exactly where that anchor places the part at rest
+    /// (VRMPartGrafter.rebindToAnchors). A shoe rides the foot, and its toe
+    /// box, collar and straps the toes and shin on either side of it.
+    public var anchorFollowers: [(anchor: VRMHumanoidBone, follower: VRMHumanoidBone)] {
+        switch self {
+        case .shoes:
+            return [(.leftFoot, .leftToes), (.rightFoot, .rightToes),
+                    (.leftFoot, .leftLowerLeg), (.rightFoot, .rightLowerLeg)]
+        case .hair, .outfit, .tops, .bottoms: return []
+        }
+    }
+
     public var fitAnchorBones: [VRMHumanoidBone] {
         switch self {
         case .hair: return [.head]

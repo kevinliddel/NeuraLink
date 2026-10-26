@@ -82,11 +82,12 @@ extension RemoteAssetRegistry {
 
     /// Total download for the whole library, used for progress before
     /// any individual file has reported its size.
-    static let libraryPartsTotalBytes: Int64 = 364118636
+    static let libraryPartsTotalBytes: Int64 = 365239688
 
     /// Keyed by part stem. Captured from the dataset tree API 2026-09-27;
     /// the eleven donors added 2026-10-20 were hashed locally and verified
-    /// against the tree API after upload.
+    /// against the tree API after upload. Every `__shoes` part was
+    /// re-extracted 2026-10-26 to carry its bare foot, and hashed locally.
     static let libraryPartIntegrity: [String: AssetIntegrity] = [
         "boy_uniform__bottoms": .init(
             size: 925_432,
@@ -98,8 +99,8 @@ extension RemoteAssetRegistry {
             size: 7_923_340,
             sha256: "dcb3fd74c0cc0f21712d1e55b4d00c1ae3be07b0b6e0f8bdec0839761adddab4"),
         "boy_uniform__shoes": .init(
-            size: 1_031_036,
-            sha256: "6eadd3410b271abca53d8deed7d4e888fa57a0c007cb126e25e8da36a03edf8d"),
+            size: 1_063_836,
+            sha256: "e3b050ca865967d1d7033770edbb3e3707769dc987e4baa0c7525f2b27fb2a82"),
         "boy_uniform__tops": .init(
             size: 2_574_080,
             sha256: "1485848d4eb2a0897548215459f786f51fa09560e1a97c4bbc3e1107ac5127ab"),
@@ -122,8 +123,8 @@ extension RemoteAssetRegistry {
             size: 9_287_156,
             sha256: "69c9ee5b8aecae172e1af2498180facfe63ea21f72176c0802e94f069dc2a603"),
         "bunny_girl__shoes": .init(
-            size: 733_180,
-            sha256: "2bfdc974ad21b94a59ed15a87fe596d0fc5914efffa819392d66360c1b803566"),
+            size: 770_212,
+            sha256: "be7d48d1b299dce2504efee419b7a8dde721427f995a7c84b5d6a0cd8e9a515a"),
         "casual__bottoms": .init(
             size: 451_360,
             sha256: "0bad78c56327844294613cf638927b727117dfff89b92048fd1a10153f6943d7"),
@@ -137,8 +138,8 @@ extension RemoteAssetRegistry {
             size: 6_700_848,
             sha256: "3ef1eb7106b6ca4cf921c1b7dc23cba3c359120559785c9934f2e9f20408dfa0"),
         "casual__shoes": .init(
-            size: 277_504,
-            sha256: "7a83e264a682e73a105273bf78cdb205704d24bba2e17187563a96afa89d1c89"),
+            size: 310_312,
+            sha256: "89944bb120837561e292b4bbdcaf38b281223324e6d0fa3a57183a6274510514"),
         "casual__tops": .init(
             size: 717_788,
             sha256: "a03ce11a84f9f165330c4275138884f65bdbe96a276cd685548c20bd50ffd13c"),
@@ -155,8 +156,8 @@ extension RemoteAssetRegistry {
             size: 6_093_740,
             sha256: "7b7573028102e1aa835818a0417e92ccedf9e5e861071109b82722d88277f4e2"),
         "casual_boy__shoes": .init(
-            size: 970_328,
-            sha256: "5f6a0c027dc1418e8731965f15e5dc3eb5d1245788afd965ece744068b1c4ad0"),
+            size: 1_012_692,
+            sha256: "ee6db85d47721e5c9100de4164d1152e74a2bd9d6619db33c5dc4fe5fe6659e1"),
         "casual_boy__tops": .init(
             size: 845_340,
             sha256: "65d07644cce0e82d9093f23b66a883e3b257edf13bfb321a4e59db6fe7c9203a"),
@@ -173,8 +174,8 @@ extension RemoteAssetRegistry {
             size: 11_532_348,
             sha256: "c9ee14a648888346896a9b407c628aa2cdb4c32fd222e8ed373e35055ecd227f"),
         "casual_dark__shoes": .init(
-            size: 563_752,
-            sha256: "1b1fa2a2f765bbae9525ecfa46651e0cafff7517104e6305566c940f90d1826a"),
+            size: 613_116,
+            sha256: "7f7c31fde0286e12c7448af24e416c6da61e8edca13ae1226407c7a83ac1d780"),
         "chill_boy__bottoms": .init(
             size: 1_555_388,
             sha256: "97aaf310cd47bb50abf91620bd4e7ae62d3e6bed002bbf1604bb64fefb576989"),
@@ -188,8 +189,8 @@ extension RemoteAssetRegistry {
             size: 6_105_108,
             sha256: "157e795345fdba060dc395716dc55db66e2f28febef632d9f72be3a4e4078d20"),
         "chill_boy__shoes": .init(
-            size: 1_670_992,
-            sha256: "bfcc7cb8aafdc8b45bf1ed4e5708ecb955e7766480040d92503ee3c513f3e84c"),
+            size: 1_705_052,
+            sha256: "8a496d4d9c12749c0b51474d7bc956325a32152bfcd7e28ed1a6d61bb117f366"),
         "chill_boy__tops": .init(
             size: 263_504,
             sha256: "8c0d2826b70708848373dd09f982894497dcb9c681e8c78ef14ba8bdae5b8d21"),
@@ -203,8 +204,8 @@ extension RemoteAssetRegistry {
             size: 8_890_924,
             sha256: "006c73f1745e85cfafc555f10ef4eddc5f3836de733929864dcf4a725ca87b1a"),
         "classic__shoes": .init(
-            size: 296_688,
-            sha256: "7a71851e060a022dea78aa8a566ddf6519a7a29ad0fbc8d4358a252cc85be5c5"),
+            size: 378_928,
+            sha256: "c03404f43eefaf271f111bdb3cc97b4c662a22584b507b498656ac789a70dad4"),
         "classic__tops": .init(
             size: 2_842_928,
             sha256: "a65585d909580e172402f0a692b3f4e2712c97b95685df7050b0aa39079b1829"),
@@ -218,8 +219,8 @@ extension RemoteAssetRegistry {
             size: 6_966_628,
             sha256: "a284e881350fd8d7ac12dc930b50f3b33cc17be5529b32a6f3b01a6926841b79"),
         "classic_bunny_girl__shoes": .init(
-            size: 599_820,
-            sha256: "4ffcd8d4929733e6bb876813dca2d6d8e407ba06800e54560f988f344281405a"),
+            size: 631_788,
+            sha256: "7aa15f8baa90806504acb18b338dc6b5211d2f6b50dd06b8eb8d640503f7819b"),
         "cool__eyes": .init(
             size: 6_163_832,
             sha256: "10bc7b807b202804d4784e3d56cff91d86236c238216bb7d95a4f2073771d0cf"),
@@ -239,8 +240,8 @@ extension RemoteAssetRegistry {
             size: 6_234_552,
             sha256: "4545185ef40e5b7a8b92274f4de2f33149f86be5637c86ee622ca233251a30dd"),
         "cyberpunk__shoes": .init(
-            size: 311_896,
-            sha256: "3abbcc882230a5d72e2f52679c4db737eed4ccfaa1cdc884591defab3a63a3f1"),
+            size: 394_112,
+            sha256: "4c6e37dcc5cc02ba9d7a6cbd2115e5bc669c9e7acef8bb03ade568d371301d28"),
         "cyberpunk__tops": .init(
             size: 1_376_856,
             sha256: "a93b39c0a12d8521ebe6edbebcca2065babd1bfdcec19873ddf0346d0eaaf125"),
@@ -254,8 +255,8 @@ extension RemoteAssetRegistry {
             size: 9_957_128,
             sha256: "483fadd6cab9d55ffc43babb6c76394d2ccf1e20fc98f073c5e4828f701a89ab"),
         "dark_swimsuit__shoes": .init(
-            size: 314_616,
-            sha256: "7f9ebca37b363719cdcb790477058955b700107202ef3f35dfdeb19e5d3a845b"),
+            size: 392_956,
+            sha256: "213d08b6e92389208cb3a662b309d598b8053c54a6d6fbd51c0b88e6e89edda4"),
         "dark_swimsuit__tops": .init(
             size: 3_166_352,
             sha256: "51242174ba6bc944873fb94af54c7ea3575c5d41d9201f99927220bd4bf70ffb"),
@@ -269,8 +270,8 @@ extension RemoteAssetRegistry {
             size: 7_356_408,
             sha256: "2e3890a4cd2fba48528fdf63c40f708d961e0f287cf3b1ea743ad32d29bda7e4"),
         "dress__shoes": .init(
-            size: 286_456,
-            sha256: "94169175dac5d33a9008f0a8d1c134e1e2ad6248bc815ffa02243e84072a7b26"),
+            size: 368_672,
+            sha256: "44239e6a36ce9980c05cb3407bde40d0a5f47981c77f1d269e1cbc604c0b0a17"),
         "dress__tops": .init(
             size: 2_647_568,
             sha256: "b37f84013aa621089078fd05787bff44a08bf66467b1b4d6975c7107720d2e96"),
@@ -287,8 +288,8 @@ extension RemoteAssetRegistry {
             size: 8_119_972,
             sha256: "3b48a11758b9000686613839ffbc8ac109da21ad310d9321f98c3288d9cfa6c6"),
         "duke__shoes": .init(
-            size: 541_444,
-            sha256: "5ca3097df20d5e8853f53746333505022ffa78aaefe4ef42b2e07f0ed803d15b"),
+            size: 620_616,
+            sha256: "5aecf5ffb644fb8a185849d7819b9da866fba40b640ca61360be4bad2fc64c41"),
         "duke__tops": .init(
             size: 2_193_492,
             sha256: "29d7efd8afe8faa821f93a9849ca751b756c01d3c4c51238161628c357e9a04f"),
@@ -302,8 +303,8 @@ extension RemoteAssetRegistry {
             size: 9_997_544,
             sha256: "5953f4b6e480993faa29be6bc39410e112e7eadaa0195ebaefb106a49e893c77"),
         "goth__shoes": .init(
-            size: 310_504,
-            sha256: "9a4c6ac2992b75e9686f824b6538324e658f987766a61f57e2675b5b6b2db5f1"),
+            size: 351_064,
+            sha256: "1c4e2c10a2b1000c91c31a9727bbd1ddb1b577010c1ead79959a31f8cb066a25"),
         "goth__tops": .init(
             size: 5_060_820,
             sha256: "94d199145755ab1a66788ace50e3b0501a9243f01fb4e7cf5c8aa0182893ccff"),
@@ -317,8 +318,8 @@ extension RemoteAssetRegistry {
             size: 8_296_432,
             sha256: "80741d6c63d8d57d05841d958ad97b4e312035e36cb6aed964e35d6e476f6b5c"),
         "ingrid__shoes": .init(
-            size: 1_517_596,
-            sha256: "53483992d789bf60930a2115e6d7f0a639f166446357429f8e5839297146257c"),
+            size: 1_550_828,
+            sha256: "a20d356237c413c2d45248897e8cf7dff4ddc12e1dfe346fd2bdd08e6ae86f5b"),
         "jelsa__bottoms": .init(
             size: 930_036,
             sha256: "f6c4406cbf89e04681f6f12acc324cc278ce926fcaeca3c44980cfc702f17015"),
@@ -332,8 +333,8 @@ extension RemoteAssetRegistry {
             size: 3_469_724,
             sha256: "86b81f18c535ae39a338fe845ad0a81bd74d05c7a74f321395a30d260cf898a8"),
         "jelsa__shoes": .init(
-            size: 1_848_024,
-            sha256: "56128840e846ec7eb3b7b44695a9ff291222c1addeb6fb39b5dd4aac5a319edc"),
+            size: 1_899_020,
+            sha256: "599e8cb5ee429c62be862d5eb70d9732888010c8a56dcf444352d0fc2e9b5b5a"),
         "john__outfit": .init(
             size: 12_096_724,
             sha256: "a53f273b429f9a2a9854fd9e07545f894d4306232d16e106cca05effe86be2cf"),
@@ -347,8 +348,8 @@ extension RemoteAssetRegistry {
             size: 6_353_920,
             sha256: "1ff8994ba3eadc1a59413322e1d4d66500ad8be9f6eae0d1c116723ec5e5918f"),
         "maid__shoes": .init(
-            size: 213_560,
-            sha256: "989715f3864074b4f80164906b4b1dcb67af30cd699626893fe459d298ec253a"),
+            size: 246_840,
+            sha256: "97149ed90fb41cafdd551207bfc42e2e72029ea056904ca01bd56ef85ea37d78"),
         "maid__tops": .init(
             size: 1_137_412,
             sha256: "6357d8efc4f44466e69825aaaaffeaa35ad0427263942850fd71e51d868728ca"),
@@ -362,8 +363,8 @@ extension RemoteAssetRegistry {
             size: 6_698_328,
             sha256: "4cc24908c1f669f1ad6b26d4fb160636a3abcd5c8a7a874151605922027ae37a"),
         "princess__shoes": .init(
-            size: 1_828_420,
-            sha256: "1a97ff08517fce614053b222249d4eb07a97445973a7360a5607f073bd0b1e15"),
+            size: 1_864_540,
+            sha256: "b7b238a96c2b9cc557698e2a3b44b8d9787a5c0ec6e89c28eeac2d8f96953750"),
         "school_uniform_2__bottoms": .init(
             size: 729_792,
             sha256: "794fbbfd34b75eb01e7c89d335d81c58953a367a3cbdd2ad8e14ca43228ef4d2"),
@@ -377,8 +378,8 @@ extension RemoteAssetRegistry {
             size: 9_878_276,
             sha256: "3bba2796911149cd70a2b4ea2f44379abd7b678d8695e8704cc30685f4346e11"),
         "school_uniform_2__shoes": .init(
-            size: 238_272,
-            sha256: "d581f8c0323bb702e65fd001502f23b452cca7e47f3c9f1956516dfe83aa0064"),
+            size: 271_088,
+            sha256: "938e878bf4ee511b6a4ae380d16312a17a4e8b30fa743abeadd7398551df527f"),
         "school_uniform_2__tops": .init(
             size: 3_977_580,
             sha256: "bebf6f5e77056718ecc5186668a1ffe28f8c68c555fa6cd38325ea2c166b96dd"),
@@ -395,8 +396,8 @@ extension RemoteAssetRegistry {
             size: 6_414_240,
             sha256: "6dae5023b5c0cf538a34195a39d6031524cc9af2eaf9d28b641aa95deb5de497"),
         "school_uniform_3__shoes": .init(
-            size: 242_988,
-            sha256: "5a5fb672dcfb47c113d693fb8db401e204240d99d23b849429d69934c7243c3f"),
+            size: 275_672,
+            sha256: "90c3a50cc7f13100285cf78bbc3032aa0c3a0173ec5154a3bafff83b8881a6f5"),
         "school_uniform_3__tops": .init(
             size: 1_740_420,
             sha256: "ff2c61e0f4b43183e632a598b862550941e4e14012aaa7db2476d4e22e118df5"),
@@ -413,8 +414,8 @@ extension RemoteAssetRegistry {
             size: 9_977_724,
             sha256: "03888b66e1bda01ae62018ec173bf5da0e2c8f3dcd611ebbc9d7cea24e718ada"),
         "school_uniform__shoes": .init(
-            size: 241_488,
-            sha256: "5502e4053ed0b0dfa54e2b914616b08d4f81bc7d194eef0aa27d970b153a9fa9"),
+            size: 272_700,
+            sha256: "917867148c122b624c576f215a4df5fcb645530aad210630da1bfb358e2a1848"),
         "school_uniform__tops": .init(
             size: 3_980_788,
             sha256: "195590fa129192d4764eeddd308334d5c1e93ba677006787dfaec06e778acfc0"),
@@ -428,8 +429,8 @@ extension RemoteAssetRegistry {
             size: 7_808_044,
             sha256: "15c14a2c1f281cc422a492ab20329cd20582c3067c50fecdc98b8e17f20a814b"),
         "swimsuit__shoes": .init(
-            size: 300_476,
-            sha256: "40796076a8096e74b2f87dc595b942ca561cd2d0a0eba9df3d7d2a7bf365097d"),
+            size: 378_824,
+            sha256: "377b2b8a5768a41ce7ff90173ecc3365041bd4825535a17e53350a2705e18495"),
         "swimsuit__tops": .init(
             size: 1_218_784,
             sha256: "8e316972639fbe655bc041fd7ec4b0d52fe9be3bf21166082d526a28db957643"),
@@ -443,7 +444,7 @@ extension RemoteAssetRegistry {
             size: 5_962_684,
             sha256: "e6c28d76daa76e616eb0911f6f1433103a7ca0bd99adba4f45454577ebda57e9"),
         "wedding__shoes": .init(
-            size: 996_576,
-            sha256: "5ad3c674db8c06d411ea7a22ddf5875115536a4005430dd90e51eee0dbeeb8cb")
+            size: 1_083_800,
+            sha256: "56749f50e1f7ad9cd3fe9f2d58182746793671a86550978cdc8d9b1a7bff1bee")
     ]
 }
