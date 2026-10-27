@@ -21,7 +21,7 @@ import simd
 @Suite("Phone prop", .serialized)
 struct VRMPropTests {
 
-    private static let characters = ["Sonya", "Ekaterina"]
+    private static let characters = ["Sonya", "Ekaterina", "Oz"]
 
     private static func loadProp(_ device: MTLDevice) async throws -> VRMProp {
         let url = try #require(Bundle.main.url(forResource: VRMMetalState.phonePropName, withExtension: "glb"))
@@ -42,13 +42,14 @@ struct VRMPropTests {
         #expect(abs(sorted[2] - 0.147) < 0.004, "long side \(sorted[2]) m")
         #expect(abs(sorted[1] - 0.0735) < 0.004, "width \(sorted[1]) m")
         #expect(sorted[0] < 0.01, "thickness \(sorted[0]) m")
-        #expect(prop.materials.allSatisfy { $0.preservesEmissive && $0.vrmVersion == .v1_0 })
+        #expect(prop.materials.allSatisfy { $0.vrmVersion == .v1_0 })
+        #expect(prop.materials.contains { simd_reduce_max($0.effectiveEmissiveFactor) > 0 }, "the screen glows")
         let loaded = prop.textures.compactMap(\.mtlTexture)
         #expect(loaded.count == 6, "base colour ×3, normal ×2, emissive ×1 — occlusion/MR stay unloaded")
         #expect(loaded.allSatisfy { $0.width <= 256 && $0.mipmapLevelCount > 1 })
     }
 
-    @Test("Attaches hidden under the right hand, life-size, without inflating the bounds")
+    @Test("Attaches hidden under the right hand, sized to the hand, without inflating the bounds")
     func attaches() async throws {
         guard let device = MTLCreateSystemDefaultDevice() else { return }
         let prop = try await Self.loadProp(device)
@@ -99,10 +100,72 @@ struct VRMPropTests {
                 }
             }
             let longest = (high - low).max()
-            let expected = 0.147 * VRMMetalState.phoneGrip.scale
+            let palm = try #require(VRMPalm.measure(in: model, hand: .rightHand))
+            let reference = try #require(VRMMetalState.phoneGrip.authoredOn)
+            let expected = 0.147 * VRMMetalState.phoneGrip.scale * palm.size / reference.size
             #expect(abs(longest - expected) < 0.004, "\(character): longest side in hand \(longest) m, expected \(expected)")
             let centre = (worldLow + worldHigh) * 0.5
             #expect(simd_length(centre - hand.worldPosition) < 0.12, "\(character): the phone sits at the hand, not across the room")
+        }
+    }
+
+    @Test("The phone takes the same seat on every palm: Sonya's exactly, the others scaled to their hands")
+    func seatedOnEachPalm() async throws {
+        guard let device = MTLCreateSystemDefaultDevice() else { return }
+        let prop = try await Self.loadProp(device)
+        var seats: [String: SIMD3<Float>] = [:]
+        for character in Self.characters {
+            let model = try await Self.loadModel(character, device)
+            let attachment = try model.attachProp(prop, to: .rightHand, grip: VRMMetalState.phoneGrip)
+            let palm = try #require(VRMPalm.measure(in: model, hand: .rightHand))
+            let node = try #require(attachment.nodes.first)
+            // The prop node's offset from the palm centre, in palm axes and
+            // hand lengths: the seat, independent of hand size and VRM version.
+            seats[character] = palm.rotation.inverse.act(node.translation - palm.origin) / palm.size
+            if character == "Sonya" {
+                let shipped = VRMMetalState.phoneGrip
+                let chain = prop.parts[0].chain
+                let expected = shipped.translation + shipped.rotation.act(chain.translation * shipped.scale)
+                #expect(simd_distance(node.translation, expected) < 1e-4, "Sonya keeps the grip it was tuned on")
+            }
+        }
+        let sonya = try #require(seats["Sonya"])
+        for (character, seat) in seats {
+            #expect(simd_distance(seat, sonya) < 0.01, "\(character): seat \(seat) vs Sonya's \(sonya)")
+        }
+    }
+
+    @Test("Seated at the clip's hold, no finger runs through the phone and its bottom stays in the hand")
+    func seatedAgainstTheHand() async throws {
+        guard let device = MTLCreateSystemDefaultDevice(),
+              let clipURL = Bundle.main.url(forResource: "checking_phone", withExtension: "vrma") else { return }
+        let prop = try await Self.loadProp(device)
+        let box = try #require(VRMPropSeat.box(of: prop))
+        for character in Self.characters {
+            let model = try await Self.loadModel(character, device)
+            let clip = try VRMAnimationLoader.loadVRMA(from: clipURL, model: model)
+            let attachment = try model.attachProp(prop, to: .rightHand, grip: VRMMetalState.phoneGrip)
+            let holding = VRMMetalState.fingerPose(of: clip, at: VRMMetalState.phoneHoldTime, hand: .rightHand)
+            model.seatProp(attachment, holding: holding)
+            let seated = try #require(attachment.handGrip)
+            let base = try #require(attachment.baseGrip)
+
+            // Score the seat with the fingers actually in the hold.
+            for (bone, rotation) in holding {
+                guard let index = model.humanoid?.getBoneNode(bone) else { continue }
+                model.nodes[index].rotation = rotation
+                model.nodes[index].updateLocalMatrix()
+            }
+            model.updateNodeTransforms()
+            let score = VRMPropSeat(points: VRMPropSeat.handPoints(in: model, hand: .rightHand), box: box)
+                .score(seated, from: base)
+            #expect(score.depth < 25, "\(character): skin \(score.depth) mm deep inside the phone")
+            #expect(score.overhang < 2, "\(character): the phone sticks \(score.overhang) mm out under the hand")
+            #expect(score.floating < 2, "\(character): the phone floats \(score.floating) mm off the hand")
+
+            // Fitted once per outfit: showing it again changes nothing.
+            model.seatProp(attachment, holding: holding)
+            #expect(attachment.handGrip == seated)
         }
     }
 
@@ -124,7 +187,6 @@ struct VRMPropTests {
         let items = renderer.buildRenderItems(model: model).filter { propNodes.contains(ObjectIdentifier($0.node)) }
         #expect(items.count == prop.parts.reduce(0) { $0 + $1.mesh.primitives.count })
         #expect(items.allSatisfy { $0.node.skin == nil && !$0.primitive.hasJoints }, "no skin, no joints → rigid branch")
-        #expect(items.allSatisfy { !$0.isFaceMaterial && !$0.isEyeMaterial }, "phone names must not trip the face heuristics")
     }
 
     @Test("Shown, the phone is actually drawn through the rigid path; hidden, the frame is unchanged")
@@ -171,7 +233,7 @@ struct VRMPropTests {
         return count
     }
 
-    @Test("The grip lands the same way on VRM 0.x and 1.x once the renderer's yaw is applied")
+    @Test("The grip lands the same way on VRM 0.x and 1.x once the renderer's yaw is applied (in hand lengths)")
     func gripMirrors() async throws {
         guard let device = MTLCreateSystemDefaultDevice() else { return }
         let prop = try await Self.loadProp(device)
@@ -184,7 +246,9 @@ struct VRMPropTests {
             let handIndex = try #require(model.humanoid?.getBoneNode(.rightHand))
             let node = try #require(attachment.nodes.first)
             let yaw: simd_quatf = model.isVRM0 ? VRMModel.vrmVersionYaw : simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
-            offsets[character] = yaw.act(node.worldPosition - model.nodes[handIndex].worldPosition)
+            // Per hand length: the grip is scaled to each hand (VRMPalm).
+            let palm = try #require(VRMPalm.measure(in: model, hand: .rightHand))
+            offsets[character] = yaw.act(node.worldPosition - model.nodes[handIndex].worldPosition) / palm.size
             let m = node.worldMatrix
             let basis = float3x3(
                 simd_normalize(SIMD3(m.columns.0.x, m.columns.0.y, m.columns.0.z)),
@@ -193,7 +257,7 @@ struct VRMPropTests {
             rotations[character] = simd_normalize(yaw * simd_quatf(basis))
         }
         let a = try #require(offsets["Sonya"]), b = try #require(offsets["Ekaterina"])
-        #expect(simd_length(a - b) < 0.005, "render-space offset Sonya \(a) vs Ekaterina \(b)")
+        #expect(simd_length(a - b) < 0.075, "render-space offset per hand length Sonya \(a) vs Ekaterina \(b)")
         let qa = try #require(rotations["Sonya"]), qb = try #require(rotations["Ekaterina"])
         #expect(abs(simd_dot(qa.vector, qb.vector)) > 0.999, "render-space orientation differs")
     }

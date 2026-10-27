@@ -9,17 +9,13 @@ vertex VertexOut mtoon_vertex(VertexIn in [[stage_in]],
                        constant MToonMaterial& material [[buffer(8)]],
                        device float3* morphedPositions [[buffer(20)]],
                        constant uint& hasMorphed [[buffer(22)]],
+                       device float3* morphedNormals [[buffer(23)]],
                        uint vertexID [[vertex_id]]) {
     VertexOut out;
 
-    float3 morphedPosition;
-    if (hasMorphed > 0) {
-        morphedPosition = float3(morphedPositions[vertexID]);
-    } else {
-        morphedPosition = in.position;
-    }
-
-    float3 morphedNormal = normalize(in.normal);
+    // Morphed positions (bit 1) and normals (bit 2) when expressions are on.
+    float3 morphedPosition = (hasMorphed & 1u) != 0 ? float3(morphedPositions[vertexID]) : in.position;
+    float3 morphedNormal = normalize((hasMorphed & 2u) != 0 ? float3(morphedNormals[vertexID]) : in.normal);
     float4 worldPosition = uniforms.modelMatrix * float4(morphedPosition, 1.0);
     out.worldPosition = worldPosition.xyz;
     out.position = uniforms.projectionMatrix * uniforms.viewMatrix * worldPosition;
@@ -51,21 +47,40 @@ fragment float4 mtoon_fragment_v2(VertexOut in [[stage_in]],
                         texture2d<float> matcapTexture [[texture(5)]],
                         texture2d<float> rimMultiplyTexture [[texture(6)]],
                         texture2d<float> uvAnimationMaskTexture [[texture(7)]],
-                        sampler textureSampler [[sampler(0)]]) {
+                        depth2d<float> avatarShadowMap [[texture(8)]],
+                        constant AvatarShadowParams& avatarShadowParams [[buffer(9)]],
+                        sampler textureSampler [[sampler(0)]],
+                        sampler avatarShadowSampler [[sampler(1)]],
+                        // Each texture's own glTF sampler (wrap, filter).
+                        sampler shadeMultiplySampler [[sampler(2)]],
+                        sampler shadingShiftSampler [[sampler(3)]],
+                        sampler normalSampler [[sampler(4)]],
+                        sampler emissiveSampler [[sampler(5)]],
+                        sampler matcapSampler [[sampler(6)]],
+                        sampler rimMultiplySampler [[sampler(7)]],
+                        sampler uvAnimationMaskSampler [[sampler(8)]]) {
 
-    // ── UV selection ────────────────────────────────────────────
+    // ── UV: MToon's animation first, then the material's texture
+    //    transform (spec order). The animation runs per fragment; the
+    //    mask scales both the rotation about (0.5, 0.5) and the scroll.
     float2 uv = in.texCoord;
-    if (material.uvOffsetX != 0.0 || material.uvOffsetY != 0.0 || material.uvScale != 1.0) {
-        uv = uv * material.uvScale + float2(material.uvOffsetX, material.uvOffsetY);
+    if (material.uvAnimationScrollXSpeedFactor != 0.0 ||
+        material.uvAnimationScrollYSpeedFactor != 0.0 ||
+        material.uvAnimationRotationSpeedFactor != 0.0) {
+        float mask = 1.0;
+        if (material.hasUvAnimationMaskTexture > 0) {
+            // 1.0 reads the B channel (spec, three-vrm); 0.x MToon read R.
+            float4 maskSample = uvAnimationMaskTexture.sample(uvAnimationMaskSampler, mtoonTransformUV(uv, material));
+            mask = material.vrmVersion == 0 ? maskSample.r : maskSample.b;
+        }
+        float angle = material.uvAnimationRotationSpeedFactor * material.time * mask;
+        float2 centered = uv - 0.5;
+        uv = float2(cos(angle) * centered.x - sin(angle) * centered.y,
+                    sin(angle) * centered.x + cos(angle) * centered.y) + 0.5;
+        uv += float2(material.uvAnimationScrollXSpeedFactor, material.uvAnimationScrollYSpeedFactor)
+              * material.time * mask;
     }
-    if (material.hasUvAnimationMaskTexture > 0) {
-        float mask = uvAnimationMaskTexture.sample(textureSampler, in.texCoord).r;
-        uv = mix(in.texCoord, in.animatedTexCoord, mask);
-    } else if (material.uvAnimationScrollXSpeedFactor != 0.0 ||
-               material.uvAnimationScrollYSpeedFactor != 0.0 ||
-               material.uvAnimationRotationSpeedFactor != 0.0) {
-        uv = in.animatedTexCoord;
-    }
+    uv = mtoonTransformUV(uv, material);
 
     // ── Base + shade colour ─────────────────────────────────────
     float4 baseColor = material.baseColorFactor;
@@ -74,13 +89,20 @@ fragment float4 mtoon_fragment_v2(VertexOut in [[stage_in]],
     }
     if (material.alphaMode == 0) { baseColor.a = 1.0; }
     if (material.alphaMode == 1 && baseColor.a < material.alphaCutoff) { discard_fragment(); }
+    if (material.alphaMode == 3) {
+        // Cutout through alpha-to-coverage: alpha sharpened around the cutoff
+        // over one pixel's worth of change, so the edge covers 0…4 samples.
+        float edge = max(fwidth(baseColor.a), 1e-4);
+        baseColor.a = saturate((baseColor.a - material.alphaCutoff) / edge + 0.5);
+        if (baseColor.a <= 0.0) { discard_fragment(); }
+    }
     // Character customization: recolour after the sample so alpha cutout
     // and every lighting term below see the adjusted colour.
     baseColor.rgb = nl_applyRecolor(baseColor.rgb, material);
 
     float3 shadeColor = float3(material.shadeColorR, material.shadeColorG, material.shadeColorB);
     if (material.hasShadeMultiplyTexture > 0) {
-        shadeColor *= shadeMultiplyTexture.sample(textureSampler, uv).rgb;
+        shadeColor *= shadeMultiplyTexture.sample(shadeMultiplySampler, uv).rgb;
     }
     shadeColor = nl_applyRecolor(shadeColor, material);
 
@@ -98,7 +120,7 @@ fragment float4 mtoon_fragment_v2(VertexOut in [[stage_in]],
         // tangent-space sample into the WORLD normal, which dragged every
         // normal toward world +Z even for a neutral (flat) map — most
         // visible as smeared/shifted shading on outfits with fabric maps.
-        float3 nmap = normalTexture.sample(textureSampler, uv).xyz * 2.0 - 1.0;
+        float3 nmap = normalTexture.sample(normalSampler, uv).xyz * 2.0 - 1.0;
         // glTF normal maps are OpenGL-convention (+Y = image up), but the
         // derivative bitangent below points along +v (image down), so Y
         // must be negated — same as three.js GLTFLoader's
@@ -124,7 +146,7 @@ fragment float4 mtoon_fragment_v2(VertexOut in [[stage_in]],
     // ── Shading shift (spec: texture remapped to [-1,1] × scale) ─
     float shadingShift = material.shadingShiftFactor;
     if (material.hasShadingShiftTexture > 0) {
-        float sv = shadingShiftTexture.sample(textureSampler, uv).r;
+        float sv = shadingShiftTexture.sample(shadingShiftSampler, uv).r;
         shadingShift += (sv * 2.0 - 1.0) * material.shadingShiftTextureScale;
     }
 
@@ -140,9 +162,14 @@ fragment float4 mtoon_fragment_v2(VertexOut in [[stage_in]],
     if (intensity0 > 0.0) {
         float ndotl0  = dot(normal, -uniforms.lightDirection.xyz);
         float shading0 = ndotl0 + shadingShift;
-        float step0   = linearstep(-1.0 + toony, 1.0 - toony, shading0);
+        // Received shadow (three-vrm: shading *= shadow): the key light only,
+        // the light the self-shadow map is built from.
+        float3 geometricNormal = normalize(in.worldNormal) * (isFrontFace ? 1.0 : -1.0);
+        float shadow0 = avatarShadow(avatarShadowMap, avatarShadowSampler, avatarShadowParams,
+                                     in.worldPosition, geometricNormal);
+        float step0   = linearstep(-1.0 + toony, 1.0 - toony, shading0) * shadow0;
         lit0 = mix(shadeColor, baseColor.rgb, step0) * uniforms.lightColor.xyz * (intensity0 / totalIntensity);
-        lightingForRim += uniforms.lightColor.xyz * max(ndotl0, 0.0) * (intensity0 / totalIntensity);
+        lightingForRim += uniforms.lightColor.xyz * max(ndotl0, 0.0) * shadow0 * (intensity0 / totalIntensity);
     }
  
     float3 lit1 = float3(0.0);
@@ -166,19 +193,22 @@ fragment float4 mtoon_fragment_v2(VertexOut in [[stage_in]],
     lightingForRim *= uniforms.lightNormalizationFactor;
 
     // ── GI / ambient ────────────────────────────────────────────
-    // Spec: `color = color + gi × baseColorTerm` — indirect light is added at
-    // FULL strength. giEqualizationFactor only blends directional (SH) GI
-    // against its uniform average; with a single uniform ambient colour that
-    // blend is a no-op, so the factor must NOT scale the ambient. Scaling it
-    // (×0.05–0.1) starved the shade side, which read darker/more saturated
-    // than reference viewers — most visible on skin.
+    // Spec: `color += gi × baseColorTerm`, gi = lerp(SH(normal), SH average,
+    // giEqualizationFactor), added at FULL strength (scaling it by the factor
+    // starved the shade side). The scene gives one ambient colour, so a
+    // hemisphere around it stands in for the SH probe: brighter from above,
+    // darker from below, same average — under a chin or a brim reads a touch
+    // darker, as with a sky. giIntensityFactor holds 1 − giEqualizationFactor.
+    float3 ambient = uniforms.ambientColor.xyz;
+    float3 giAlongNormal = ambient * (1.0 + kMToonHemisphere * normal.y);
+    float3 gi = mix(giAlongNormal, ambient, saturate(1.0 - material.giIntensityFactor));
     float3 litColor = (lit0 + lit1 + lit2) * uniforms.lightNormalizationFactor
-                    + uniforms.ambientColor.xyz * baseColor.rgb;
+                    + gi * baseColor.rgb;
 
     // ── Emissive ────────────────────────────────────────────────
     float3 emissive = float3(material.emissiveR, material.emissiveG, material.emissiveB);
     if (material.hasEmissiveTexture > 0) {
-        emissive *= emissiveTexture.sample(textureSampler, uv).rgb;
+        emissive *= emissiveTexture.sample(emissiveSampler, uv).rgb;
     }
     litColor += emissive;
 
@@ -188,7 +218,7 @@ fragment float4 mtoon_fragment_v2(VertexOut in [[stage_in]],
     // MatCap (spec: world-view tangent basis UV)
     if (material.hasMatcapTexture > 0) {
         float2 matcapUV = calculateMatCapUV(normal, in.viewDirection);
-        rim += matcapTexture.sample(textureSampler, matcapUV).rgb
+        rim += matcapTexture.sample(matcapSampler, matcapUV).rgb
              * float3(material.matcapR, material.matcapG, material.matcapB);
     }
 
@@ -205,7 +235,7 @@ fragment float4 mtoon_fragment_v2(VertexOut in [[stage_in]],
 
     // Apply rim multiply texture (spec: combined rim × texture)
     if (material.hasRimMultiplyTexture > 0) {
-        rim *= rimMultiplyTexture.sample(textureSampler, uv).rgb;
+        rim *= rimMultiplyTexture.sample(rimMultiplySampler, uv).rgb;
     }
 
     // Apply lighting mix (spec: rim × lerp(1, lighting, factor); 0=pure, 1=lit)

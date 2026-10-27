@@ -27,8 +27,8 @@ extension VRMRenderer {
         let prim = primitive
         let meshName = item.mesh.name ?? "unnamed"
         let meshPrimIndex = item.mesh.primitives.firstIndex(where: { $0 === primitive }) ?? -1
-        let materialAlphaMode = item.effectiveAlphaMode
-        let isDoubleSided = item.effectiveDoubleSided
+        let materialAlphaMode = item.alphaMode
+        let isDoubleSided = item.doubleSided
         let meshUsesSkinning = primitive.hasJoints && primitive.hasWeights
         let isSkinned = ((item.node.skin != nil) || meshUsesSkinning) && hasSkinning
 
@@ -64,31 +64,11 @@ extension VRMRenderer {
 
         var currentVertexOffset: UInt32 = 0
 
-        // Morph buffer binding
-        let stableKey: MorphKey = (UInt64(item.meshIndex) << 32) | UInt64(item.primIdxInMesh)
-        let morphedPosBuffer = morphedBuffers[stableKey]
-
-        if let morphedPosBuffer {
-            encoder.setVertexBuffer(vertexBuffer, offset: 0, index: ResourceIndices.vertexBuffer)
-            encoder.setVertexBuffer(
-                morphedPosBuffer, offset: 0, index: ResourceIndices.morphedPositionsBuffer)
-            var hasMorphedFlag: UInt32 = 1
-            encoder.setVertexBytes(
-                &hasMorphedFlag, length: MemoryLayout<UInt32>.size,
-                index: ResourceIndices.hasMorphedPositionsFlag)
-        } else {
-            encoder.setVertexBuffer(vertexBuffer, offset: 0, index: ResourceIndices.vertexBuffer)
-            if emptyFloat3Buffer == nil {
-                emptyFloat3Buffer = device.makeBuffer(
-                    length: MemoryLayout<SIMD3<Float>>.stride, options: .storageModeShared)
-            }
-            encoder.setVertexBuffer(
-                emptyFloat3Buffer, offset: 0, index: ResourceIndices.morphedPositionsBuffer)
-            var hasMorphedFlag: UInt32 = 0
-            encoder.setVertexBytes(
-                &hasMorphedFlag, length: MemoryLayout<UInt32>.size,
-                index: ResourceIndices.hasMorphedPositionsFlag)
-        }
+        // Morphed positions and normals (VRMRenderer+Morphs)
+        encoder.setVertexBuffer(vertexBuffer, offset: 0, index: ResourceIndices.vertexBuffer)
+        bindMorphedVertexData(
+            for: (UInt64(item.meshIndex) << 32) | UInt64(item.primIdxInMesh), morphedPositions: morphedBuffers,
+            encoder: encoder)
 
         if isSkinned {
             encoder.setVertexBuffer(uniformsBuffer, offset: 0, index: ResourceIndices.uniformsBuffer)
@@ -130,93 +110,14 @@ extension VRMRenderer {
             lastMaterialId = materialIndex
         }
 
-        // Build base MToon uniforms (color factors, face category, outline settings)
+        // Build base MToon uniforms (color factors, alpha mode, outline settings)
         var mtoonUniforms = buildMaterialUniforms(
             for: item, model: model, materialAlphaMode: materialAlphaMode)
 
-        // Bind fragment textures and update presence flags
+        // Bind fragment textures (each with its own sampler) and set the
+        // presence flags.
         if let materialIndex = primitive.materialIndex, materialIndex < model.materials.count {
-            let material = model.materials[materialIndex]
-
-            if let mtlTexture = material.baseColorTexture?.mtlTexture {
-                setFragmentTextureCached(mtlTexture, index: 0, encoder: encoder)
-                mtoonUniforms.hasBaseColorTexture = 1
-            } else {
-                setFragmentTextureCached(nil, index: 0, encoder: encoder)
-            }
-
-            if let mtoon = material.mtoon {
-                if let textureIndex = mtoon.shadeMultiplyTexture,
-                    textureIndex < model.textures.count,
-                    let mtlTexture = model.textures[textureIndex].mtlTexture {
-                    setFragmentTextureCached(mtlTexture, index: 1, encoder: encoder)
-                    mtoonUniforms.hasShadeMultiplyTexture = 1
-                } else {
-                    setFragmentTextureCached(nil, index: 1, encoder: encoder)
-                    mtoonUniforms.hasShadeMultiplyTexture = 0
-                }
-            } else {
-                setFragmentTextureCached(nil, index: 1, encoder: encoder)
-            }
-
-            if let mtoon = material.mtoon,
-                let shadingShift = mtoon.shadingShiftTexture,
-                shadingShift.index < model.textures.count,
-                let mtlTexture = model.textures[shadingShift.index].mtlTexture {
-                setFragmentTextureCached(mtlTexture, index: 2, encoder: encoder)
-                mtoonUniforms.hasShadingShiftTexture = 1
-                mtoonUniforms.shadingShiftTextureScale = shadingShift.scale ?? 1.0
-            } else {
-                setFragmentTextureCached(nil, index: 2, encoder: encoder)
-            }
-
-            if let mtlTexture = material.normalTexture?.mtlTexture {
-                setFragmentTextureCached(mtlTexture, index: 3, encoder: encoder)
-                mtoonUniforms.hasNormalTexture = 1
-            } else {
-                setFragmentTextureCached(nil, index: 3, encoder: encoder)
-            }
-
-            if let mtlTexture = material.emissiveTexture?.mtlTexture {
-                setFragmentTextureCached(mtlTexture, index: 4, encoder: encoder)
-                mtoonUniforms.hasEmissiveTexture = 1
-            } else {
-                setFragmentTextureCached(nil, index: 4, encoder: encoder)
-            }
-
-            if let mtoon = material.mtoon,
-                let textureIndex = mtoon.matcapTexture,
-                textureIndex < model.textures.count,
-                let mtlTexture = model.textures[textureIndex].mtlTexture {
-                setFragmentTextureCached(mtlTexture, index: 5, encoder: encoder)
-                mtoonUniforms.hasMatcapTexture = 1
-            } else {
-                setFragmentTextureCached(nil, index: 5, encoder: encoder)
-            }
-
-            if let mtoon = material.mtoon,
-                let textureIndex = mtoon.rimMultiplyTexture,
-                textureIndex < model.textures.count,
-                let mtlTexture = model.textures[textureIndex].mtlTexture {
-                setFragmentTextureCached(mtlTexture, index: 6, encoder: encoder)
-                mtoonUniforms.hasRimMultiplyTexture = 1
-            } else {
-                setFragmentTextureCached(nil, index: 6, encoder: encoder)
-            }
-
-            if let mtoon = material.mtoon,
-                let textureIndex = mtoon.uvAnimationMaskTexture,
-                textureIndex < model.textures.count,
-                let mtlTexture = model.textures[textureIndex].mtlTexture {
-                setFragmentTextureCached(mtlTexture, index: 7, encoder: encoder)
-                mtoonUniforms.hasUvAnimationMaskTexture = 1
-            } else {
-                setFragmentTextureCached(nil, index: 7, encoder: encoder)
-            }
-
-            if let cachedSampler = samplerStates["default"] {
-                encoder.setFragmentSamplerState(cachedSampler, index: 0)
-            }
+            bindMaterialTextures(model.materials[materialIndex], model: model, uniforms: &mtoonUniforms, encoder: encoder)
         }
 
         applyDepthCullState(

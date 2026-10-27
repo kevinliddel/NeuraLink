@@ -154,7 +154,9 @@ final class AppearanceApplier {
                     level: .warning)
             }
         }
-        renderer.refreshModelStructure()
+        // Only if the renderer still shows this model (a switch may have
+        // landed while the donors loaded).
+        if renderer.model === model { renderer.refreshModelStructure() }
         coverageCache = nil
         return true
     }

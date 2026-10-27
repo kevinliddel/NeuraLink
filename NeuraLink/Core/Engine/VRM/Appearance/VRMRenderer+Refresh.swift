@@ -31,20 +31,9 @@ extension VRMRenderer {
             skinningSystem?.setupForSkins(model.skins)
         }
 
-        if model.springBone != nil, let device = model.device {
-            do {
-                // Chains are already expanded (the model was loaded with a
-                // device); re-expanding would duplicate them.
-                try model.initializeSpringBoneGPUSystem(device: device, expandChains: false)
-                // The bone list changed identity, so every carried-over
-                // position/velocity refers to a different bone now.
-                springBoneComputeSystem?.requestPhysicsReset = true
-                try springBoneComputeSystem?.populateSpringBoneData(model: model)
-                springBoneComputeSystem?.warmupPhysics(model: model, steps: 30)
-            } catch {
-                nlLog("[VRMRenderer] spring bone refresh failed: \(error)", level: .warning)
-            }
-        }
+        // A graft added or removed chains: rebuild the joints (from the rest
+        // pose, not the current animated one) and settle them again.
+        springBoneSolver.invalidate()
         enableSpringBone = model.springBone != nil
     }
 }

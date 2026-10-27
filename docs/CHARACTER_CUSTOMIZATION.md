@@ -52,7 +52,7 @@ immediately:
 | Outfit | Grafts the donor's **body skin and every garment** | tops, bottoms, shoes, one-piece, accessory |
 | Top | Grafts tops + one-piece | `tops`, `onepiece` |
 | Bottom | Grafts bottoms | `bottoms` |
-| Shoes | Grafts shoes (library parts only) | `shoes` |
+| Shoes | Grafts shoes and the bare foot they were modelled around (library parts only) | `shoes` |
 | Eyes | Borrows iris / white / highlight / extra **textures** | `eyeIris`, `eyeHighlight` |
 
 **Exclusive picks**: Outfit and the single garments describe the same region
@@ -163,6 +163,16 @@ scale applies only to joints in `fitAnchorBones`.
 - **Shoes** ride the feet and toes. They are scaled by whichever of foot
   **depth** (ankle to sole, read from the shoe the host already wears) or
   foot **length** demands more, and are never shrunk.
+  - **One piece on the foot**: a shoe is partly weighted to the toes (toe
+    box) and the lower leg (collar, ankle strap, shaft). Kept as the donor
+    bound them, those parts hang off the host's toe and knee joints at the
+    donor's distances from them, and the shoe tears wherever the rigs
+    differ — a heel's toe joint sits far lower than a flat foot's.
+    `VRMPartGrafter+Anchors` re-binds each follower in
+    `AppearancePartKind.anchorFollowers` so that, at rest, it places its
+    vertices exactly where the foot does
+    (followerIBM = followerBind⁻¹ · footBind · footIBM). The toes and shin
+    still bend the part when they move.
   - **Grounding**: `raiseFigure` lifts the host's root nodes so the shoe's
     sole meets the floor. Wearing heels makes you taller. Sliding the shoe
     instead would pull its cavity off the foot. `lowerFigure` undoes the
@@ -174,6 +184,14 @@ scale applies only to joints in `fitAnchorBones`.
     depth, found from 40k samples), capped at 80% of the host's own foot
     depth. The full buffer stays on the primitive (`untrimmedIndices`) and is
     restored with the composition.
+  - **Bare foot**: an open shoe (sandal, strappy heel) shows where the trim
+    took the host's foot, so a shoe part also carries the donor's own foot,
+    arched and toed for that shoe. `VRMPartGrafter+BareFoot` keeps the
+    donor skin under the host's cut line mapped into donor space, so the two
+    skins meet, and draws it with the **host's** skin material: every VRoid
+    body shares one UV layout (toes at u≈0.6, v≈0.75), so the foot wears the
+    host's skin tone. The part file ships the foot without the body
+    textures.
 - Every measurement is taken in **bind space** (`bindPosition(of:)`, from the
   inverse bind matrix), never from animated `node.worldPosition`. The idle
   animation is already playing when a saved look is applied.
@@ -188,6 +206,11 @@ Each file keeps:
 - their materials and textures (bytes verbatim, so fingerprints are stable),
 - the full skeleton and springs,
 - a trimmed VRM extension.
+
+A `__shoes` part also carries the below-knee slice of any legwear, and the
+model's bare foot from the sole to just above the ankle. The foot keeps its
+body-skin material but none of its textures, since the app draws it with the
+host's skin.
 
 Unnamed materials get a slot from the following sources, in order:
 
@@ -293,8 +316,9 @@ flowchart TD
     RIGID --> D4["shoes"] --> FOOT["fitScale by foot depth / length<br/>never shrink"]
     RIGID --> D5["clothes"] --> SPRINGS
 
-    FOOT --> LIFT["raiseFigure()<br/>sole meets floor"]
-    LIFT --> TRIM["trim host foot skin<br/>below collar cut"]
+    FOOT --> ANCHOR["re-bind toes + shin<br/>onto the foot"]
+    ANCHOR --> LIFT["raiseFigure()<br/>sole meets floor"]
+    LIFT --> TRIM["trim host foot skin<br/>below collar cut<br/>(donor's bare foot fills in)"]
     HEAD --> SPRINGS["bring springs + colliders"]
     TRIM --> SPRINGS
     SPRINGS --> HIDE["hide host + earlier grafts<br/>in the same slots"]
@@ -357,7 +381,9 @@ flowchart TD
 | `Core/Engine/VRM/Appearance/UVCoverageMask.swift` | 64×64 UV coverage masks for the texture gate |
 | `Core/Engine/VRM/Appearance/VRMPartGrafter.swift` | Graft: pick, clone, bind, springs, hide, fit scale |
 | `Core/Engine/VRM/Appearance/VRMPartGrafter+Orientation.swift` | Geometry-based donor facing |
-| `Core/Engine/VRM/Appearance/VRMPartGrafter+SkinTrim.swift` | Shoe fit, grounding (`raiseFigure`/`lowerFigure`), host foot trim |
+| `Core/Engine/VRM/Appearance/VRMPartGrafter+SkinTrim.swift` | Shoe fit, grounding (`raiseFigure`/`lowerFigure`), host foot trim, `clippedClone` |
+| `Core/Engine/VRM/Appearance/VRMPartGrafter+Anchors.swift` | Re-binds a shoe's toe- and shin-weighted parts onto the foot |
+| `Core/Engine/VRM/Appearance/VRMPartGrafter+BareFoot.swift` | The donor's foot under a shoe, drawn in the host's skin |
 | `Core/Engine/VRM/Appearance/VRMModel+Composition.swift` | Base snapshot, restore + re-graft, `humanoidRole(ofNode:)` |
 | `Core/Engine/VRM/Appearance/VRMModel+SlotBounds.swift` | Index-following rest bounds, `bindPosition(of:)`, head/foot reference sizes |
 | `Core/Engine/VRM/Appearance/VRMModel+SlotNames.swift` | Material → slot lookup on a loaded model |
@@ -395,12 +421,15 @@ flowchart TD
 - **Tests**:
   - `VRMPartGraftTests` and `VRMGraftCompatibilityTests` cover role binding,
     spec-version pairs, colliders, spring buffers, repeated swaps, and hair
-    and shoe fit.
+    and shoe fit. `ShoeGraftTests` covers the toe/shin re-binding and the
+    borrowed bare foot.
   - `UVCoverageTests`, `AppearanceSpecTests`, `AppearanceStoreTests` and
     `PartsLibraryTests` cover the texture gate, the spec, storage and the
     library.
   - `ShoeGraftDiagnostic` (`NL_SHOE_DIAG_DIR`) reports the exposed foot per
-    host×donor pair and renders each pair from the front and the side.
+    host×donor pair and renders each pair close up from the front, three
+    quarters, the side and the back. `NL_SHOE_DIAG_PARTS_DIR` reads freshly
+    extracted parts from a local folder before they are uploaded.
 
 ## Troubleshooting
 
@@ -412,6 +441,8 @@ flowchart TD
 | Scattered or missing hair after several swaps | Spring buffers not re-allocated for the appended chains (`springBoneBuffersMatchSprings`) |
 | A diagnostic render "passes" unchanged | Setting `node.rotation` needs `updateLocalMatrix()`; compare render hashes, not pictures |
 | Shoe gap or buried foot | Set `NL_NO_SKIN_TRIM` to compare without the trim; run `ShoeGraftDiagnostic` for per-pair exposure |
+| Toe box or strap pulled off a shoe | Set `NL_NO_ANCHOR_REBIND` to compare without the toe/shin re-binding |
+| Open shoe shows no toes | The part file predates the bare foot (re-extract it), or the host has no VRoid body skin to lend |
 
 ## Known device-test items
 

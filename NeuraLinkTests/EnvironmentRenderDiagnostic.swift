@@ -49,8 +49,13 @@ struct EnvironmentRenderDiagnostic {
                 autoFitFootprint: option.autoFitFootprint, bakedLighting: option.bakedLighting,
                 resolvesDuplicateFaces: option.resolvesDuplicateFaces)
             renderer.setup(config: RendererConfig(strict: .off))
+            let footprintBefore = Self.footprintMB()
+            let loadStart = Date()
             try await renderer.load(url: url)
-            summary += "\(label) \(id): \(renderer.meshGroups.count) groups\n"
+            summary += "\(label) \(id): \(renderer.meshGroups.count) groups, loaded in "
+                + String(format: "%.1f s, footprint %.0f → %.0f MB (peak %.0f MB)\n",
+                         Date().timeIntervalSince(loadStart), footprintBefore.current, Self.footprintMB().current,
+                         Self.footprintMB().peak)
             let views: [(String, Float)] = [("front", 0), ("left", -0.45), ("right", 0.45)]
             for (name, yaw) in views {
                 let eye = SIMD3<Float>(2.0 * sin(yaw), 1.25, 2.0 * cos(yaw))
@@ -64,6 +69,22 @@ struct EnvironmentRenderDiagnostic {
         }
         try summary.write(to: outDir.appendingPathComponent("\(label)_summary.txt"), atomically: true, encoding: .utf8)
         #expect(!summary.isEmpty)
+    }
+
+    // MARK: - Memory
+
+    /// Process memory footprint now and its peak so far, in MB (CPU side;
+    /// the simulator's GPU memory lives in the Mac's).
+    private static func footprintMB() -> (current: Double, peak: Double) {
+        var info = task_vm_info_data_t()
+        var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<integer_t>.size)
+        let result = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count)
+            }
+        }
+        guard result == KERN_SUCCESS else { return (0, 0) }
+        return (Double(info.phys_footprint) / 1_048_576, Double(info.ledger_phys_footprint_peak) / 1_048_576)
     }
 
     // MARK: - Rendering

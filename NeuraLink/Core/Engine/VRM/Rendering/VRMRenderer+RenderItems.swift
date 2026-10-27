@@ -2,6 +2,10 @@
 //  VRMRenderer+RenderItems.swift
 //  NeuraLink
 //
+//  The draw list: one item per visible primitive, with the material's
+//  alpha mode, culling and render queue as authored, in the order Unity
+//  and three-vrm draw a VRM.
+//
 //  Created by Dedicatus on 16/04/2026.
 //
 
@@ -13,279 +17,96 @@ import simd
 
 extension VRMRenderer {
     func buildRenderItems(model: VRMModel) -> [RenderItem] {
-        // ALPHA MODE QUEUING: Collect all primitives and sort by alpha mode
-        // OPTIMIZATION: Pre-allocate single array instead of 8 separate arrays + concatenation
-        // Typical models have 20-100 primitives across all meshes
-        let estimatedPrimitiveCount = model.meshes.reduce(0) { $0 + $1.primitives.count }
-        var allItems: [RenderItem] = []
-        allItems.reserveCapacity(estimatedPrimitiveCount)
+        var items: [RenderItem] = []
+        items.reserveCapacity(model.meshes.reduce(0) { $0 + $1.primitives.count })
+        var primitiveIndex = 0
 
-        var blendCount = 0
-        var globalPrimitiveIndex = 0
-
-        // Collect all primitives and categorize by alpha mode
-        for (_, node) in model.nodes.enumerated() {
-            guard let meshIndex = node.mesh,
-                meshIndex < model.meshes.count
-            else {
-                continue
-            }
-
+        for node in model.nodes {
+            guard let meshIndex = node.mesh, meshIndex < model.meshes.count else { continue }
             let mesh = model.meshes[meshIndex]
-
             for (primIdxInMesh, primitive) in mesh.primitives.enumerated() {
                 // Character customization: host parts replaced by a graft.
                 if !model.hiddenPrimitives.isEmpty,
                     model.hiddenPrimitives.contains(ObjectIdentifier(primitive)) {
                     continue
                 }
-                let alphaMode =
-                    primitive.materialIndex.flatMap { idx in
-                        idx < model.materials.count ? model.materials[idx].alphaMode : nil
-                    }?.lowercased() ?? "opaque"
-
-                let materialName =
-                    (primitive.materialIndex.flatMap { idx in
-                        idx < model.materials.count ? model.materials[idx].name : nil
-                    }) ?? "unnamed"
-
-                let nodeName = node.name ?? "unnamed"
-                let meshName = mesh.name ?? "unnamed_mesh"
-
-                let materialNameLower = materialName.lowercased()
-                let nodeNameLower = nodeName.lowercased()
-                let meshNameLower = meshName.lowercased()
-
-                // Get original doubleSided and alphaCutoff from material
-                let originalDoubleSided =
-                    primitive.materialIndex.flatMap { idx in
-                        idx < model.materials.count ? model.materials[idx].doubleSided : false
-                    } ?? false
-
-                let originalAlphaCutoff =
-                    primitive.materialIndex.flatMap { idx in
-                        idx < model.materials.count ? model.materials[idx].alphaCutoff : 0.5
-                    } ?? 0.5
-
-                // Get renderQueue from VRM material (for sorting face/transparent materials)
-                let materialRenderQueue =
-                    primitive.materialIndex.flatMap { idx in
-                        idx < model.materials.count ? model.materials[idx].renderQueue : 2000
-                    } ?? 2000
-
-                let transparentZWrite =
-                    primitive.materialIndex.flatMap { idx in
-                        idx < model.materials.count
-                            ? model.materials[idx].isTransparentWithZWrite : false
-                    } ?? false
-
-                // OPTIMIZATION: Single face/body detection pass (consolidates 3 separate checks)
-                // Include body, clothing, and transparentZWrite materials for proper categorization
-                let isFaceMaterial =
-                    materialNameLower.contains("face") || materialNameLower.contains("eye")
-                    || nodeNameLower.contains("face") || nodeNameLower.contains("eye")
-                    || (materialNameLower.contains("body") && !materialNameLower.contains("face"))
-                    || materialNameLower.contains("cloth") || materialNameLower.contains("tops")
-                    || materialNameLower.contains("bottoms") || materialNameLower.contains("skirt")
-                    || materialNameLower.contains("shorts") || materialNameLower.contains("pants")
-                    || materialNameLower.contains("lace") || materialNameLower.contains("collar")
-                    || materialNameLower.contains("ribbon") || materialNameLower.contains("frill")
-                    || materialNameLower.contains("ruffle")
-                let isEyeMaterial =
-                    materialNameLower.contains("eye") && !materialNameLower.contains("brow")
-                let nodeOrMeshIsFace =
-                    nodeNameLower.contains("face") || nodeNameLower.contains("eye")
-                    || meshNameLower.contains("face") || meshNameLower.contains("eye")
-                var item = RenderItem(
+                let material = primitive.materialIndex.flatMap { $0 < model.materials.count ? model.materials[$0] : nil }
+                let alphaMode = material?.alphaMode.lowercased() ?? "opaque"
+                items.append(RenderItem(
                     node: node,
                     mesh: mesh,
                     primitive: primitive,
-                    alphaMode: alphaMode,
-                    materialName: materialName,
+                    materialName: material?.name ?? "unnamed",
                     meshIndex: meshIndex,
-                    effectiveAlphaMode: alphaMode,  // Start with original
-                    effectiveDoubleSided: originalDoubleSided,  // Start with original
-                    effectiveAlphaCutoff: originalAlphaCutoff,  // Start with original cutoff
-                    faceCategory: nil,  // Will be set if this is a face material
-                    materialNameLower: materialNameLower,
-                    nodeNameLower: nodeNameLower,
-                    meshNameLower: meshNameLower,
-                    isFaceMaterial: isFaceMaterial,
-                    isEyeMaterial: isEyeMaterial,
-                    isMouthOrLip: false,
-                    renderOrder: 0,  // Will be set based on category
-                    materialRenderQueue: materialRenderQueue,
-                    transparentZWrite: transparentZWrite,
-                    primitiveIndex: globalPrimitiveIndex,
-                    primIdxInMesh: primIdxInMesh
-                )
-
-                // Enhanced face/body material detection and overrides
-                // OPTIMIZATION: Use pre-computed flags (nodeOrMeshIsFace, isBodyOrSkinMaterial)
-                if nodeOrMeshIsFace {
-                    // Override double-sided for face materials to ensure visibility
-                    item.effectiveDoubleSided = true
-
-                    // For face materials, handle different material types:
-                    // - Face skin (OPAQUE or MASK) - main face surface
-                    // - Eyelashes/Eyebrows (MASK) - need transparency
-                    // - Eyes/Mouth interior (OPAQUE) - solid surfaces
-
-                    if let matIdx = primitive.materialIndex, matIdx < model.materials.count {
-                        let material = model.materials[matIdx]
-
-                        // OPTIMIZATION: Use cached lowercased string
-                        if item.materialNameLower.contains("skin")
-                            && item.effectiveAlphaMode == "mask" {
-                            // Use a mid cutoff to respect cutout regions (eyes/mouth)
-                            item.effectiveAlphaCutoff = max(0.5, material.alphaCutoff)
-                        }
-                    }
-                }
-
-                // Demote MASK → OPAQUE for body/skin materials.
-                // Body textures have alpha=0 padding that would cause holes via MASK discard.
-                // Clothing materials (tops, bottoms, shoes) keep MASK for proper cutout.
-                let isBodyOrSkinMaterial =
-                    materialNameLower.contains("body") || materialNameLower.contains("skin")
-                if isBodyOrSkinMaterial && !item.isFaceMaterial && item.effectiveAlphaMode == "mask" {
-                    item.effectiveAlphaMode = "opaque"
-                }
-
-                // OPTIMIZATION: Set renderOrder instead of appending to separate arrays
-                if item.isFaceMaterial {
-                    // Classify face material by type and set category + renderOrder
-                    // Body detection - must come before skin check since body materials contain "skin"
-                    if item.materialNameLower.contains("body")
-                        && !item.materialNameLower.contains("face") {
-                        item.faceCategory = "body"
-                        item.renderOrder = 0  // body renders first, pushed back by depth bias
-                    } else if item.materialNameLower.contains("lace")
-                        || item.materialNameLower.contains("collar")
-                        || item.materialNameLower.contains("ribbon")
-                        || item.materialNameLower.contains("frill")
-                        || item.materialNameLower.contains("ruffle") {
-                        // TransparentWithZWrite - semi-transparent overlays that need depth writing
-                        item.faceCategory = "transparentZWrite"
-                        item.renderOrder = 8  // After opaque, before regular blend
-                    } else if item.materialNameLower.contains("cloth")
-                        || item.materialNameLower.contains("tops")
-                        || item.materialNameLower.contains("bottoms")
-                        || item.materialNameLower.contains("skirt")
-                        || item.materialNameLower.contains("shorts")
-                        || item.materialNameLower.contains("pants") {
-                        item.faceCategory = "clothing"
-                        item.renderOrder = 8  // Same as transparentZWrite for proper layering
-                    } else if item.materialNameLower.contains("mouth")
-                        || item.materialNameLower.contains("lip") {
-                        // Face mouth/lip overlays - render after base face skin
-                        item.faceCategory = "faceOverlay"
-                        item.isMouthOrLip = true
-                        item.renderOrder = 2  // after skin (1), before eyebrow (2) - same as eyebrow but named differently
-                    } else if item.materialNameLower.contains("skin")
-                        || (item.materialNameLower.contains("face")
-                            && !item.materialNameLower.contains("eye")) {
-                        item.faceCategory = "skin"
-                        item.renderOrder = 1  // faceSkin - base face renders first
-                    } else if item.materialNameLower.contains("brow") {
-                        item.faceCategory = "eyebrow"
-                        item.renderOrder = 2  // faceEyebrow
-                    } else if item.materialNameLower.contains("line")
-                        || item.materialNameLower.contains("lash") {
-                        item.faceCategory = "eyeline"
-                        item.renderOrder = 3  // faceEyeline
-                    } else if item.materialNameLower.contains("highlight") {
-                        item.faceCategory = "highlight"
-                        item.renderOrder = 6  // faceHighlight
-                    } else if item.materialNameLower.contains("eye") {
-                        item.faceCategory = "eye"
-                        item.renderOrder = 5  // faceEye
-                    } else {
-                        // Unknown face material - default to skin queue
-                        item.faceCategory = "skin"
-                        item.renderOrder = 1  // faceSkin
-                    }
-
-                    // Enforce effective alpha modes per face part for correct pipeline selection
-                    switch item.faceCategory {
-                    case "eye":
-                        // Eyes render after face skin and must stay out of the
-                        // transparent sort — but authored MASK must survive:
-                        // VRoid iris/white textures are small alpha-cutout
-                        // discs (the measured iris sheet is >80% alpha-0), and
-                        // forcing OPAQUE renders the transparent surround too,
-                        // so irises appear enlarged vs reference viewers.
-                        // MASK keeps depth-write + the opaque PSO, so render
-                        // ordering is unchanged; only BLEND is demoted.
-                        if item.effectiveAlphaMode == "blend" {
-                            item.effectiveAlphaMode = "opaque"
-                        }
-                        item.effectiveDoubleSided = true
-                    case "highlight":
-                        // Eye highlights remain blended overlays
-                        item.effectiveAlphaMode = "blend"
-                        item.effectiveDoubleSided = true
-                    case "eyeline", "eyebrow":
-                        // Often alpha-cutout; ensure double-sided to avoid missing strokes
-                        item.effectiveDoubleSided = true
-                    default:
-                        break
-                    }
-                } else {
-                    // OPTIMIZATION: Set renderOrder for non-face materials
-                    switch item.effectiveAlphaMode {
-                    case "opaque":
-                        item.renderOrder = 0  // opaque
-                    case "mask":
-                        item.renderOrder = 4  // mask
-                    case "blend":
-                        item.renderOrder = 7  // blend
-                        blendCount += 1
-                    default:
-                        item.renderOrder = 0  // opaque (default)
-                    }
-                }
-
-                // OPTIMIZATION: Add to single pre-allocated array
-                allItems.append(item)
-                globalPrimitiveIndex += 1
+                    alphaMode: ["mask", "blend"].contains(alphaMode) ? alphaMode : "opaque",
+                    doubleSided: material?.doubleSided ?? false,
+                    alphaCutoff: material?.alphaCutoff ?? 0.5,
+                    materialRenderQueue: material?.renderQueue ?? 2000,
+                    transparentZWrite: material?.isTransparentWithZWrite ?? false,
+                    primitiveIndex: primitiveIndex,
+                    primIdxInMesh: primIdxInMesh,
+                    boundsCentre: primitive.drawnBoundsCentre()))
+                primitiveIndex += 1
             }
         }
+        sortRenderItems(&items)
+        return items
+    }
 
-        // Pre-compute view-space Z for transparent items to avoid redundant matrix multiplies in comparator
+    /// Draw order, as Unity and three-vrm draw a VRM: everything that
+    /// writes depth first, then the transparent parts by render queue and,
+    /// within a queue, back to front by the centre of what each primitive
+    /// draws. (Every primitive of a skinned mesh shares the node origin, so
+    /// that can't order a face's brows, lashes and iris.)
+    func sortRenderItems(_ items: inout [RenderItem]) {
         var viewZByIndex = [Int: Float]()
-        viewZByIndex.reserveCapacity(blendCount)
-        for item in allItems where item.materialRenderQueue >= 2500 {
-            let worldPos = item.node.worldMatrix.columns.3
-            viewZByIndex[item.primitiveIndex] = (viewMatrix * worldPos).z
+        for item in items where item.alphaMode == "blend" {
+            let skinned = item.node.skin != nil || (item.primitive.hasJoints && item.primitive.hasWeights)
+            let local = SIMD4<Float>(item.boundsCentre, 1)
+            let world = vrmVersionRotation * (skinned ? local : item.node.worldMatrix * local)
+            viewZByIndex[item.primitiveIndex] = (viewMatrix * world).z
         }
-
-        // Multi-tier sorting: renderOrder (name-based) + VRM queue + view-Z + stable order
-        allItems.sort { a, b in
-            // 1. Primary: renderOrder (name-based face/body category ordering)
-            // Order: 0=body/opaque, 1=skin, 2=brow, 3=line, 4=mask, 5=eye, 6=highlight, 7=blend, 8=clothing
-            if a.renderOrder != b.renderOrder {
-                return a.renderOrder < b.renderOrder
+        items.sort { lhs, rhs in
+            let lhsBlend = lhs.alphaMode == "blend", rhsBlend = rhs.alphaMode == "blend"
+            if lhsBlend != rhsBlend { return rhsBlend }
+            if lhs.materialRenderQueue != rhs.materialRenderQueue {
+                return lhs.materialRenderQueue < rhs.materialRenderQueue
             }
-
-            // 2. Secondary: VRM render queue (author's intent for fine-grained ordering)
-            // Within same renderOrder, respect explicit queue differences
-            if a.materialRenderQueue != b.materialRenderQueue {
-                return a.materialRenderQueue < b.materialRenderQueue
+            if lhsBlend {
+                // View space looks down −Z: more negative is farther.
+                let lhsZ = viewZByIndex[lhs.primitiveIndex] ?? 0, rhsZ = viewZByIndex[rhs.primitiveIndex] ?? 0
+                if lhsZ != rhsZ { return lhsZ < rhsZ }
             }
-
-            // 3. Tertiary: Transparent materials (queue >= 2500): back-to-front Z-sorting
-            // This threshold covers TransparentWithZWrite (2450+) and Transparent (3000+)
-            if a.materialRenderQueue >= 2500 {
-                let aViewZ = viewZByIndex[a.primitiveIndex] ?? 0
-                let bViewZ = viewZByIndex[b.primitiveIndex] ?? 0
-                return aViewZ < bViewZ  // Far to near (Painter's Algorithm)
-            }
-
-            // 4. Quaternary: stable definition order for tie-breaking
-            return a.primitiveIndex < b.primitiveIndex
+            return lhs.primitiveIndex < rhs.primitiveIndex
         }
+    }
+}
 
-        return allItems
+extension VRMPrimitive {
+    /// Centre of the bounding box of the vertices this primitive's indices
+    /// reach (primitives of one mesh often share a vertex buffer).
+    func drawnBoundsCentre() -> SIMD3<Float> {
+        guard let vertexBuffer, vertexCount > 0 else { return .zero }
+        let vertices = vertexBuffer.contents().bindMemory(to: VRMVertex.self, capacity: vertexCount)
+        var low = SIMD3<Float>(repeating: .infinity)
+        var high = SIMD3<Float>(repeating: -.infinity)
+        func include(_ index: Int) {
+            guard index < vertexCount else { return }
+            low = simd_min(low, vertices[index].position)
+            high = simd_max(high, vertices[index].position)
+        }
+        if let indexBuffer, indexCount > 0 {
+            let base = indexBuffer.contents() + indexBufferOffset
+            if indexType == .uint16 {
+                let indices = base.bindMemory(to: UInt16.self, capacity: indexCount)
+                for slot in 0..<indexCount { include(Int(indices[slot])) }
+            } else {
+                let indices = base.bindMemory(to: UInt32.self, capacity: indexCount)
+                for slot in 0..<indexCount { include(Int(indices[slot])) }
+            }
+        } else {
+            for index in 0..<vertexCount { include(index) }
+        }
+        return low.x <= high.x ? (low + high) * 0.5 : .zero
     }
 }

@@ -74,19 +74,9 @@ public class VRMLookAtController {
             neckBoneIndex = humanoid.humanBones[.neck]?.node
         }
 
-        // Choose mode: prefer expressions if LookAt expressions with binds are available.
-        var eyesHaveExpressions = false
-        if let expressions = model.expressions {
-            let lookAtKeys = ["LookLeft", "LookRight", "LookUp", "LookDown"]
-            eyesHaveExpressions = lookAtKeys.contains {
-                expressions.custom[$0].map { !$0.morphTargetBinds.isEmpty } ?? false
-            }
-        }
-
-        if eyesHaveExpressions {
-            mode = .expression
-        } else if lookAtData?.type == .expression
-            || (leftEyeBoneIndex == nil && rightEyeBoneIndex == nil) {
+        // The file says how its eyes move (lookAt type); a rig without eye
+        // bones can only use the look expressions.
+        if lookAtData?.type == .expression || (leftEyeBoneIndex == nil && rightEyeBoneIndex == nil) {
             mode = .expression
         } else {
             mode = .bone
@@ -273,15 +263,18 @@ public class VRMLookAtController {
             head.updateWorldTransform()
         }
 
-        // Apply to Eyes (Relative to head) — includes glance offset (iris only, head unaffected)
-        let eyeYaw = currentYaw * eyeWeight + glanceCurrentYaw
-        let eyePitch = currentPitch * eyeWeight
-        let eyeRotation = simd_quatf(angle: eyeYaw, axis: [0, 1, 0]) * simd_quatf(angle: eyePitch, axis: [1, 0, 0])
-
-        for index in [leftEyeBoneIndex, rightEyeBoneIndex].compactMap({ $0 }) {
-            guard index < model.nodes.count else { continue }
+        // Eyes: the part of the gaze the head and neck leave, through the
+        // model's range maps (VRMLookAtRanges), plus the glance.
+        let eyes: [(Int?, Bool)] = [(leftEyeBoneIndex, true), (rightEyeBoneIndex, false)]
+        for (boneIndex, isLeftEye) in eyes {
+            guard let index = boneIndex, index < model.nodes.count else { continue }
+            let (yaw, pitch) = VRMLookAtRanges.eyeAngles(
+                gazeYaw: currentYaw * eyeWeight, gazePitch: currentPitch * eyeWeight, glanceYaw: glanceCurrentYaw,
+                isLeftEye: isLeftEye, pitchDownIsPositive: !model.isVRM0, lookAt: lookAtData)
             let node = model.nodes[index]
-            node.rotation = node.initialRotation * eyeRotation
+            // YXZ order (VRMC_vrm lookAt): yaw about Y, then pitch about X.
+            node.rotation = node.initialRotation
+                * simd_quatf(angle: yaw, axis: [0, 1, 0]) * simd_quatf(angle: pitch, axis: [1, 0, 0])
             node.updateLocalMatrix()
             node.updateWorldTransform()
         }
@@ -291,26 +284,14 @@ public class VRMLookAtController {
 
     // MARK: - Expression Application
 
+    /// lookAt type expression: the look presets, weighted through the
+    /// range maps (the outer horizontal map for both sides, per spec).
     private func applyToExpressions() {
-        guard model != nil else { return }
-
-        expressionController?.setCustomExpressionWeight("LookLeft", weight: 0)
-        expressionController?.setCustomExpressionWeight("LookRight", weight: 0)
-        expressionController?.setCustomExpressionWeight("LookUp", weight: 0)
-        expressionController?.setCustomExpressionWeight("LookDown", weight: 0)
-
-        let totalYaw = currentYaw + glanceCurrentYaw
-        if abs(totalYaw) > 0.02 {
-            let weight = min(abs(totalYaw) / (.pi / 4), 1.0)
-            let key = totalYaw > 0 ? "LookRight" : "LookLeft"
-            expressionController?.setCustomExpressionWeight(key, weight: weight)
-        }
-
-        if abs(currentPitch) > 0.02 {
-            let weight = min(abs(currentPitch) / (.pi / 6), 1.0)
-            let key = currentPitch > 0 ? "LookUp" : "LookDown"
-            expressionController?.setCustomExpressionWeight(key, weight: weight)
-        }
+        guard let model, let expressionController else { return }
+        let weights = VRMLookAtRanges.expressionWeights(
+            yaw: currentYaw + glanceCurrentYaw, pitch: currentPitch, pitchDownIsPositive: !model.isVRM0,
+            lookAt: lookAtData ?? VRMLookAt())
+        for (preset, weight) in weights { expressionController.setExpressionWeight(preset, weight: weight) }
     }
 
     // MARK: - Saccades

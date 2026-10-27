@@ -231,6 +231,8 @@ public struct VRMSceneView: View {
             // never shown in its original clothes first.
             await AppearanceApplier.shared.applyStoredAndWait(
                 slug: characterName.lowercased(), to: state)
+            // Switched again while the outfit applied: the next task owns it.
+            guard !Task.isCancelled else { return }
             EnvironmentLoadState.shared.markBaseSceneReady()
             // Widget follows the character on screen, dressed as it is.
             CompanionSnapshotWriter.shared.refreshPortrait(from: state)

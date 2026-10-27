@@ -43,6 +43,12 @@ enum RuntimePressurePolicy {
         }
     }
 
+    /// Whether the avatar renders its received shadows (an extra 2048² depth
+    /// pass and nine compares per pixel): dropped only at the minimal tier.
+    static func avatarSelfShadows(_ tier: RuntimePressureTier) -> Bool {
+        tier != .minimal
+    }
+
     /// Multiplier on the rain's intensity (particles spawn in proportion).
     static func rainScale(_ tier: RuntimePressureTier) -> Float {
         switch tier {

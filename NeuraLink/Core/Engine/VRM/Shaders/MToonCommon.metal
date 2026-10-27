@@ -72,9 +72,14 @@ struct MToonMaterial {
     uint32_t alphaMode;
     float alphaCutoff;
     uint32_t vrmVersion;
-    float uvOffsetX;
-    float uvOffsetY;
-    float uvScale;
+    // UV transform rows (VRMTextureTransform): u' = (00,01,02)·(u,v,1).
+    float uvMatrix00;
+    float uvMatrix01;
+    float uvMatrix02;
+    float uvMatrix10;
+    float uvMatrix11;
+    float uvMatrix12;
+    float _uvPadding;
     // Block 13: appearance recolour (see MToonShader.swift)
     float recolorHueShift;
     float recolorSaturation;
@@ -128,6 +133,58 @@ struct VertexOut {
     float3 viewNormal;
 };
 
+// Hemisphere GI: ambient × (1 ± this) along world up (MToonMain).
+constant float kMToonHemisphere = 0.35;
+
+// ── Avatar self-shadow (VRMRenderer+AvatarShadow) ───────────────
+/// Mirrors `AvatarShadowParams` (Swift).
+struct AvatarShadowParams {
+    float4x4 lightViewProjection;
+    float normalOffset;
+    float depthBias;
+    float texelSize;
+    int enabled;
+};
+
+/// How much key light reaches `worldPos`: 1 lit, 0 in the avatar's own
+/// shadow. Nine hardware 2×2 compares (a 4×4-texel footprint) soften the
+/// edge enough for the toon step without blurring the shape.
+static inline float avatarShadow(depth2d<float> shadowMap, sampler shadowSampler,
+                                 constant AvatarShadowParams& params, float3 worldPos, float3 normal) {
+    if (params.enabled == 0) { return 1.0; }
+    float4 clip = params.lightViewProjection * float4(worldPos + normal * params.normalOffset, 1.0);
+    float3 ndc = clip.xyz / clip.w;
+    if (any(abs(ndc.xy) > 1.0) || ndc.z < 0.0 || ndc.z > 1.0) { return 1.0; }
+    float2 uv = float2(ndc.x * 0.5 + 0.5, -ndc.y * 0.5 + 0.5);
+    float depth = ndc.z - params.depthBias;
+    float lit = 0.0;
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+            lit += shadowMap.sample_compare(shadowSampler, uv + float2(x, y) * params.texelSize, depth);
+        }
+    }
+    return lit / 9.0;
+}
+
+// ── Outline (VRMC_materials_mtoon 1.0) ──────────────────────────
+// World mode: `width` is meters along the normal. Screen mode: a fraction
+// of the half screen height, which three-vrm gets by scaling with
+// viewDepth / P[1][1] — so the line keeps its on-screen size at any distance.
+static inline float3 mtoonOutlineOffset(float3 worldNormal, float width, float mode,
+                                        float viewDepth, float projectionYScale) {
+    float scale = (mode == 2.0) ? viewDepth / max(projectionYScale, 1e-4) : 1.0;
+    return worldNormal * width * scale;
+}
+
+// Width multiplier: VRM 1.0 reads G (spec, three-vrm), VRM 0.x MToon read R.
+// Vertex stage, so an explicit LOD.
+static inline float mtoonOutlineWidthMask(texture2d<float> widthTexture, sampler textureSampler,
+                                          float2 uv, constant MToonMaterial& material) {
+    if (material.hasOutlineWidthMultiplyTexture == 0) { return 1.0; }
+    float4 sample = widthTexture.sample(textureSampler, uv, level(0));
+    return material.vrmVersion == 0 ? sample.r : sample.g;
+}
+
 // UV Animation utility function
 static inline float2 animateUV(float2 uv, constant MToonMaterial& material) {
     float2 result = uv;
@@ -143,6 +200,13 @@ static inline float2 animateUV(float2 uv, constant MToonMaterial& material) {
     result.x += material.uvAnimationScrollXSpeedFactor * material.time;
     result.y += material.uvAnimationScrollYSpeedFactor * material.time;
     return result;
+}
+
+// The material's UV transform (VRMTextureTransform: KHR_texture_transform,
+// or VRM 0.x _MainTex), applied after the UV animation.
+static inline float2 mtoonTransformUV(float2 uv, constant MToonMaterial& material) {
+    return float2(material.uvMatrix00 * uv.x + material.uvMatrix01 * uv.y + material.uvMatrix02,
+                  material.uvMatrix10 * uv.x + material.uvMatrix11 * uv.y + material.uvMatrix12);
 }
 
 // VRMC_materials_mtoon-1.0 spec matcap UV.

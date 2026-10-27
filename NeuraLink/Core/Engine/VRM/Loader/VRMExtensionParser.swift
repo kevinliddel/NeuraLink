@@ -112,7 +112,8 @@ public class VRMExtensionParser {
             model.expressions = try parseExpressions(expressionsDict)
         } else if let blendShapeMaster = vrmDict["blendShapeMaster"] as? [String: Any] {
             // Parse VRM 0.0 blendShapeMaster
-            model.expressions = try parseBlendShapeMaster(blendShapeMaster)
+            model.expressions = try parseBlendShapeMaster(
+                blendShapeMaster, materialNames: document.materials?.map { $0.name ?? "" } ?? [])
         }
 
         // Parse SpringBone extension if present

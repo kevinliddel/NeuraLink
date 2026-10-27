@@ -64,33 +64,102 @@ struct SpringBoneColliderTests {
         #expect(sawNonZeroZ, "the fixture must have a collider with a forward offset for the flip to be observable")
     }
 
+    @Test("VRM 1.0 joint settings and collider shapes are read as the file has them")
+    @MainActor
+    func vrm1ValuesAreExact() async throws {
+        // `as? Float` is nil for a JSON decimal a Float can't hold exactly
+        // (0.85): every such joint and collider used to fall back to defaults.
+        guard let url = Bundle.main.url(forResource: "Sonya", withExtension: "vrm") else { return }
+        let model = try await VRMModel.load(from: url, device: nil)
+        let springBone = try #require(model.springBone)
+        let root = try Self.rawJSON(of: url)
+        let raw = try #require((root["extensions"] as? [String: Any])?["VRMC_springBone"] as? [String: Any])
+        func float(_ value: Any?) -> Float? { (value as? NSNumber)?.floatValue }
+
+        var checkedJoints = 0, inexact = 0
+        for (spring, rawSpring) in zip(springBone.springs, raw["springs"] as? [[String: Any]] ?? []) {
+            for (joint, rawJoint) in zip(spring.joints, rawSpring["joints"] as? [[String: Any]] ?? []) {
+                if let value = float(rawJoint["stiffness"]) {
+                    #expect(abs(joint.stiffness - value) < 1e-6)
+                }
+                for key in ["stiffness", "dragForce", "hitRadius"] {
+                    if let double = (rawJoint[key] as? NSNumber)?.doubleValue, Double(Float(double)) != double { inexact += 1 }
+                }
+                if let value = float(rawJoint["dragForce"]) { #expect(abs(joint.dragForce - value) < 1e-6) }
+                if let value = float(rawJoint["hitRadius"]) { #expect(abs(joint.hitRadius - value) < 1e-6) }
+                checkedJoints += 1
+            }
+        }
+        #expect(checkedJoints > 0)
+        #expect(inexact > 0, "the fixture must have settings a Float can't hold exactly")
+
+        for (collider, rawCollider) in zip(springBone.colliders, raw["colliders"] as? [[String: Any]] ?? []) {
+            let shape = rawCollider["shape"] as? [String: Any] ?? [:]
+            let rawShape = (shape["sphere"] ?? shape["capsule"]) as? [String: Any] ?? [:]
+            let rawOffset = (rawShape["offset"] as? [Any] ?? []).compactMap(float)
+            switch collider.shape {
+            case .sphere(let offset, let radius), .insideSphere(let offset, let radius):
+                #expect(rawOffset.count == 3 && simd_distance(offset, SIMD3(rawOffset[0], rawOffset[1], rawOffset[2])) < 1e-6)
+                #expect(abs(radius - (float(rawShape["radius"]) ?? -1)) < 1e-6)
+            case .capsule(let offset, _, let tail), .insideCapsule(let offset, _, let tail):
+                let rawTail = (rawShape["tail"] as? [Any] ?? []).compactMap(float)
+                #expect(rawOffset.count == 3 && simd_distance(offset, SIMD3(rawOffset[0], rawOffset[1], rawOffset[2])) < 1e-6)
+                #expect(rawTail.count == 3 && simd_distance(tail, SIMD3(rawTail[0], rawTail[1], rawTail[2])) < 1e-6)
+            case .plane: break
+            }
+        }
+    }
+
+    @Test("Extended colliders: inside sphere and capsule, and plane, replace the fallback shape")
+    func extendedColliders() throws {
+        let json = """
+        {"specVersion": "1.0", "colliders": [
+          {"node": 0, "shape": {"sphere": {"offset": [0, -10000, 0], "radius": 0}},
+           "extensions": {"VRMC_springBone_extended_collider": {"specVersion": "1.0",
+             "shape": {"sphere": {"offset": [0, 0.1, 0], "radius": 0.3, "inside": true}}}}},
+          {"node": 0, "shape": {"sphere": {"offset": [0, -10000, 0], "radius": 0}},
+           "extensions": {"VRMC_springBone_extended_collider": {"specVersion": "1.0",
+             "shape": {"capsule": {"offset": [0, 0, 0], "tail": [0, 0.2, 0], "radius": 0.05, "inside": true}}}}},
+          {"node": 0, "shape": {"sphere": {"offset": [0, -1000, 0], "radius": 1000}},
+           "extensions": {"VRMC_springBone_extended_collider": {"specVersion": "1.0",
+             "shape": {"plane": {"offset": [0, 0.01, 0], "normal": [0, 1, 0]}}}}},
+          {"node": 0, "shape": {"sphere": {"offset": [0, 0.05, 0], "radius": 0.07}}}
+        ]}
+        """
+        let dict = try #require(JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
+        let shapes = try VRMExtensionParser().parseSpringBone(dict).colliders.map(\.shape)
+        #expect(shapes.count == 4)
+        guard shapes.count == 4 else { return }
+        if case .insideSphere(let offset, let radius) = shapes[0] {
+            #expect(simd_distance(offset, [0, 0.1, 0]) < 1e-6 && abs(radius - 0.3) < 1e-6)
+        } else { Issue.record("expected an inside sphere: \(shapes[0])") }
+        if case .insideCapsule(_, let radius, let tail) = shapes[1] {
+            #expect(abs(radius - 0.05) < 1e-6 && simd_distance(tail, [0, 0.2, 0]) < 1e-6)
+        } else { Issue.record("expected an inside capsule: \(shapes[1])") }
+        if case .plane(let offset, let normal) = shapes[2] {
+            #expect(simd_distance(offset, [0, 0.01, 0]) < 1e-6 && simd_distance(normal, [0, 1, 0]) < 1e-6)
+        } else { Issue.record("expected a plane: \(shapes[2])") }
+        if case .sphere(let offset, _) = shapes[3] {
+            #expect(simd_distance(offset, [0, 0.05, 0]) < 1e-6, "0.05 survives the parse")
+        } else { Issue.record("expected a plain sphere: \(shapes[3])") }
+    }
+
     @Test("A chain with no collider groups collides with nothing; the others get exactly their groups")
     @MainActor
     func emptyColliderGroupsMeanNoCollision() async throws {
-        guard let device = MTLCreateSystemDefaultDevice(),
-              let url = Bundle.main.url(forResource: "Ekaterina", withExtension: "vrm")
-        else { return }
-        let model = try await VRMModel.load(from: url, device: device)
-        if model.springBoneBuffers == nil { try model.initializeSpringBoneGPUSystem(device: device) }
-        let system = try SpringBoneComputeSystem(device: device)
-        try system.populateSpringBoneData(model: model)
+        guard let url = Bundle.main.url(forResource: "Ekaterina", withExtension: "vrm") else { return }
+        let model = try await VRMModel.load(from: url, device: MTLCreateSystemDefaultDevice())
         let springBone = try #require(model.springBone)
-        let buffers = try #require(model.springBoneBuffers)
-        let params = try #require(buffers.boneParams)
-        let masks = Array(UnsafeBufferPointer(
-            start: params.contents().bindMemory(to: BoneParams.self, capacity: buffers.numBones), count: buffers.numBones))
-            .map(\.colliderGroupMask)
+        let solver = SpringBoneSolver()
+        solver.setUp(model: model)
+        let chains = solver.chainColliders
+        #expect(chains.count == springBone.springs.count)
 
-        var index = 0
         var emptyChains = 0
-        for spring in springBone.springs {
-            var expected: UInt32 = 0
-            for group in spring.colliderGroups where group < 32 { expected |= 1 << UInt32(group) }
+        for (spring, colliders) in zip(springBone.springs, chains) {
+            let expected = Set(spring.colliderGroups.flatMap { springBone.colliderGroups[$0].colliders })
             if spring.colliderGroups.isEmpty { emptyChains += 1 }
-            for _ in spring.joints {
-                #expect(masks[index] == expected, "joint \(index)")
-                index += 1
-            }
+            #expect(Set(colliders) == expected)
         }
         #expect(emptyChains > 0, "the fixture must have chains that name no collider groups")
     }

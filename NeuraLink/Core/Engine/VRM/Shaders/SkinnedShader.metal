@@ -29,7 +29,7 @@ struct Uniforms {
  float _padding7;
 };
 
-// Use packed floats to match Swift struct layout (224 bytes total)
+// Use packed floats to match Swift struct layout (240 bytes total)
 // Note: Metal's float3 has 16-byte alignment which causes padding
 struct MToonMaterial {
  // Block 0: 16 bytes - Base material properties
@@ -101,14 +101,20 @@ struct MToonMaterial {
  uint32_t alphaMode;                        // 4 bytes
  float alphaCutoff;                         // 4 bytes
 
- // Block 12: 16 bytes - Version flag and padding
+ // Block 12: 16 bytes - Version flag and the UV transform's first row
  uint32_t vrmVersion;                       // 4 bytes (0 = VRM 0.0, 1 = VRM 1.0)
- float _padding3;                           // 4 bytes
- float _padding4;                           // 4 bytes
- float _padding5;                           // 4 bytes
+ float uvMatrix00;                          // 4 bytes
+ float uvMatrix01;                          // 4 bytes
+ float uvMatrix02;                          // 4 bytes
+
+ // Block 12b: 16 bytes - the UV transform's second row
+ float uvMatrix10;                          // 4 bytes
+ float uvMatrix11;                          // 4 bytes
+ float uvMatrix12;                          // 4 bytes
+ float _uvPadding;                          // 4 bytes
 
  // Block 13: 16 bytes - appearance recolour (fragment-only; mirrored so the
- // vertex-side struct keeps the same 224-byte layout as MToonShader.swift)
+ // vertex-side struct keeps the same 240-byte layout as MToonShader.swift)
  float recolorHueShift;                     // 4 bytes
  float recolorSaturation;                   // 4 bytes
  float recolorBrightness;                   // 4 bytes
@@ -163,6 +169,13 @@ static inline float2 animateUV(float2 uv, constant MToonMaterial& material) {
  return result;
 }
 
+// The material's UV transform (VRMTextureTransform: KHR_texture_transform,
+// or VRM 0.x _MainTex), applied after the UV animation.
+static inline float2 mtoonTransformUV(float2 uv, constant MToonMaterial& material) {
+    return float2(material.uvMatrix00 * uv.x + material.uvMatrix01 * uv.y + material.uvMatrix02,
+                  material.uvMatrix10 * uv.x + material.uvMatrix11 * uv.y + material.uvMatrix12);
+}
+
 // Skinned vertex shader with MToon support
 vertex VertexOut skinned_mtoon_vertex(VertexIn in [[stage_in]],
                                constant Uniforms& uniforms [[buffer(1)]],
@@ -170,12 +183,14 @@ vertex VertexOut skinned_mtoon_vertex(VertexIn in [[stage_in]],
                                constant float4x4* jointMatrices [[buffer(25)]],
                                device float3* morphedPositions [[buffer(20)]],
                                constant uint& hasMorphed [[buffer(22)]],
+                               device float3* morphedNormals [[buffer(23)]],
                                uint vertexID [[vertex_id]]) {
  VertexOut out;
 
- // Use morphed positions if available, otherwise use original
+ // Morphed positions (bit 1) and normals (bit 2) when expressions are on.
+ float3 baseNormal = (hasMorphed & 2u) != 0 ? float3(morphedNormals[vertexID]) : in.normal;
  float3 basePosition;
- if (hasMorphed > 0) {
+ if ((hasMorphed & 1u) != 0) {
  // Positions from compute shader output (after morph target application)
  basePosition = float3(morphedPositions[vertexID]);
  } else {
@@ -226,7 +241,7 @@ vertex VertexOut skinned_mtoon_vertex(VertexIn in [[stage_in]],
 
  // Apply skinning to position and normal (using morphed base position if available)
  float4 skinnedPosition = skinMatrix * float4(basePosition, 1.0);
- float3 skinnedNormal = (skinMatrix * float4(in.normal, 0.0)).xyz;
+ float3 skinnedNormal = (skinMatrix * float4(baseNormal, 0.0)).xyz;
 
  // SANITY CHECK: Detect NaN/Inf or extreme skinned positions and fall back to original
  // This catches cases where joint indices point to garbage memory or matrix is corrupted
@@ -236,7 +251,7 @@ vertex VertexOut skinned_mtoon_vertex(VertexIn in [[stage_in]],
  if (posHasNaN || posHasExtreme || normalHasNaN) {
  // Fall back to original position (no skinning)
  skinnedPosition = float4(basePosition, 1.0);
- skinnedNormal = in.normal;
+ skinnedNormal = baseNormal;
  }
  skinnedNormal = normalize(skinnedNormal);
 
@@ -358,115 +373,93 @@ vertex VertexOut skinned_vertex(VertexIn in [[stage_in]],
  return out;
 }
 
-// Skinned MToon outline vertex shader (inverted hull technique)
+// Outline helpers — copies of MToonCommon's (this file keeps its own
+// struct definitions, so it can't include that one). Keep them in step.
+static inline float3 mtoonOutlineOffset(float3 worldNormal, float width, float mode,
+                                        float viewDepth, float projectionYScale) {
+ float scale = (mode == 2.0) ? viewDepth / max(projectionYScale, 1e-4) : 1.0;
+ return worldNormal * width * scale;
+}
+
+static inline float mtoonOutlineWidthMask(texture2d<float> widthTexture, sampler textureSampler,
+                                          float2 uv, constant MToonMaterial& material) {
+ if (material.hasOutlineWidthMultiplyTexture == 0) { return 1.0; }
+ float4 sample = widthTexture.sample(textureSampler, uv, level(0));
+ return material.vrmVersion == 0 ? sample.r : sample.g;
+}
+
+// Skinned MToon outline vertex shader (inverted hull technique).
+// Spec widths (VRMC_materials_mtoon 1.0): world mode in meters, screen mode
+// as a fraction of the half screen height (mtoonOutlineOffset). The hull
+// starts from the morphed positions, so mouth and eye outlines follow
+// expressions, and the width-multiply texture scales it per vertex.
 vertex VertexOut skinned_mtoon_outline_vertex(VertexIn in [[stage_in]],
                                               constant Uniforms& uniforms [[buffer(1)]],
                                               constant MToonMaterial& material [[buffer(8)]],
-                                              constant float4x4* jointMatrices [[buffer(25)]]) {
+                                              device float3* morphedPositions [[buffer(20)]],
+                                              constant uint& hasMorphed [[buffer(22)]],
+                                              device float3* morphedNormals [[buffer(23)]],
+                                              constant float4x4* jointMatrices [[buffer(25)]],
+                                              texture2d<float> outlineWidthMultiplyTexture [[texture(0)]],
+                                              sampler textureSampler [[sampler(0)]],
+                                              uint vertexID [[vertex_id]]) {
  VertexOut out;
 
- // Store RAW weights for threshold check
- float4 rawWeights = in.weights;
+ float3 basePosition = (hasMorphed & 1u) != 0 ? float3(morphedPositions[vertexID]) : in.position;
+ float3 baseNormal = (hasMorphed & 2u) != 0 ? float3(morphedNormals[vertexID]) : in.normal;
 
- // Normalize weights to ensure they sum to 1.0 (prevents partial transforms)
+ // Normalised weights; raw weights decide which joints count.
+ float4 rawWeights = in.weights;
  float4 weights = rawWeights;
  float weightSum = dot(weights, float4(1.0));
- if (weightSum > 1e-6) {
- weights = weights / weightSum;
- } else {
- weights = float4(1.0, 0.0, 0.0, 0.0); // Fallback to first joint
- }
+ weights = weightSum > 1e-6 ? weights / weightSum : float4(1.0, 0.0, 0.0, 0.0);
 
- // Apply skeletal skinning - use RAW weights for threshold check
+ uint4 safeJoints = min(in.joints, uint4(255));
  float4x4 skinMatrix = float4x4(0.0);
  float threshold = 0.001;
-
- // Safe buffer limit: clamp to 255 to prevent reading garbage memory
- uint maxJoint = 255;
- uint4 safeJoints = min(in.joints, uint4(maxJoint));
-
  if (rawWeights[0] > threshold) skinMatrix += jointMatrices[safeJoints[0]] * weights[0];
  if (rawWeights[1] > threshold) skinMatrix += jointMatrices[safeJoints[1]] * weights[1];
  if (rawWeights[2] > threshold) skinMatrix += jointMatrices[safeJoints[2]] * weights[2];
  if (rawWeights[3] > threshold) skinMatrix += jointMatrices[safeJoints[3]] * weights[3];
-
- // Fallback: if skinMatrix is zero, use first joint
  if (skinMatrix[0][0] == 0.0 && skinMatrix[1][1] == 0.0 && skinMatrix[2][2] == 0.0) {
- skinMatrix = jointMatrices[safeJoints[0]];
+  skinMatrix = jointMatrices[safeJoints[0]];
  }
 
- // Apply skinning to position and normal
- float4 skinnedPosition = skinMatrix * float4(in.position, 1.0);
- float3 skinnedNormal = (skinMatrix * float4(in.normal, 0.0)).xyz;
-
- // SANITY CHECK: Detect NaN/Inf or extreme skinned positions and fall back to original
+ float4 skinnedPosition = skinMatrix * float4(basePosition, 1.0);
+ float3 skinnedNormal = (skinMatrix * float4(baseNormal, 0.0)).xyz;
  bool posHasNaN = any(isnan(skinnedPosition.xyz)) || any(isinf(skinnedPosition.xyz));
- bool posHasExtreme = length(skinnedPosition.xyz) > 50.0;
  bool normalHasNaN = any(isnan(skinnedNormal)) || any(isinf(skinnedNormal));
- if (posHasNaN || posHasExtreme || normalHasNaN) {
- skinnedPosition = float4(in.position, 1.0);
- skinnedNormal = in.normal;
+ if (posHasNaN || length(skinnedPosition.xyz) > 50.0 || normalHasNaN) {
+  skinnedPosition = float4(basePosition, 1.0);
+  skinnedNormal = baseNormal;
  }
- skinnedNormal = normalize(skinnedNormal);
 
- // Transform to world space
  float4 worldPos = uniforms.modelMatrix * skinnedPosition;
- float3 worldNormal = normalize((uniforms.normalMatrix * float4(skinnedNormal, 0.0)).xyz);
+ float3 worldNormal = normalize((uniforms.normalMatrix * float4(normalize(skinnedNormal), 0.0)).xyz);
 
- // Get outline width from material
- float outlineWidth = material.outlineWidthFactor;
-
- // Extract camera world position from view matrix: cameraPos = -R^T * translation
- // Done once at the start for use in both outline modes and view direction
  float3x3 viewRotation = float3x3(uniforms.viewMatrix[0].xyz,
-                                   uniforms.viewMatrix[1].xyz,
-                                   uniforms.viewMatrix[2].xyz);
+                                  uniforms.viewMatrix[1].xyz,
+                                  uniforms.viewMatrix[2].xyz);
  float3 cameraWorldPos = -(transpose(viewRotation) * uniforms.viewMatrix[3].xyz);
 
- // Calculate view direction
- float3 viewDir = normalize(cameraWorldPos - worldPos.xyz);
-
- // Apply outline extrusion along normal
- // outlineMode: 0=none, 1=worldCoordinates, 2=screenCoordinates
- // Must match MToonShader.metal for visual consistency
- if (material.outlineMode == 1) {
-  // World coordinates: width scales with camera distance (matches non-skinned)
-  float distanceScale = length(worldPos.xyz - cameraWorldPos) * 0.01;
-  worldPos.xyz += worldNormal * outlineWidth * distanceScale;
- } else if (material.outlineMode == 2) {
-  // Screen coordinates: fixed pixel width (matches non-skinned NDC approach)
-  float4 clipPos = uniforms.projectionMatrix * uniforms.viewMatrix * worldPos;
-  float3 viewNormal = normalize((uniforms.viewMatrix * float4(worldNormal, 0.0)).xyz);
-  float2 screenNormal = normalize(viewNormal.xy);
-  float2 pixelsToNDC = 2.0 / uniforms.viewportSize.xy;
-  float2 offsetNDC = screenNormal * outlineWidth * pixelsToNDC;
-  clipPos.xy += offsetNDC * clipPos.w;
-  out.position = clipPos;
-  out.worldPosition = worldPos.xyz;
-  out.worldNormal = worldNormal;
-  out.viewDirection = viewDir;
-  out.viewNormal = normalize((uniforms.viewMatrix * float4(out.worldNormal, 0.0)).xyz);
-  out.texCoord = in.texCoord;
-  out.animatedTexCoord = in.texCoord;
-  out.color = in.color;
-  return out;
+ if (material.outlineMode == 1.0 || material.outlineMode == 2.0) {
+  float width = material.outlineWidthFactor
+              * mtoonOutlineWidthMask(outlineWidthMultiplyTexture, textureSampler,
+                                      mtoonTransformUV(animateUV(in.texCoord, material), material), material);
+  float viewDepth = -(uniforms.viewMatrix * worldPos).z;
+  worldPos.xyz += mtoonOutlineOffset(worldNormal, width, material.outlineMode,
+                                     viewDepth, uniforms.projectionMatrix[1][1]);
  }
 
  out.worldPosition = worldPos.xyz;
  out.worldNormal = worldNormal;
-
- // Transform to clip space
- float4 viewPosition = uniforms.viewMatrix * worldPos;
- out.position = uniforms.projectionMatrix * viewPosition;
-
- // Calculate view direction and view normal
+ out.position = uniforms.projectionMatrix * uniforms.viewMatrix * worldPos;
+ // Where the shell meets its own surface the surface must win (three-vrm).
+ out.position.z += 1e-6 * out.position.w;
  out.viewDirection = normalize(cameraWorldPos - out.worldPosition);
  out.viewNormal = normalize((uniforms.viewMatrix * float4(out.worldNormal, 0.0)).xyz);
-
- // Pass through texture coordinates and vertex color
  out.texCoord = in.texCoord;
  out.animatedTexCoord = in.texCoord;
  out.color = in.color;
-
  return out;
 }

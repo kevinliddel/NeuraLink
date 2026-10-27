@@ -50,7 +50,7 @@ extension VRMExtensionParser {
             if let rollDict = constraintDict["roll"] as? [String: Any],
                 let sourceNode = rollDict["source"] as? Int {
                 let rollAxis = parseRollAxis(rollDict["rollAxis"] as? String)
-                let weight = parseFloatValue(rollDict["weight"]) ?? 0.5
+                let weight = parseFloatValue(rollDict["weight"]) ?? 1.0  // spec default
 
                 let constraint = VRMNodeConstraint(
                     targetNode: nodeIndex,

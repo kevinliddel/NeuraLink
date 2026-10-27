@@ -26,6 +26,12 @@ public final class VRMPropAttachment {
     public internal(set) var meshes: [VRMMesh] = []
     var meshIndices: [Int] = []
     public internal(set) var isVisible = false
+    /// The grip carried onto this rig (palm or hand-bone), before any seat.
+    public internal(set) var baseGrip: VRMPropGrip?
+    /// The grip in the bone's own local frame, as last seated.
+    public internal(set) var handGrip: VRMPropGrip?
+    /// The outfit the current seat was fitted for (nil: not fitted).
+    var seatedFor: String?
 
     init(prop: VRMProp, bone: VRMHumanoidBone, grip: VRMPropGrip) {
         self.prop = prop
@@ -63,6 +69,68 @@ extension VRMModel {
         }
     }
 
+    /// Moves the prop to `handGrip` (in the bone's local frame) without
+    /// re-attaching it — a seat refined against the drawn hand.
+    public func reseat(_ attachment: VRMPropAttachment, handGrip: VRMPropGrip) {
+        withLock {
+            attachment.handGrip = handGrip
+            for (node, part) in zip(attachment.nodes, attachment.prop.parts) {
+                let transform = Self.nodeTransform(of: part, in: handGrip)
+                node.translation = transform.translation
+                node.rotation = transform.rotation
+                node.scale = transform.scale
+                node.updateLocalMatrix()
+                node.updateWorldTransform()
+            }
+        }
+    }
+
+    /// local = grip ∘ chain, so the file's own scale and turn ride along and
+    /// the grip is authored for a life-size, upright prop.
+    private static func nodeTransform(of part: VRMProp.Part, in grip: VRMPropGrip) -> RestTransform {
+        RestTransform(
+            rotation: simd_normalize(grip.rotation * part.chain.rotation),
+            translation: grip.translation + grip.rotation.act(part.chain.translation * grip.scale),
+            scale: part.chain.scale * grip.scale)
+    }
+
+    /// Seats the prop against the hand that is drawn (VRMPropSeat), with the
+    /// hand's fingers posed as `holding` — the clip's hold frame, applied for
+    /// the measurement only. Once per outfit; free when nothing changed.
+    public func seatProp(_ attachment: VRMPropAttachment, holding: [VRMHumanoidBone: simd_quatf]) {
+        let outfit = propSeatKey
+        guard attachment.seatedFor != outfit, let base = attachment.baseGrip,
+              let box = VRMPropSeat.box(of: attachment.prop),
+              let handIndex = humanoid?.getBoneNode(attachment.bone), let hand = nodes[safe: handIndex]
+        else { return }
+        let points: [SIMD3<Float>] = withLock {
+            var saved: [(VRMNode, simd_quatf)] = []
+            for (bone, rotation) in holding {
+                guard let index = humanoid?.getBoneNode(bone), let node = nodes[safe: index] else { continue }
+                saved.append((node, node.rotation))
+                node.rotation = rotation
+                node.updateLocalMatrix()
+            }
+            hand.updateWorldTransform()
+            let points = VRMPropSeat.handPoints(in: self, hand: attachment.bone)
+            for (node, rotation) in saved {
+                node.rotation = rotation
+                node.updateLocalMatrix()
+            }
+            hand.updateWorldTransform()
+            return points
+        }
+        let seated = VRMPropSeat(points: points, box: box).fit(from: base)
+        reseat(attachment, handGrip: seated)
+        attachment.seatedFor = outfit
+    }
+
+    /// Identifies the drawn outfit (the grafted parts), which is what
+    /// decides the hands a prop is seated against.
+    var propSeatKey: String {
+        (composition?.activeParts ?? [:]).map { "\($0.key.rawValue)=\($0.value)" }.sorted().joined(separator: ",")
+    }
+
     /// Meshes that belong to props — `calculateBoundingBox` skips them: the
     /// vertices are in the file's units (centimetres for the phone) and
     /// would inflate the figure's box to tens of metres.
@@ -95,6 +163,24 @@ extension VRMModel {
         return simd_normalize(rotation)
     }
 
+    /// The grip in `bone`'s own local frame. A grip tuned on a measured palm
+    /// moves onto this rig's palm (same seat, scaled to the hand). Otherwise
+    /// it is an offset in the world-aligned T-pose hand frame: a VRoid hand
+    /// has an identity rest rotation, so that IS its local frame; a rig with
+    /// a baked rest rotation needs the grip brought into its frame first.
+    private func handLocalGrip(for attachment: VRMPropAttachment, under bone: VRMNode) -> VRMPropGrip {
+        if let reference = attachment.grip.authoredOn,
+           let palm = VRMPalm.measure(in: self, hand: attachment.bone) {
+            return palm.place(attachment.grip, authoredOn: reference)
+        }
+        let resolved = attachment.grip.resolved(forVRM0: isVRM0)
+        let restInverse = restWorldRotation(of: bone).inverse
+        return VRMPropGrip(
+            translation: restInverse.act(resolved.translation),
+            rotation: simd_normalize(restInverse * resolved.rotation),
+            scale: resolved.scale)
+    }
+
     private func append(_ attachment: VRMPropAttachment, under bone: VRMNode) {
         attachment.nodes.removeAll()
         attachment.meshes.removeAll()
@@ -102,16 +188,12 @@ extension VRMModel {
         let materialBase = materials.count
         textures.append(contentsOf: attachment.prop.textures)
         materials.append(contentsOf: attachment.prop.materials)
-        // The grip is authored in the world-aligned T-pose hand frame. A
-        // VRoid hand has an identity rest rotation, so that IS its local
-        // frame; a rig with a baked rest rotation (some imported models)
-        // needs the grip brought into its local frame first.
-        let resolved = attachment.grip.resolved(forVRM0: isVRM0)
-        let restInverse = restWorldRotation(of: bone).inverse
-        let grip = VRMPropGrip(
-            translation: restInverse.act(resolved.translation),
-            rotation: simd_normalize(restInverse * resolved.rotation),
-            scale: resolved.scale)
+        // Fresh from the grip on every (re)attach; a seat fitted to the
+        // previous outfit's hands no longer applies.
+        let grip = handLocalGrip(for: attachment, under: bone)
+        attachment.baseGrip = grip
+        attachment.handGrip = grip
+        attachment.seatedFor = nil
         for part in attachment.prop.parts {
             let mesh = VRMMesh(name: part.mesh.name)
             for primitive in part.mesh.primitives {
@@ -121,13 +203,10 @@ extension VRMModel {
             }
             meshes.append(mesh)
             let meshIndex = meshes.count - 1
-            // local = grip ∘ chain, so the file's own scale and turn ride
-            // along and the grip is authored for a life-size, upright prop.
+            let transform = Self.nodeTransform(of: part, in: grip)
             let node = VRMNode(
                 index: nodes.count, name: "\(attachment.prop.name)_prop",
-                translation: grip.translation + grip.rotation.act(part.chain.translation * grip.scale),
-                rotation: simd_normalize(grip.rotation * part.chain.rotation),
-                scale: part.chain.scale * grip.scale,
+                translation: transform.translation, rotation: transform.rotation, scale: transform.scale,
                 mesh: attachment.isVisible ? meshIndex : nil)
             nodes.append(node)
             node.parent = bone

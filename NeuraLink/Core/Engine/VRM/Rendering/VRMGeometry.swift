@@ -389,8 +389,9 @@ public class VRMPrimitive {
             }
         }
 
-        // Normal deltas SoA (if we have normals)
-        if hasNormals {
+        // Normal deltas SoA, only when a target bends normals: VRoid writes
+        // all-zero NORMAL targets, and then the normals pass is skipped.
+        if hasNormals, morphTargets.contains(where: { $0.normalDeltas?.contains { $0 != .zero } ?? false }) {
             morphNormalsSoA = device.makeBuffer(
                 length: totalDeltasSize, options: .storageModeShared)
             if let soaBuffer = morphNormalsSoA {

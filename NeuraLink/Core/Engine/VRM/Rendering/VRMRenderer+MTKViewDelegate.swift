@@ -18,9 +18,7 @@ extension VRMRenderer: MTKViewDelegate {
     }
 
     public func draw(in view: MTKView) {
-        guard let commandBuffer = commandQueue.makeCommandBuffer(),
-            let descriptor = view.currentRenderPassDescriptor
-        else {
+        guard let commandBuffer = commandQueue.makeCommandBuffer(), let descriptor = scenePass(for: view) else {
             return
         }
 
@@ -77,48 +75,12 @@ extension VRMRenderer: MTKViewDelegate {
     }
 }
 
-// MARK: - SpringBone Debug Controls
-
 extension VRMRenderer {
-    public func resetSpringBone() {
-        // GPU system resets automatically on model load
-        nlLog("[VRMRenderer] SpringBone reset (GPU system resets on model load)")
-    }
-
-    public func applySpringBoneForce(
-        gravity: SIMD3<Float>? = nil, wind: SIMD3<Float>? = nil, duration: Float = 1.0
-    ) {
-        if let gravity = gravity {
-            temporaryGravity = gravity
-        }
-        if let wind = wind {
-            temporaryWind = wind
-        }
-        forceTimer = duration
-    }
-
-    func updateSpringBoneForces(deltaTime: Float) {
-        // Apply temporary forces if timer is active
-        if forceTimer > 0 {
-            if let gravity = temporaryGravity {
-                model?.springBoneGlobalParams?.gravity = gravity
-            }
-            if let wind = temporaryWind {
-                model?.springBoneGlobalParams?.windDirection = simd_normalize(wind)
-                model?.springBoneGlobalParams?.windAmplitude = simd_length(wind)
-            }
-            forceTimer -= deltaTime
-        } else if temporaryGravity != nil || temporaryWind != nil {
-            // Timer expired - restore initial gravity and clear wind
-            // Only restore if we had temporary overrides (don't overwrite initial setup)
-            if temporaryGravity != nil {
-                model?.springBoneGlobalParams?.gravity = [0, -9.8, 0]
-            }
-            if temporaryWind != nil {
-                model?.springBoneGlobalParams?.windAmplitude = 0
-            }
-            temporaryGravity = nil
-            temporaryWind = nil
-        }
+    /// The view's own pass, or — with MSAA on — memoryless multisampled
+    /// targets resolving into the drawable (VRMRenderer+MSAA).
+    func scenePass(for view: MTKView) -> MTLRenderPassDescriptor? {
+        guard usesMultisampling else { return view.currentRenderPassDescriptor }
+        guard let drawable = view.currentDrawable else { return nil }
+        return multisamplePassDescriptor(resolvingInto: drawable.texture, clearColor: view.clearColor)
     }
 }

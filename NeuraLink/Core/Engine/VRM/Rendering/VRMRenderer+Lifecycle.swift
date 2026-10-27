@@ -26,11 +26,6 @@ extension VRMRenderer {
         }
 
         self.expressionController = VRMExpressionController()
-        do {
-            self.springBoneComputeSystem = try SpringBoneComputeSystem(device: device)
-        } catch {
-            self.springBoneComputeSystem = nil
-        }
         self.lookAtController = VRMLookAtController()
         
         // Initialize sprite cache system for multi-character optimization
@@ -61,6 +56,7 @@ extension VRMRenderer {
     func clearModel() {
         model = nil
         isModelVisible = false
+        morphTargetSystem?.releaseMorphedBuffers()
         appearanceLayer.reset()
         cacheNeedsRebuild = true
         cachedRenderItems = nil
@@ -72,6 +68,7 @@ extension VRMRenderer {
         self.model = model
         isModelVisible = false
         appearanceLayer.reset()
+        morphTargetSystem?.releaseMorphedBuffers()
 
         // PERFORMANCE: Invalidate cached render items when model changes
         cacheNeedsRebuild = true
@@ -81,6 +78,7 @@ extension VRMRenderer {
             skinningSystem?.setupForSkins(model.skins)
         }
 
+        expressionController?.reset()
         // Load expressions if available
         if let expressions = model.expressions {
             // VRM 1.x morphTargetBind.node is a glTF NODE index; the renderer
@@ -106,6 +104,8 @@ extension VRMRenderer {
 
         // Initialize base material colors for expression-driven material color binds
         for (materialIndex, material) in model.materials.enumerated() {
+            // …and the UV transform that texture transform binds move from.
+            expressionController?.setBaseTextureTransform(materialIndex: materialIndex, material.uvTransform)
             // Store base color factor (RGBA)
             expressionController?.setBaseMaterialColor(
                 materialIndex: materialIndex,
@@ -145,22 +145,9 @@ extension VRMRenderer {
             }
         }
 
-        // Initialize SpringBone GPU compute system if available
-        if model.springBone != nil {
-            do {
-                // A model that has been grafted onto carries more spring
-                // chains than its buffers were sized for; filling them
-                // without re-allocating writes past the end.
-                if !model.springBoneBuffersMatchSprings, let device = model.device {
-                    try model.initializeSpringBoneGPUSystem(device: device, expandChains: false)
-                }
-                try springBoneComputeSystem?.populateSpringBoneData(model: model)
-                
-                // Warm up physics to prevent initial bounce/oscillation
-                springBoneComputeSystem?.warmupPhysics(model: model, steps: 30)
-            } catch {
-            }
-        }
+        // Spring joints are built from this model's rest pose, and the hair
+        // settled, on the first frame that steps them.
+        springBoneSolver.invalidate()
         
         // Initialize LookAt controller if model has lookAt data or eye bones
         if model.lookAt != nil || model.humanoid?.humanBones[.leftEye] != nil

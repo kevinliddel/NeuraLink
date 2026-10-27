@@ -62,7 +62,7 @@ public class VRMModel: @unchecked Sendable {
     /// Spring bone physics configuration for hair, clothing, and accessories.
     ///
     /// Defines physics chains, stiffness, gravity, and colliders. Physics simulation
-    /// is performed on the GPU via `SpringBoneComputeSystem`.
+    /// is performed per frame by the renderer's `SpringBoneSolver`.
     public var springBone: VRMSpringBone?
 
     /// VRM 0.x MToon material properties stored at document level.
@@ -120,12 +120,6 @@ public class VRMModel: @unchecked Sendable {
 
     /// Metal device used for GPU resources. Required for rendering and physics.
     public var device: MTLDevice?
-
-    /// GPU buffers for spring bone physics simulation.
-    public var springBoneBuffers: SpringBoneBuffers?
-
-    /// Global parameters for spring bone physics (gravity, wind, substeps).
-    public var springBoneGlobalParams: SpringBoneGlobalParams?
 
     // PERFORMANCE: Pre-computed node lookup table (normalized names)
     var nodeLookupTable: [String: VRMNode] = [:]
@@ -211,10 +205,10 @@ public class VRMModel: @unchecked Sendable {
         // Load resources with buffer data
         try await model.loadResources(binaryData: binaryData, context: context)
 
-        // Initialize SpringBone GPU system if device and spring bone data present
-        if let device = device, model.springBone != nil {
+        // VRM 0.x spring roots → full chains (the solver is built per renderer).
+        if model.springBone != nil {
             await context?.updatePhase(.initializingPhysics, progress: 0.5)
-            try model.initializeSpringBoneGPUSystem(device: device)
+            model.expandVRM0SpringBoneChains()
             await context?.updatePhase(.initializingPhysics, progress: 1.0)
         }
 

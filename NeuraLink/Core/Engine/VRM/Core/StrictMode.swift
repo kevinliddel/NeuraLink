@@ -73,14 +73,10 @@ public struct RendererConfig {
     /// Alpha-to-coverage for MASK materials requires sampleCount > 1
     public var sampleCount: Int = 1
 
-    /// Global scale factor for depth bias values (1.0 = default)
-    /// Higher values push coplanar surfaces further apart in depth buffer
-    public var depthBiasScale: Float = 1.0
-
     public init(
         strict: StrictLevel = .off, colorPixelFormat: MTLPixelFormat = .bgra8Unorm_srgb,
         renderFilter: RenderFilter? = nil, drawUntil: Int? = nil, drawOnlyIndex: Int? = nil,
-        testIdentityPalette: Int? = nil, sampleCount: Int = 1, depthBiasScale: Float = 1.0
+        testIdentityPalette: Int? = nil, sampleCount: Int = 1
     ) {
         self.strict = strict
         self.colorPixelFormat = colorPixelFormat
@@ -89,7 +85,6 @@ public struct RendererConfig {
         self.drawOnlyIndex = drawOnlyIndex
         self.testIdentityPalette = testIdentityPalette
         self.sampleCount = sampleCount
-        self.depthBiasScale = depthBiasScale
     }
 }
 
@@ -233,7 +228,8 @@ public struct ResourceIndices {
     public static let morphNormalDeltas = 13...19
     public static let morphedPositionsBuffer = 20
     public static let vertexOffsetBuffer = 21
-    public static let hasMorphedPositionsFlag = 22
+    public static let hasMorphedPositionsFlag = 22  // bit 1 positions, bit 2 normals
+    public static let morphedNormalsBuffer = 23
     // Joint matrices - moved to high index to avoid argument table collision
     public static let jointMatricesBuffer = 25
 
@@ -252,33 +248,6 @@ public struct ResourceIndices {
 
     // Sampler indices
     public static let defaultSampler = 0
-
-    // MARK: - SpringBone Compute Shader Buffer Indices
-    // These indices are used by the SpringBone GPU compute kernels
-    // and are separate from the vertex/fragment shader indices above.
-
-    /// SpringBone: Previous frame bone positions (read/write)
-    public static let springBonePosPrev = 0
-    /// SpringBone: Current frame bone positions (read/write)
-    public static let springBonePosCurr = 1
-    /// SpringBone: Per-bone parameters (stiffness, drag, etc.)
-    public static let springBoneParams = 2
-    /// SpringBone: Global simulation parameters (gravity, wind, etc.)
-    public static let springBoneGlobalParams = 3
-    /// SpringBone: Rest length constraints between bones
-    public static let springBoneRestLengths = 4
-    /// SpringBone: Sphere colliders array
-    public static let springBoneSphereColliders = 5
-    /// SpringBone: Capsule colliders array
-    public static let springBoneCapsuleColliders = 6
-    /// SpringBone: Plane colliders array
-    public static let springBonePlaneColliders = 7
-    /// SpringBone: Animated root positions (kinematic kernel)
-    public static let springBoneAnimatedRootPositions = 8
-    /// SpringBone: Root bone indices (kinematic kernel)
-    public static let springBoneRootIndices = 9
-    /// SpringBone: Number of root bones (kinematic kernel)
-    public static let springBoneNumRootBones = 10
 }
 
 // MARK: - Strict Mode Validator

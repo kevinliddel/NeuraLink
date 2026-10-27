@@ -405,29 +405,19 @@ final class VRMPartThumbnailRenderer {
         // Transparent: the tile supplies its own (light) background, so a
         // part reads as a cut-out catalogue item on any theme.
         let clear = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
-        let descriptor: MTLRenderPassDescriptor
-        let samples: Int
         if renderer.usesMultisampling {
-            renderer.updateDrawableSize(CGSize(width: size, height: size))
-            guard let msaa = renderer.getMultisampleRenderPassDescriptor() else { return nil }
-            msaa.colorAttachments[0].resolveTexture = color
-            msaa.colorAttachments[0].clearColor = clear
-            descriptor = msaa
-            samples = renderer.config.sampleCount
-        } else {
-            descriptor = MTLRenderPassDescriptor()
-            descriptor.colorAttachments[0].texture = color
-            descriptor.colorAttachments[0].loadAction = .clear
-            descriptor.colorAttachments[0].storeAction = .store
-            descriptor.colorAttachments[0].clearColor = clear
-            samples = 1
+            return renderer.multisamplePassDescriptor(resolvingInto: color, clearColor: clear)
         }
+        let descriptor = MTLRenderPassDescriptor()
+        descriptor.colorAttachments[0].texture = color
+        descriptor.colorAttachments[0].loadAction = .clear
+        descriptor.colorAttachments[0].storeAction = .store
+        descriptor.colorAttachments[0].clearColor = clear
         let depthDescriptor = MTLTextureDescriptor()
-        depthDescriptor.textureType = samples > 1 ? .type2DMultisample : .type2D
+        depthDescriptor.textureType = .type2D
         depthDescriptor.pixelFormat = .depth32Float
         depthDescriptor.width = size
         depthDescriptor.height = size
-        depthDescriptor.sampleCount = samples
         depthDescriptor.storageMode = .private
         depthDescriptor.usage = [.renderTarget]
         guard let depth = device.makeTexture(descriptor: depthDescriptor) else { return nil }

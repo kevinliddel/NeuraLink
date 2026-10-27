@@ -40,19 +40,28 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
 
     // Multisample texture for MSAA render targets
     var multisampleTexture: MTLTexture?
+    var multisampleDepthTexture: MTLTexture?
+    // Avatar self-shadows (VRMRenderer+AvatarShadow).
+    var avatarShadowMap: MTLTexture?
+    var avatarShadowPipeline: MTLRenderPipelineState?
+    var avatarShadowDepthState: MTLDepthStencilState?
+    var avatarShadowSampler: MTLSamplerState?
+    var avatarShadowWhiteTexture: MTLTexture?
+    var avatarShadowPlaceholderBuffer: MTLBuffer?
+    var avatarShadowParams = AvatarShadowParams()
+    /// Off on the minimal pressure tier (RuntimePressurePolicy).
+    var avatarSelfShadowsEnabled = true
+    /// The skinned pipelines' vertex layout, reused by the shadow pass.
+    var skinnedVertexDescriptor: MTLVertexDescriptor?
+    /// Start of the material clock (MToon UV animation).
+    let materialClockStart = CACurrentMediaTime()
+    /// Fixed material time for render tests; nil = the clock.
+    var materialTimeOverride: Float?
+    /// Seconds on the material clock.
+    var materialTime: Float { materialTimeOverride ?? Float(CACurrentMediaTime() - materialClockStart) }
 
     /// Returns true if multisampling is enabled (sampleCount > 1)
     var usesMultisampling: Bool { config.sampleCount > 1 }
-
-    // MARK: - Depth Bias
-
-    /// Calculator for material-specific depth bias values
-    ///
-    /// Depth bias resolves true Z-fighting between coplanar surfaces
-    /// by pushing fragments toward the camera in depth buffer space.
-    public lazy var depthBiasCalculator: DepthBiasCalculator = {
-        DepthBiasCalculator(scale: config.depthBiasScale)
-    }()
 
     // MARK: - Configuration
 
@@ -197,18 +206,12 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
 
     // MARK: - Spring Bone Physics
 
-    var springBoneComputeSystem: SpringBoneComputeSystem?
+    let springBoneSolver = SpringBoneSolver()
 
-    /// Enables GPU-accelerated spring bone physics simulation.
+    /// Enables spring bone physics (hair, skirts, accessories).
     public var enableSpringBone: Bool = false
 
-    /// Quality preset for spring bone physics simulation.
-    public var springBoneQuality: VRMConstants.SpringBoneQuality = .ultra
-
     var lastUpdateTime: CFTimeInterval = 0
-    var temporaryGravity: SIMD3<Float>?
-    var temporaryWind: SIMD3<Float>?
-    var forceTimer: Float = 0
     
     // OPTIMIZATION: Static zero weights array (avoids allocation per primitive)
     static let zeroMorphWeights = [Float](repeating: 0, count: 8)
@@ -256,44 +259,32 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
     var cachedRenderItems: [RenderItem]?
     var cacheNeedsRebuild = true
 
-    // RENDER ITEM: Structure for sorting and rendering primitives
+    /// One primitive to draw, with the material settings the draw needs.
+    /// Everything comes from the material as authored (alpha mode, culling,
+    /// render queue); nothing is inferred from names.
     struct RenderItem {
         let node: VRMNode
         let mesh: VRMMesh
         let primitive: VRMPrimitive
-        let alphaMode: String  // Original material alpha mode
         let materialName: String
         let meshIndex: Int
-        var effectiveAlphaMode: String  // Override-able alpha mode
-        var effectiveDoubleSided: Bool  // Override-able double sided
-        var effectiveAlphaCutoff: Float  // Override-able alpha cutoff for MASK mode
-        var faceCategory: String?  // Face sub-category: skin, eyebrow, eyeline, eye, highlight
-
-        // OPTIMIZATION: Cached lowercased strings to avoid repeated allocations
-        let materialNameLower: String
-        let nodeNameLower: String
-        let meshNameLower: String
-        let isFaceMaterial: Bool
-        let isEyeMaterial: Bool
-        var isMouthOrLip: Bool
-
-        // OPTIMIZATION: Render order for single-array sorting (avoids concatenation)
-        var renderOrder: Int  // 0=opaque, 1=faceSkin, 2=faceEyebrow, 3=faceEyeline, 4=mask, 5=faceEye, 6=faceHighlight, 7=blend
-
-        // VRM material renderQueue for primary sorting (computed from base + offset)
-        // OPAQUE base=2000, MASK base=2450, BLEND base=3000
+        /// "opaque", "mask" or "blend".
+        let alphaMode: String
+        let doubleSided: Bool
+        let alphaCutoff: Float
+        /// VRM 1.0 base + offset, or the 0.x Unity queue.
         let materialRenderQueue: Int
-
-        // Material declares TransparentWithZWrite (VRM 1.0 flag or 0.x
-        // BlendMode 3 / _ZWrite): BLEND items draw with depth write ON so
-        // layered cloth occludes correctly instead of double-blending.
+        /// TransparentWithZWrite (VRM 1.0 flag or 0.x BlendMode 3 / _ZWrite):
+        /// BLEND that still writes depth, so layered cloth occludes instead
+        /// of double-blending.
         let transparentZWrite: Bool
-
-        // Scene graph order for stable tie-breaking in sort (global)
+        /// Scene-graph order across the model (stable sort tie-break).
         let primitiveIndex: Int
-
-        // Per-mesh primitive index for morph buffer lookup (matches compute pass key)
+        /// Index within the mesh (morph buffer key, as the compute pass).
         let primIdxInMesh: Int
+        /// Centre of the triangles this primitive draws, in the mesh's
+        /// space: the transparent sort's distance point.
+        let boundsCentre: SIMD3<Float>
     }
 
     // State caching to reduce allocations
@@ -309,6 +300,8 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
     var lastTextureIds: [Int: MTLTexture] = [:] // index -> texture
     // Dummy buffer to satisfy Metal validation when morphs are not used
     var emptyFloat3Buffer: MTLBuffer?
+    /// This frame's morphed normals by primitive (VRMRenderer+Morphs).
+    var morphedNormalBuffers: [MorphKey: MTLBuffer] = [:]
 
     // MARK: - MSAA / Drawable Size
 

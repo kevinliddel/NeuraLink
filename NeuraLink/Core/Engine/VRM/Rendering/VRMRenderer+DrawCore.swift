@@ -69,7 +69,7 @@ extension VRMRenderer {
                     opaquePipelineState, name: "opaque_pipeline")
                 try strictValidator?.validateUniformBuffer(
                     uniformsBuffer, requiredSize: MemoryLayout<Uniforms>.size)
-                if morphTargetSystem?.morphAccumulatePipelineState == nil {
+                if morphTargetSystem?.isReady != true {
                     throw StrictModeError.missingComputeFunction(name: "morph_accumulate")
                 }
             } catch {
@@ -81,9 +81,7 @@ extension VRMRenderer {
             // Legacy asserts for non-strict mode
             assert(opaquePipelineState != nil, "[VRMRenderer] Opaque pipeline state is nil")
             assert(!uniformsBuffers.isEmpty, "[VRMRenderer] Uniforms buffers are empty")
-            assert(
-                morphTargetSystem?.morphAccumulatePipelineState != nil,
-                "[VRMRenderer] Compute pipeline state is nil")
+            assert(morphTargetSystem?.isReady == true, "[VRMRenderer] Morph compute pipelines are missing")
         }
 
         // Run compute pass for morphs BEFORE render encoder
@@ -91,6 +89,8 @@ extension VRMRenderer {
 
         // Shadow map depth pass — must happen before the main render encoder opens
         drawShadowPass(commandBuffer: commandBuffer)
+        // The avatar's own shadow map (received shadows, VRMRenderer+AvatarShadow).
+        encodeAvatarShadowPass(commandBuffer: commandBuffer, model: model, morphedBuffers: morphedBuffers)
         if UserSettings.shared.showEnvironment {
             drawEnvironmentShadow(commandBuffer: commandBuffer)
         } else {
@@ -107,6 +107,8 @@ extension VRMRenderer {
             }
             return
         }
+        // The MToon fragment reads the avatar shadow map on every draw.
+        bindAvatarShadow(encoder: encoder)
 
         // 1. Sky (depth test = always, no depth write — always behind everything)
         drawSky(encoder: encoder)
@@ -141,8 +143,7 @@ extension VRMRenderer {
 
         }
 
-        // Update SpringBone GPU physics if enabled
-        // IMPORTANT: Must be done BEFORE skinning matrix update so SpringBone transforms are included
+        // Spring bones, before the joint palettes so their poses are skinned
         if enableSpringBone, model.springBone != nil {
 
             // Calculate actual deltaTime
@@ -153,19 +154,8 @@ extension VRMRenderer {
             // Clamp deltaTime to reasonable values (prevent huge jumps)
             let clampedDeltaTime = min(deltaTime, 1.0 / 30.0)  // Max 30ms per frame
 
-            // Update temporary forces if any
-            updateSpringBoneForces(deltaTime: clampedDeltaTime)
-
-            // Run GPU physics simulation
-            if let springBoneCompute = springBoneComputeSystem {
-                springBoneCompute.update(model: model, deltaTime: TimeInterval(clampedDeltaTime))
-
-                // Read back GPU positions and update node transforms
-                springBoneCompute.writeBonesToNodes(model: model)
-            }
-
-            // CRITICAL: Propagate spring bone transforms through entire hierarchy before skinning
-            model.updateNodeTransforms()
+            // Solved and posed in this frame, before the joint palettes.
+            springBoneSolver.update(model: model, deltaTime: clampedDeltaTime)
         }
 
         // Update all joint palettes before any draw calls to ensure consistent state.
@@ -231,29 +221,10 @@ extension VRMRenderer {
         if let cached = cachedRenderItems, !cacheNeedsRebuild {
             allItems = cached
             
-            // PERFORMANCE: Re-sort ONLY the transparent items (order >= 7) every frame for correct depth
-            // Use a subset sort or just re-sort the whole array if small (usually 20-50 items)
-            // For VRM, we only care about materials with queue >= 2500 (transparency)
-            let hasTransparency = allItems.contains { $0.materialRenderQueue >= 2500 }
-            if hasTransparency {
-                // Re-calculate viewZ for transparent items
-                var viewZByIndex = [Int: Float]()
-                for item in allItems where item.materialRenderQueue >= 2500 {
-                    let worldPos = item.node.worldMatrix.columns.3
-                    viewZByIndex[item.primitiveIndex] = (viewMatrix * worldPos).z
-                }
-                
-                // Re-sort the whole array (fast for <100 items)
-                allItems.sort { a, b in
-                    if a.renderOrder != b.renderOrder { return a.renderOrder < b.renderOrder }
-                    if a.materialRenderQueue != b.materialRenderQueue { return a.materialRenderQueue < b.materialRenderQueue }
-                    if a.materialRenderQueue >= 2500 {
-                        let aViewZ = viewZByIndex[a.primitiveIndex] ?? 0
-                        let bViewZ = viewZByIndex[b.primitiveIndex] ?? 0
-                        return aViewZ < bViewZ
-                    }
-                    return a.primitiveIndex < b.primitiveIndex
-                }
+            // Transparent order depends on the camera: re-sort every frame
+            // (fast for the usual 20–50 items).
+            if allItems.contains(where: { $0.alphaMode == "blend" }) {
+                sortRenderItems(&allItems)
             }
         } else {
             allItems = buildRenderItems(model: model)
@@ -270,8 +241,18 @@ extension VRMRenderer {
 
         // DRAW LIST BISECT: Filter by draw index if requested
         var drawIndex = 0
+        // Opaque/cutout outlines go in once the first transparent item is
+        // reached (or after the loop when there is none), writing depth.
+        var opaqueOutlinesDrawn = false
+        let drawOpaqueOutlines = {
+            opaqueOutlinesDrawn = true
+            self.renderMToonOutlines(
+                encoder: encoder, renderItems: allItems.filter { $0.alphaMode != "blend" },
+                model: model, morphedBuffers: morphedBuffers, writesDepth: true)
+        }
 
         for (index, item) in itemsToRender.enumerated() {
+            if !opaqueOutlinesDrawn, item.alphaMode == "blend" { drawOpaqueOutlines() }
             let meshName = item.mesh.name ?? "unnamed"
             let materialName = item.materialName
 
@@ -317,8 +298,8 @@ extension VRMRenderer {
             let primitive = item.primitive
 
             // Use effective properties from RenderItem (includes overrides)
-            let materialAlphaMode = item.effectiveAlphaMode
-            let isDoubleSided = item.effectiveDoubleSided
+            let materialAlphaMode = item.alphaMode
+            let isDoubleSided = item.doubleSided
 
             // Contract validation: effective alpha mode should be valid
             precondition(
@@ -341,6 +322,10 @@ extension VRMRenderer {
             } else if materialAlphaMode == "blend" {
                 // Standard 3D BLEND mode requires blending-enabled PSO
                 activePipelineState = isSkinned ? skinnedBlendPipelineState : blendPipelineState
+            } else if materialAlphaMode == "mask", usesMultisampling,
+                let coverage = isSkinned ? skinnedMaskAlphaToCoveragePipelineState : maskAlphaToCoveragePipelineState {
+                // Cutout with MSAA: alpha-to-coverage (shader alpha mode 3).
+                activePipelineState = coverage
             } else {
                 // Standard 3D OPAQUE and MASK modes can share the same PSO (no blending)
                 activePipelineState = isSkinned ? skinnedOpaquePipelineState : opaquePipelineState
@@ -364,12 +349,12 @@ extension VRMRenderer {
         // Increment frame counter
         frameCounter += 1
 
-        // Render outlines for MToon mode (inverted hull technique)
+        // Render outlines for MToon mode (inverted hull technique): the
+        // opaque ones if no transparent item came, then the transparent ones.
+        if !opaqueOutlinesDrawn { drawOpaqueOutlines() }
         renderMToonOutlines(
-            encoder: encoder,
-            renderItems: allItems,
-            model: model
-        )
+            encoder: encoder, renderItems: allItems.filter { $0.alphaMode == "blend" },
+            model: model, morphedBuffers: morphedBuffers, writesDepth: false)
 
         // 3D World rain (streaks and ripples) — skipped in interior environments
         // (apartment / art gallery) where rain falling through the ceiling would

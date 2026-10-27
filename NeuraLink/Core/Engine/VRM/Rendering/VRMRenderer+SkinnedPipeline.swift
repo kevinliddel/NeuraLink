@@ -67,6 +67,7 @@ extension VRMRenderer {
             basePipelineDescriptor.vertexFunction = skinnedVertexFunc
             basePipelineDescriptor.fragmentFunction = fragmentFunc
             basePipelineDescriptor.vertexDescriptor = vertexDescriptor
+            skinnedVertexDescriptor = vertexDescriptor
             basePipelineDescriptor.depthAttachmentPixelFormat = .depth32Float
             basePipelineDescriptor.rasterSampleCount = config.sampleCount
 

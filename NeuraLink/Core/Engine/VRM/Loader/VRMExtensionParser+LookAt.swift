@@ -14,8 +14,9 @@ extension VRMExtensionParser {
     func parseLookAtFromFirstPerson(_ dict: [String: Any]) throws -> VRMLookAt {
         let lookAt = VRMLookAt()
 
+        // 0.x names the types "Bone" and "BlendShape" (1.0: bone, expression).
         if let typeName = dict["lookAtTypeName"] as? String {
-            lookAt.type = VRMLookAtType(rawValue: typeName.lowercased()) ?? .bone
+            lookAt.type = typeName.lowercased() == "blendshape" ? .expression : .bone
         }
 
         if let horizontalInner = dict["lookAtHorizontalInner"] as? [String: Any] {

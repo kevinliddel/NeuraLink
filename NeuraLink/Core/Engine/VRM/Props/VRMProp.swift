@@ -73,11 +73,17 @@ public struct VRMPropGrip: Equatable {
     /// Uniform size multiplier on top of the file's own scale: 1 is life
     /// size, which anime-proportioned hands cannot quite close around.
     public var scale: Float
+    /// The palm (in the same hand frame) the grip was tuned on. With it, a
+    /// rig whose finger bones can be measured gets the grip carried onto
+    /// its own palm (VRMPalm.place); without it, or without finger bones,
+    /// the grip is used as a hand-bone offset.
+    public var authoredOn: VRMPalm?
 
-    public init(translation: SIMD3<Float>, rotation: simd_quatf, scale: Float = 1) {
+    public init(translation: SIMD3<Float>, rotation: simd_quatf, scale: Float = 1, authoredOn: VRMPalm? = nil) {
         self.translation = translation
         self.rotation = rotation
         self.scale = scale
+        self.authoredOn = authoredOn
     }
 
     func resolved(forVRM0 isVRM0: Bool) -> VRMPropGrip {
@@ -166,9 +172,8 @@ public enum VRMPropLoader {
         let materials = (document.materials ?? []).map { gltfMaterial -> VRMMaterial in
             // Built as VRM 1.0 whatever the host is: under 0.x rules a BLEND
             // material would be promoted to the depth-writing path.
-            let material = VRMMaterial(from: gltfMaterial, textures: textures, vrmVersion: .v1_0)
-            material.preservesEmissive = true  // the screen glows
-            return material
+            // The screen glows through its own emissive factor and map.
+            VRMMaterial(from: gltfMaterial, textures: textures, vrmVersion: .v1_0)
         }
 
         var parts: [VRMProp.Part] = []

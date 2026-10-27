@@ -36,9 +36,13 @@ public final class AnimationPlayer: @unchecked Sendable {
     private var hasLoggedFirstFrame = false
     private let constraintSolver = ConstraintSolver()
 
-    // Crossfade blend state
+    // Crossfade blend state. The snapshot is node poses BY INDEX of one
+    // model: applied to another model it wrote the first model's bone
+    // offsets into the second's skeleton (twisted bones after a character
+    // switch mid-crossfade), so it is tied to the model it was taken from.
     private typealias NodePose = (rotation: simd_quatf, translation: SIMD3<Float>, scale: SIMD3<Float>)
     private var blendSnapshot: [Int: NodePose] = [:]
+    private var blendModel: ObjectIdentifier?
     private var blendElapsed: Float = 0
     private var blendDuration: Float = 0
     private var isBlending = false
@@ -53,15 +57,35 @@ public final class AnimationPlayer: @unchecked Sendable {
         }
     }
 
-    /// Smoothly blends from the current node poses to `newClip` over `duration` seconds.
+    /// Back to nothing playing: no clip, no crossfade, no morph weights.
+    /// The scene calls it when its character leaves.
+    public func reset() {
+        playerLock.withLock {
+            clip = nil
+            currentTime = 0
+            isPlaying = false
+            isLooping = true
+            applyRootMotion = false
+            currentMorphWeights.removeAll()
+            blendSnapshot.removeAll()
+            blendModel = nil
+            isBlending = false
+        }
+    }
+
+    /// Smoothly blends from the current node poses to `newClip` over
+    /// `duration` seconds. Only the nodes `newClip` drives blend: a node it
+    /// leaves alone keeps whatever pose it has (look-at, spring bones).
     public func crossfade(to newClip: AnimationClip, duration: Float, from model: VRMModel) {
         model.withLock {
             var snapshot = [Int: NodePose]()
-            for (i, node) in model.nodes.enumerated() {
-                snapshot[i] = (node.rotation, node.translation, node.scale)
+            for index in Self.drivenNodeIndices(of: newClip, in: model) {
+                let node = model.nodes[index]
+                snapshot[index] = (node.rotation, node.translation, node.scale)
             }
             playerLock.withLock {
                 blendSnapshot = snapshot
+                blendModel = ObjectIdentifier(model)
                 blendElapsed = 0
                 blendDuration = max(duration, 0.001)
                 isBlending = true
@@ -71,6 +95,21 @@ public final class AnimationPlayer: @unchecked Sendable {
                 isPlaying = true
             }
         }
+    }
+
+    /// Indices of the nodes `clip`'s tracks write on `model`.
+    private static func drivenNodeIndices(of clip: AnimationClip, in model: VRMModel) -> Set<Int> {
+        var indices = Set<Int>()
+        for track in clip.jointTracks {
+            if let index = model.humanoid?.getBoneNode(track.bone), index < model.nodes.count { indices.insert(index) }
+        }
+        for track in clip.nodeTracks {
+            if let node = model.findNodeByNormalizedName(track.nodeNameNormalized),
+               let index = model.nodes.firstIndex(where: { $0 === node }) {
+                indices.insert(index)
+            }
+        }
+        return indices
     }
 
     public func play() {
@@ -170,8 +209,16 @@ public final class AnimationPlayer: @unchecked Sendable {
             }
 
             // 3. Crossfade blend — lerp snapshot toward new-clip pose
-            let (needsBlend, snap, elapsed, dur) = playerLock.withLock {
-                (isBlending, blendSnapshot, blendElapsed, blendDuration)
+            let (blending, snap, elapsed, dur, snapModel) = playerLock.withLock {
+                (isBlending, blendSnapshot, blendElapsed, blendDuration, blendModel)
+            }
+            let needsBlend = blending && snapModel == ObjectIdentifier(model)
+            if blending && !needsBlend {
+                // Taken from another model: never apply it here.
+                playerLock.withLock {
+                    isBlending = false
+                    blendSnapshot.removeAll()
+                }
             }
             if needsBlend {
                 let raw = min(elapsed / dur, 1.0)
@@ -202,6 +249,8 @@ public final class AnimationPlayer: @unchecked Sendable {
 
             // 5. Solve node constraints (twist bones, etc.)
             if !model.nodeConstraints.isEmpty {
+                // Aim reads world positions: bring them up to this frame first.
+                model.updateNodeTransforms()
                 constraintSolver.solve(constraints: model.nodeConstraints, nodes: model.nodes)
             }
 

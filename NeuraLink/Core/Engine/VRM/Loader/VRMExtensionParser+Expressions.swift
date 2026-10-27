@@ -11,7 +11,7 @@ import simd
 // MARK: - Expression Parsing
 
 extension VRMExtensionParser {
-    func parseBlendShapeMaster(_ dict: [String: Any]) throws -> VRMExpressions {
+    func parseBlendShapeMaster(_ dict: [String: Any], materialNames: [String] = []) throws -> VRMExpressions {
         let expressions = VRMExpressions()
 
         guard let blendShapeGroups = dict["blendShapeGroups"] as? [[String: Any]] else {
@@ -22,6 +22,10 @@ extension VRMExtensionParser {
             guard let name = group["name"] as? String else { continue }
             let presetName = group["presetName"] as? String ?? name
             var expression = VRMExpression(name: name)
+            expression.isBinary = group["isBinary"] as? Bool ?? false
+            if let values = group["materialValues"] as? [[String: Any]] {
+                appendVRM0MaterialValues(values, materialNames: materialNames, to: &expression)
+            }
 
             if let binds = group["binds"] as? [[String: Any]] {
                 for bind in binds {
@@ -87,6 +91,10 @@ extension VRMExtensionParser {
         case "u": return .ou
         case "e": return .ee
         case "o": return .oh
+        case "lookup": return .lookUp
+        case "lookdown": return .lookDown
+        case "lookleft": return .lookLeft
+        case "lookright": return .lookRight
         default: return nil
         }
     }
@@ -134,7 +142,7 @@ extension VRMExtensionParser {
                 guard let material = bind["material"] as? Int,
                     let typeStr = bind["type"] as? String,
                     let type = VRMMaterialColorType(rawValue: typeStr),
-                    let targetValue = bind["targetValue"] as? [Float],
+                    let targetValue = parseFloatArray(bind["targetValue"]),
                     targetValue.count == 4
                 else { continue }
                 expression.materialColorBinds.append(
@@ -145,6 +153,16 @@ extension VRMExtensionParser {
                             targetValue[0], targetValue[1], targetValue[2], targetValue[3])
                     )
                 )
+            }
+        }
+
+        if let textureTransformBinds = dict["textureTransformBinds"] as? [[String: Any]] {
+            for bind in textureTransformBinds {
+                guard let material = bind["material"] as? Int else { continue }
+                let scale = parseFloatArray(bind["scale"]).flatMap { $0.count == 2 ? SIMD2($0[0], $0[1]) : nil }
+                let offset = parseFloatArray(bind["offset"]).flatMap { $0.count == 2 ? SIMD2($0[0], $0[1]) : nil }
+                expression.textureTransformBinds.append(
+                    VRMTextureTransformBind(material: material, scale: scale ?? SIMD2(1, 1), offset: offset ?? .zero))
             }
         }
 
@@ -159,5 +177,35 @@ extension VRMExtensionParser {
         }
 
         return expression
+    }
+
+    /// VRM 0.x `materialValues`: colours by Unity property name (sRGB, as
+    /// the material parse reads them) and `_MainTex_ST` [scaleX, scaleY,
+    /// offsetX, offsetY] in Unity's bottom-left UV space, flipped into glTF's
+    /// as UniVRM's 1.0 migration does.
+    func appendVRM0MaterialValues(
+        _ values: [[String: Any]], materialNames: [String], to expression: inout VRMExpression
+    ) {
+        let colorTypes: [String: VRMMaterialColorType] = [
+            "_Color": .color, "_ShadeColor": .shadeColor, "_EmissionColor": .emissionColor,
+            "_RimColor": .rimColor, "_OutlineColor": .outlineColor
+        ]
+        func linear(_ value: Float) -> Float {
+            value <= 0.040_45 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
+        }
+        for value in values {
+            guard let name = value["materialName"] as? String, let material = materialNames.firstIndex(of: name),
+                  let property = value["propertyName"] as? String,
+                  let target = parseFloatArray(value["targetValue"]), target.count == 4 else { continue }
+            if let type = colorTypes[property] {
+                expression.materialColorBinds.append(VRMMaterialColorBind(
+                    material: material, type: type,
+                    targetValue: SIMD4(linear(target[0]), linear(target[1]), linear(target[2]), target[3])))
+            } else if property == "_MainTex_ST" {
+                expression.textureTransformBinds.append(VRMTextureTransformBind(
+                    material: material, scale: SIMD2(target[0], target[1]),
+                    offset: SIMD2(target[2], 1 - target[3] - target[1])))
+            }
+        }
     }
 }

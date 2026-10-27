@@ -2,6 +2,12 @@
 //  VRMRenderer+Morphs.swift
 //  NeuraLink
 //
+//  The per-frame morph pass: for every primitive whose mesh has weights in
+//  play, the morphed positions and, when the file carries normal deltas,
+//  the morphed normals (an expression that bends the face also turns its
+//  shading). Positions are returned for the draws; normals are left in
+//  `morphedNormalBuffers` for the same frame.
+//
 //  Created by Dedicatus on 16/04/2026.
 //
 
@@ -12,97 +18,55 @@ import Metal
 extension VRMRenderer {
 
     func applyMorphTargetsCompute(commandBuffer: MTLCommandBuffer) -> [MorphKey: MTLBuffer] {
-        guard let model = model,
-            let morphTargetSystem = morphTargetSystem
-        else { return [:] }
+        morphedNormalBuffers.removeAll(keepingCapacity: true)
+        guard let model, let morphTargetSystem, let controller = expressionController else { return [:] }
 
-        // Decide if compute path is needed (presence of any morphs > 0 or >8 targets anywhere)
-        var needsComputePath = false
-
-        // Check if any primitive has active morphs with non-zero weights
-        var hasActiveMorphs = false
-        if let controller = expressionController {
-            for (meshIndex, mesh) in model.meshes.enumerated() {
-                for primitive in mesh.primitives where !primitive.morphTargets.isEmpty {
-                    let weights = controller.weightsForMesh(
-                        meshIndex, morphCount: primitive.morphTargets.count)
-                    let hasNonZero = weights.contains { $0 > 0.001 }
-                    if hasNonZero {
-                        hasActiveMorphs = true
-                        break
-                    }
-                }
-                if hasActiveMorphs { break }
-            }
-        }
-
-        // Check if any primitive has too many morphs for direct binding
-        if !needsComputePath {
-            for mesh in model.meshes {
-                for primitive in mesh.primitives {
-                    if primitive.morphTargets.count > 8 {
-                        needsComputePath = true
-                        break
-                    }
-                }
-                if needsComputePath { break }
-            }
-        }
-
-        // ALWAYS run compute path if we have active morphs, regardless of morph count
-        if !needsComputePath && hasActiveMorphs {
-            needsComputePath = true
-        }
-
-        guard needsComputePath else { return [:] }
-
-        // Apply morphs to each primitive that has morph targets
-        // Store morphed buffer references for render pass using STABLE KEYS
-        var morphedBuffers: [MorphKey: MTLBuffer] = [:]
-
+        var morphedPositions: [MorphKey: MTLBuffer] = [:]
         for (meshIndex, mesh) in model.meshes.enumerated() {
-            for (primitiveIndex, primitive) in mesh.primitives.enumerated()
-            where !primitive.morphTargets.isEmpty {
-                if primitive.morphTargets.count > 8 {
-                    assert(
-                        primitive.basePositionsBuffer != nil,
-                        "[VRMRenderer] FATAL: Compute path required but basePositionsBuffer is nil for primitive with \(primitive.morphTargets.count) morphs!"
-                    )
-                }
+            for (primitiveIndex, primitive) in mesh.primitives.enumerated() where !primitive.morphTargets.isEmpty {
+                let activeSet = morphTargetSystem.buildActiveSet(
+                    weights: controller.weightsForMesh(meshIndex, morphCount: primitive.morphTargets.count))
+                guard !activeSet.isEmpty,
+                      let basePositions = primitive.basePositionsBuffer,
+                      let positionDeltas = primitive.morphPositionsSoA,
+                      let positionsOut = morphTargetSystem.getOrCreateMorphedPositionBuffer(
+                        primitiveID: ObjectIdentifier(primitive).hashValue, vertexCount: primitive.vertexCount),
+                      morphTargetSystem.accumulate(
+                        .positions, base: basePositions, deltas: positionDeltas, output: positionsOut,
+                        vertexCount: primitive.vertexCount, morphCount: primitive.morphTargets.count,
+                        activeSet: activeSet, commandBuffer: commandBuffer)
+                else { continue }
+                let key: MorphKey = (UInt64(meshIndex) << 32) | UInt64(primitiveIndex)
+                morphedPositions[key] = positionsOut
 
-                guard let basePositions = primitive.basePositionsBuffer,
-                    let deltaPositions = primitive.morphPositionsSoA,
-                    let outputBuffer = morphTargetSystem.getOrCreateMorphedPositionBuffer(
-                        primitiveID: ObjectIdentifier(primitive).hashValue,
-                        vertexCount: primitive.vertexCount
-                    )
-                else {
-                    continue
-                }
-
-                let localWeights =
-                    expressionController?.weightsForMesh(
-                        meshIndex, morphCount: primitive.morphTargets.count) ?? []
-                let primitiveActiveSet = morphTargetSystem.buildActiveSet(weights: localWeights)
-
-                guard !primitiveActiveSet.isEmpty else { continue }
-
-                let success = morphTargetSystem.applyMorphsCompute(
-                    basePositions: basePositions,
-                    deltaPositions: deltaPositions,
-                    outputPositions: outputBuffer,
-                    vertexCount: primitive.vertexCount,
-                    morphCount: primitive.morphTargets.count,
-                    commandBuffer: commandBuffer
-                )
-
-                if success {
-                    let stableKey: MorphKey = (UInt64(meshIndex) << 32) | UInt64(primitiveIndex)
-                    morphedBuffers[stableKey] = outputBuffer
+                if let baseNormals = primitive.baseNormalsBuffer, let normalDeltas = primitive.morphNormalsSoA,
+                   let normalsOut = morphTargetSystem.getOrCreateMorphedNormalBuffer(
+                    primitiveID: ObjectIdentifier(primitive).hashValue, vertexCount: primitive.vertexCount),
+                   morphTargetSystem.accumulate(
+                    .normals, base: baseNormals, deltas: normalDeltas, output: normalsOut,
+                    vertexCount: primitive.vertexCount, morphCount: primitive.morphTargets.count,
+                    activeSet: activeSet, commandBuffer: commandBuffer) {
+                    morphedNormalBuffers[key] = normalsOut
                 }
             }
         }
+        return morphedPositions
+    }
 
-        return morphedBuffers
+    /// Binds this frame's morphed positions and normals for a draw (an
+    /// empty placeholder where there are none) and the flag saying which
+    /// are real: bit 1 positions, bit 2 normals.
+    func bindMorphedVertexData(
+        for key: MorphKey, morphedPositions: [MorphKey: MTLBuffer], encoder: MTLRenderCommandEncoder
+    ) {
+        if emptyFloat3Buffer == nil {
+            emptyFloat3Buffer = device.makeBuffer(length: MemoryLayout<SIMD3<Float>>.stride, options: .storageModeShared)
+        }
+        let positions = morphedPositions[key]
+        let normals = positions == nil ? nil : morphedNormalBuffers[key]
+        encoder.setVertexBuffer(positions ?? emptyFloat3Buffer, offset: 0, index: ResourceIndices.morphedPositionsBuffer)
+        encoder.setVertexBuffer(normals ?? emptyFloat3Buffer, offset: 0, index: ResourceIndices.morphedNormalsBuffer)
+        var flags: UInt32 = (positions != nil ? 1 : 0) | (normals != nil ? 2 : 0)
+        encoder.setVertexBytes(&flags, length: MemoryLayout<UInt32>.size, index: ResourceIndices.hasMorphedPositionsFlag)
     }
 }
