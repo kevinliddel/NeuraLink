@@ -10,7 +10,7 @@ import simd
 /// GPU uniform data for sky rendering.
 /// Memory layout MUST match `SkyUniforms` in SkyShader.metal exactly.
 ///
-/// Total size: 64 + 5×16 = 144 bytes.
+/// Total size: 64 + 7×16 = 176 bytes.
 struct SkyUniformsData {
     /// Inverse combined view-projection matrix — maps NDC → world space for ray casting.
     var invViewProjection: simd_float4x4       // 64 bytes, offset   0
@@ -29,5 +29,11 @@ struct SkyUniformsData {
 
     /// Cloud animation: x=elapsed time, y=scroll speed, z=coverage [0,1], w=star visibility.
     var cloudParams: SIMD4<Float>              // 16 bytes, offset 128
-    // Total: 144 bytes
+
+    /// Moon direction xyz (world-space, pointing toward the moon) + lit fraction w.
+    var moonDirectionAndPhase: SIMD4<Float>    // 16 bytes, offset 144
+
+    /// x = moon angular radius (radians), y = turbidity, zw unused.
+    var bodyParams: SIMD4<Float>               // 16 bytes, offset 160
+    // Total: 176 bytes
 }

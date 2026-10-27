@@ -32,7 +32,7 @@ The sky system is composed of four tightly-coupled Swift files and one Metal sha
 NeuraLink/Sky/
 ├── SkyTimeProvider.swift   — Reads the device clock → current local hour [0, 24)
 ├── SkyColorPalette.swift   — Maps the hour to a full SkyEnvironment (colours + lighting)
-├── SkyUniforms.swift       — Defines the 144-byte GPU uniform struct (Swift ↔ Metal bridge)
+├── SkyUniforms.swift       — Defines the 176-byte GPU uniform struct (Swift ↔ Metal bridge)
 └── SkyRenderer.swift       — Drives the per-frame update → uniform upload → draw call
 
 NeuraLink/VRM/Shaders/
@@ -136,17 +136,26 @@ The resolved `SkyEnvironment` also drives the three-point light rig that illumin
 
 | Light | Source | Day colour | Night colour |
 |-------|--------|-----------|-------------|
-| **Key** | Sun (or moon at night) | Warm white `#fff5db` → orange at horizon | Cool blue `#8c99d9` |
+| **Key** | `SkyKeyLight`: sun by day, moon (or the sky above) by night | Warm white `#fff5db` → orange at horizon | Cool blue `#8c99d9` |
 | **Fill** | Opposite side of key, angled from sky | Sky blue `#73 99d9` | Dim blue `#40475a` |
 | **Rim** | Fixed above-behind the model | Cool white `#d9e5ff` | Cool white `#d9e5ff` |
 
 > **Why a moon key light?** At night `dayFactor` = 0, so the key light smoothly transitions to a 50%-intensity cool-blue moonlight, keeping the character visible without breaking the night-sky illusion.
 
+**One key light, no flip.** `SkyEnvironment.keyLight` is the only light the
+avatar, its self-shadow, the terrain shadows and the 3D environments follow.
+Through twilight it travels from the sun to the night light *over the sky*
+rather than jumping to the opposite horizon when the sun crosses it, so
+shadows shorten and turn instead of swinging across in one frame. It never
+drops below about 7° of elevation (`SkyKeyLight.minimumElevation`), where a
+grazing light would throw endless shadows. Its largest turn between two
+consecutive minutes is under 8°.
+
 ---
 
 ## 3. GPU Uniforms — `SkyUniforms`
 
-`SkyUniformsData` is a **144-byte flat struct** shared between Swift and Metal. The layout is fixed and must match `SkyUniforms` in `SkyShader.metal` exactly:
+`SkyUniformsData` is a **176-byte flat struct** shared between Swift and Metal. The layout is fixed and must match `SkyUniforms` in `SkyShader.metal` exactly:
 
 | Field | Bytes | Offset | Description |
 |-------|-------|--------|-------------|
@@ -156,6 +165,8 @@ The resolved `SkyEnvironment` also drives the three-point light rig that illumin
 | `skyColorLow` | 16 | 96 | Horizon gradient colour |
 | `skyColorHigh` | 16 | 112 | Zenith gradient colour |
 | `cloudParams` | 16 | 128 | `x` = elapsed time · `y` = scroll speed · `z` = coverage · `w` = star visibility |
+| `moonDirectionAndPhase` | 16 | 144 | `xyz` = toward-moon unit vector, `w` = lit fraction |
+| `bodyParams` | 16 | 160 | `x` = moon angular radius (radians) · `y` = turbidity |
 
 The buffer is allocated once with `.storageModeShared` (CPU-visible Metal memory) and updated every frame via `copyMemory`.
 
@@ -216,7 +227,7 @@ A simple horizon-to-zenith lerp driven by the view ray's Y component.
 Rays pointing below the horizon are darkened to 22% of the horizon colour using a `smoothstep`, producing a subtle ground-sky boundary.
 
 #### ③ Star Field
-Stars are generated procedurally from a 250×250 cell hash grid mapped to spherical UV coordinates. Each cell has a 4% chance of containing a star. Visibility is gated on `starVis` (which reaches 1 only when the sun is well below the horizon) and a slow time flicker.
+Stars are generated procedurally from a 250×250 cell hash grid mapped to spherical UV coordinates. Each cell has a 4% chance of containing a star. Visibility is gated on `starVis`, which reaches 1 only when the sun is well below the horizon. The field is fixed: it never re-rolls.
 
 #### ④ Dome Clouds (two layers)
 Two independent FBM (fractal Brownian motion) noise layers are dome-projected and animated by `cloudTime × cloudSpeed`:
@@ -232,12 +243,12 @@ The two masks are composited with `low + high × (1 − low)` to avoid double-co
 ```metal
 float disc  = pow(dot(viewDir, sunDir), discExponent);   // tight disc
 float bloom = pow(dot(viewDir, sunDir), 18.0) * 0.35;   // wide corona
-colour += sunColor * (disc + bloom);
+colour += sunColor * (disc * discClear + bloom * glowClear);
 ```
-`discExponent` is hardcoded to **300** giving a physically small but bright disc. The lower-exponent bloom adds a realistic atmospheric glow halo.
+`discExponent` is hardcoded to **300** giving a physically small but bright disc. The lower-exponent bloom adds a realistic atmospheric glow halo. The sun sits behind the clouds: `discClear = 1 − 0.95 × clouds` hides the disc under a thick cloud, and the glow carries through more (`glowClear = 1 − 0.6 × clouds`). The disc takes the sun's own colour (`SkyEnvironment.sunColor`), not the key light's.
 
 #### ⑥ Moon Disc + Glow
-The moon is positioned exactly opposite the sun (`moonDir = −sunDir`). A `smoothstep` over the very tight cosine range `[0.9988, 0.9992]` draws a crisp disc, and a separate low-exponent pow adds a soft glow ring. Both are modulated by `moonVis = clamp(−sunDir.y × 2, 0, 1)` so the moon only appears when the sun is below the horizon.
+The moon comes from `moonDirectionAndPhase` (still exactly opposite the sun for now). A `smoothstep` across the moon's angular radius (`SkyRenderer.moonAngularRadius`, stylised at about five times the real size) draws a crisp disc, and a separate low-exponent pow adds a soft glow ring. Both are modulated by `moonVis`, so the moon appears only when the sun is below the horizon and the moon above it, and both are dimmed by the clouds in front, like the sun.
 
 ---
 
@@ -280,4 +291,19 @@ The rain system in NeuraLink is a two-tier GPU-driven effect that simulates atmo
 The `RainController` manages the global `intensity` (0.0 to 1.0).
 - **Opacity**: Both the 3D streaks and 2D splashes scale their alpha based on intensity.
 - **MToon Sync**: The character's materials automatically darken and gain a specular sheen as rain intensity increases, simulating wet fabric and skin.
+
+---
+
+## Checking the sky
+
+- **Run the clock elsewhere.** Set `NL_SKY_DATE` (`yyyy-MM-dd`) and/or
+  `NL_SKY_TIME` (`HH:mm`) in the scheme's environment to start the sky's clock
+  at that moment, and `NL_SKY_SPEED` to run it faster (`60` = a minute a
+  second). Use it to watch a dawn or a dusk on a device without waiting.
+- **Snapshots.** `SkySnapshots` (env-gated by `NL_SKY_SNAPSHOT_DIR`) renders Oz
+  on the open terrain at fixed dates and times in Antananarivo. It takes the
+  figure, the sky toward the light and the sky away from it. It also writes the
+  sun, moon and key-light angles, plus the GPU time of the sky pass alone, to
+  `report.txt`. On a device, the pass shows up as `SkyBackground` in a Metal
+  System Trace.
 

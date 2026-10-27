@@ -64,12 +64,11 @@ final class TerrainRenderer: @unchecked Sendable {
     func update(environment: SkyEnvironment, deltaTime: Float) {
         currentEnvironment = environment
         elapsedTime += deltaTime
-        // At night use the moon direction (opposite the sun) so shadows still render.
-        let sunDir = environment.sunDirection
-        // Moon is the mirror of the sun; flip below horizon so shadows always render.
-        let effectiveDir = sunDir.y >= 0 ? sunDir : sunDir * -1.0
-        lightViewProjection = Self.makeLightMatrix(sunDir: effectiveDir, wide: false)
-        wideLightViewProjection = Self.makeLightMatrix(sunDir: effectiveDir, wide: true)
+        // Shadows follow the key light: the sun by day, the night light by
+        // night, and never a jump between them (SkyKeyLight).
+        let lightDir = environment.keyLight.direction
+        lightViewProjection = Self.makeLightMatrix(sunDir: lightDir, wide: false)
+        wideLightViewProjection = Self.makeLightMatrix(sunDir: lightDir, wide: true)
     }
 
     // MARK: - Shadow map clearing
@@ -192,8 +191,8 @@ final class TerrainRenderer: @unchecked Sendable {
 
         let env = currentEnvironment
         let sd = env.sunDirection
-        let lightDir = sd.y >= 0 ? sd : sd * -1.0
-        let shadowSoft: Float = sd.y >= 0 ? 2.5 : 1.5
+        let lightDir = env.keyLight.direction
+        let shadowSoft = env.keyLight.shadowSoftness
 
         var data = TerrainUniforms(
             viewProjection: viewProjection,

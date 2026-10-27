@@ -10,7 +10,7 @@
 #include <metal_stdlib>
 using namespace metal;
 
-// MARK: - Uniforms (must match SkyUniformsData in Swift, 144 bytes)
+// MARK: - Uniforms (must match SkyUniformsData in Swift, 176 bytes)
 
 struct SkyUniforms {
     float4x4 invViewProjection;         // NDC → world-space ray cast
@@ -19,6 +19,8 @@ struct SkyUniforms {
     float4   skyColorLow;               // xyz = gradient bottom colour
     float4   skyColorHigh;              // xyz = gradient top colour
     float4   cloudParams;               // x = elapsed time, y = scroll speed, z = coverage, w = star vis
+    float4   moonDirectionAndPhase;     // xyz = toward-moon unit vector, w = lit fraction
+    float4   bodyParams;                // x = moon angular radius (rad), y = turbidity
 };
 
 // MARK: - Vertex — fullscreen triangle (no vertex buffer needed)
@@ -62,12 +64,14 @@ static float skyFbm(float2 p) {
 
 // MARK: - Stars
 
-static float starField(float3 viewDir, float time) {
+// One fixed field: hashing the time in as well re-rolled every star every
+// 100 s, and the whole sky popped.
+static float starField(float3 viewDir) {
     if (viewDir.y < 0.0f) return 0.0f;
     float2 uv = float2(atan2(viewDir.x, viewDir.z) * (0.5f / M_PI_F) + 0.5f,
                        acos(viewDir.y) * (1.0f / M_PI_F));
     float2 cell = floor(uv * 250.0f);
-    float rnd   = skyHash(cell + floor(time * 0.01f));
+    float rnd   = skyHash(cell);
     float bright = step(0.96f, rnd);
     float2 local = fract(uv * 250.0f) - 0.5f;
     // Diamond shape: L1 norm gives a rotated-square (♦) instead of a circle
@@ -114,18 +118,19 @@ fragment float4 sky_fragment(
     float3 viewDir = normalize(farPt.xyz - nearPt.xyz);
 
     float3 sunDir  = sky.sunDirectionAndIntensity.xyz;
+    float3 moonDir = sky.moonDirectionAndPhase.xyz;
+    float  moonRadius = sky.bodyParams.x;
     float  starVis = sky.cloudParams.w;
     float  coverage = sky.cloudParams.z;
 
     // Pre-compute moon occlusion so stars can be masked before they are added.
-    float moonVis = clamp(-sunDir.y * 2.0f, 0.0f, 1.0f);
-    float3 moonDir = -sunDir;
+    float moonVis = clamp(-sunDir.y * 2.0f, 0.0f, 1.0f) * smoothstep(-0.02f, 0.03f, moonDir.y);
     float  cosM    = dot(viewDir, moonDir);
     // moonOcclude is NOT scaled by moonVis: the moon body is always opaque regardless
     // of how bright it appears — otherwise partial-night stars bleed through the disc.
     // The suppression zone starts wider than the disc edge so the anti-aliased rim is
     // also clean.
-    float  moonOcclude = smoothstep(0.9978f, 0.9990f, cosM);
+    float  moonOcclude = smoothstep(cos(moonRadius * 1.48f), cos(moonRadius), cosM);
 
     // ── Simple vertical gradient ──────────────────────────────────────
     float  gradT  = clamp(viewDir.y * 0.5f + 0.5f, 0.0f, 1.0f);
@@ -137,33 +142,38 @@ fragment float4 sky_fragment(
 
     // ── Stars — suppressed inside the moon disc ───────────────────────
     if (starVis > 0.001f) {
-        float star = starField(viewDir, sky.cloudParams.x);
+        float star = starField(viewDir);
         colour += float3(star * starVis * 0.9f * (1.0f - moonOcclude));
     }
 
     // ── Clouds ────────────────────────────────────────────────────────
+    float clouds = 0.0f;
     if (coverage > 0.001f) {
         float cloudsLow  = cloudLayer(viewDir, sky.cloudParams.x, sky.cloudParams.y, 2.0f, coverage);
         float cloudsHigh = cloudLayerHigh(viewDir, sky.cloudParams.x, sky.cloudParams.y, 2.0f, coverage * 0.90f);
-        float clouds     = clamp(cloudsLow + cloudsHigh * (1.0f - cloudsLow), 0.0f, 1.0f);
+        clouds           = clamp(cloudsLow + cloudsHigh * (1.0f - cloudsLow), 0.0f, 1.0f);
         float3 cloudTint = clamp(sky.skyColorLow.rgb * 1.8f + 0.12f, 0.0f, 1.0f);
         colour = mix(colour, cloudTint, clouds * 0.88f);
     }
+    // The sun and moon are BEHIND the clouds: a thick cloud hides the disc,
+    // a thin one only dims it, and the glow around it carries through more.
+    float discClear = 1.0f - clouds * 0.95f;
+    float glowClear = 1.0f - clouds * 0.6f;
 
     // ── Sun disc + glow ───────────────────────────────────────────────
     if (sunDir.y > -0.10f) {
         float cosG  = max(dot(viewDir, sunDir), 0.0f);
         float disc  = pow(cosG, sky.sunColorAndSize.w);
         float bloom = pow(cosG, 18.0f) * 0.35f;
-        colour += sky.sunColorAndSize.rgb * (disc + bloom);
+        colour += sky.sunColorAndSize.rgb * (disc * discClear + bloom * glowClear);
     }
 
     // ── Moon ──────────────────────────────────────────────────────────
     if (moonVis > 0.01f) {
-        float  mDisc   = smoothstep(0.9988f, 0.9992f, cosM);
+        float  mDisc   = smoothstep(cos(moonRadius * 1.10f), cos(moonRadius * 0.90f), cosM);
         float  mGlow   = pow(max(cosM, 0.0f), 32.0f) * 0.12f * moonVis;
-        colour += float3(0.80f, 0.85f, 0.95f) * mGlow;
-        colour  = mix(colour, float3(0.85f, 0.88f, 0.95f), mDisc * moonVis);
+        colour += float3(0.80f, 0.85f, 0.95f) * mGlow * glowClear;
+        colour  = mix(colour, float3(0.85f, 0.88f, 0.95f), mDisc * moonVis * discClear);
     }
 
     return float4(colour, 1.0f);

@@ -32,7 +32,13 @@ final class SkyRenderer {
     private var depthState: MTLDepthStencilState?
     private var uniformBuffer: MTLBuffer?
 
-    private var timeProvider = SkyTimeProvider()
+    /// The sky's clock. Internal so tests can pin a date; launch-time
+    /// overrides come from `SkyTimeProvider.fromEnvironment`.
+    var timeProvider = SkyTimeProvider.fromEnvironment()
+
+    /// Angular radius of the drawn moon. Stylised: about five times the real
+    /// 0.26°, which reads at phone size.
+    static let moonAngularRadius: Float = 0.0447
     private var cloudTime: Float = 0
 
     // MARK: - Init
@@ -64,6 +70,7 @@ final class SkyRenderer {
     func prepareForEncoding(invViewProjection: simd_float4x4) {
         let env = currentEnvironment
         let sd  = env.sunDirection
+        let md  = env.moonDirection
         let ri  = rainIntensity
 
         // Rain overrides: denser clouds, no stars, slightly darker sky.
@@ -76,14 +83,16 @@ final class SkyRenderer {
 
         var data = SkyUniformsData(
             invViewProjection: invViewProjection,
-            sunDirectionAndIntensity: SIMD4<Float>(sd.x, sd.y, sd.z, env.keyLightIntensity * darkFactor),
+            sunDirectionAndIntensity: SIMD4<Float>(sd.x, sd.y, sd.z, env.keyLight.intensity * darkFactor),
             sunColorAndSize: SIMD4<Float>(
-                env.keyLightColor.x, env.keyLightColor.y, env.keyLightColor.z,
+                env.sunColor.x, env.sunColor.y, env.sunColor.z,
                 300.0  // disc exponent — tight sun disc
             ),
             skyColorLow: SIMD4<Float>(skyLow.x, skyLow.y, skyLow.z, 0),
             skyColorHigh: SIMD4<Float>(skyHigh.x, skyHigh.y, skyHigh.z, 0),
-            cloudParams: SIMD4<Float>(cloudTime, env.cloudSpeed, cloudCoverage, starVisibility)
+            cloudParams: SIMD4<Float>(cloudTime, env.cloudSpeed, cloudCoverage, starVisibility),
+            moonDirectionAndPhase: SIMD4<Float>(md.x, md.y, md.z, env.moonIllumination),
+            bodyParams: SIMD4<Float>(Self.moonAngularRadius, env.turbidity, 0, 0)
         )
         uniformBuffer?.contents().copyMemory(
             from: &data, byteCount: MemoryLayout<SkyUniformsData>.stride)

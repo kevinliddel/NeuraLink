@@ -75,7 +75,8 @@ extension VRMRenderer {
 
     /// Updates the three VRM lights so they match the current sun position in the sky.
     ///
-    /// - Key light  = sun (or moon at night), direction from sun toward scene.
+    /// - Key light  = `SkyEnvironment.keyLight`: the sun by day, the night light
+    ///   by night, crossing over the sky at twilight.
     /// - Fill light = opposite sky scatter.
     /// - Rim light  = fixed above-behind, separates model from background.
     ///
@@ -84,12 +85,12 @@ extension VRMRenderer {
     public func applySkyLighting() {
         guard let env = skyRenderer?.currentEnvironment else { return }
 
-        // Key light: rays travel FROM the sun TOWARD the scene → pass -sunDirection.
+        // Key light: rays travel FROM the light TOWARD the scene → pass -direction.
         setLight(
             0,
-            direction: -env.keyLightDirection,
-            color: env.keyLightColor,
-            intensity: env.keyLightIntensity
+            direction: -env.keyLight.direction,
+            color: env.keyLight.color,
+            intensity: env.keyLight.intensity
         )
 
         // Fill light: soft sky scatter from the opposite side.

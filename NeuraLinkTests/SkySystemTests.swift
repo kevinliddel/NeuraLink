@@ -76,15 +76,15 @@ struct SkySystemTests {
     func testNightKeyIntensity() {
         let env = SkyEnvironment.resolve(hour: 0.0)
         // Moonlight floor ensures the model is always readable.
-        #expect(env.keyLightIntensity >= 0.40)
+        #expect(env.keyLight.intensity >= 0.40)
         // But still clearly dimmer than full noon.
-        #expect(env.keyLightIntensity < 0.70)
+        #expect(env.keyLight.intensity < 0.70)
     }
 
     @Test("Noon has high key light intensity")
     func testNoonHighIntensity() {
         let env = SkyEnvironment.resolve(hour: 12.0)
-        #expect(env.keyLightIntensity > 0.80)
+        #expect(env.keyLight.intensity > 0.80)
     }
 
     @Test("Stars are visible at midnight")
@@ -113,14 +113,62 @@ struct SkySystemTests {
         let e25 = SkyEnvironment.resolve(hour: 25.0)
         let e1  = SkyEnvironment.resolve(hour: 1.0)
         #expect(abs(e25.sunDirection.y - e1.sunDirection.y) < 1e-4)
-        #expect(abs(e25.keyLightIntensity - e1.keyLightIntensity) < 1e-4)
+        #expect(abs(e25.keyLight.intensity - e1.keyLight.intensity) < 1e-4)
+    }
+
+    // MARK: - Key light
+
+    @Test("The key light never jumps: minute to minute through a whole day")
+    func testKeyLightIsContinuous() {
+        // It used to flip to the opposite horizon the instant the sun crossed
+        // it — 180° in one frame, avatar lighting and every shadow at once.
+        var previous = SkyEnvironment.resolve(hour: 0).keyLight.direction
+        var worst: Float = 0
+        for minute in 1...(24 * 60) {
+            let light = SkyEnvironment.resolve(hour: Float(minute) / 60).keyLight
+            let step = acos(min(1, simd_dot(previous, light.direction))) * 180 / .pi
+            worst = max(worst, step)
+            #expect(abs(simd_length(light.direction) - 1) < 1e-4)
+            #expect(light.direction.y >= SkyKeyLight.minimumElevation - 1e-4,
+                    "minute \(minute): light from \(light.direction.y), below the floor")
+            previous = light.direction
+        }
+        #expect(worst < 8, "largest minute-to-minute turn \(worst)°")
+    }
+
+    @Test("The key light is the sun by day and the moon by night")
+    func testKeyLightSources() {
+        let noon = SkyEnvironment.resolve(hour: 10)
+        #expect(simd_dot(noon.keyLight.direction, noon.sunDirection) > 0.9999)
+        let night = SkyEnvironment.resolve(hour: 22)
+        #expect(simd_dot(night.keyLight.direction, night.moonDirection) > 0.9999)
+        #expect(night.keyLight.shadowSoftness < noon.keyLight.shadowSoftness)
+    }
+
+    // MARK: - Clock override
+
+    @Test("NL_SKY_DATE / NL_SKY_TIME start the clock elsewhere, NL_SKY_SPEED runs it faster")
+    func testClockOverride() {
+        var tick: TimeInterval = 0
+        let real = { Date(timeIntervalSince1970: 1_800_000_000 + tick) }
+        var provider = SkyTimeProvider.fromEnvironment(
+            ["NL_SKY_DATE": "2026-06-21", "NL_SKY_TIME": "05:30", "NL_SKY_SPEED": "60"], clock: real)
+        provider.timeZone = .current
+        #expect(abs(provider.currentHour() - 5.5) < 1e-3)
+        tick = 30  // 30 real seconds at ×60 = 30 sky minutes
+        #expect(abs(provider.currentHour() - 6.0) < 1e-3)
+        let parts = Calendar.current.dateComponents([.year, .month, .day], from: provider.now())
+        #expect(parts.year == 2026 && parts.month == 6 && parts.day == 21)
+
+        let untouched = SkyTimeProvider.fromEnvironment([:], clock: real)
+        #expect(untouched.now() == real())
     }
 
     // MARK: - SkyUniformsData layout
 
-    @Test("SkyUniformsData stride is 144 bytes")
+    @Test("SkyUniformsData stride is 176 bytes")
     func testUniformsLayout() {
-        #expect(MemoryLayout<SkyUniformsData>.stride == 144)
+        #expect(MemoryLayout<SkyUniformsData>.stride == 176)
     }
 }
 
