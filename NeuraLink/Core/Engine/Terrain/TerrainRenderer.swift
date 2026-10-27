@@ -5,6 +5,7 @@
 //  Created by Dedicatus on 18/04/2026.
 //
 
+import Foundation
 import Metal
 import simd
 
@@ -49,7 +50,7 @@ final class TerrainRenderer: @unchecked Sendable {
     // Wide map — tree / grass shadows
     var exposedWideShadowMap: MTLTexture? { wideShadowMapTexture }
     var exposedWideLightViewProjection: simd_float4x4 { wideLightViewProjection }
-    private var currentEnvironment: SkyEnvironment = SkyEnvironment.resolve(hour: 12.0)
+    private var currentEnvironment = SkyEnvironment.resolve(at: Date(), location: SkyTimeProvider().location)
     private var clearShadowMapPending = false
 
     // MARK: - Init

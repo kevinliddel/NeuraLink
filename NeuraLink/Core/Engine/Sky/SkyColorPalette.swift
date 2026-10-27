@@ -5,9 +5,10 @@
 //  Created by Dedicatus on 17/04/2026.
 //
 
+import Foundation
 import simd
 
-/// Full sky and lighting state derived from the current local hour.
+/// Full sky and lighting state for one place at one instant.
 struct SkyEnvironment {
 
     // MARK: - Sky
@@ -24,6 +25,12 @@ struct SkyEnvironment {
 
     /// Lit fraction of the moon's disc [0, 1].
     let moonIllumination: Float
+
+    /// Moonlight against a full moon's [0, 1].
+    let moonBrightness: Float
+
+    /// Star catalogue (J2000 equatorial) → scene: see `SkyBodies`.
+    let starRotation: simd_float3x3
 
     /// [0,1] cloud coverage fraction.
     let cloudCoverage: Float
@@ -90,15 +97,18 @@ struct SkyKeyLight {
     /// changes hands between −6° and +5° of solar elevation.
     static func resolve(
         sun: SIMD3<Float>, sunColor: SIMD3<Float>, moon: SIMD3<Float>, moonIllumination: Float,
-        dayFactor: Float
+        moonBrightness: Float, dayFactor: Float
     ) -> SkyKeyLight {
         let moonColor = SIMD3<Float>(0.55, 0.60, 0.85)  // cool blue moonlight
-        let moonIntensity: Float = 0.50
         let sunIntensity: Float = 0.30 + dayFactor * 0.90
 
-        // At night: the moon while it is up, the sky above otherwise.
-        let moonUp = skySmooth(-0.05, 0.15, moon.y) * min(1, moonIllumination * 2)
+        // At night: the moon while it is up and more than a crescent, the
+        // sky above otherwise. A full moon lights the avatar a little more
+        // than a moonless sky; neither drops below a level a face reads at.
+        let moonRisen = skySmooth(-0.05, 0.15, moon.y)
+        let moonUp = moonRisen * min(1, moonIllumination * 2)
         let night = simd_normalize(simd_mix(nightSkyDirection, raised(moon), SIMD3<Float>(repeating: moonUp)))
+        let moonIntensity: Float = 0.42 + 0.16 * moonRisen * moonBrightness
 
         // Sun → night over the top. The lift term keeps the path in the
         // upper sky even when the two lights sit on opposite horizons, where
@@ -130,17 +140,16 @@ struct SkyKeyLight {
 
 extension SkyEnvironment {
 
-    /// Computes the full sky and lighting environment from the given local hour [0, 24).
-    static func resolve(hour: Float) -> SkyEnvironment {
-        let h = (hour.truncatingRemainder(dividingBy: 24) + 24)
-            .truncatingRemainder(dividingBy: 24)
+    /// The sky over `location` at `date`.
+    static func resolve(at date: Date, location: SkyLocation) -> SkyEnvironment {
+        resolve(SkyBodies(at: date, location: location))
+    }
 
-        // Hour angle relative to noon: 0 at noon, ±π at midnight.
-        // Sun sweeps east (+X) → overhead (+Y) → west (−X) → underground.
-        let angle = (h - 12.0) * .pi / 12.0
-
-        // Unit sun direction: already normalised because sin²+cos²=1.
-        let sunDir = SIMD3<Float>(-sin(angle), cos(angle), 0.0)
+    /// Colours and lights for wherever the sun and moon stand. The palette
+    /// keys on the sun's elevation alone.
+    static func resolve(_ bodies: SkyBodies) -> SkyEnvironment {
+        let sunDir = bodies.sunDirection
+        let moonDir = bodies.moonDirection
 
         // dayFactor: 0 when sun is well below horizon, 1 at full day.
         // Transition starts slightly below horizon so dusk/dawn looks natural.
@@ -149,18 +158,13 @@ extension SkyEnvironment {
             min(1.0, max(0.0, 1.0 - abs(sunDir.y) * 3.5))
             * (sunDir.y > -0.1 ? 1.0 : 0.0)
 
-        // The moon stays the sun's mirror, always full, until it has an
-        // orbit of its own.
-        let moonDir = -sunDir
-        let moonIllumination: Float = 1
-
         // Sun colour — orange at the horizon, white as it rises.
         let noonColor = SIMD3<Float>(1.00, 0.96, 0.86)
         let horizonColor = SIMD3<Float>(1.00, 0.52, 0.10)
         let sunColor = skyLerp(horizonColor, noonColor, dayFactor * (1.0 - sunsetFactor * 0.8))
         let keyLight = SkyKeyLight.resolve(
-            sun: sunDir, sunColor: sunColor, moon: moonDir, moonIllumination: moonIllumination,
-            dayFactor: dayFactor)
+            sun: sunDir, sunColor: sunColor, moon: moonDir, moonIllumination: bodies.moonIllumination,
+            moonBrightness: bodies.moonBrightness, dayFactor: dayFactor)
 
         // Fill light: soft sky-blue from the opposite side of the sun.
         let fillDir = simd_normalize(
@@ -205,7 +209,9 @@ extension SkyEnvironment {
             sunDirection: sunDir,
             sunColor: sunColor,
             moonDirection: moonDir,
-            moonIllumination: moonIllumination,
+            moonIllumination: bodies.moonIllumination,
+            moonBrightness: bodies.moonBrightness,
+            starRotation: bodies.starRotation,
             cloudCoverage: 0.50 + sunsetFactor * 0.10,
             cloudSpeed: 0.008 + dayFactor * 0.018,
             turbidity: 2.0 + sunsetFactor * 5.0,

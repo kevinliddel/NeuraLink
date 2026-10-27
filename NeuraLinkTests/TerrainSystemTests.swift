@@ -14,6 +14,16 @@ import simd
 @Suite("Terrain System Tests")
 struct TerrainSystemTests {
 
+    // Antananarivo around the December solstice, when its noon sun stands
+    // 4.5° off the zenith (UTC).
+    private static let midnight = Date(timeIntervalSince1970: 1_797_800_400)  // 2026-12-20 21:00
+    private static let sunrise = Date(timeIntervalSince1970: 1_797_818_400)   // 2026-12-21 02:00
+    private static let noon = Date(timeIntervalSince1970: 1_797_842_880)      // 2026-12-21 08:48
+
+    private func sky(at date: Date) -> SkyEnvironment {
+        SkyEnvironment.resolve(at: date, location: SkyLocation(latitude: -18.92, longitude: 47.52))
+    }
+
     // MARK: - TerrainUniforms layout
 
     @Test("TerrainUniforms stride is 240 bytes")
@@ -30,7 +40,7 @@ struct TerrainSystemTests {
 
     @Test("Light matrix is invertible at noon")
     func testLightMatrixNoon() {
-        let env = SkyEnvironment.resolve(hour: 12.0)
+        let env = sky(at: Self.noon)
         let mat = TerrainRenderer.makeLightMatrix(sunDir: env.sunDirection)
         let det = mat.determinant
         #expect(abs(det) > 1e-6)
@@ -38,7 +48,7 @@ struct TerrainSystemTests {
 
     @Test("Light matrix is invertible at sunrise")
     func testLightMatrixSunrise() {
-        let env = SkyEnvironment.resolve(hour: 6.0)
+        let env = sky(at: Self.sunrise)
         let mat = TerrainRenderer.makeLightMatrix(sunDir: env.sunDirection)
         let det = mat.determinant
         #expect(abs(det) > 1e-6)
@@ -46,8 +56,8 @@ struct TerrainSystemTests {
 
     @Test("Light matrix changes between dawn and noon")
     func testLightMatrixVariesWithTime() {
-        let envDawn = SkyEnvironment.resolve(hour: 6.0)
-        let envNoon = SkyEnvironment.resolve(hour: 12.0)
+        let envDawn = sky(at: Self.sunrise)
+        let envNoon = sky(at: Self.noon)
         let matDawn = TerrainRenderer.makeLightMatrix(sunDir: envDawn.sunDirection)
         let matNoon = TerrainRenderer.makeLightMatrix(sunDir: envNoon.sunDirection)
         // At least one column differs
@@ -68,14 +78,14 @@ struct TerrainSystemTests {
 
     @Test("No shadow softness at night (sun below horizon)")
     func testNoShadowAtNight() {
-        let env = SkyEnvironment.resolve(hour: 0.0)
+        let env = sky(at: Self.midnight)
         // Night: sunDirection.y < 0, terrain should have zero shadow softness
         #expect(env.sunDirection.y < -0.1)
     }
 
     @Test("Shadow active at noon")
     func testShadowActiveAtNoon() {
-        let env = SkyEnvironment.resolve(hour: 12.0)
+        let env = sky(at: Self.noon)
         // Noon: sunDirection.y ≈ 1, shadow should be active
         #expect(env.sunDirection.y > 0.9)
     }

@@ -5,12 +5,14 @@
 //  Created by Dedicatus on 17/04/2026.
 //
 //  Time-of-day sky: simple vertical gradient with time-driven colour palettes,
-//  sun disc, star field, dome clouds, and moon disc.
+//  sun disc, dome clouds, a moon lit from the sun's side, and stars that turn
+//  with the sky — a procedural faint field here, the catalogue's bright ones
+//  as sprites (sky_star_vertex / sky_star_fragment).
 
 #include <metal_stdlib>
 using namespace metal;
 
-// MARK: - Uniforms (must match SkyUniformsData in Swift, 176 bytes)
+// MARK: - Uniforms (must match SkyUniformsData in Swift, 224 bytes)
 
 struct SkyUniforms {
     float4x4 invViewProjection;         // NDC → world-space ray cast
@@ -20,7 +22,14 @@ struct SkyUniforms {
     float4   skyColorHigh;              // xyz = gradient top colour
     float4   cloudParams;               // x = elapsed time, y = scroll speed, z = coverage, w = star vis
     float4   moonDirectionAndPhase;     // xyz = toward-moon unit vector, w = lit fraction
-    float4   bodyParams;                // x = moon angular radius (rad), y = turbidity
+    float4   bodyParams;                // x = moon angular radius (rad), y = turbidity, z = moon brightness
+    float3x3 starRotation;              // star catalogue (J2000 equatorial) → world
+};
+
+// One catalogue star (must match SkyStarData in Swift, 32 bytes).
+struct SkyStar {
+    float4 directionAndMagnitude;       // xyz = J2000 equatorial unit vector, w = V magnitude
+    float4 color;                       // rgb = tint from B−V
 };
 
 // MARK: - Vertex — fullscreen triangle (no vertex buffer needed)
@@ -64,19 +73,44 @@ static float skyFbm(float2 p) {
 
 // MARK: - Stars
 
-// One fixed field: hashing the time in as well re-rolled every star every
-// 100 s, and the whole sky popped.
-static float starField(float3 viewDir) {
-    if (viewDir.y < 0.0f) return 0.0f;
-    float2 uv = float2(atan2(viewDir.x, viewDir.z) * (0.5f / M_PI_F) + 0.5f,
-                       acos(viewDir.y) * (1.0f / M_PI_F));
-    float2 cell = floor(uv * 250.0f);
-    float rnd   = skyHash(cell);
-    float bright = step(0.96f, rnd);
-    float2 local = fract(uv * 250.0f) - 0.5f;
-    // Diamond shape: L1 norm gives a rotated-square (♦) instead of a circle
-    float dist = abs(local.x) + abs(local.y);
-    return bright * smoothstep(0.18f, 0.02f, dist);
+// Direction through (u, v) ∈ [−1, 1]² on cube face `face` (+x −x +y −y +z −z).
+static float3 cubeFaceDirection(int face, float2 uv) {
+    switch (face) {
+        case 0:  return normalize(float3( 1.0f, uv.x, uv.y));
+        case 1:  return normalize(float3(-1.0f, uv.x, uv.y));
+        case 2:  return normalize(float3(uv.x,  1.0f, uv.y));
+        case 3:  return normalize(float3(uv.x, -1.0f, uv.y));
+        case 4:  return normalize(float3(uv.x, uv.y,  1.0f));
+        default: return normalize(float3(uv.x, uv.y, -1.0f));
+    }
+}
+
+// The faint stars, in the stars' own frame (`d` = equatorial unit vector) so
+// they turn with the catalogue's. A grid on the faces of a cube holds at
+// most one star a cell, kept inside it; the chance of one follows the cell's
+// solid angle, so the cube's corners are no denser than its faces. Each is a
+// round dot of a set ANGULAR size, measured to its true direction.
+static float faintStars(float3 d) {
+    float3 a = abs(d);
+    int face;
+    float2 uv;
+    if (a.x >= a.y && a.x >= a.z) { face = d.x > 0.0f ? 0 : 1; uv = d.yz / a.x; }
+    else if (a.y >= a.z)          { face = d.y > 0.0f ? 2 : 3; uv = d.xz / a.y; }
+    else                          { face = d.z > 0.0f ? 4 : 5; uv = d.xy / a.z; }
+    const float cells = 80.0f;
+    float2 grid  = (uv * 0.5f + 0.5f) * cells;
+    float2 cell  = floor(grid);
+    float2 seed  = cell + float(face) * 97.0f;
+    float2 centre = (cell + 0.5f) / cells * 2.0f - 1.0f;
+    float chance = 0.07f * pow(1.0f + dot(centre, centre), -1.5f);
+    float rnd    = skyHash(seed);
+    if (rnd > chance) return 0.0f;
+    float2 jitter = float2(skyHash(seed + 13.7f), skyHash(seed + 71.3f)) * 0.5f + 0.25f;
+    float3 star   = cubeFaceDirection(face, (cell + jitter) / cells * 2.0f - 1.0f);
+    float angle   = length(cross(d, star));       // sin θ ≈ θ this close
+    float bright  = rnd / chance;                 // 0…1 among the cells that hold one
+    float radius  = 0.0015f + 0.0013f * bright;   // radians
+    return smoothstep(radius, radius * 0.3f, angle) * (0.22f + 0.5f * bright * bright);
 }
 
 // MARK: - Dome-projected clouds
@@ -103,6 +137,22 @@ static float cloudLayerHigh(float3 viewDir, float time, float speed, float densi
     return mask;
 }
 
+// Both cloud layers over `viewDir`, combined [0, 1].
+static float skyClouds(float3 viewDir, constant SkyUniforms &sky) {
+    float coverage = sky.cloudParams.z;
+    if (coverage <= 0.001f) return 0.0f;
+    float cloudsLow  = cloudLayer(viewDir, sky.cloudParams.x, sky.cloudParams.y, 2.0f, coverage);
+    float cloudsHigh = cloudLayerHigh(viewDir, sky.cloudParams.x, sky.cloudParams.y, 2.0f, coverage * 0.90f);
+    return clamp(cloudsLow + cloudsHigh * (1.0f - cloudsLow), 0.0f, 1.0f);
+}
+
+// Moonlight washing the stars out [0, 1]: the moon's brightness while it is
+// up, and more of it near the moon.
+static float moonGlare(float cosM, float3 moonDir, constant SkyUniforms &sky) {
+    float up = smoothstep(-0.02f, 0.06f, moonDir.y);
+    return sky.bodyParams.z * up * (0.45f + 0.55f * smoothstep(0.8f, 0.995f, cosM));
+}
+
 // MARK: - Fragment
 
 fragment float4 sky_fragment(
@@ -121,10 +171,11 @@ fragment float4 sky_fragment(
     float3 moonDir = sky.moonDirectionAndPhase.xyz;
     float  moonRadius = sky.bodyParams.x;
     float  starVis = sky.cloudParams.w;
-    float  coverage = sky.cloudParams.z;
 
-    // Pre-compute moon occlusion so stars can be masked before they are added.
-    float moonVis = clamp(-sunDir.y * 2.0f, 0.0f, 1.0f) * smoothstep(-0.02f, 0.03f, moonDir.y);
+    // The moon is drawn whenever it is up, by day too, part-transparent
+    // against a bright sky; its glow only at night.
+    float night   = smoothstep(0.05f, -0.10f, sunDir.y);
+    float moonVis = smoothstep(-0.02f, 0.03f, moonDir.y) * mix(0.7f, 1.0f, night);
     float  cosM    = dot(viewDir, moonDir);
     // moonOcclude is NOT scaled by moonVis: the moon body is always opaque regardless
     // of how bright it appears — otherwise partial-night stars bleed through the disc.
@@ -140,18 +191,16 @@ fragment float4 sky_fragment(
     float belowT = smoothstep(0.0f, -0.18f, viewDir.y);
     colour = mix(colour, sky.skyColorLow.rgb * 0.22f, belowT);
 
-    // ── Stars — suppressed inside the moon disc ───────────────────────
-    if (starVis > 0.001f) {
-        float star = starField(viewDir);
-        colour += float3(star * starVis * 0.9f * (1.0f - moonOcclude));
+    // ── Faint stars — turning with the sky, hidden behind the moon ────
+    if (starVis > 0.001f && viewDir.y > 0.0f) {
+        float star = faintStars(transpose(sky.starRotation) * viewDir);
+        float glare = moonGlare(cosM, moonDir, sky);
+        colour += float3(star * starVis * (1.0f - 0.7f * glare) * (1.0f - moonOcclude));
     }
 
     // ── Clouds ────────────────────────────────────────────────────────
-    float clouds = 0.0f;
-    if (coverage > 0.001f) {
-        float cloudsLow  = cloudLayer(viewDir, sky.cloudParams.x, sky.cloudParams.y, 2.0f, coverage);
-        float cloudsHigh = cloudLayerHigh(viewDir, sky.cloudParams.x, sky.cloudParams.y, 2.0f, coverage * 0.90f);
-        clouds           = clamp(cloudsLow + cloudsHigh * (1.0f - cloudsLow), 0.0f, 1.0f);
+    float clouds = skyClouds(viewDir, sky);
+    if (clouds > 0.0f) {
         float3 cloudTint = clamp(sky.skyColorLow.rgb * 1.8f + 0.12f, 0.0f, 1.0f);
         colour = mix(colour, cloudTint, clouds * 0.88f);
     }
@@ -170,11 +219,90 @@ fragment float4 sky_fragment(
 
     // ── Moon ──────────────────────────────────────────────────────────
     if (moonVis > 0.01f) {
-        float  mDisc   = smoothstep(cos(moonRadius * 1.10f), cos(moonRadius * 0.90f), cosM);
-        float  mGlow   = pow(max(cosM, 0.0f), 32.0f) * 0.12f * moonVis;
+        float mGlow = pow(max(cosM, 0.0f), 32.0f) * 0.12f * sky.bodyParams.z * night * moonVis;
         colour += float3(0.80f, 0.85f, 0.95f) * mGlow * glowClear;
-        colour  = mix(colour, float3(0.85f, 0.88f, 0.95f), mDisc * moonVis * discClear);
+        float mDisc = smoothstep(cos(moonRadius * 1.03f), cos(moonRadius * 0.97f), cosM);
+        if (mDisc > 0.0f) {
+            // The disc as a sphere lit from the sun's direction: the phase,
+            // and the tilt of its horns, follow from where the two stand.
+            float3 lateral = (viewDir - moonDir * cosM) / sin(moonRadius);
+            float  r2      = min(dot(lateral, lateral), 1.0f);
+            float3 normal  = lateral - moonDir * sqrt(1.0f - r2);
+            float  lit     = smoothstep(-0.03f, 0.08f, dot(normal, sunDir));
+            // Darker seas, fixed to the face.
+            float3 right = normalize(cross(float3(0.0f, 1.0f, 0.0f), moonDir) + float3(1e-4f, 0.0f, 0.0f));
+            float2 face  = float2(dot(lateral, right), dot(lateral, cross(moonDir, right)));
+            float  seas  = smoothstep(0.45f, 0.75f, skyValueNoise(face * 2.6f + float2(3.1f, 7.7f)));
+            // By day the highlands must outshine a sky nearly their colour;
+            // the seas, darker, let its blue through, as they do.
+            float3 albedo = float3(0.85f, 0.88f, 0.95f) * (1.0f - 0.22f * seas) * mix(1.25f, 1.0f, night);
+            float  shown = mDisc * moonVis * discClear;
+            colour = mix(colour, albedo, shown * lit);
+            // Earthshine: the night side faintly lit by the Earth, strongest
+            // under a thin crescent.
+            colour += albedo * 0.06f * (1.0f - sky.moonDirectionAndPhase.w) * night * (1.0f - lit) * shown;
+        }
     }
 
     return float4(colour, 1.0f);
+}
+
+// MARK: - Catalogue stars
+
+struct SkyStarOut {
+    float4 position [[position]];
+    float2 corner;      // −1…1 across the sprite
+    float3 light;       // tint × brightness, every fade already applied
+};
+
+// Each bright star is a small quad facing the camera, its size and
+// brightness set by magnitude. Everything that dims a star — daylight, the
+// horizon, the moon in front of it or its glare, the clouds, twinkling — is
+// worked out here, once a star.
+vertex SkyStarOut sky_star_vertex(
+    uint                   vid   [[vertex_id]],
+    uint                   iid   [[instance_id]],
+    constant SkyUniforms  &sky   [[buffer(0)]],
+    const device SkyStar  *stars [[buffer(1)]],
+    constant float4x4     &viewProjection [[buffer(2)]]
+) {
+    SkyStarOut out;
+    SkyStar star = stars[iid];
+    float3 dir = normalize(sky.starRotation * star.directionAndMagnitude.xyz);
+    float  magnitude = star.directionAndMagnitude.w;
+    float  faintness = saturate((magnitude + 1.5f) / 5.0f);   // Sirius 0 … magnitude 3.5 1
+
+    float3 moonDir = sky.moonDirectionAndPhase.xyz;
+    float  cosM    = dot(dir, moonDir);
+    float  moonRadius = sky.bodyParams.x;
+    float  hidden  = smoothstep(cos(moonRadius * 1.48f), cos(moonRadius), cosM);
+    // Near the horizon: dimmer through more air, and twinkling.
+    float  low     = 1.0f - smoothstep(0.03f, 0.35f, dir.y);
+    float  phase   = skyHash(float2(float(iid), 7.0f));
+    float  twinkle = 1.0f - low * 0.55f * (0.5f + 0.5f * sin(sky.cloudParams.x * (9.0f + 7.0f * phase) + phase * 50.0f));
+    float  visible = sky.cloudParams.w
+        * smoothstep(-0.01f, 0.04f, dir.y) * (1.0f - 0.55f * low) * twinkle
+        * (1.0f - hidden) * (1.0f - 0.3f * moonGlare(cosM, moonDir, sky))
+        * (1.0f - skyClouds(dir, sky) * 0.95f);
+    out.light = star.color.rgb * mix(1.5f, 0.38f, faintness) * visible;
+
+    float2 corner = float2((vid & 1) ? 1.0f : -1.0f, (vid & 2) ? 1.0f : -1.0f);
+    out.corner = corner;
+    float4 centre = viewProjection * float4(dir, 0.0f);
+    if (visible < 0.002f || centre.w <= 0.0f) {
+        out.position = float4(0.0f, 0.0f, 0.0f, 1.0f);   // all four corners on one point: nothing drawn
+        return out;
+    }
+    float3 side = normalize(cross(abs(dir.y) < 0.99f ? float3(0.0f, 1.0f, 0.0f) : float3(1.0f, 0.0f, 0.0f), dir));
+    float3 up   = cross(dir, side);
+    float  size = mix(0.0070f, 0.0028f, faintness);   // radians, corner to centre
+    float4 clip = viewProjection * float4(dir + (side * corner.x + up * corner.y) * size, 0.0f);
+    out.position = float4(clip.xy, clip.w * 0.9999f, clip.w);
+    return out;
+}
+
+fragment float4 sky_star_fragment(SkyStarOut in [[stage_in]]) {
+    float r2 = dot(in.corner, in.corner);
+    float glow = exp(-r2 * 10.0f) + exp(-r2 * 3.0f) * 0.18f;
+    return float4(in.light * glow * (1.0f - smoothstep(0.75f, 1.0f, r2)), 0.0f);
 }

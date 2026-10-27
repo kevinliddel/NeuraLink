@@ -19,7 +19,7 @@ extension VRMRenderer {
         rainWorldRenderer = RainWorldRenderer(device: device, config: config)
     }
 
-    /// Advances cloud time and re-derives the sky environment from the current local clock.
+    /// Advances cloud time and re-derives the sky environment from the clock and place.
     func updateSky(deltaTime: Float) {
         skyRenderer?.update(deltaTime: deltaTime)
     }
@@ -63,8 +63,7 @@ extension VRMRenderer {
     /// Must be called before VRM mesh draw calls.
     func drawSky(encoder: MTLRenderCommandEncoder) {
         guard let sky = skyRenderer else { return }
-        let invVP = (projectionMatrix * viewMatrix).inverse
-        sky.prepareForEncoding(invViewProjection: invVP)
+        sky.prepareForEncoding(viewProjection: projectionMatrix * viewMatrix)
         sky.encode(encoder: encoder)
     }
 }

@@ -18,8 +18,7 @@ final class SkyRenderer {
 
     /// Most-recently computed environment (main thread).
     /// Read by the render thread to assemble GPU uniforms.
-    private(set) var currentEnvironment: SkyEnvironment =
-        SkyEnvironment.resolve(hour: 12.0)
+    private(set) var currentEnvironment: SkyEnvironment
 
     /// Rain intensity [0,1] set by RainRenderer each frame.
     /// Boosts cloud coverage, suppresses stars, and darkens the sky palette.
@@ -32,9 +31,18 @@ final class SkyRenderer {
     private var depthState: MTLDepthStencilState?
     private var uniformBuffer: MTLBuffer?
 
-    /// The sky's clock. Internal so tests can pin a date; launch-time
-    /// overrides come from `SkyTimeProvider.fromEnvironment`.
-    var timeProvider = SkyTimeProvider.fromEnvironment()
+    /// The bright-star catalogue, drawn as sprites over the sky.
+    private var starPipeline: MTLRenderPipelineState?
+    private var starBuffer: MTLBuffer?
+    private var starCount = 0
+    /// This frame's camera, for the sprites; nil when they are not drawn
+    /// (daylight, or an orthographic camera, which has no sky to place
+    /// them in).
+    private var starViewProjection: simd_float4x4?
+
+    /// The sky's clock and place. Internal so tests can pin a date;
+    /// launch-time overrides come from `SkyTimeProvider.fromEnvironment`.
+    var timeProvider: SkyTimeProvider
 
     /// Angular radius of the drawn moon. Stylised: about five times the real
     /// 0.26°, which reads at phone size.
@@ -45,29 +53,37 @@ final class SkyRenderer {
 
     init(device: MTLDevice, config: RendererConfig) {
         self.device = device
+        let clock = SkyTimeProvider.fromEnvironment()
+        timeProvider = clock
+        currentEnvironment = SkyEnvironment.resolve(at: clock.now(), location: clock.location)
+        nlLog("[Sky] drawn for \(clock.timeZone.identifier): "
+            + "\(clock.location.latitude)°, \(clock.location.longitude)°", level: .info)
         uniformBuffer = device.makeBuffer(
             length: MemoryLayout<SkyUniformsData>.stride,
             options: .storageModeShared
         )
         uniformBuffer?.label = "SkyUniforms"
+        if let stars = SkyStarCatalogue.makeBuffer(device: device) {
+            (starBuffer, starCount) = (stars.buffer, stars.count)
+        }
         setupPipeline(config: config)
         setupDepthState()
     }
 
     // MARK: - Per-frame update (main thread)
 
-    /// Advances cloud time and re-derives the environment from the current local clock.
+    /// Advances cloud time and re-derives the environment from the clock and place.
     /// Call this once per frame before `prepareForEncoding`.
     func update(deltaTime: Float) {
         cloudTime += deltaTime
-        currentEnvironment = SkyEnvironment.resolve(hour: timeProvider.currentHour())
+        currentEnvironment = SkyEnvironment.resolve(at: timeProvider.now(), location: timeProvider.location)
     }
 
     // MARK: - Render thread
 
     /// Assembles the GPU uniform buffer using the latest environment + camera matrices.
     /// Must be called from the render thread immediately before `encode`.
-    func prepareForEncoding(invViewProjection: simd_float4x4) {
+    func prepareForEncoding(viewProjection: simd_float4x4) {
         let env = currentEnvironment
         let sd  = env.sunDirection
         let md  = env.moonDirection
@@ -81,8 +97,14 @@ final class SkyRenderer {
         let skyLow  = (env.skyColorLow  * (1 - ri * 0.55) + rainTint * (ri * 0.55)) * darkFactor
         let skyHigh = (env.skyColorHigh * (1 - ri * 0.65) + rainTint * (ri * 0.65)) * darkFactor
 
+        // A perspective camera sends a direction (w = 0) somewhere on
+        // screen; an orthographic one sends every direction to w = 0.
+        let perspective = simd_length(SIMD3<Float>(
+            viewProjection.columns.0.w, viewProjection.columns.1.w, viewProjection.columns.2.w)) > 1e-4
+        starViewProjection = starVisibility > 0.001 && perspective ? viewProjection : nil
+
         var data = SkyUniformsData(
-            invViewProjection: invViewProjection,
+            invViewProjection: viewProjection.inverse,
             sunDirectionAndIntensity: SIMD4<Float>(sd.x, sd.y, sd.z, env.keyLight.intensity * darkFactor),
             sunColorAndSize: SIMD4<Float>(
                 env.sunColor.x, env.sunColor.y, env.sunColor.z,
@@ -92,7 +114,8 @@ final class SkyRenderer {
             skyColorHigh: SIMD4<Float>(skyHigh.x, skyHigh.y, skyHigh.z, 0),
             cloudParams: SIMD4<Float>(cloudTime, env.cloudSpeed, cloudCoverage, starVisibility),
             moonDirectionAndPhase: SIMD4<Float>(md.x, md.y, md.z, env.moonIllumination),
-            bodyParams: SIMD4<Float>(Self.moonAngularRadius, env.turbidity, 0, 0)
+            bodyParams: SIMD4<Float>(Self.moonAngularRadius, env.turbidity, env.moonBrightness, 0),
+            starRotation: env.starRotation
         )
         uniformBuffer?.contents().copyMemory(
             from: &data, byteCount: MemoryLayout<SkyUniformsData>.stride)
@@ -108,6 +131,14 @@ final class SkyRenderer {
         encoder.setFrontFacing(.counterClockwise)
         encoder.setFragmentBuffer(buf, offset: 0, index: 0)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        if let starPipeline, let starBuffer, var viewProjection = starViewProjection {
+            // Added on top, each star a small quad facing the camera.
+            encoder.setRenderPipelineState(starPipeline)
+            encoder.setVertexBuffer(buf, offset: 0, index: 0)
+            encoder.setVertexBuffer(starBuffer, offset: 0, index: 1)
+            encoder.setVertexBytes(&viewProjection, length: MemoryLayout<simd_float4x4>.stride, index: 2)
+            encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4, instanceCount: starCount)
+        }
         encoder.popDebugGroup()
     }
 
@@ -131,6 +162,25 @@ final class SkyRenderer {
             desc.rasterSampleCount = config.sampleCount
             pipeline = try VRMPipelineCache.shared.getPipelineState(
                 device: device, descriptor: desc, key: "sky")
+
+            guard let starVertex = lib.makeFunction(name: "sky_star_vertex"),
+                  let starFragment = lib.makeFunction(name: "sky_star_fragment") else {
+                nlLog("[SkyRenderer] sky_star_vertex / sky_star_fragment not found in library")
+                return
+            }
+            desc.label = "skyStars"
+            desc.vertexFunction = starVertex
+            desc.fragmentFunction = starFragment
+            let blend = desc.colorAttachments[0]!
+            blend.isBlendingEnabled = true
+            blend.rgbBlendOperation = .add
+            blend.sourceRGBBlendFactor = .one
+            blend.destinationRGBBlendFactor = .one
+            blend.alphaBlendOperation = .add
+            blend.sourceAlphaBlendFactor = .zero
+            blend.destinationAlphaBlendFactor = .one
+            starPipeline = try VRMPipelineCache.shared.getPipelineState(
+                device: device, descriptor: desc, key: "skyStars")
         } catch {
             nlLog("[SkyRenderer] Pipeline setup failed: \(error)")
         }
