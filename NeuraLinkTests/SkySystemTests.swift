@@ -77,16 +77,36 @@ struct SkySystemTests {
         }
     }
 
-    @Test("The noon sun stands on the camera's side (+Z) in either hemisphere, never overhead off the tropics")
+    @Test("The noon sun stands at the latitude's height for the season, north or south")
     func testNoonSun() throws {
         // Antananarivo, June solstice: 90 − 18.92 − 23.44 = 47.6° up, north.
-        let tana = SkyBodies(at: try utc("2026-06-21T08:51:43Z"), location: Self.antananarivo).sunDirection
+        let tanaNoon = try utc("2026-06-21T08:51:43Z")
+        let tana = SkyBodies(at: tanaNoon, location: Self.antananarivo).sunDirection
         #expect(abs(elevation(tana) - 47.64) < 0.3)
-        #expect(tana.z > 0.6)
+        #expect(simd_dot(simd_normalize(SIMD3<Float>(tana.x, 0, tana.z)), compass(Self.antananarivo, at: tanaNoon).north) > 0.99)
         // Paris, same day: 90 − 48.87 + 23.44 = 64.6° up, south.
-        let paris = SkyBodies(at: try utc("2026-06-21T11:52:00Z"), location: Self.paris).sunDirection
+        let parisNoon = try utc("2026-06-21T11:52:00Z")
+        let paris = SkyBodies(at: parisNoon, location: Self.paris).sunDirection
         #expect(abs(elevation(paris) - 64.57) < 0.5)
-        #expect(paris.z > 0.4)
+        #expect(simd_dot(simd_normalize(SIMD3<Float>(paris.x, 0, paris.z)), compass(Self.paris, at: parisNoon).north) < -0.99)
+    }
+
+    @Test("The sun sets just beside straight ahead, on the equator's side, every day, in either hemisphere",
+          arguments: ["2026-03-20", "2026-06-21", "2026-09-23", "2026-12-21"])
+    func testSunsetAhead(day: String) throws {
+        for location in [Self.antananarivo, Self.paris] {
+            let sun = { (instant: Date) in SkyBodies(at: instant, location: location).sunDirection }
+            // From solar noon there, the first five minutes the sun is down.
+            let noon = try utc("\(day)T12:00:00Z").addingTimeInterval(-location.longitude * 240)
+            let dusk = try #require(stride(from: 0.0, through: 12 * 3600, by: 300)
+                .map { noon.addingTimeInterval($0) }
+                .first { elevation(sun($0)) < 0 })
+            let sunset = sun(horizonCrossing(near: dusk, elevation: 0, direction: sun))
+            // Degrees right of straight ahead (−Z): right in the south, left in the north.
+            let bearing = Double(atan2(sunset.x, -sunset.z)) * 180 / .pi
+            let expected = location.latitude < 0 ? SkyBodies.sunsetBearing : -SkyBodies.sunsetBearing
+            #expect(abs(bearing - expected) < 0.05, "\(day), \(location.latitude)°: sets \(bearing)° off ahead")
+        }
     }
 
     @Test("The sun rises in the east and sets in the west of the scene's compass")
@@ -95,7 +115,7 @@ struct SkySystemTests {
             (Self.antananarivo, "2026-06-21T03:22:00Z", "2026-06-21T14:21:00Z"),
             (Self.paris, "2026-06-21T03:47:00Z", "2026-06-21T19:58:00Z")
         ] {
-            let east = SIMD3<Float>(SkyBodies.compass(latitude: location.latitude).east)
+            let east = compass(location, at: try utc(morning)).east
             #expect(simd_dot(SkyBodies(at: try utc(morning), location: location).sunDirection, east) > 0.75)
             #expect(simd_dot(SkyBodies(at: try utc(evening), location: location).sunDirection, east) < -0.75)
         }
@@ -157,7 +177,8 @@ struct SkySystemTests {
         let second = SkyBodies(at: morning, location: Self.antananarivo).starRotation
         #expect(simd_distance(first * pole, second * pole) < 1e-4)
         #expect(abs(elevation(first * pole) - 18.92) < 0.01)
-        #expect((first * pole).z < -0.9)  // due south: −Z here
+        let south = -compass(Self.antananarivo, at: evening).north
+        #expect(simd_dot(simd_normalize(SIMD3<Float>((first * pole).x, 0, (first * pole).z)), south) > 0.9999)
         // Eight solar hours are 8.022 sidereal ones: 120.33°.
         let turned = acos(simd_dot(first * equator, second * equator)) * 180 / .pi
         #expect(abs(turned - 120.33) < 0.05)
@@ -211,6 +232,23 @@ struct SkySystemTests {
         let midnight = SkyEnvironment.resolve(at: try utc("2026-10-25T21:00:00Z"), location: Self.antananarivo)
         #expect(simd_dot(midnight.keyLight.direction, midnight.moonDirection) > 0.9999)
         #expect(midnight.keyLight.shadowSoftness < morning.keyLight.shadowSoftness)
+    }
+
+    @Test("The avatar is lit from the camera's side; a light behind her rims her instead")
+    func testAvatarKeyLight() throws {
+        // Antananarivo, an hour before sunset: the sun low ahead, behind her.
+        let evening = SkyEnvironment.resolve(at: try utc("2026-06-21T13:20:00Z"), location: Self.antananarivo)
+        let key = evening.keyLight
+        #expect(key.direction.z < -0.5)
+        #expect(key.avatarDirection == SIMD3<Float>(key.direction.x, key.direction.y, -key.direction.z))
+        #expect(simd_dot(simd_normalize(evening.rimLightDirection), key.direction) > 0.999)
+        #expect(simd_distance(evening.rimLightColor, key.color) < 1e-4)
+        // Morning: the sun behind the camera lights her face as it is, and
+        // the rim stays the art light above-behind.
+        let morning = SkyEnvironment.resolve(at: try utc("2026-06-21T05:00:00Z"), location: Self.antananarivo)
+        #expect(morning.keyLight.direction.z > 0)
+        #expect(morning.keyLight.avatarDirection == morning.keyLight.direction)
+        #expect(morning.rimLightDirection.z < -0.9)
     }
 
     @Test("Moonlight follows the phase, above the floor a face reads at")
@@ -273,6 +311,13 @@ private func date(julianDay: Double) -> Date {
 }
 
 /// Degrees above the horizon.
+/// The scene's compass at `location` on the day of `instant`.
+private func compass(_ location: SkyLocation, at instant: Date) -> (east: SIMD3<Float>, north: SIMD3<Float>) {
+    let declination = SkyEphemeris.degrees(asin(SkyEphemeris.sun(SkyEphemeris.centuries(instant)).z))
+    let (east, north) = SkyBodies.compass(latitude: location.latitude, sunDeclination: declination)
+    return (SIMD3<Float>(east), SIMD3<Float>(north))
+}
+
 private func elevation(_ direction: SIMD3<Float>) -> Double {
     Double(asin(direction.y)) * 180 / .pi
 }

@@ -75,9 +75,11 @@ extension VRMRenderer {
     /// Updates the three VRM lights so they match the current sun position in the sky.
     ///
     /// - Key light  = `SkyEnvironment.keyLight`: the sun by day, the night light
-    ///   by night, crossing over the sky at twilight.
+    ///   by night, crossing over the sky at twilight, turned to the camera's
+    ///   side when it stands behind the avatar (`avatarDirection`).
     /// - Fill light = opposite sky scatter.
-    /// - Rim light  = fixed above-behind, separates model from background.
+    /// - Rim light  = above-behind, separates model from background; the real
+    ///   key light while that stands behind her.
     ///
     /// The MToon shader computes `dot(N, -lightDirection)`, so we pass
     /// **−directionTowardLight** as the `direction` argument of `setLight`.
@@ -87,7 +89,7 @@ extension VRMRenderer {
         // Key light: rays travel FROM the light TOWARD the scene → pass -direction.
         setLight(
             0,
-            direction: -env.keyLight.direction,
+            direction: -env.keyLight.avatarDirection,
             color: env.keyLight.color,
             intensity: env.keyLight.intensity
         )
@@ -100,7 +102,7 @@ extension VRMRenderer {
             intensity: env.fillLightIntensity
         )
 
-        // Rim light: fixed above-behind, creates model-sky separation.
+        // Rim light: above-behind, creates model-sky separation.
         setLight(
             2,
             direction: -env.rimLightDirection,

@@ -52,8 +52,9 @@ struct SkyEnvironment {
 
     // MARK: - VRM Lighting
 
-    /// The one light the avatar, its self-shadow and every ground shadow
-    /// follow — see `SkyKeyLight`.
+    /// The one light the ground, the environment and every shadow on them
+    /// follow, and the avatar too, turned to the camera's side — see
+    /// `SkyKeyLight`.
     let keyLight: SkyKeyLight
 
     let fillLightDirection: SIMD3<Float>
@@ -87,6 +88,14 @@ struct SkyKeyLight {
 
     /// sin(≈7°).
     static let minimumElevation: Float = 0.12
+
+    /// `direction` as the avatar takes it: turned onto the camera's side
+    /// (+Z) when the light stands behind her, so her face stays lit while
+    /// the sun goes down behind her, in view. The real light then rims her
+    /// (`SkyEnvironment.rimLightDirection`), and her shadow on the ground
+    /// still falls from it, toward the camera. A mirror in the camera's
+    /// plane, so it moves as smoothly as `direction` does.
+    var avatarDirection: SIMD3<Float> { SIMD3<Float>(direction.x, direction.y, abs(direction.z)) }
 
     /// Where the night light comes from when the moon is down: high and a
     /// little in front, so a face still reads.
@@ -177,10 +186,16 @@ extension SkyEnvironment {
         )
         let fillIntensity: Float = 0.20 + dayFactor * 0.18
 
-        // Rim light: fixed, comes from above-behind to separate model from sky.
-        let rimDir = simd_normalize(SIMD3<Float>(0.0, 0.3, -1.0))
-        let rimColor = SIMD3<Float>(0.85, 0.90, 1.00)
-        let rimIntensity: Float = 0.12 + dayFactor * 0.12
+        // Rim light: from above-behind, to separate the model from the sky.
+        // While the key light stands behind the avatar (the sun going down
+        // in view) it is that light, in its colour, a little stronger. Kept
+        // modest: MToon shares its lights out, so a strong back light would
+        // take the face's.
+        let behind = skySmooth(0.0, 0.5, -keyLight.direction.z)
+        let rimDir = simd_normalize(simd_mix(
+            simd_normalize(SIMD3<Float>(0.0, 0.3, -1.0)), keyLight.direction, SIMD3<Float>(repeating: behind)))
+        let rimColor = skyLerp(SIMD3<Float>(0.85, 0.90, 1.00), keyLight.color, behind)
+        let rimIntensity: Float = 0.12 + dayFactor * 0.12 + behind * 0.12
 
         // Sky gradient colours — simple palette keyed on sun elevation.
         let tDawn = skySmooth(-0.12, -0.02, sunDir.y)  // 0=deep night → 1=just below horizon

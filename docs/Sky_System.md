@@ -148,13 +148,20 @@ Everything comes from the instant itself, in double precision, after Meeus,
   the east, the celestial pole stays put at the latitude's height, and from
   Madagascar the Southern Cross circles the south pole.
 
-**The compass.** The scene is +Y up with the camera on +Z. North is put on
-+Z in the southern hemisphere and south on +Z in the northern, so the noon sun
-always stands on the camera's side and the avatar is lit from the front through
-the middle of the day. The sun still rises in the east and sets in the west:
-the two layouts are one turned 180° about the vertical, not mirrored. Between
-the tropics the noon sun can pass a little to the other side of the zenith (in
-Antananarivo from late November to mid-January).
+**The compass.** The scene is +Y up with the camera on +Z, looking toward
+−Z past the avatar. A portrait phone sees only about 15° either side of
+straight ahead, and the sun and moon spend most of their time high or off to
+the sides, so the compass is turned for them: the camera looks toward the day's
+sunset. The sun comes down beside the avatar every evening, in view for its last
+hour, and the moons that set in the west go down there too (crescent to first
+quarter in the evening, full at dawn). The sunset point is put 10° to the side
+the setting sun comes down from (`SkyBodies.sunsetBearing`: right of the
+avatar in the southern hemisphere, left in the northern), so she doesn't hide
+it. The compass follows the sun's declination, turning under half a degree a
+day, and is only ever turned about the vertical, never mirrored: the sun still
+rises in the east, behind the camera. Between the tropics the noon sun can
+pass a little to the other side of the zenith (in Antananarivo from late
+November to mid-January).
 
 | Antananarivo | Sunrise | Sunset | Noon sun |
 |---|---|---|---|
@@ -190,20 +197,29 @@ The resolved `SkyEnvironment` also drives the three-point light rig that illumin
 
 | Light | Source | Day colour | Night colour |
 |-------|--------|-----------|-------------|
-| **Key** | `SkyKeyLight`: sun by day, moon (or the sky above) by night | Warm white `#fff5db` → orange at horizon | Cool blue `#8c99d9` |
+| **Key** | `SkyKeyLight`: sun by day, moon (or the sky above) by night, on the camera's side | Warm white `#fff5db` → orange at horizon | Cool blue `#8c99d9` |
 | **Fill** | Opposite side of key, angled from sky | Sky blue `#73 99d9` | Dim blue `#40475a` |
-| **Rim** | Fixed above-behind the model | Cool white `#d9e5ff` | Cool white `#d9e5ff` |
+| **Rim** | Above-behind the model; the key light itself while that stands behind her | Cool white `#d9e5ff`, the key's colour behind her | Cool white `#d9e5ff`, the key's colour behind her |
 
 > **Why a moon key light?** At night `dayFactor` = 0, so the key light smoothly transitions to a cool-blue night light: from the moon while it is up and more than a crescent, from high in the sky otherwise. Its intensity follows the moon's brightness, 0.42 on a moonless night to 0.58 under a high full moon, so the character stays readable without breaking the night-sky illusion.
 
 **One key light, no flip.** `SkyEnvironment.keyLight` is the only light the
-avatar, its self-shadow, the terrain shadows and the 3D environments follow.
+terrain, its shadows (the avatar's among them) and the 3D environments follow.
 Through twilight it travels from the sun to the night light *over the sky*
 rather than jumping to the opposite horizon when the sun crosses it, so
 shadows shorten and turn instead of swinging across in one frame. It never
 drops below about 7° of elevation (`SkyKeyLight.minimumElevation`), where a
 grazing light would throw endless shadows. Its largest turn between two
 consecutive minutes is under 8°.
+
+**The avatar's face stays lit.** Facing the sunset puts the afternoon and
+evening sun behind the avatar. She takes the key light mirrored onto the camera's
+side (`SkyKeyLight.avatarDirection`), so her face is lit warm while the sun goes
+down beside her, and her self-shadow follows that light. The real light rims her
+instead: while it stands behind her, the rim light takes its direction and
+colour. It stays modest because MToon shares its lights out, and a strong back
+light would take the face's. Her shadow on the ground still falls from the real
+sun, toward the camera.
 
 ---
 
