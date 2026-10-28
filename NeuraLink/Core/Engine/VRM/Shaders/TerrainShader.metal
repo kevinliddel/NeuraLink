@@ -20,6 +20,8 @@ struct TerrainUniforms {
     float4   sunDirection;               // xyz = toward-sun unit vector, w = sun height
     float4   groundColor;                // xyz = dirt earth base colour
     float4   terrainParams;              // x=unused y=amp z=shadowSoft w=time
+    float4   skyTint;                    // rgb = the sky's light from above, at luminance 1
+    float4   keyTint;                    // rgb = the key light's colour, at luminance 1
 };
 
 // MARK: - Terrain height
@@ -169,8 +171,13 @@ fragment float4 terrain_fragment(
         float s1 = sampleShadow(wideShadowMap, shadowSmp, in.worldPos, u.wideLightViewProjection, shadowSoft);
         shadow = max(s0, s1);
     }
-    float diffuse = max(1.0f - ambient, 0.0f) * NdotL * (1.0f - shadow * 0.80f);
-    float lighting = saturate(ambient + diffuse);
+    float direct  = NdotL * (1.0f - shadow * 0.80f);
+    float diffuse = max(1.0f - ambient, 0.0f) * direct;
+    // The direct light in the key light's colour (white-gold by day, orange
+    // at sunset); the sky's colour where the direct light doesn't reach
+    // (blue shadows by day, pink under a low dusk sun, cool at night).
+    float3 skyLit   = mix(float3(1.0f), u.skyTint.rgb, 1.0f - direct);
+    float3 lighting = saturate(ambient * skyLit + diffuse * u.keyTint.rgb);
 
     // Ground colour: mid-tone earth with darker hollows and slightly lighter ridges.
     float3 groundCol  = u.groundColor.xyz;

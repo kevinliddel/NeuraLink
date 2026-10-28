@@ -66,6 +66,11 @@ struct UserSettingsView: View {
                         // by the Form row's default content insets.
                         .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 0))
                     }
+
+                    Toggle("Wind in Hair and Clothes", isOn: Bindable(settings).wind)
+                    if settings.wind {
+                        Toggle("Wind for Imported Characters", isOn: Bindable(settings).windForImported)
+                    }
                 }
 
                 Section(header: Text("Memory")) {

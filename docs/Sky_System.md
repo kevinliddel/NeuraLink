@@ -70,6 +70,8 @@ NeuraLink/Core/Engine/Sky/
 ├── SkyBodies.swift         — Places sun, moon and stars in the scene (the compass)
 ├── SkyColorPalette.swift   — SkyEnvironment: colours and lights for where they stand
 ├── SkyAtmosphere.swift     — The atmosphere: the sun's colour through the air, the eye's exposure
+├── SkyAmbient.swift        — The sky's own light at L1 (MToon's GI, the terrain, the environments)
+├── SkyWind.swift           — The breeze in the hair and clothes
 ├── SkyStarCatalogue.swift  — The bright stars, from sky_bright_stars.txt, in a GPU buffer
 ├── SkyUniforms.swift       — The 224-byte GPU uniform struct (Swift ↔ Metal bridge)
 └── SkyRenderer.swift       — Atmosphere tables → uniform upload → sky and star draws
@@ -80,7 +82,7 @@ NeuraLink/App/Resources/
 
 NeuraLink/Core/Engine/VRM/Shaders/
 ├── SkyAtmosphereCommon.metal — The medium, phase functions and table layouts, shared
-├── SkyAtmosphere.metal       — The three lookup tables and the clouds' noise (compute)
+├── SkyAtmosphere.metal       — The three lookup tables, the clouds' noise and the sky's light (compute)
 └── SkyShader.metal           — Fullscreen sky (atmosphere, clouds, sun, moon) + bright-star sprites
 ```
 
@@ -244,8 +246,9 @@ The resolved `SkyEnvironment` also drives the three-point light rig that illumin
 | Light | Source | Day colour | Night colour |
 |-------|--------|-----------|-------------|
 | **Key** | `SkyKeyLight`: sun by day, moon (or the sky above) by night, on the camera's side | The sunlight through the air: white-gold high, orange low | Cool blue `#8c99d9` |
-| **Fill** | Opposite side of key, angled from sky | Sky blue `#73 99d9` | Dim blue `#40475a` |
-| **Rim** | Above-behind the model; the key light itself while that stands behind her | Cool white `#d9e5ff`, the key's colour behind her | Cool white `#d9e5ff`, the key's colour behind her |
+| **Fill** | Opposite side of key, angled from sky | The sky's colour on that side (`SkyAmbient`), as bright as the old sky blue | The same, as dim as the old night blue |
+| **Rim** | Above-behind the model; the key light itself while that stands behind her | The sky behind her, as the camera sees her against it; the key's colour while that stands behind her | The same |
+| **Ambient** | The whole sky and the ground under it (`SkyAmbient`), MToon's GI | Blue from above, the sand's warmth from below | Cool, from the night's glow and the moonlit sky |
 
 > **Why a moon key light?** At night `dayFactor` = 0, so the key light smoothly transitions to a cool-blue night light: from the moon while it is up and more than a crescent, from high in the sky otherwise. Its intensity follows the moon's brightness, 0.42 on a moonless night to 0.58 under a high full moon, so the character stays readable without breaking the night-sky illusion.
 
@@ -266,6 +269,68 @@ instead: while it stands behind her, the rim light takes its direction and
 colour. It stays modest because MToon shares its lights out, and a strong back
 light would take the face's. Her shadow on the ground still falls from the real
 sun, toward the camera.
+
+### The sky's own light — `SkyAmbient`
+
+MToon's GI is the spec's SH probe: `gi = lerp(SH(normal), SH average,
+giEqualizationFactor)`. Here that probe is the sky itself, at the lowest order
+that has a direction (L1 spherical harmonics, convolved with the cosine). Each
+time the sky view is lit again, `sky_ambient_sh` (one threadgroup of 256) sums
+the sky *as shown* (graded, the night's glow in) into a mean and a gradient
+along each axis:
+
+```
+mean     = 1/4π ∫ L dω
+gradient = 1/2π ∫ L ω dω          GI(n) = mean + gradient · n
+```
+
+The GPU sums the upper hemisphere. `SkyRenderer` reads the result back a frame
+or so later, once its command buffer has finished, and adds the ground: a
+plane of the terrain's sand (`groundAlbedo`) lit by that sky and by the sun.
+For a uniform lower hemisphere that adds half its light to the mean and takes
+half off the gradient along +Y.
+
+The avatar takes the sky's colour and the direction it comes from, but not its
+brightness. `SkyAmbient.shaped` scales it to the luminance of the old ambient
+curve, which keeps a toon-shaded face readable at night. It keeps 80% of the
+colour and limits the gradient so no side falls below 40% of the mean. The
+result is blue from above at noon, orange from the sun's side at dusk, and
+cool at night, with the face as bright as before. Rain drains and darkens it
+like the sky (`overcast`). Without a sky yet, it falls back to the old
+hemisphere: one colour, 35% brighter from above and 35% darker from below. The
+`Uniforms` carry the mean in `ambientColor` and the gradient in three
+`ambientAlong` fields after the old layout (480 bytes), for both the main and
+outline passes.
+
+The fill and the rim take their colour from the same light: the sky on the
+fill's side, and the sky behind the avatar. The fill stays as strong as it
+was. MToon averages its lights by strength, so without it the key's share
+grows and the lit half of a face at noon blows out.
+
+**The ground and the environments read it too.** The terrain colours its
+sunlit part with the key light (white-gold by day, orange at sunset, cool under
+the moon). Where the sun doesn't reach, it takes a quarter of the sky's hue
+from above; more would drain the sand's warmth. Outdoor 3D environments keep
+their palette's brightness but take the sky's hue along each surface's normal.
+Interiors (`EnvironmentOption.isInterior`) keep their own palette.
+
+### Wind — `SkyWind`
+
+A light breeze moves the hair and clothes. It blows the way the clouds drift,
+wandering about ±35° over minutes, in slow, uneven gusts that never quite
+stop. It is stronger on a windy afternoon (the clouds' speed) and in the rain,
+up to 1.8×. It enters `SpringBoneSolver` as one term beside gravity:
+
+```
+nextTail += wind · dt · dragForce
+```
+
+That is the spec's own drag, slowing a tail relative to the moving air rather
+than to still air. Stiff chains barely move and light hair sways. With the wind
+at zero, the step is exactly the spec's. It is NeuraLink's own extension: on by
+default for the bundled characters, whose springs it was tuned on, and opt-in
+for imported ones. Both switches are in User Profile → Environment Settings
+(*Wind in Hair and Clothes*, *Wind for Imported Characters*).
 
 ---
 
@@ -309,7 +374,10 @@ Builds the transmittance and multiple-scattering tables the first time, with
 the clouds' noise (256², `r16Float`, then its mipmaps by a blit), and lights the
 sky view again once the sun or the moon has moved 0.1° (or the moon's
 brightness changed), with the sun's light at the eye's exposure for its height.
-The sky view's alpha holds the haze in front of the clouds (see ④).
+The sky view's alpha holds the haze in front of the clouds (see ④). Each new
+sky view is also summed into the sky's light (`sky_ambient_sh`), which comes
+back as `skyAmbient` on a later frame (`collectSkyAmbient`) and goes into the
+next `SkyEnvironment`.
 `VRMRenderer` encodes it with the shadow passes, before the main render pass, on
 every frame path. Until the sky view has been lit once, the sky isn't drawn.
 

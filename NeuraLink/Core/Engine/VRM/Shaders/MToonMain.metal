@@ -195,13 +195,12 @@ fragment float4 mtoon_fragment_v2(VertexOut in [[stage_in]],
     // ── GI / ambient ────────────────────────────────────────────
     // Spec: `color += gi × baseColorTerm`, gi = lerp(SH(normal), SH average,
     // giEqualizationFactor), added at FULL strength (scaling it by the factor
-    // starved the shade side). The scene gives one ambient colour, so a
-    // hemisphere around it stands in for the SH probe: brighter from above,
-    // darker from below, same average — under a chin or a brim reads a touch
-    // darker, as with a sky. giIntensityFactor holds 1 − giEqualizationFactor.
-    float3 ambient = uniforms.ambientColor.xyz;
-    float3 giAlongNormal = ambient * (1.0 + kMToonHemisphere * normal.y);
-    float3 gi = mix(giAlongNormal, ambient, saturate(1.0 - material.giIntensityFactor));
+    // starved the shade side). The SH probe is the sky's light at L1
+    // (SkyAmbient): blue from above at noon, orange from the sun's side at
+    // dusk. Its average, (SH(up) + SH(down)) / 2, is its mean.
+    // giIntensityFactor holds 1 − giEqualizationFactor.
+    float3 gi = mix(mtoonAmbientAlong(uniforms, normal), uniforms.ambientColor.xyz,
+                    saturate(1.0 - material.giIntensityFactor));
     float3 litColor = (lit0 + lit1 + lit2) * uniforms.lightNormalizationFactor
                     + gi * baseColor.rgb;
 

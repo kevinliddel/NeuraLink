@@ -72,6 +72,18 @@ final class TerrainRenderer: @unchecked Sendable {
         wideLightViewProjection = Self.makeLightMatrix(sunDir: lightDir, wide: true)
     }
 
+    /// The hue of the sky's light from above, a quarter of it, for where
+    /// the sun doesn't reach (the shader keeps sunlit sand its own colour):
+    /// more would drain the sand's warmth.
+    static func skyTint(_ ambient: SkyAmbient) -> SIMD3<Float> {
+        softened(SkyAmbient.tint(ambient.along(SIMD3<Float>(0, 1, 0))), by: 0.25)
+    }
+
+    /// `tint` kept to `share` of its colour (white at 0).
+    static func softened(_ tint: SIMD3<Float>, by share: Float) -> SIMD3<Float> {
+        simd_mix(SIMD3<Float>(repeating: 1), tint, SIMD3<Float>(repeating: share))
+    }
+
     // MARK: - Shadow map clearing
 
     /// Schedules a shadow map clear on the next environment-only frame (called when the model is removed).
@@ -206,7 +218,9 @@ final class TerrainRenderer: @unchecked Sendable {
                 0.22,
                 shadowSoft,
                 elapsedTime
-            )
+            ),
+            skyTint: SIMD4<Float>(Self.skyTint(env.ambient), 0),
+            keyTint: SIMD4<Float>(Self.softened(SkyAmbient.tint(env.keyLight.color), by: 0.5), 0)
         )
         uniforms.contents().copyMemory(from: &data, byteCount: MemoryLayout<TerrainUniforms>.stride)
 

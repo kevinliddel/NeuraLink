@@ -156,6 +156,7 @@ extension VRMRenderer {
             let clampedDeltaTime = min(deltaTime, 1.0 / 30.0)  // Max 30ms per frame
 
             // Solved and posed in this frame, before the joint palettes.
+            springBoneSolver.wind = springBoneWind()
             springBoneSolver.update(model: model, deltaTime: clampedDeltaTime)
         }
 

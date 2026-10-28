@@ -225,15 +225,6 @@ static float moonGlare(float cosM, float3 moonDir, constant SkyUniforms &sky) {
 
 // MARK: - The atmosphere's colour
 
-// A sky-view radiance as shown: a soft shoulder so the bright sky near the
-// sun rolls off instead of clipping, and a little more saturation, toward
-// the toon-shaded avatar in front of it.
-static float3 skyGrade(float3 radiance) {
-    float3 shown = 1.0f - exp(-radiance);
-    float  luma  = dot(shown, float3(0.2126f, 0.7152f, 0.0722f));
-    return max(mix(float3(luma), shown, 1.25f), 0.0f);
-}
-
 // Rain's overcast: the colour drained, the sky darker, as bright as before
 // otherwise, so a rainy night stays night.
 static float3 skyOvercast(float3 colour, float rain) {

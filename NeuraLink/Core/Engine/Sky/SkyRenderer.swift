@@ -49,7 +49,8 @@ final class SkyRenderer {
     /// Angular radius of the drawn moon. Stylised: about five times the real
     /// 0.26°, which reads at phone size.
     static let moonAngularRadius: Float = 0.0447
-    private var cloudTime: Float = 0
+    /// The clouds' clock, which the wind's gusts keep time with too.
+    private(set) var cloudTime: Float = 0
 
     // The atmosphere's lookup tables (SkyAtmosphere.metal): transmittance
     // and multiple scattering once, the sky view whenever a light moves.
@@ -64,6 +65,18 @@ final class SkyRenderer {
     /// The clouds' shape: a tiling noise, baked with the fixed tables.
     private var cloudNoisePipeline: MTLComputePipelineState?
     private(set) var cloudNoise: MTLTexture?
+
+    /// The light the sky casts, ground included, for the avatar, the terrain
+    /// and the environments; nil until the sky view's first sum is back.
+    private(set) var skyAmbient: SkyAmbient?
+    private var ambientPipeline: MTLComputePipelineState?
+    /// The sum on its way back from the GPU, read once its frame is done.
+    private var pendingAmbient: (commandBuffer: MTLCommandBuffer, sums: MTLBuffer)?
+    /// The ground under the sky's light: the terrain's sand, half as bright
+    /// (a lit plain sends back less than its colour).
+    static let groundAlbedo = SIMD3<Float>(0.36, 0.29, 0.20)
+    /// The sun on that ground, against the sky as shown.
+    static let sunGroundLight: Float = 1.1
     private var atmosphereReady = false
     /// What the sky view was last lit with; nil until it has been.
     private(set) var skyViewLight: SkyViewParams?
@@ -106,7 +119,8 @@ final class SkyRenderer {
     /// Call this once per frame before `prepareForEncoding`.
     func update(deltaTime: Float) {
         cloudTime += deltaTime
-        currentEnvironment = SkyEnvironment.resolve(at: timeProvider.now(), location: timeProvider.location)
+        currentEnvironment = SkyEnvironment.resolve(
+            at: timeProvider.now(), location: timeProvider.location, sky: skyAmbient)
     }
 
     // MARK: - Atmosphere (before the render pass)
@@ -119,6 +133,7 @@ final class SkyRenderer {
               let cloudNoisePipeline, let transmittanceTable, let multipleScatteringTable, let skyViewTable,
               let cloudNoise
         else { return }
+        collectSkyAmbient()
         if !atmosphereReady {
             dispatch(transmittancePipeline, into: transmittanceTable, reading: [],
                      label: "SkyTransmittance", commandBuffer: commandBuffer)
@@ -148,6 +163,38 @@ final class SkyRenderer {
         dispatch(skyViewPipeline, into: skyViewTable, reading: [transmittanceTable, multipleScatteringTable],
                  view: light, label: "SkyView", commandBuffer: commandBuffer)
         skyViewLight = light
+        encodeAmbient(from: skyViewTable, commandBuffer: commandBuffer)
+    }
+
+    /// Sums the freshly lit sky view into the light it casts. A small
+    /// buffer each time, read back a frame or so later (`collectSkyAmbient`).
+    private func encodeAmbient(from skyView: MTLTexture, commandBuffer: MTLCommandBuffer) {
+        guard let ambientPipeline, ambientPipeline.maxTotalThreadsPerThreadgroup >= 256,
+              let sums = device.makeBuffer(length: 4 * MemoryLayout<SIMD4<Float>>.stride, options: .storageModeShared),
+              let encoder = commandBuffer.makeComputeCommandEncoder()
+        else { return }
+        let env = currentEnvironment
+        var glow = SkyAmbientParams(glowLow: SIMD4<Float>(env.nightGlowLow, 0), glowHigh: SIMD4<Float>(env.nightGlowHigh, 0))
+        encoder.label = "SkyAmbient"
+        encoder.setComputePipelineState(ambientPipeline)
+        encoder.setTexture(skyView, index: 0)
+        encoder.setBytes(&glow, length: MemoryLayout<SkyAmbientParams>.stride, index: 0)
+        encoder.setBuffer(sums, offset: 0, index: 1)
+        encoder.dispatchThreadgroups(MTLSize(width: 1, height: 1, depth: 1),
+                                     threadsPerThreadgroup: MTLSize(width: 256, height: 1, depth: 1))
+        encoder.endEncoding()
+        pendingAmbient = (commandBuffer, sums)
+    }
+
+    /// Takes the sky's light back once the GPU has summed it, with the
+    /// ground under it lit by the sun as it stands now.
+    func collectSkyAmbient() {
+        guard let pending = pendingAmbient, pending.commandBuffer.status == .completed else { return }
+        pendingAmbient = nil
+        let sums = pending.sums.contents().bindMemory(to: SIMD4<Float>.self, capacity: 4)
+        let env = currentEnvironment
+        let sunlight = env.sunColor * Self.sunGroundLight * max(env.sunDirection.y, 0)
+        skyAmbient = SkyAmbient(sky: (0..<4).map { sums[$0] }, albedo: Self.groundAlbedo, sunlight: sunlight)
     }
 
     private func dispatch(
@@ -309,7 +356,8 @@ final class SkyRenderer {
             guard let transmittance = lib.makeFunction(name: "sky_transmittance_lut"),
                   let multiple = lib.makeFunction(name: "sky_multiscattering_lut"),
                   let view = lib.makeFunction(name: "sky_view_lut"),
-                  let noise = lib.makeFunction(name: "sky_cloud_noise") else {
+                  let noise = lib.makeFunction(name: "sky_cloud_noise"),
+                  let ambient = lib.makeFunction(name: "sky_ambient_sh") else {
                 nlLog("[SkyRenderer] atmosphere kernels not found in library", level: .error)
                 return
             }
@@ -317,6 +365,7 @@ final class SkyRenderer {
             multipleScatteringPipeline = try device.makeComputePipelineState(function: multiple)
             skyViewPipeline = try device.makeComputePipelineState(function: view)
             cloudNoisePipeline = try device.makeComputePipelineState(function: noise)
+            ambientPipeline = try device.makeComputePipelineState(function: ambient)
         } catch {
             nlLog("[SkyRenderer] atmosphere pipeline setup failed: \(error)", level: .error)
         }

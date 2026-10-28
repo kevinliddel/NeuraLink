@@ -65,7 +65,14 @@ struct SkyEnvironment {
     let rimLightColor: SIMD3<Float>
     let rimLightIntensity: Float
 
+    /// How bright the scene's ambient is through the day: never below a
+    /// moonlit floor, so the model stays readable.
     let ambientColor: SIMD3<Float>
+
+    /// The avatar's ambient (MToon's GI): the sky's own light — its colour
+    /// and where it comes from — as bright as `ambientColor`. A plain
+    /// hemisphere around `ambientColor` until the sky's first sum is back.
+    let ambient: SkyAmbient
 }
 
 /// The scene's key light: the sun by day, the moon (or the night sky above)
@@ -149,14 +156,15 @@ struct SkyKeyLight {
 
 extension SkyEnvironment {
 
-    /// The sky over `location` at `date`.
-    static func resolve(at date: Date, location: SkyLocation) -> SkyEnvironment {
-        resolve(SkyBodies(at: date, location: location))
+    /// The sky over `location` at `date`, lighting the avatar with `sky`
+    /// (`SkyRenderer.skyAmbient`) when there is one.
+    static func resolve(at date: Date, location: SkyLocation, sky: SkyAmbient? = nil) -> SkyEnvironment {
+        resolve(SkyBodies(at: date, location: location), sky: sky)
     }
 
     /// Colours and lights for wherever the sun and moon stand. The palette
     /// keys on the sun's elevation alone.
-    static func resolve(_ bodies: SkyBodies) -> SkyEnvironment {
+    static func resolve(_ bodies: SkyBodies, sky: SkyAmbient? = nil) -> SkyEnvironment {
         let sunDir = bodies.sunDirection
         let moonDir = bodies.moonDirection
 
@@ -178,26 +186,34 @@ extension SkyEnvironment {
             moon: moonDir, moonIllumination: bodies.moonIllumination,
             moonBrightness: bodies.moonBrightness, dayFactor: dayFactor)
 
-        // Fill light: soft sky-blue from the opposite side of the sun.
+        // Fill light: soft sky light from the opposite side of the sun, in
+        // the colour of the sky it comes from once there is one. It stays
+        // as strong as it was: MToon averages its lights by strength, so
+        // without the fill the key's share grows and blows out the lit half
+        // of a face at noon.
         let fillDir = simd_normalize(
             SIMD3<Float>(-sunDir.x * 0.6, 0.5, 0.8)
         )
-        let fillColor = skyLerp(
+        let artFill = skyLerp(
             SIMD3<Float>(0.25, 0.28, 0.45),  // night: dim cool blue
             SIMD3<Float>(0.45, 0.60, 0.85),  // day: sky blue
             dayFactor
         )
+        let fillColor = sky.map { SkyAmbient.tint($0.along(fillDir)) * simd_dot(artFill, SkyAmbient.luma) } ?? artFill
         let fillIntensity: Float = 0.20 + dayFactor * 0.18
 
-        // Rim light: from above-behind, to separate the model from the sky.
-        // While the key light stands behind the avatar (the sun going down
-        // in view) it is that light, in its colour, a little stronger. Kept
-        // modest: MToon shares its lights out, so a strong back light would
-        // take the face's.
+        // Rim light: from above-behind, to separate the model from the sky,
+        // in the colour of the sky there, the sky the camera sees her
+        // against. While the key light stands behind the avatar (the sun
+        // going down in view) it is that light, in its colour, a little
+        // stronger. Kept modest: MToon shares its lights out, so a strong
+        // back light would take the face's.
         let behind = skySmooth(0.0, 0.5, -keyLight.direction.z)
-        let rimDir = simd_normalize(simd_mix(
-            simd_normalize(SIMD3<Float>(0.0, 0.3, -1.0)), keyLight.direction, SIMD3<Float>(repeating: behind)))
-        let rimColor = skyLerp(SIMD3<Float>(0.85, 0.90, 1.00), keyLight.color, behind)
+        let backSky = simd_normalize(SIMD3<Float>(0.0, 0.3, -1.0))
+        let rimDir = simd_normalize(simd_mix(backSky, keyLight.direction, SIMD3<Float>(repeating: behind)))
+        let artRim = SIMD3<Float>(0.85, 0.90, 1.00)
+        let skyRim = sky.map { skyLerp(artRim, SkyAmbient.tint($0.along(backSky)) * simd_dot(artRim, SkyAmbient.luma), 0.7) }
+        let rimColor = skyLerp(skyRim ?? artRim, keyLight.color, behind)
         let rimIntensity: Float = 0.12 + dayFactor * 0.12 + behind * 0.12
 
         // The night's own glow, today's night palette: it comes in as the
@@ -212,6 +228,7 @@ extension SkyEnvironment {
         let noonAmbient = SIMD3<Float>(0.18, 0.18, 0.18)
         let dayAmbient = skyLerp(dawnAmbient, noonAmbient, dayFactor * (1.0 - sunsetFactor * 0.5))
         let ambient = skyLerp(nightAmbient, dayAmbient, dayFactor)
+        let avatarAmbient = sky.map { $0.shaped(toBrightness: ambient) } ?? .hemisphere(ambient)
 
         return SkyEnvironment(
             sunDirection: sunDir,
@@ -232,7 +249,8 @@ extension SkyEnvironment {
             rimLightDirection: rimDir,
             rimLightColor: rimColor,
             rimLightIntensity: rimIntensity,
-            ambientColor: ambient
+            ambientColor: ambient,
+            ambient: avatarAmbient
         )
     }
 }

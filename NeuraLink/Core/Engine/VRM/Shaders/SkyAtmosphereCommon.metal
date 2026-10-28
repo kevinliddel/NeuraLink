@@ -28,6 +28,13 @@ struct SkyViewParams {
     float4 moon;            // xyz = toward the moon, w = its light
 };
 
+// Must match SkyAmbientParams in SkyAmbient.swift: the night's own glow,
+// which the sky shader adds over the table, so the sky's light includes it.
+struct SkyAmbientParams {
+    float4 glowLow;         // rgb = at the horizon
+    float4 glowHigh;        // rgb = at the zenith
+};
+
 struct SkyMedium {
     float3 rayleigh;        // scattering
     float3 mie;             // scattering
@@ -129,4 +136,14 @@ static inline float2 skyViewUV(float3 d) {
     float elevation = asin(clamp(d.y, -1.0f, 1.0f));
     float s         = sign(elevation) * sqrt(abs(elevation) / (0.5f * M_PI_F));
     return float2(azimuth / (2.0f * M_PI_F) + 0.5f, s * 0.5f + 0.5f);
+}
+
+// A sky-view radiance as shown: a soft shoulder so the bright sky near the
+// sun rolls off instead of clipping, and a little more saturation, toward
+// the toon-shaded avatar in front of it. The sky's ambient light
+// (sky_ambient_sh) is the sky as shown, so it goes through this too.
+static inline float3 skyGrade(float3 radiance) {
+    float3 shown = 1.0f - exp(-radiance);
+    float  luma  = dot(shown, float3(0.2126f, 0.7152f, 0.0722f));
+    return max(mix(float3(luma), shown, 1.25f), 0.0f);
 }

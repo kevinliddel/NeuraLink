@@ -243,6 +243,8 @@ extension VRMRenderer {
             sunDirection: effectiveSun,
             sunHeight: sunHeight,
             shadowSoft: shadowSoft,
+            // Indoors, the room's own palette; outdoors, the sky's light.
+            skyLight: EnvironmentCatalog.isInterior(UserSettings.shared.selectedEnvironment) ? nil : env?.ambient,
             shadowMap: wideShadowMap,
             vrmShadowMap: vrmShadowMap,
             shadowSampler: sampler

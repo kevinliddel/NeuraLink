@@ -224,7 +224,8 @@ public struct VRMSceneView: View {
             // `.task(id: modelURL)` cancelled this load (user switched
             // models) — the replacement task owns the scene now.
             guard !Task.isCancelled else { return }
-            state.display(model, gender: VRMModelRegistry.shared.entry(named: characterName)?.gender ?? .fallback)
+            let entry = VRMModelRegistry.shared.entry(named: characterName)
+            state.display(model, gender: entry?.gender ?? .fallback, isImported: entry?.isImported ?? false)
             // Saved customization (docs/CHARACTER_CUSTOMIZATION.md) —
             // applied on top of the fresh model, never by reloading it, and
             // awaited before the scene is declared ready so the character is
@@ -251,7 +252,7 @@ public struct VRMSceneView: View {
                     guard let device = state.mtkView.device else { return }
                     let model = try await VRMModel.load(from: defaultEntry.url, device: device)
                     guard !Task.isCancelled else { return }
-                    state.display(model, gender: defaultEntry.gender)
+                    state.display(model, gender: defaultEntry.gender, isImported: defaultEntry.isImported)
                     await AppearanceApplier.shared.applyStoredAndWait(
                         slug: defaultEntry.name.lowercased(), to: state)
                     EnvironmentLoadState.shared.markBaseSceneReady()

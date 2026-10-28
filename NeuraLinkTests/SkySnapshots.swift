@@ -233,10 +233,19 @@ struct SkySnapshots {
         return (renderer, model)
     }
 
-    /// Sets the sky, its lights and the terrain to `instant`.
+    /// Sets the sky, its lights and the terrain to `instant`. The sky's
+    /// light comes back from the GPU a frame after the sky is lit, so it is
+    /// summed and waited for first, as a running app has it by then.
     private static func show(_ renderer: VRMRenderer, at instant: Date, in zone: TimeZone) -> SkyEnvironment? {
         renderer.skyRenderer?.timeProvider = SkyTimeProvider(now: { instant }, timeZone: zone)
         renderer.updateSky(deltaTime: 0)
+        if let sky = renderer.skyRenderer, let buffer = renderer.device.makeCommandQueue()?.makeCommandBuffer() {
+            sky.encodeAtmosphere(commandBuffer: buffer)
+            buffer.commit()
+            buffer.waitUntilCompleted()
+            sky.collectSkyAmbient()
+            renderer.updateSky(deltaTime: 0)
+        }
         renderer.applySkyLighting()
         renderer.updateTerrain(deltaTime: 0)
         return renderer.skyRenderer?.currentEnvironment

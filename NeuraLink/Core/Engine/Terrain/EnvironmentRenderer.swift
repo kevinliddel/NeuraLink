@@ -27,6 +27,12 @@ struct CityUniforms {
     var cityParams: SIMD4<Float>  // x = shadowSoft
     var cameraPosition: SIMD4<Float>  // xyz = camera world position, w = 0
     var vrmLightViewProjection: simd_float4x4  // tight VRM shadow map projection
+    // The sky's light (SkyAmbient) whose hue tints the ambient outdoors:
+    // mean (w = 1 outdoors, 0 = keep the palette), then along x, y, z.
+    var skyMean: SIMD4<Float> = .zero
+    var skyAlongX: SIMD4<Float> = .zero
+    var skyAlongY: SIMD4<Float> = .zero
+    var skyAlongZ: SIMD4<Float> = .zero
 }
 
 struct CityShadowUniforms {
@@ -180,6 +186,7 @@ final class EnvironmentRenderer: @unchecked Sendable {
         sunDirection: SIMD3<Float>,
         sunHeight: Float,
         shadowSoft: Float,
+        skyLight: SkyAmbient?,
         shadowMap: MTLTexture,
         vrmShadowMap: MTLTexture,
         shadowSampler: MTLSamplerState
@@ -202,6 +209,12 @@ final class EnvironmentRenderer: @unchecked Sendable {
             cameraPosition: SIMD4<Float>(cameraPosition.x, cameraPosition.y, cameraPosition.z, 0),
             vrmLightViewProjection: vrmLightViewProjection
         )
+        if let skyLight {
+            u.skyMean = SIMD4<Float>(skyLight.mean, 1)
+            u.skyAlongX = SIMD4<Float>(skyLight.x, 0)
+            u.skyAlongY = SIMD4<Float>(skyLight.y, 0)
+            u.skyAlongZ = SIMD4<Float>(skyLight.z, 0)
+        }
         uniBuf.contents().copyMemory(from: &u, byteCount: MemoryLayout<CityUniforms>.stride)
 
         encoder.pushDebugGroup("City")

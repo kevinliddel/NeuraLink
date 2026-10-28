@@ -140,7 +140,7 @@ struct EnvironmentRenderDiagnostic {
         renderer.draw(
             encoder: encoder, viewProjection: proj * view, lightViewProjection: lightVP,
             vrmLightViewProjection: matrix_identity_float4x4, cameraPosition: eye,
-            sunDirection: sun, sunHeight: sun.y, shadowSoft: 2.5,
+            sunDirection: sun, sunHeight: sun.y, shadowSoft: 2.5, skyLight: nil,
             shadowMap: wideShadow, vrmShadowMap: vrmShadow, shadowSampler: sampler)
         encoder.endEncoding()
         cmd.commit()

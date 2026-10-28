@@ -125,12 +125,16 @@ extension VRMRenderer {
             intensity: rimIntensity)
     }
 
+    /// One ambient colour, a little brighter from above and darker from
+    /// below (`SkyAmbient.hemisphere`).
     public func setAmbientColor(_ color: SIMD3<Float>) {
-        uniforms.ambientColor = simd_clamp(
-            color,
-            SIMD3<Float>(repeating: 0.0),
-            SIMD3<Float>(repeating: 1.0)
-        )
+        setAmbient(.hemisphere(simd_clamp(color, SIMD3<Float>(repeating: 0.0), SIMD3<Float>(repeating: 1.0))))
+    }
+
+    /// The ambient light with where it comes from: MToon's GI along a
+    /// normal (`SkyAmbient.along`).
+    func setAmbient(_ ambient: SkyAmbient) {
+        uniforms.ambient = ambient
     }
 
     public func setLightNormalizationMode(_ mode: LightNormalizationMode) {

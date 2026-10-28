@@ -99,6 +99,42 @@ struct SkyTableTests {
         #expect(haze(flat([1, 0, 0], up: -10)) == 0)
     }
 
+    /// The sky's light, summed on the GPU from the real sky view.
+    @Test("The sky's light: blue from above at noon, warm from the sun's side at dusk, dim but there at night")
+    func testSkyAmbient() throws {
+        let device = try #require(MTLCreateSystemDefaultDevice())
+        let sky = SkyRenderer(device: device, config: RendererConfig(strict: .off, sampleCount: 1))
+        let queue = try #require(device.makeCommandQueue())
+        func light(at iso: String) throws -> (SkyEnvironment, SkyAmbient) {
+            let instant = try utc(iso)
+            sky.timeProvider = SkyTimeProvider(now: { instant }, timeZone: TimeZone(identifier: "Indian/Antananarivo")!)
+            sky.update(deltaTime: 0)
+            let buffer = try #require(queue.makeCommandBuffer())
+            sky.encodeAtmosphere(commandBuffer: buffer)
+            buffer.commit()
+            buffer.waitUntilCompleted()
+            sky.collectSkyAmbient()
+            return (sky.currentEnvironment, try #require(sky.skyAmbient))
+        }
+        let up = SIMD3<Float>(0, 1, 0)
+
+        let (_, noon) = try light(at: "2026-06-21T09:00:00Z")
+        let above = noon.along(up), below = noon.along(-up)
+        #expect(above.z > above.x * 1.2, "noon from above \(above)")
+        #expect(above.z / above.x > below.z / below.x, "above \(above), below \(below)")
+
+        // 17:15, the sun 1° up: the side facing it warmer than the side away.
+        let (dusk, evening) = try light(at: "2026-06-21T14:15:00Z")
+        let toward = simd_normalize(SIMD3<Float>(dusk.sunDirection.x, 0, dusk.sunDirection.z))
+        let sunSide = evening.along(toward), away = evening.along(-toward)
+        #expect(sunSide.x / sunSide.z > away.x / away.z, "sun side \(sunSide), away \(away)")
+
+        let (_, night) = try light(at: "2026-06-21T20:00:00Z")
+        let overhead = night.along(up)
+        #expect(simd_dot(overhead, SkyAmbient.luma) > 0.01 && simd_dot(overhead, SkyAmbient.luma) < simd_dot(above, SkyAmbient.luma))
+        for value in [above, below, sunSide, away, overhead] { #expect(value.x.isFinite && value.min() >= 0) }
+    }
+
     /// The clouds' noise, baked on the GPU and read back.
     @Test("The cloud noise tiles without a seam and spreads about its middle")
     func testCloudNoise() throws {

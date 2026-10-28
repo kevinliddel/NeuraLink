@@ -211,6 +211,10 @@ public final class VRMRenderer: NSObject, @unchecked Sendable {
     /// Enables spring bone physics (hair, skirts, accessories).
     public var enableSpringBone: Bool = false
 
+    /// The model shown was imported by the user: the breeze reaches its
+    /// springs only when the user lets it (`UserSettings.windForImported`).
+    var modelIsImported = false
+
     var lastUpdateTime: CFTimeInterval = 0
     
     // OPTIMIZATION: Static zero weights array (avoids allocation per primitive)

@@ -84,8 +84,9 @@ extension VRMRenderer {
     ///   by night, crossing over the sky at twilight, turned to the camera's
     ///   side when it stands behind the avatar (`avatarDirection`).
     /// - Fill light = opposite sky scatter.
-    /// - Rim light  = above-behind, separates model from background; the real
-    ///   key light while that stands behind her.
+    /// - Rim light  = above-behind, separates model from background, in the
+    ///   sky's colour there; the real key light while that stands behind her.
+    /// - Ambient    = the sky's own light at L1 (`SkyAmbient`): MToon's GI.
     ///
     /// The MToon shader computes `dot(N, -lightDirection)`, so we pass
     /// **−directionTowardLight** as the `direction` argument of `setLight`.
@@ -116,6 +117,17 @@ extension VRMRenderer {
             intensity: env.rimLightIntensity
         )
 
-        setAmbientColor(env.ambientColor)
+        // The sky's own light (SkyEnvironment.ambient), under rain's overcast.
+        setAmbient(env.ambient.overcast(skyRenderer?.rainIntensity ?? 0))
+    }
+
+    /// The breeze in the hair and clothes (SkyWind), or still air: when the
+    /// user has turned it off, for an imported character unless the user
+    /// let it in, and with no sky to keep its time.
+    func springBoneWind() -> SIMD3<Float> {
+        let settings = UserSettings.shared
+        guard settings.wind, !modelIsImported || settings.windForImported, let sky = skyRenderer else { return .zero }
+        return SkyWind.velocity(
+            time: sky.cloudTime, cloudSpeed: sky.currentEnvironment.cloudSpeed, rain: sky.rainIntensity)
     }
 }

@@ -378,10 +378,11 @@ final class VRMMetalState {
         lastAppliedEmotion = ""
     }
 
-    func display(_ model: VRMModel, gender: CharacterGender = .fallback) {
+    func display(_ model: VRMModel, gender: CharacterGender = .fallback, isImported: Bool = false) {
         characterGender = gender
         currentModel = model
         renderer?.loadModel(model)
+        renderer?.modelIsImported = isImported
         // Before the saved customization grafts, so the phone is part of
         // the composition snapshot (VRMModel+Props).
         attachPhoneProp(to: model)

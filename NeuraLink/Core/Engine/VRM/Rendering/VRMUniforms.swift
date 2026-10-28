@@ -43,7 +43,14 @@ struct Uniforms {
     var _padding5: Float = 0  // 4 bytes padding
     var _padding6: Float = 0  // 4 bytes padding
     var _padding7: Float = 0  // 4 bytes padding to align to 16 bytes
-    // Total: 432 bytes (27 x 16-byte blocks)
+
+    // The ambient light's gradient (SkyAmbient): GI(n) = ambientColor +
+    // x·n.x + y·n.y + z·n.z, per channel. Defaults to the hemisphere around
+    // the default ambient.
+    var ambientAlongX_packed = SIMD4<Float>(0, 0, 0, 0)  // 16 bytes, offset 432 (xyz = rgb)
+    var ambientAlongY_packed = SIMD4<Float>(0.0175, 0.0175, 0.0175, 0)  // 16 bytes, offset 448
+    var ambientAlongZ_packed = SIMD4<Float>(0, 0, 0, 0)  // 16 bytes, offset 464
+    // Total: 480 bytes (30 x 16-byte blocks)
 
     // Computed properties for easy access
     var lightDirection: SIMD3<Float> {
@@ -64,6 +71,24 @@ struct Uniforms {
     var ambientColor: SIMD3<Float> {
         get { SIMD3<Float>(ambientColor_packed.x, ambientColor_packed.y, ambientColor_packed.z) }
         set { ambientColor_packed = SIMD4<Float>(newValue.x, newValue.y, newValue.z, 0.0) }
+    }
+
+    /// The whole ambient light: its mean in `ambientColor`, its gradient in
+    /// the three `ambientAlong` fields.
+    var ambient: SkyAmbient {
+        get {
+            SkyAmbient(
+                mean: ambientColor,
+                x: SIMD3<Float>(ambientAlongX_packed.x, ambientAlongX_packed.y, ambientAlongX_packed.z),
+                y: SIMD3<Float>(ambientAlongY_packed.x, ambientAlongY_packed.y, ambientAlongY_packed.z),
+                z: SIMD3<Float>(ambientAlongZ_packed.x, ambientAlongZ_packed.y, ambientAlongZ_packed.z))
+        }
+        set {
+            ambientColor = newValue.mean
+            ambientAlongX_packed = SIMD4<Float>(newValue.x, 0)
+            ambientAlongY_packed = SIMD4<Float>(newValue.y, 0)
+            ambientAlongZ_packed = SIMD4<Float>(newValue.z, 0)
+        }
     }
 
     var light1Direction: SIMD3<Float> {

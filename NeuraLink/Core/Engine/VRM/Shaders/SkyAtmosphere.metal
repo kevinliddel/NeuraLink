@@ -14,7 +14,9 @@
 //    through the haze. Again whenever either light moves more than 0.1°.
 //
 //  The sky shader then only looks the view up (SkyShader.metal). The
-//  clouds' noise is baked here too, once (sky_cloud_noise).
+//  clouds' noise is baked here too, once (sky_cloud_noise), and the sky
+//  view is summed into the light the sky casts (sky_ambient_sh) each time
+//  it is lit again.
 //
 //  Created by Dedicatus on 28/10/2026.
 //
@@ -193,6 +195,60 @@ kernel void sky_view_lut(
         throughput *= stepT;
     }
     out.write(half4(half3(luminance), half(skyCloudHaze(p, dir, ground, transmittance, a))), gid);
+}
+
+// MARK: - The sky's light
+
+// The sky as a light on whatever stands under it: the sky as shown (graded,
+// the night's glow in) gathered by a surface facing any way, as a mean and a
+// gradient, GI(n) = mean + gradient · n. That is L1 spherical harmonics
+// convolved with the cosine:
+//   mean = 1/4π ∫ L dω,   gradient = 1/2π ∫ L ω dω.
+// The upper hemisphere only: SkyAmbient adds the ground, lit by this. One
+// threadgroup of 256.
+kernel void sky_ambient_sh(
+    texture2d<float>            skyView [[texture(0)]],
+    constant SkyAmbientParams  &glow    [[buffer(0)]],
+    device float4              *out     [[buffer(1)]],
+    uint                        tid     [[thread_index_in_threadgroup]]
+) {
+    threadgroup float4 partial[4][256];
+    uint width = skyView.get_width(), height = skyView.get_height();
+    float4 mean = 0.0f, alongX = 0.0f, alongY = 0.0f, alongZ = 0.0f;
+    for (uint i = tid; i < width * height; i += 256) {
+        uint2  texel = uint2(i % width, i / width);
+        float2 uv    = (float2(texel) + 0.5f) / float2(width, height);
+        float3 d     = skyViewDirection(uv);
+        if (d.y <= 0.0f) continue;
+        // The texel's solid angle, cos(elevation) · dElevation · dAzimuth,
+        // with elevation = s² · π/2 over s = 2v − 1.
+        float s     = uv.y * 2.0f - 1.0f;
+        float area  = sqrt(max(0.0f, 1.0f - d.y * d.y))
+            * (2.0f * M_PI_F * s / float(height)) * (2.0f * M_PI_F / float(width));
+        float4 light = float4(skyGrade(skyView.read(texel).rgb)
+            + mix(glow.glowLow.rgb, glow.glowHigh.rgb, d.y * 0.5f + 0.5f), 0.0f) * area;
+        mean   += light;
+        alongX += light * d.x;
+        alongY += light * d.y;
+        alongZ += light * d.z;
+    }
+    partial[0][tid] = mean;
+    partial[1][tid] = alongX;
+    partial[2][tid] = alongY;
+    partial[3][tid] = alongZ;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    for (uint stride = 128; stride > 0; stride >>= 1) {
+        if (tid < stride) {
+            for (uint k = 0; k < 4; k++) partial[k][tid] += partial[k][tid + stride];
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+    if (tid == 0) {
+        out[0] = partial[0][0] / (4.0f * M_PI_F);
+        out[1] = partial[1][0] / (2.0f * M_PI_F);
+        out[2] = partial[2][0] / (2.0f * M_PI_F);
+        out[3] = partial[3][0] / (2.0f * M_PI_F);
+    }
 }
 
 // MARK: - Clouds
