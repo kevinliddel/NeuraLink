@@ -4,13 +4,13 @@
 //
 //  Created by Dedicatus on 17/04/2026.
 //
-//  Time-of-day sky: simple vertical gradient with time-driven colour palettes,
-//  sun disc, dome clouds, a moon lit from the sun's side, and stars that turn
-//  with the sky — a procedural faint field here, the catalogue's bright ones
-//  as sprites (sky_star_vertex / sky_star_fragment).
+//  The sky: the atmosphere looked up from its sky-view table
+//  (SkyAtmosphere.metal), the night's own glow under it, then the sun disc,
+//  dome clouds, a moon lit from the sun's side, and stars that turn with the
+//  sky — a procedural faint field here, the catalogue's bright ones as
+//  sprites (sky_star_vertex / sky_star_fragment).
 
-#include <metal_stdlib>
-using namespace metal;
+#include "SkyAtmosphereCommon.metal"
 
 // MARK: - Uniforms (must match SkyUniformsData in Swift, 224 bytes)
 
@@ -18,11 +18,11 @@ struct SkyUniforms {
     float4x4 invViewProjection;         // NDC → world-space ray cast
     float4   sunDirectionAndIntensity;  // xyz = toward-sun unit vector, w = intensity
     float4   sunColorAndSize;           // xyz = sun disc colour, w = disc exponent
-    float4   skyColorLow;               // xyz = gradient bottom colour
-    float4   skyColorHigh;              // xyz = gradient top colour
+    float4   nightGlowLow;              // xyz = the night's glow at the horizon, w = rain [0, 1]
+    float4   nightGlowHigh;             // xyz = at the zenith, w unused
     float4   cloudParams;               // x = elapsed time, y = scroll speed, z = coverage, w = star vis
     float4   moonDirectionAndPhase;     // xyz = toward-moon unit vector, w = lit fraction
-    float4   bodyParams;                // x = moon angular radius (rad), y = turbidity, z = moon brightness
+    float4   bodyParams;                // x = moon angular radius (rad), z = moon brightness
     float3x3 starRotation;              // star catalogue (J2000 equatorial) → world
 };
 
@@ -153,11 +153,41 @@ static float moonGlare(float cosM, float3 moonDir, constant SkyUniforms &sky) {
     return sky.bodyParams.z * up * (0.45f + 0.55f * smoothstep(0.8f, 0.995f, cosM));
 }
 
+// MARK: - The atmosphere's colour
+
+// A sky-view radiance as shown: a soft shoulder so the bright sky near the
+// sun rolls off instead of clipping, and a little more saturation, toward
+// the toon-shaded avatar in front of it.
+static float3 skyGrade(float3 radiance) {
+    float3 shown = 1.0f - exp(-radiance);
+    float  luma  = dot(shown, float3(0.2126f, 0.7152f, 0.0722f));
+    return max(mix(float3(luma), shown, 1.25f), 0.0f);
+}
+
+// Rain's overcast: the colour drained, the sky darker, as bright as before
+// otherwise, so a rainy night stays night.
+static float3 skyOvercast(float3 colour, float rain) {
+    float luma = dot(colour, float3(0.2126f, 0.7152f, 0.0722f));
+    return mix(colour, luma * float3(0.95f, 1.0f, 1.06f), rain * 0.7f) * (1.0f - rain * 0.28f);
+}
+
+// The atmosphere along `d` as shown, the night's glow included.
+static float3 skyAtmosphere(float3 d, texture2d<float> skyView, constant SkyUniforms &sky) {
+    constexpr sampler around(filter::linear, s_address::repeat, t_address::clamp_to_edge);
+    float3 colour = skyGrade(skyView.sample(around, skyViewUV(d)).rgb);
+    // The night's own glow (airglow, starlight), under twilight: deep blue,
+    // a little brighter overhead, darker below the horizon.
+    float3 glow = mix(sky.nightGlowLow.rgb, sky.nightGlowHigh.rgb, saturate(d.y * 0.5f + 0.5f));
+    colour += glow * mix(1.0f, 0.22f, smoothstep(0.0f, -0.18f, d.y));
+    return skyOvercast(colour, sky.nightGlowLow.w);
+}
+
 // MARK: - Fragment
 
 fragment float4 sky_fragment(
-    SkyOut               in   [[stage_in]],
-    constant SkyUniforms &sky [[buffer(0)]]
+    SkyOut               in      [[stage_in]],
+    constant SkyUniforms &sky    [[buffer(0)]],
+    texture2d<float>     skyView [[texture(0)]]
 ) {
     // Reconstruct world-space view direction from screen UV
     float2 ndc    = in.uv * 2.0f - 1.0f;
@@ -183,13 +213,8 @@ fragment float4 sky_fragment(
     // also clean.
     float  moonOcclude = smoothstep(cos(moonRadius * 1.48f), cos(moonRadius), cosM);
 
-    // ── Simple vertical gradient ──────────────────────────────────────
-    float  gradT  = clamp(viewDir.y * 0.5f + 0.5f, 0.0f, 1.0f);
-    float3 colour = mix(sky.skyColorLow.rgb, sky.skyColorHigh.rgb, gradT);
-
-    // Darken below the horizon for a natural ground-sky boundary
-    float belowT = smoothstep(0.0f, -0.18f, viewDir.y);
-    colour = mix(colour, sky.skyColorLow.rgb * 0.22f, belowT);
+    // ── The atmosphere ────────────────────────────────────────────────
+    float3 colour = skyAtmosphere(viewDir, skyView, sky);
 
     // ── Faint stars — turning with the sky, hidden behind the moon ────
     if (starVis > 0.001f && viewDir.y > 0.0f) {
@@ -201,7 +226,10 @@ fragment float4 sky_fragment(
     // ── Clouds ────────────────────────────────────────────────────────
     float clouds = skyClouds(viewDir, sky);
     if (clouds > 0.0f) {
-        float3 cloudTint = clamp(sky.skyColorLow.rgb * 1.8f + 0.12f, 0.0f, 1.0f);
+        // Tinted by the sky low in their direction: orange on the sunset
+        // side, pink opposite, white by day, grey-blue at night.
+        float3 horizon   = skyAtmosphere(normalize(float3(viewDir.x, 0.05f, viewDir.z)), skyView, sky);
+        float3 cloudTint = clamp(horizon * 1.8f + 0.12f, 0.0f, 1.0f);
         colour = mix(colour, cloudTint, clouds * 0.88f);
     }
     // The sun and moon are BEHIND the clouds: a thick cloud hides the disc,
@@ -211,10 +239,15 @@ fragment float4 sky_fragment(
 
     // ── Sun disc + glow ───────────────────────────────────────────────
     if (sunDir.y > -0.10f) {
+        // The disc over the sky, not added to it, so a red sun still shows
+        // against the bright glow around it; its colour less deep than the
+        // light it gives, as the eye sees a sun it can't look at.
         float cosG  = max(dot(viewDir, sunDir), 0.0f);
         float disc  = pow(cosG, sky.sunColorAndSize.w);
-        float bloom = pow(cosG, 18.0f) * 0.35f;
-        colour += sky.sunColorAndSize.rgb * (disc * discClear + bloom * glowClear);
+        float bloom = pow(cosG, 18.0f) * 0.15f;
+        float3 discColour = sqrt(sky.sunColorAndSize.rgb);
+        colour = mix(colour, discColour, saturate(disc * 1.5f) * discClear);
+        colour += sky.sunColorAndSize.rgb * bloom * glowClear;
     }
 
     // ── Moon ──────────────────────────────────────────────────────────

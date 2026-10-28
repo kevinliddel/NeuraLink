@@ -7,6 +7,7 @@
 
 import Testing
 import Foundation
+import Metal
 import simd
 @testable import NeuraLink
 
@@ -272,6 +273,127 @@ struct SkySystemTests {
             if env.sunDirection.y > 0.2 { #expect(env.starVisibility < 0.01) }
             if env.sunDirection.y < -0.4 { #expect(env.starVisibility > 0.9) }
         }
+    }
+
+    // MARK: - The atmosphere
+
+    @Test("Sunlight through the air: the optical depth of Hillaire's atmosphere, white-gold high, red low")
+    func testTransmittance() {
+        // Straight up from 0.2 km: each layer's scale height times its
+        // density there; the ozone tent's area is its half width.
+        let rayleigh = SkyAtmosphere.rayleighScattering * 8 * exp(-0.2 / 8)
+        let mie = SkyAtmosphere.mieExtinction * 1.2 * exp(-0.2 / 1.2)
+        let expected = exp(-(rayleigh + SIMD3<Float>(repeating: mie) + SkyAtmosphere.ozoneAbsorption * 15))
+        #expect(simd_distance(SkyAtmosphere.transmittance(elevation: .pi / 2), expected) < 0.002)
+
+        var previous = SkyAtmosphere.lightColor(elevation: .pi / 2)
+        #expect(previous.y > 0.9 && previous.z > 0.75)
+        for degrees: Float in [45, 20, 10, 5, 2, 0] {
+            let color = SkyAtmosphere.lightColor(elevation: degrees * .pi / 180)
+            #expect(color.x == 1)
+            #expect(color.y < previous.y && color.z < previous.z, "\(degrees)°: \(color)")
+            previous = color
+        }
+        #expect(previous.y < 0.15 && previous.z < 0.01)  // on the horizon: red
+        #expect(SkyAtmosphere.transmittance(elevation: -0.01) == .zero)
+    }
+
+    @Test("The eye adapts through twilight: steady by day, the twilight sky still lit, capped at night")
+    func testExposure() {
+        func exposure(_ degrees: Float) -> Float { SkyAtmosphere.exposure(sunElevation: degrees * .pi / 180) }
+        #expect(abs(exposure(30) - 1) < 1e-4)
+        for degrees: Float in [81, 60, 45, 15, 10, 5] { #expect(exposure(degrees) > 0.6 && exposure(degrees) < 1.1) }
+        var previous = exposure(0)
+        for degrees: Float in [-2, -4, -6, -8] {
+            #expect(exposure(degrees) > previous * 1.5, "\(degrees)°")
+            previous = exposure(degrees)
+        }
+        let ceiling = pow(1 / SkyAtmosphere.darkestAdapted, SkyAtmosphere.adaptation)
+        #expect(exposure(-30) <= ceiling * 1.001)
+        // Six degrees down the sky is still a third as bright as by day,
+        // as seen: civil twilight is not night.
+        let shown = SkyAtmosphere.adaptingLuminance(sunElevation: -6 * .pi / 180) * exposure(-6)
+        #expect(shown > 0.2 * SkyAtmosphere.referenceLuminance)
+    }
+
+    @Test("The night's glow comes in under twilight; the key light takes the air's colour")
+    func testNightGlowAndSunColor() throws {
+        let noon = SkyEnvironment.resolve(at: try utc("2026-10-26T09:00:00Z"), location: Self.antananarivo)
+        #expect(noon.nightGlowHigh == .zero)
+        let elevation = asin(noon.sunDirection.y)
+        #expect(simd_distance(noon.sunColor, SkyAtmosphere.lightColor(elevation: elevation)) < 1e-5)
+        #expect(simd_distance(noon.keyLight.color, noon.sunColor) < 1e-5)
+        let night = SkyEnvironment.resolve(at: try utc("2026-10-26T19:00:00Z"), location: Self.antananarivo)
+        #expect(night.sunDirection.y < -0.4)
+        #expect(simd_distance(night.nightGlowHigh, SIMD3<Float>(0.110, 0.137, 0.192)) < 1e-4)
+        // Just after sunset (17:45 local): the glow coming in, the key light warm.
+        let dusk = SkyEnvironment.resolve(at: try utc("2026-10-26T15:13:00Z"), location: Self.antananarivo)
+        #expect(dusk.sunDirection.y < 0 && dusk.sunDirection.y > -0.1)
+        #expect(dusk.nightGlowHigh.z > 0 && dusk.nightGlowHigh.z < 0.192)
+    }
+
+    /// The real tables, built on the GPU and read back.
+    @MainActor
+    @Test("The sky-view table: blue overhead at noon, red toward a setting sun, twilight still lit")
+    func testSkyViewTable() throws {
+        let device = try #require(MTLCreateSystemDefaultDevice())
+        let sky = SkyRenderer(device: device, config: RendererConfig(strict: .off, sampleCount: 1))
+        let queue = try #require(device.makeCommandQueue())
+        func table(at iso: String) throws -> (SkyEnvironment, (SIMD3<Float>) -> SIMD3<Float>) {
+            let instant = try utc(iso)
+            sky.timeProvider = SkyTimeProvider(now: { instant }, timeZone: TimeZone(identifier: "Indian/Antananarivo")!)
+            sky.update(deltaTime: 0)
+            let buffer = try #require(queue.makeCommandBuffer())
+            sky.encodeAtmosphere(commandBuffer: buffer)
+            let texture = try #require(sky.skyViewTable)
+            let bytesPerRow = texture.width * 8
+            let readback = try #require(device.makeBuffer(length: bytesPerRow * texture.height, options: .storageModeShared))
+            let blit = try #require(buffer.makeBlitCommandEncoder())
+            blit.copy(from: texture, sourceSlice: 0, sourceLevel: 0, sourceOrigin: MTLOrigin(),
+                      sourceSize: MTLSize(width: texture.width, height: texture.height, depth: 1),
+                      to: readback, destinationOffset: 0, destinationBytesPerRow: bytesPerRow,
+                      destinationBytesPerImage: bytesPerRow * texture.height)
+            blit.endEncoding()
+            buffer.commit()
+            buffer.waitUntilCompleted()
+            let texels = readback.contents().bindMemory(to: Float16.self, capacity: texture.width * texture.height * 4)
+            let (width, height) = (texture.width, texture.height)
+            // skyViewUV in SkyAtmosphereCommon.metal, to the nearest texel.
+            let lookup = { (d: SIMD3<Float>) -> SIMD3<Float> in
+                let elevation = asin(min(1, max(-1, d.y)))
+                let s = (elevation < 0 ? -1 : 1) * (abs(elevation) / (.pi / 2)).squareRoot()
+                let u = atan2(d.z, d.x) / (2 * .pi) + 0.5
+                let x = min(width - 1, max(0, Int(u * Float(width))))
+                let y = min(height - 1, max(0, Int((s * 0.5 + 0.5) * Float(height))))
+                let i = (y * width + x) * 4
+                return SIMD3<Float>(Float(texels[i]), Float(texels[i + 1]), Float(texels[i + 2]))
+            }
+            return (sky.currentEnvironment, lookup)
+        }
+        func flat(_ d: SIMD3<Float>, up degrees: Float) -> SIMD3<Float> {
+            let h = simd_normalize(SIMD3<Float>(d.x, 0, d.z))
+            let e = degrees * .pi / 180
+            return SIMD3<Float>(h.x * cos(e), sin(e), h.z * cos(e))
+        }
+        let luma = SIMD3<Float>(0.2126, 0.7152, 0.0722)
+
+        let (noon, noonSky) = try table(at: "2026-06-21T09:00:00Z")
+        let zenith = noonSky([0, 1, 0])
+        #expect(zenith.z > zenith.x * 1.5, "noon zenith \(zenith)")
+        #expect(simd_dot(noonSky(flat(-noon.sunDirection, up: 3)), luma) > simd_dot(zenith, luma))
+
+        // Antananarivo, 21 June 17:15: the sun 1° up, straight ahead-ish.
+        let (dusk, duskSky) = try table(at: "2026-06-21T14:15:00Z")
+        #expect(dusk.sunDirection.y > 0 && dusk.sunDirection.y < 0.05)
+        let sunward = duskSky(flat(dusk.sunDirection, up: 2)), opposite = duskSky(flat(-dusk.sunDirection, up: 2))
+        #expect(sunward.x / sunward.z > opposite.x / opposite.z * 2, "\(sunward) vs \(opposite)")
+
+        // 17:47: the sun 6° down. The zenith still lit, not night.
+        let (twilight, twilightSky) = try table(at: "2026-06-21T14:47:00Z")
+        #expect(twilight.sunDirection.y < -0.09 && twilight.sunDirection.y > -0.12)
+        let twilightZenith = simd_dot(twilightSky([0, 1, 0]), luma)
+        #expect(twilightZenith > 0.01, "twilight zenith \(twilightZenith)")
+        for value in [zenith, sunward, opposite, twilightSky([0, 1, 0])] { #expect(value.x.isFinite && value.min() >= 0) }
     }
 
     // MARK: - Clock override

@@ -96,6 +96,7 @@ extension VRMRenderer {
         } else {
             terrainRenderer?.clearWideShadowMap(commandBuffer: commandBuffer)
         }
+        encodeSkyAtmosphere(commandBuffer: commandBuffer)
 
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor)
         else {
@@ -403,6 +404,7 @@ extension VRMRenderer {
         } else {
             terrainRenderer?.clearWideShadowMap(commandBuffer: commandBuffer)
         }
+        encodeSkyAtmosphere(commandBuffer: commandBuffer)
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor)
         else {
             inflightSemaphore.signal()

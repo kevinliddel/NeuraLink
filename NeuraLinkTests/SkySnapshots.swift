@@ -11,6 +11,7 @@
 //  judged on these, before and after.
 //
 //  NL_SKY_SNAPSHOT_DIR: output folder (unset = skip).
+//  NL_SKY_SNAPSHOT_DAYS: only these of the days (yyyy-MM-dd, comma-separated).
 //  NL_SKY_DOC_DIR: writes the pictures in docs/Sky_System.md instead
 //  (docs/Sky, as an absolute path).
 //
@@ -31,7 +32,7 @@ struct SkySnapshots {
     // A first-quarter evening, a full moon, a waxing gibbous.
     private static let days = ["2026-06-21", "2026-10-26", "2026-12-21"]
     private static let times = ["05:30", "06:00", "06:30", "09:00", "12:00", "16:00",
-                                "17:45", "18:15", "19:00", "22:00", "02:00"]
+                                "17:30", "17:45", "18:15", "18:45", "19:00", "22:00", "02:00"]
 
     @Test("Writes sky renders when NL_SKY_SNAPSHOT_DIR is set")
     func render() async throws {
@@ -42,8 +43,9 @@ struct SkySnapshots {
         let zone = try #require(TimeZone(identifier: "Indian/Antananarivo"))
         let (renderer, model) = try await Self.makeRenderer(device: device)
 
+        let days = env["NL_SKY_SNAPSHOT_DAYS"].map { $0.split(separator: ",").map(String.init) } ?? Self.days
         var report = ""
-        for day in Self.days {
+        for day in days {
             for time in Self.times {
                 let instant = try #require(Self.date(day, time, in: zone))
                 guard let sky = Self.show(renderer, at: instant, in: zone) else { continue }
@@ -220,7 +222,9 @@ struct SkySnapshots {
     }
 
     private static func render(_ shot: Shot, with renderer: VRMRenderer, device: MTLDevice) -> Data? {
-        let up: SIMD3<Float> = abs(simd_normalize(shot.target - shot.eye).y) > 0.95 ? [0, 0, -1] : [0, 1, 0]
+        // The true vertical, as someone facing the shot holds their head,
+        // unless it is all but straight up.
+        let up: SIMD3<Float> = abs(simd_normalize(shot.target - shot.eye).y) > 0.999 ? [0, 0, -1] : [0, 1, 0]
         renderer.viewMatrix = OrthographicCamera.makeLookAt(eye: shot.eye, target: shot.target, up: up)
         renderer.fovDegrees = shot.fov
         renderer.isModelVisible = shot.showsFigure

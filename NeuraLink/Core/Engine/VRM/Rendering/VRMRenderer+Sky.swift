@@ -59,6 +59,12 @@ extension VRMRenderer {
         rainWorldRenderer?.draw(encoder: encoder)
     }
 
+    /// The atmosphere's lookup tables, when they need it. Before the render
+    /// pass that draws the sky.
+    func encodeSkyAtmosphere(commandBuffer: MTLCommandBuffer) {
+        skyRenderer?.encodeAtmosphere(commandBuffer: commandBuffer)
+    }
+
     /// Encodes the sky background into the current render pass.
     /// Must be called before VRM mesh draw calls.
     func drawSky(encoder: MTLRenderCommandEncoder) {

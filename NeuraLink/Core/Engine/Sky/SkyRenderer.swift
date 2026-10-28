@@ -8,8 +8,10 @@
 import Metal
 import simd
 
-/// Renders a physically-inspired, time-of-day sky backdrop via a fullscreen triangle.
-/// Encode this **before** any VRM draw calls so the sky renders behind the model.
+/// Renders the sky backdrop via a fullscreen triangle: the atmosphere from
+/// its lookup tables (`encodeAtmosphere`, before the render pass), then the
+/// sun, moon, clouds and stars. Encode this **before** any VRM draw calls so
+/// the sky renders behind the model.
 final class SkyRenderer {
 
     // MARK: - Public state
@@ -49,6 +51,29 @@ final class SkyRenderer {
     static let moonAngularRadius: Float = 0.0447
     private var cloudTime: Float = 0
 
+    // The atmosphere's lookup tables (SkyAtmosphere.metal): transmittance
+    // and multiple scattering once, the sky view whenever a light moves.
+    private var transmittancePipeline: MTLComputePipelineState?
+    private var multipleScatteringPipeline: MTLComputePipelineState?
+    private var skyViewPipeline: MTLComputePipelineState?
+    private var transmittanceTable: MTLTexture?
+    private var multipleScatteringTable: MTLTexture?
+    /// The sky seen from the ground, as the fragment shader reads it.
+    private(set) var skyViewTable: MTLTexture?
+    private var atmosphereReady = false
+    /// What the sky view was last lit with; nil until it has been.
+    private(set) var skyViewLight: SkyViewParams?
+
+    /// The noon sky's brightness as shown: the sun's light in the sky-view
+    /// table at the reference exposure (`SkyAtmosphere.exposure` = 1).
+    static let sunSkyLight: Float = 32
+    /// A full moon's light on the sky, against the same scale: a faint blue
+    /// sky around and above it, over the night's glow.
+    static let moonSkyLight: Float = 1.2
+    /// The sky view is lit again once a light has moved this far: 0.1°,
+    /// about every 25 s.
+    static let skyViewRefreshCosine: Float = cos(0.1 * .pi / 180)
+
     // MARK: - Init
 
     init(device: MTLDevice, config: RendererConfig) {
@@ -68,6 +93,7 @@ final class SkyRenderer {
         }
         setupPipeline(config: config)
         setupDepthState()
+        setupAtmosphere()
     }
 
     // MARK: - Per-frame update (main thread)
@@ -77,6 +103,58 @@ final class SkyRenderer {
     func update(deltaTime: Float) {
         cloudTime += deltaTime
         currentEnvironment = SkyEnvironment.resolve(at: timeProvider.now(), location: timeProvider.location)
+    }
+
+    // MARK: - Atmosphere (before the render pass)
+
+    /// Builds the atmosphere's fixed tables the first time, and lights the
+    /// sky view again when the sun or the moon has moved enough. Encode
+    /// before the render pass that draws the sky.
+    func encodeAtmosphere(commandBuffer: MTLCommandBuffer) {
+        guard isEnabled, let transmittancePipeline, let multipleScatteringPipeline, let skyViewPipeline,
+              let transmittanceTable, let multipleScatteringTable, let skyViewTable
+        else { return }
+        if !atmosphereReady {
+            dispatch(transmittancePipeline, into: transmittanceTable, reading: [],
+                     label: "SkyTransmittance", commandBuffer: commandBuffer)
+            dispatch(multipleScatteringPipeline, into: multipleScatteringTable, reading: [transmittanceTable],
+                     label: "SkyMultipleScattering", commandBuffer: commandBuffer)
+            atmosphereReady = true
+        }
+        let env = currentEnvironment
+        let moonLight = Self.moonSkyLight * env.moonBrightness
+        if let last = skyViewLight,
+           simd_dot(SIMD3<Float>(last.sun.x, last.sun.y, last.sun.z), env.sunDirection) > Self.skyViewRefreshCosine,
+           simd_dot(SIMD3<Float>(last.moon.x, last.moon.y, last.moon.z), env.moonDirection) > Self.skyViewRefreshCosine,
+           abs(last.moon.w - moonLight) < 0.01 {
+            return
+        }
+        let sunElevation = asin(min(1, max(-1, env.sunDirection.y)))
+        let light = SkyViewParams(
+            sun: SIMD4<Float>(env.sunDirection, Self.sunSkyLight * SkyAtmosphere.exposure(sunElevation: sunElevation)),
+            moon: SIMD4<Float>(env.moonDirection, moonLight))
+        dispatch(skyViewPipeline, into: skyViewTable, reading: [transmittanceTable, multipleScatteringTable],
+                 view: light, label: "SkyView", commandBuffer: commandBuffer)
+        skyViewLight = light
+    }
+
+    private func dispatch(
+        _ pipeline: MTLComputePipelineState, into table: MTLTexture, reading inputs: [MTLTexture],
+        view: SkyViewParams? = nil, label: String, commandBuffer: MTLCommandBuffer
+    ) {
+        guard let encoder = commandBuffer.makeComputeCommandEncoder() else { return }
+        encoder.label = label
+        encoder.setComputePipelineState(pipeline)
+        encoder.setTexture(table, index: 0)
+        for (index, input) in inputs.enumerated() { encoder.setTexture(input, index: index + 1) }
+        var params = SkyAtmosphere.gpuParams
+        encoder.setBytes(&params, length: MemoryLayout<SkyAtmosphereParams>.stride, index: 0)
+        if var view { encoder.setBytes(&view, length: MemoryLayout<SkyViewParams>.stride, index: 1) }
+        let group = MTLSize(width: 8, height: 8, depth: 1)
+        encoder.dispatchThreadgroups(
+            MTLSize(width: (table.width + 7) / 8, height: (table.height + 7) / 8, depth: 1),
+            threadsPerThreadgroup: group)
+        encoder.endEncoding()
     }
 
     // MARK: - Render thread
@@ -89,13 +167,11 @@ final class SkyRenderer {
         let md  = env.moonDirection
         let ri  = rainIntensity
 
-        // Rain overrides: denser clouds, no stars, slightly darker sky.
+        // Rain overrides: denser clouds, no stars, a drained, darker sky (the
+        // shader's skyOvercast).
         let cloudCoverage  = env.cloudCoverage  + (0.92 - env.cloudCoverage)  * ri
         let starVisibility = env.starVisibility * max(0, 1.0 - ri * 0.95)
         let darkFactor     = 1.0 - ri * 0.28
-        let rainTint       = SIMD3<Float>(0.62, 0.67, 0.72)  // cool overcast grey
-        let skyLow  = (env.skyColorLow  * (1 - ri * 0.55) + rainTint * (ri * 0.55)) * darkFactor
-        let skyHigh = (env.skyColorHigh * (1 - ri * 0.65) + rainTint * (ri * 0.65)) * darkFactor
 
         // A perspective camera sends a direction (w = 0) somewhere on
         // screen; an orthographic one sends every direction to w = 0.
@@ -110,11 +186,11 @@ final class SkyRenderer {
                 env.sunColor.x, env.sunColor.y, env.sunColor.z,
                 300.0  // disc exponent — tight sun disc
             ),
-            skyColorLow: SIMD4<Float>(skyLow.x, skyLow.y, skyLow.z, 0),
-            skyColorHigh: SIMD4<Float>(skyHigh.x, skyHigh.y, skyHigh.z, 0),
+            nightGlowLow: SIMD4<Float>(env.nightGlowLow, ri),
+            nightGlowHigh: SIMD4<Float>(env.nightGlowHigh, 0),
             cloudParams: SIMD4<Float>(cloudTime, env.cloudSpeed, cloudCoverage, starVisibility),
             moonDirectionAndPhase: SIMD4<Float>(md.x, md.y, md.z, env.moonIllumination),
-            bodyParams: SIMD4<Float>(Self.moonAngularRadius, env.turbidity, env.moonBrightness, 0),
+            bodyParams: SIMD4<Float>(Self.moonAngularRadius, 0, env.moonBrightness, 0),
             starRotation: env.starRotation
         )
         uniformBuffer?.contents().copyMemory(
@@ -123,13 +199,16 @@ final class SkyRenderer {
 
     /// Encodes the sky fullscreen draw into the active render encoder.
     func encode(encoder: MTLRenderCommandEncoder) {
-        guard isEnabled, let pipeline, let buf = uniformBuffer else { return }
+        // Nothing to draw until the sky view has been lit once.
+        guard isEnabled, let pipeline, let buf = uniformBuffer, skyViewLight != nil, let skyViewTable
+        else { return }
         encoder.pushDebugGroup("SkyBackground")
         encoder.setRenderPipelineState(pipeline)
         if let depth = depthState { encoder.setDepthStencilState(depth) }
         encoder.setCullMode(.none)
         encoder.setFrontFacing(.counterClockwise)
         encoder.setFragmentBuffer(buf, offset: 0, index: 0)
+        encoder.setFragmentTexture(skyViewTable, index: 0)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         if let starPipeline, let starBuffer, var viewProjection = starViewProjection {
             // Added on top, each star a small quad facing the camera.
@@ -183,6 +262,35 @@ final class SkyRenderer {
                 device: device, descriptor: desc, key: "skyStars")
         } catch {
             nlLog("[SkyRenderer] Pipeline setup failed: \(error)")
+        }
+    }
+
+    private func setupAtmosphere() {
+        func table(_ width: Int, _ height: Int, _ label: String) -> MTLTexture? {
+            let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+                pixelFormat: .rgba16Float, width: width, height: height, mipmapped: false)
+            descriptor.usage = [.shaderRead, .shaderWrite]
+            descriptor.storageMode = .private
+            let texture = device.makeTexture(descriptor: descriptor)
+            texture?.label = label
+            return texture
+        }
+        transmittanceTable = table(256, 64, "SkyTransmittance")
+        multipleScatteringTable = table(32, 32, "SkyMultipleScattering")
+        skyViewTable = table(192, 108, "SkyView")
+        do {
+            let lib = try VRMPipelineCache.shared.getLibrary(device: device)
+            guard let transmittance = lib.makeFunction(name: "sky_transmittance_lut"),
+                  let multiple = lib.makeFunction(name: "sky_multiscattering_lut"),
+                  let view = lib.makeFunction(name: "sky_view_lut") else {
+                nlLog("[SkyRenderer] atmosphere kernels not found in library", level: .error)
+                return
+            }
+            transmittancePipeline = try device.makeComputePipelineState(function: transmittance)
+            multipleScatteringPipeline = try device.makeComputePipelineState(function: multiple)
+            skyViewPipeline = try device.makeComputePipelineState(function: view)
+        } catch {
+            nlLog("[SkyRenderer] atmosphere pipeline setup failed: \(error)", level: .error)
         }
     }
 

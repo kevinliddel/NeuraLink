@@ -21,11 +21,12 @@ struct SkyUniformsData {
     /// Sun disc colour rgb + disc exponent w (higher = tighter disc).
     var sunColorAndSize: SIMD4<Float>          // 16 bytes, offset  80
 
-    /// Sky gradient bottom colour rgb, w unused.
-    var skyColorLow: SIMD4<Float>              // 16 bytes, offset  96
+    /// The night's own glow at the horizon rgb (weighted by how dark it
+    /// is), w = rain [0, 1].
+    var nightGlowLow: SIMD4<Float>             // 16 bytes, offset  96
 
-    /// Sky gradient top colour rgb, w unused.
-    var skyColorHigh: SIMD4<Float>             // 16 bytes, offset 112
+    /// The night's own glow at the zenith rgb, w unused.
+    var nightGlowHigh: SIMD4<Float>            // 16 bytes, offset 112
 
     /// Cloud animation: x=elapsed time, y=scroll speed, z=coverage [0,1], w=star visibility.
     var cloudParams: SIMD4<Float>              // 16 bytes, offset 128
@@ -33,8 +34,8 @@ struct SkyUniformsData {
     /// Moon direction xyz (world-space, pointing toward the moon) + lit fraction w.
     var moonDirectionAndPhase: SIMD4<Float>    // 16 bytes, offset 144
 
-    /// x = moon angular radius (radians), y = turbidity, z = moon brightness
-    /// against full, w unused.
+    /// x = moon angular radius (radians), z = moon brightness against full,
+    /// y and w unused.
     var bodyParams: SIMD4<Float>               // 16 bytes, offset 160
 
     /// Star catalogue frame (J2000 equatorial) → world. Orthonormal, so its

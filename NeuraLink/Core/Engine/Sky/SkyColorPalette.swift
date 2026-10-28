@@ -16,7 +16,8 @@ struct SkyEnvironment {
     /// Unit vector pointing FROM the scene TOWARD the sun (below the horizon at night).
     let sunDirection: SIMD3<Float>
 
-    /// Colour of the sun's disc in the sky. Not the key light's colour,
+    /// Colour of the sun's disc in the sky: its light after the air it
+    /// crosses (`SkyAtmosphere.lightColor`). Not the key light's colour,
     /// which is the moon's at night.
     let sunColor: SIMD3<Float>
 
@@ -38,17 +39,16 @@ struct SkyEnvironment {
     /// Cloud layer horizontal scroll speed (UV units/s).
     let cloudSpeed: Float
 
-    /// Atmospheric turbidity [2,10]: 2 = crystal clear, 10 = hazy.
-    let turbidity: Float
-
     /// Normalised star field brightness [0,1]: 0 = day, 1 = full night sky.
     let starVisibility: Float
 
-    /// Sky gradient bottom colour (horizon level).
-    let skyColorLow: SIMD3<Float>
+    /// The night's own glow (airglow and starlight) at the horizon, already
+    /// weighted by how dark it is: nothing by day, coming in under
+    /// twilight. The atmosphere itself is the GPU's (`SkyAtmosphere`).
+    let nightGlowLow: SIMD3<Float>
 
-    /// Sky gradient top colour (zenith level).
-    let skyColorHigh: SIMD3<Float>
+    /// The night's own glow at the zenith, weighted the same.
+    let nightGlowHigh: SIMD3<Float>
 
     // MARK: - VRM Lighting
 
@@ -167,12 +167,15 @@ extension SkyEnvironment {
             min(1.0, max(0.0, 1.0 - abs(sunDir.y) * 3.5))
             * (sunDir.y > -0.1 ? 1.0 : 0.0)
 
-        // Sun colour — orange at the horizon, white as it rises.
-        let noonColor = SIMD3<Float>(1.00, 0.96, 0.86)
-        let horizonColor = SIMD3<Float>(1.00, 0.52, 0.10)
-        let sunColor = skyLerp(horizonColor, noonColor, dayFactor * (1.0 - sunsetFactor * 0.8))
+        // The sun's colour after the air it crosses: white-gold high, orange
+        // low, red on the horizon. The key light takes it where the key
+        // stands, never lower than its floor.
+        let sunElevation = asin(min(1, max(-1, sunDir.y)))
+        let sunColor = SkyAtmosphere.lightColor(elevation: sunElevation)
         let keyLight = SkyKeyLight.resolve(
-            sun: sunDir, sunColor: sunColor, moon: moonDir, moonIllumination: bodies.moonIllumination,
+            sun: sunDir,
+            sunColor: SkyAtmosphere.lightColor(elevation: max(sunElevation, asin(SkyKeyLight.minimumElevation))),
+            moon: moonDir, moonIllumination: bodies.moonIllumination,
             moonBrightness: bodies.moonBrightness, dayFactor: dayFactor)
 
         // Fill light: soft sky-blue from the opposite side of the sun.
@@ -197,21 +200,11 @@ extension SkyEnvironment {
         let rimColor = skyLerp(SIMD3<Float>(0.85, 0.90, 1.00), keyLight.color, behind)
         let rimIntensity: Float = 0.12 + dayFactor * 0.12 + behind * 0.12
 
-        // Sky gradient colours — simple palette keyed on sun elevation.
-        let tDawn = skySmooth(-0.12, -0.02, sunDir.y)  // 0=deep night → 1=just below horizon
-        let tDay = skySmooth(-0.02, 0.20, sunDir.y)  // 0=near horizon → 1=full daytime
-
+        // The night's own glow, today's night palette: it comes in as the
+        // twilight the atmosphere draws fades, from the sun 1° down to 9°.
+        let nightWeight = skySmooth(-0.02, -0.16, sunDir.y)
         let nightLow = SIMD3<Float>(0.051, 0.075, 0.129)  // 0x0d1321 dark sky
         let nightHigh = SIMD3<Float>(0.110, 0.137, 0.192)  // 0x1c2331 night sky
-        let horizonLow = SIMD3<Float>(1.000, 0.784, 0.196)  // warm golden yellow at sunrise
-        let horizonHigh = SIMD3<Float>(0.600, 0.400, 0.647)  // soft rose / purple
-        let dayLow = SIMD3<Float>(0.529, 0.808, 0.922)  // 0x87ceeb sky blue
-        let dayHigh = SIMD3<Float>(0.149, 0.302, 0.600)  // deep blue zenith
-
-        var gradLow = skyLerp(nightLow, horizonLow, tDawn)
-        gradLow = skyLerp(gradLow, dayLow, tDay)
-        var gradHigh = skyLerp(nightHigh, horizonHigh, tDawn)
-        gradHigh = skyLerp(gradHigh, dayHigh, tDay)
 
         // Scene ambient — never drops below a moonlit floor so the model stays readable.
         let nightAmbient = SIMD3<Float>(0.13, 0.13, 0.20)
@@ -229,10 +222,9 @@ extension SkyEnvironment {
             starRotation: bodies.starRotation,
             cloudCoverage: 0.50 + sunsetFactor * 0.10,
             cloudSpeed: 0.008 + dayFactor * 0.018,
-            turbidity: 2.0 + sunsetFactor * 5.0,
             starVisibility: min(1.0, max(0.0, -sunDir.y * 2.8)),
-            skyColorLow: gradLow,
-            skyColorHigh: gradHigh,
+            nightGlowLow: nightLow * nightWeight,
+            nightGlowHigh: nightHigh * nightWeight,
             keyLight: keyLight,
             fillLightDirection: fillDir,
             fillLightColor: fillColor,
