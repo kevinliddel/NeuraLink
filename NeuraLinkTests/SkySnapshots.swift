@@ -7,7 +7,8 @@
 //  the figure, the sky toward the light (sun, or moon at night) and the sky
 //  away from it, the moon close up whenever it is up, and at night the
 //  celestial pole the stars turn about, at about a phone's pixel density —
-//  plus the GPU time of the sky pass on its own. Every change to the sky is
+//  plus the GPU time of the sky pass on its own, and the first day's noon
+//  and dusk again in the rain. Every change to the sky is
 //  judged on these, before and after.
 //
 //  NL_SKY_SNAPSHOT_DIR: output folder (unset = skip).
@@ -57,9 +58,29 @@ struct SkySnapshots {
                 }
             }
         }
+        // The pass's cost at fixed moments, whichever days were drawn: a
+        // cloudy noon, and a moonlit night with the stars out.
         if let sky = renderer.skyRenderer {
-            let ms = Self.skyPassMilliseconds(sky, device: device, format: renderer.config.colorPixelFormat)
-            report += "\nsky pass alone, 1170×2532: \(ms) ms GPU\n"
+            report += "\n"
+            for time in ["12:00", "22:00"] {
+                let instant = try #require(Self.date("2026-10-26", time, in: zone))
+                _ = Self.show(renderer, at: instant, in: zone)
+                let ms = Self.skyPassMilliseconds(sky, device: device, format: renderer.config.colorPixelFormat)
+                report += "sky pass alone, 1170×2532, 2026-10-26 \(time): \(ms) ms GPU\n"
+            }
+        }
+        // Rain's overcast, toward the light, at noon and at dusk.
+        if let day = days.first, let sky = renderer.skyRenderer {
+            for time in ["12:00", "17:30"] {
+                let instant = try #require(Self.date(day, time, in: zone))
+                guard let env = Self.show(renderer, at: instant, in: zone),
+                      let toward = Self.shots(for: env, model: model).first(where: { $0.name == "toward" })
+                else { continue }
+                sky.rainIntensity = 1
+                let png = try #require(Self.render(toward, with: renderer, device: device))
+                sky.rainIntensity = 0
+                try png.write(to: dir.appendingPathComponent("\(day)_\(time.replacingOccurrences(of: ":", with: ""))_rain.png"))
+            }
         }
         try report.write(to: dir.appendingPathComponent("report.txt"), atomically: true, encoding: .utf8)
         renderer.clearModel()
@@ -251,6 +272,9 @@ struct SkySnapshots {
     }
 
     /// Median GPU time of the sky pass alone at a phone's full resolution.
+    /// Ten passes a command buffer, so the buffer's own overhead (large
+    /// through the simulator) is shared out; each its own render pass, so a
+    /// tiled GPU can't skip the pixels the next one covers.
     private static func skyPassMilliseconds(_ sky: SkyRenderer, device: MTLDevice, format: MTLPixelFormat) -> String {
         let descriptor = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: format, width: 1170, height: 2532, mipmapped: false)
@@ -274,17 +298,21 @@ struct SkySnapshots {
         let projection = simd_float4x4(perspectiveFovY: Float.pi / 3, aspect: 1170 / 2532, near: 0.1, far: 100)
         let view = OrthographicCamera.makeLookAt(eye: [0, 1.5, 3], target: [0, 2.5, -3], up: [0, 1, 0])
         sky.prepareForEncoding(viewProjection: projection * view)
+        let passes = 10
         var samples: [Double] = []
-        for _ in 0..<40 {
-            guard let buffer = queue.makeCommandBuffer(),
-                let encoder = buffer.makeRenderCommandEncoder(descriptor: pass) else { return "n/a" }
-            sky.encode(encoder: encoder)
-            encoder.endEncoding()
+        for _ in 0..<15 {
+            guard let buffer = queue.makeCommandBuffer() else { return "n/a" }
+            sky.encodeAtmosphere(commandBuffer: buffer)
+            for _ in 0..<passes {
+                guard let encoder = buffer.makeRenderCommandEncoder(descriptor: pass) else { return "n/a" }
+                sky.encode(encoder: encoder)
+                encoder.endEncoding()
+            }
             buffer.commit()
             buffer.waitUntilCompleted()
-            samples.append((buffer.gpuEndTime - buffer.gpuStartTime) * 1000)
+            samples.append((buffer.gpuEndTime - buffer.gpuStartTime) * 1000 / Double(passes))
         }
-        let sorted = samples.dropFirst(5).sorted()
+        let sorted = samples.dropFirst(3).sorted()
         return sorted.isEmpty ? "n/a" : String(format: "%.3f", sorted[sorted.count / 2])
     }
 }

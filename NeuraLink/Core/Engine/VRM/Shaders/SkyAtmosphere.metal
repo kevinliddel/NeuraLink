@@ -10,9 +10,11 @@
 //    fills the shadowed side of the sky and keeps twilight from going black.
 //    Once, at launch.
 //  - sky view (192×108): the whole sky seen from the ground, lit by the sun
-//    and the moon. Again whenever either moves more than 0.1°.
+//    and the moon, and in alpha how much of the low cloud layer shows
+//    through the haze. Again whenever either light moves more than 0.1°.
 //
-//  The sky shader then only looks the view up (SkyShader.metal).
+//  The sky shader then only looks the view up (SkyShader.metal). The
+//  clouds' noise is baked here too, once (sky_cloud_noise).
 //
 //  Created by Dedicatus on 28/10/2026.
 //
@@ -131,6 +133,22 @@ static inline float3 skyInScattered(
     return direct + skyMultipleScattering(multiple, r, muL, a) * (m.rayleigh + m.mie);
 }
 
+// How much of the low cloud layer shows through the air in front of it
+// along `dir` [0, 1]: nearly all of it overhead, little on the horizon,
+// 150 km away. Zero where the ground is in the way.
+static inline float skyCloudHaze(
+    float3 p, float3 dir, float ground, texture2d<float> transmittance, constant SkyAtmosphereParams &a
+) {
+    float shell = skyRaySphere(p, dir, a.radii.x + skyCloudHeight());
+    if (ground > 0.0f || shell < 0.0f) return 0.0f;
+    float3 q = p + dir * shell;
+    float  r = length(q);
+    // From the eye to space, over from the cloud to space.
+    float3 toSpace = skyTransmittance(transmittance, length(p), dir.y, a);
+    float3 beyond  = skyTransmittance(transmittance, r, dot(q / r, dir), a);
+    return saturate(dot(toSpace / max(beyond, 1e-4f), float3(0.2126f, 0.7152f, 0.0722f)));
+}
+
 kernel void sky_view_lut(
     texture2d<half, access::write>  out           [[texture(0)]],
     texture2d<float>                transmittance [[texture(1)]],
@@ -174,5 +192,41 @@ kernel void sky_view_lut(
         luminance  += throughput * scattered * (1.0f - stepT) / m.extinction;
         throughput *= stepT;
     }
-    out.write(half4(half3(luminance), 1.0h), gid);
+    out.write(half4(half3(luminance), half(skyCloudHaze(p, dir, ground, transmittance, a))), gid);
+}
+
+// MARK: - Clouds
+
+static inline float skyCloudHash(uint2 cell, uint octave) {
+    uint h = cell.x * 1597334673u ^ cell.y * 3812015801u ^ octave * 2798796415u;
+    h = (h ^ (h >> 16)) * 0x7feb352du;
+    h = (h ^ (h >> 15)) * 0x846ca68bu;
+    return float(h ^ (h >> 16)) * (1.0f / 4294967295.0f);
+}
+
+// The clouds' shape, baked once (256², mipmapped): value noise in five
+// octaves, from 4 to 64 cells across, each wrapping at the edges so the
+// texture tiles without a seam. The sky reads it twice a pixel where six
+// octaves of hashing per layer used to run.
+kernel void sky_cloud_noise(
+    texture2d<half, access::write> out [[texture(0)]],
+    uint2                          gid [[thread_position_in_grid]]
+) {
+    if (gid.x >= out.get_width() || gid.y >= out.get_height()) return;
+    float2 x = (float2(gid) + 0.5f) / float2(out.get_width(), out.get_height());
+    float value = 0.0f, amplitude = 0.5f;
+    uint  cells = 4;
+    for (uint octave = 0; octave < 5; octave++) {
+        float2 g = x * float(cells);
+        uint2  i = uint2(g);
+        float2 f = g - floor(g);
+        float2 u = f * f * (3.0f - 2.0f * f);
+        uint2  j = (i + 1) % cells;
+        float  a = skyCloudHash(i, octave), b = skyCloudHash(uint2(j.x, i.y), octave);
+        float  c = skyCloudHash(uint2(i.x, j.y), octave), d = skyCloudHash(j, octave);
+        value += amplitude * mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+        cells *= 2;
+        amplitude *= 0.5f;
+    }
+    out.write(half4(half(value)), gid);
 }

@@ -10,7 +10,7 @@ import simd
 
 /// Renders the sky backdrop via a fullscreen triangle: the atmosphere from
 /// its lookup tables (`encodeAtmosphere`, before the render pass), then the
-/// sun, moon, clouds and stars. Encode this **before** any VRM draw calls so
+/// clouds lit through it, the sun, moon and stars. Encode this **before** any VRM draw calls so
 /// the sky renders behind the model.
 final class SkyRenderer {
 
@@ -58,8 +58,12 @@ final class SkyRenderer {
     private var skyViewPipeline: MTLComputePipelineState?
     private var transmittanceTable: MTLTexture?
     private var multipleScatteringTable: MTLTexture?
-    /// The sky seen from the ground, as the fragment shader reads it.
+    /// The sky seen from the ground, as the fragment shader reads it; alpha
+    /// is how much of the low clouds shows through the haze.
     private(set) var skyViewTable: MTLTexture?
+    /// The clouds' shape: a tiling noise, baked with the fixed tables.
+    private var cloudNoisePipeline: MTLComputePipelineState?
+    private(set) var cloudNoise: MTLTexture?
     private var atmosphereReady = false
     /// What the sky view was last lit with; nil until it has been.
     private(set) var skyViewLight: SkyViewParams?
@@ -112,13 +116,21 @@ final class SkyRenderer {
     /// before the render pass that draws the sky.
     func encodeAtmosphere(commandBuffer: MTLCommandBuffer) {
         guard isEnabled, let transmittancePipeline, let multipleScatteringPipeline, let skyViewPipeline,
-              let transmittanceTable, let multipleScatteringTable, let skyViewTable
+              let cloudNoisePipeline, let transmittanceTable, let multipleScatteringTable, let skyViewTable,
+              let cloudNoise
         else { return }
         if !atmosphereReady {
             dispatch(transmittancePipeline, into: transmittanceTable, reading: [],
                      label: "SkyTransmittance", commandBuffer: commandBuffer)
             dispatch(multipleScatteringPipeline, into: multipleScatteringTable, reading: [transmittanceTable],
                      label: "SkyMultipleScattering", commandBuffer: commandBuffer)
+            dispatch(cloudNoisePipeline, into: cloudNoise, reading: [], label: "SkyCloudNoise",
+                     commandBuffer: commandBuffer)
+            if let blit = commandBuffer.makeBlitCommandEncoder() {
+                blit.label = "SkyCloudNoiseMips"
+                blit.generateMipmaps(for: cloudNoise)
+                blit.endEncoding()
+            }
             atmosphereReady = true
         }
         let env = currentEnvironment
@@ -200,15 +212,21 @@ final class SkyRenderer {
     /// Encodes the sky fullscreen draw into the active render encoder.
     func encode(encoder: MTLRenderCommandEncoder) {
         // Nothing to draw until the sky view has been lit once.
-        guard isEnabled, let pipeline, let buf = uniformBuffer, skyViewLight != nil, let skyViewTable
+        guard isEnabled, let pipeline, let buf = uniformBuffer, var lights = skyViewLight, let skyViewTable,
+              let transmittanceTable, let cloudNoise
         else { return }
+        var atmosphere = SkyAtmosphere.gpuParams
         encoder.pushDebugGroup("SkyBackground")
         encoder.setRenderPipelineState(pipeline)
         if let depth = depthState { encoder.setDepthStencilState(depth) }
         encoder.setCullMode(.none)
         encoder.setFrontFacing(.counterClockwise)
         encoder.setFragmentBuffer(buf, offset: 0, index: 0)
+        encoder.setFragmentBytes(&lights, length: MemoryLayout<SkyViewParams>.stride, index: 1)
+        encoder.setFragmentBytes(&atmosphere, length: MemoryLayout<SkyAtmosphereParams>.stride, index: 2)
         encoder.setFragmentTexture(skyViewTable, index: 0)
+        encoder.setFragmentTexture(transmittanceTable, index: 1)
+        encoder.setFragmentTexture(cloudNoise, index: 2)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         if let starPipeline, let starBuffer, var viewProjection = starViewProjection {
             // Added on top, each star a small quad facing the camera.
@@ -216,6 +234,8 @@ final class SkyRenderer {
             encoder.setVertexBuffer(buf, offset: 0, index: 0)
             encoder.setVertexBuffer(starBuffer, offset: 0, index: 1)
             encoder.setVertexBytes(&viewProjection, length: MemoryLayout<simd_float4x4>.stride, index: 2)
+            encoder.setVertexBytes(&atmosphere, length: MemoryLayout<SkyAtmosphereParams>.stride, index: 3)
+            encoder.setVertexTexture(cloudNoise, index: 0)
             encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4, instanceCount: starCount)
         }
         encoder.popDebugGroup()
@@ -278,17 +298,25 @@ final class SkyRenderer {
         transmittanceTable = table(256, 64, "SkyTransmittance")
         multipleScatteringTable = table(32, 32, "SkyMultipleScattering")
         skyViewTable = table(192, 108, "SkyView")
+        let noiseDescriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .r16Float, width: 256, height: 256, mipmapped: true)
+        noiseDescriptor.usage = [.shaderRead, .shaderWrite, .renderTarget]
+        noiseDescriptor.storageMode = .private
+        cloudNoise = device.makeTexture(descriptor: noiseDescriptor)
+        cloudNoise?.label = "SkyCloudNoise"
         do {
             let lib = try VRMPipelineCache.shared.getLibrary(device: device)
             guard let transmittance = lib.makeFunction(name: "sky_transmittance_lut"),
                   let multiple = lib.makeFunction(name: "sky_multiscattering_lut"),
-                  let view = lib.makeFunction(name: "sky_view_lut") else {
+                  let view = lib.makeFunction(name: "sky_view_lut"),
+                  let noise = lib.makeFunction(name: "sky_cloud_noise") else {
                 nlLog("[SkyRenderer] atmosphere kernels not found in library", level: .error)
                 return
             }
             transmittancePipeline = try device.makeComputePipelineState(function: transmittance)
             multipleScatteringPipeline = try device.makeComputePipelineState(function: multiple)
             skyViewPipeline = try device.makeComputePipelineState(function: view)
+            cloudNoisePipeline = try device.makeComputePipelineState(function: noise)
         } catch {
             nlLog("[SkyRenderer] atmosphere pipeline setup failed: \(error)", level: .error)
         }

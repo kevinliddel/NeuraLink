@@ -109,6 +109,11 @@ static inline float3 skyMultipleScattering(
 
 // MARK: - Sky-view table
 
+// The low cloud layer's height above the ground (km). The sky view keeps
+// the haze in front of it in its alpha (SkyAtmosphere.metal); the sky draws
+// the layer there (SkyShader.metal).
+static constexpr float skyCloudHeight() { return 2.0f; }
+
 // u: around the horizon, azimuth from +X toward +Z, the seam at −X.
 // v: from straight down to straight up, squeezed toward the horizon, where
 // the sky changes fastest. Texel centres: uv = (texel + ½) / size.
