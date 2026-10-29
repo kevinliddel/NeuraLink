@@ -5,11 +5,11 @@
 //  Review renders, not assertions: Oz on the default terrain under the sky
 //  at fixed dates and times in Antananarivo, through the app's renderer —
 //  the figure, the sky toward the light (sun, or moon at night) and the sky
-//  away from it, the moon close up whenever it is up, and at night the
-//  celestial pole the stars turn about, at about a phone's pixel density —
-//  plus the GPU time of the sky pass on its own, and the first day's noon
-//  and dusk again in the rain. Every change to the sky is
-//  judged on these, before and after.
+//  away from it, a high sun looked at straight, the moon close up whenever
+//  it is up, and at night the celestial pole the stars turn about, at about
+//  a phone's pixel density — plus the GPU time of the sky pass on its own,
+//  and the first day's noon and dusk again in the rain. Every change to the
+//  sky is judged on these, before and after.
 //
 //  NL_SKY_SNAPSHOT_DIR: output folder (unset = skip).
 //  NL_SKY_SNAPSHOT_DAYS: only these of the days (yyyy-MM-dd, comma-separated).
@@ -87,9 +87,9 @@ struct SkySnapshots {
     }
 
     /// The pictures in docs/Sky_System.md, named for what they show rather
-    /// than when, all over Antananarivo: a winter's day toward the sun, the
-    /// moon through the lunation that starts at the June new moon, and the
-    /// Southern Cross on that moonless night.
+    /// than when, all over Antananarivo: a winter's day toward the sun, and
+    /// Oz's face through it, the moon through the lunation that starts at
+    /// the June new moon, and the Southern Cross on that moonless night.
     @Test("Writes the docs figures when NL_SKY_DOC_DIR is set")
     func docFigures() async throws {
         let env = ProcessInfo.processInfo.environment
@@ -113,6 +113,16 @@ struct SkySnapshots {
             let instant = try #require(Self.date("2026-06-21", time, in: zone))
             try write("day-\(name)", at: instant) { sky in
                 Self.skyward(sky.sunDirection.y > -0.2 ? sky.sunDirection : sky.moonDirection, from: head)
+            }
+        }
+
+        // Oz's face through the same day: how the sky lights it. Close, so
+        // the T-posed body stays out of the frame.
+        let face = Self.face(of: model)
+        for (name, time) in day {
+            let instant = try #require(Self.date("2026-06-21", time, in: zone))
+            try write("face-\(name)", at: instant) { _ in
+                Shot(name: name, eye: face + [0, 0, 0.6], target: face, fov: 26)
             }
         }
 
@@ -185,6 +195,11 @@ struct SkySnapshots {
         if sky.moonDirection.y > 0.05 {
             shots.append(Shot(name: "moon", eye: head, target: head + sky.moonDirection, fov: 14, showsFigure: false))
         }
+        if sky.sunDirection.y > sin(45 * Float.pi / 180) {
+            // A high sun is above the toward shot's frame (20° up, 60° wide):
+            // look straight at it, so the disc and its glow are in view.
+            shots.append(Shot(name: "sun", eye: head, target: head + sky.sunDirection, showsFigure: false))
+        }
         if sky.sunDirection.y < -0.2 {
             // Toward the celestial pole above the horizon, 35° up, so the
             // stars circling it (the Southern Cross, from Madagascar) show.
@@ -209,6 +224,14 @@ struct SkySnapshots {
         let pitch = min(28 * degree, max(20 * degree, asin(light.y) - 22 * degree))
         let eye = head + toward * 1.5
         return Shot(name: "sky", eye: eye, target: eye + toward * cos(pitch) + [0, sin(pitch), 0], showsFigure: false)
+    }
+
+    /// The middle of the face: a little above the head bone, which sits
+    /// where the skull meets the neck.
+    private static func face(of model: VRMModel) -> SIMD3<Float> {
+        let bone = model.humanoid?.humanBones[.head].flatMap { model.nodes[safe: $0.node] }
+        let y = bone?.worldPosition.y ?? height(of: model) * 0.88
+        return SIMD3<Float>(0, y + 0.07, 0)
     }
 
     private static func height(of model: VRMModel) -> Float {

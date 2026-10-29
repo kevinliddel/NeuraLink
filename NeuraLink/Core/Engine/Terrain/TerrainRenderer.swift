@@ -50,14 +50,19 @@ final class TerrainRenderer: @unchecked Sendable {
     // Wide map — tree / grass shadows
     var exposedWideShadowMap: MTLTexture? { wideShadowMapTexture }
     var exposedWideLightViewProjection: simd_float4x4 { wideLightViewProjection }
-    private var currentEnvironment = SkyEnvironment.resolve(at: Date(), location: SkyTimeProvider().location)
+    /// The sky this terrain was last lit by. Seeded from the sky renderer's
+    /// own (its clock, NL_SKY_* overrides included), so a frame drawn before
+    /// the first update isn't lit for another moment.
+    private var currentEnvironment: SkyEnvironment
     private var clearShadowMapPending = false
 
     // MARK: - Init
 
-    init?(device: MTLDevice, config: RendererConfig) {
+    init?(device: MTLDevice, config: RendererConfig, environment: SkyEnvironment) {
         self.device = device
+        currentEnvironment = environment
         guard setup(config: config) else { return nil }
+        update(environment: environment, deltaTime: 0)
     }
 
     // MARK: - Per-frame update

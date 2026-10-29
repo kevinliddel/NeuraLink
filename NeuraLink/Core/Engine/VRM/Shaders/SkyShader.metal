@@ -105,7 +105,7 @@ static float faintStars(float3 d) {
     float angle   = length(cross(d, star));       // sin θ ≈ θ this close
     float bright  = rnd / chance;                 // 0…1 among the cells that hold one
     float radius  = 0.0015f + 0.0013f * bright;   // radians
-    return smoothstep(radius, radius * 0.3f, angle) * (0.22f + 0.5f * bright * bright);
+    return (1.0f - smoothstep(radius * 0.3f, radius, angle)) * (0.22f + 0.5f * bright * bright);
 }
 
 // MARK: - Clouds
@@ -237,7 +237,7 @@ static float3 skyOvercast(float3 colour, float rain) {
 // brighter overhead, darker below the horizon.
 static float3 skyAtmosphere(float3 radiance, float3 d, constant SkyUniforms &sky) {
     float3 glow = mix(sky.nightGlowLow.rgb, sky.nightGlowHigh.rgb, saturate(d.y * 0.5f + 0.5f));
-    return skyGrade(radiance) + glow * mix(1.0f, 0.22f, smoothstep(0.0f, -0.18f, d.y));
+    return skyGrade(radiance) + glow * mix(1.0f, 0.22f, 1.0f - smoothstep(-0.18f, 0.0f, d.y));
 }
 
 // MARK: - Fragment
@@ -266,7 +266,7 @@ fragment float4 sky_fragment(
 
     // The moon is drawn whenever it is up, by day too, part-transparent
     // against a bright sky; its glow only at night.
-    float night   = smoothstep(0.05f, -0.10f, sunDir.y);
+    float night   = 1.0f - smoothstep(-0.10f, 0.05f, sunDir.y);
     float moonVis = smoothstep(-0.02f, 0.03f, moonDir.y) * mix(0.7f, 1.0f, night);
     float  cosM    = dot(viewDir, moonDir);
     // moonOcclude is NOT scaled by moonVis: the moon body is always opaque regardless

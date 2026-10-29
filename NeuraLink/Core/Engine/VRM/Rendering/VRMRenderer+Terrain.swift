@@ -12,9 +12,12 @@ import simd
 
 extension VRMRenderer {
 
-    /// Instantiates the TerrainRenderer subsystem. Called once from `VRMRenderer.init`.
+    /// Instantiates the TerrainRenderer subsystem, lit by the sky renderer's
+    /// environment (set up first). Called once from `VRMRenderer.init`.
     func setupTerrain() {
-        terrainRenderer = TerrainRenderer(device: device, config: config)
+        let environment = skyRenderer?.currentEnvironment ?? SkyEnvironment.resolve(
+            at: Date(), location: SkyTimeProvider.fromEnvironment().location)
+        terrainRenderer = TerrainRenderer(device: device, config: config, environment: environment)
     }
 
     /// Updates terrain time and sun state from the current sky environment.
