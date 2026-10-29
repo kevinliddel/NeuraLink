@@ -67,8 +67,7 @@ final class VRMMetalState {
     var randomAnimTimer: Float = -1
     var randomAnimElapsed: Float = 0
     var randomAnimDuration: Float = 0
-    /// MSAA samples for the live scene. Memoryless targets (VRMRenderer+MSAA)
-    /// keep 4× free of RAM on the 4 GB tier.
+    /// MSAA samples for the live scene; memoryless targets (VRMRenderer+MSAA) keep 4× free of RAM on the 4 GB tier.
     static let sceneSampleCount = 4
 
     static let randomAnimIntervalRange: ClosedRange<Float> = 8...20
@@ -87,18 +86,18 @@ final class VRMMetalState {
     var talkingGestureElapsed: Float = 0
     var talkingGestureDuration: Float = 0
     var wasSpeakingLastFrame = false
+    /// A generated motion stream owning the body (VRMMetalState+LiveMotion.swift).
+    var liveMotion: LiveMotionSession?
     /// A tool/photoshoot pose owns the body between playPose and stopPose.
     var isPlayingPose = false
     var poseStartedAt: Date?
-    /// A pose nobody stopped ends on its own after this — before, a missing
-    /// stop froze the body in the pose (idles and gestures paused) for good.
+    /// A pose nobody stopped ends on its own after this; a missing stop used to freeze the body for good.
     static let poseMaxHold: TimeInterval = 12
 
     // The "checking my phone" episode (VRMMetalState+PhoneEpisode.swift)
     var phoneEpisode = PhoneEpisodePolicy()
     var phoneEpisodeClip: AnimationClip?
-    /// True while the episode's clip owns the body — false when a pose or
-    /// the entrance clip has it, or the clip has not loaded yet.
+    /// True while the episode's clip owns the body (not under a pose or the entrance, nor before it loads).
     var isPlayingPhoneEpisodeClip = false
     var phoneEpisodeClipElapsed: Float = 0
     /// The companion's phone: loaded once per scene state, attached hidden to
@@ -361,6 +360,7 @@ final class VRMMetalState {
         wasSpeakingLastFrame = false
         isPlayingPose = false
         poseStartedAt = nil
+        resetLiveMotion()
         PhoneEpisode.end(reason: "scene cleared")
         phoneEpisode = PhoneEpisodePolicy()
         phoneEpisodeClip = nil

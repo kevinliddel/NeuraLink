@@ -64,22 +64,7 @@ public enum VRMAnimationLoader {
         // World REST rotation of each humanoid bone's parent, composed from
         // bind-pose locals root→parent. This is the basis in which VRMA's
         // normalized rotations are applied (see makeRotationSampler).
-        let parentWorldRestRotations: [VRMHumanoidBone: simd_quatf] = {
-            guard let model, let humanoid = model.humanoid else { return [:] }
-            var map: [VRMHumanoidBone: simd_quatf] = [:]
-            for bone in VRMHumanoidBone.allCases {
-                guard let idx = humanoid.getBoneNode(bone),
-                      let node = model.nodes[safe: idx] else { continue }
-                var rotation = simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
-                var ancestor = node.parent
-                while let current = ancestor {
-                    rotation = current.initialRotation * rotation
-                    ancestor = current.parent
-                }
-                map[bone] = simd_normalize(rotation)
-            }
-            return map
-        }()
+        let parentWorldRestRotations = buildModelParentWorldRotations(model: model)
 
         // Resolve bones for each node and check for metacarpals
         var resolvedBones: [Int: VRMHumanoidBone] = [:]
