@@ -87,9 +87,11 @@ final class SkyRenderer {
     /// A full moon's light on the sky, against the same scale: a faint blue
     /// sky around and above it, over the night's glow.
     static let moonSkyLight: Float = 1.2
-    /// The sky view is lit again once a light has moved this far: 0.1°,
-    /// about every 25 s.
-    static let skyViewRefreshCosine: Float = cos(0.1 * .pi / 180)
+    /// How far a light moves before the sky view is lit again: 0.1°, about
+    /// every 25 s; twice that on a hot phone (RuntimePressurePolicy).
+    var skyViewRefreshDegrees: Float = 0.1
+    /// Cloud layers drawn: both, or the low one alone on a hot phone.
+    var cloudLayers = 2
 
     // MARK: - Init
 
@@ -150,9 +152,10 @@ final class SkyRenderer {
         }
         let env = currentEnvironment
         let moonLight = Self.moonSkyLight * env.moonBrightness
+        let still = cos(skyViewRefreshDegrees * .pi / 180)
         if let last = skyViewLight,
-           simd_dot(SIMD3<Float>(last.sun.x, last.sun.y, last.sun.z), env.sunDirection) > Self.skyViewRefreshCosine,
-           simd_dot(SIMD3<Float>(last.moon.x, last.moon.y, last.moon.z), env.moonDirection) > Self.skyViewRefreshCosine,
+           simd_dot(SIMD3<Float>(last.sun.x, last.sun.y, last.sun.z), env.sunDirection) > still,
+           simd_dot(SIMD3<Float>(last.moon.x, last.moon.y, last.moon.z), env.moonDirection) > still,
            abs(last.moon.w - moonLight) < 0.01 {
             return
         }
@@ -250,7 +253,11 @@ final class SkyRenderer {
             cloudParams: SIMD4<Float>(cloudTime, env.cloudSpeed, cloudCoverage, starVisibility),
             moonDirectionAndPhase: SIMD4<Float>(md.x, md.y, md.z, env.moonIllumination),
             bodyParams: SIMD4<Float>(Self.moonAngularRadius, 0, env.moonBrightness, 0),
-            starRotation: env.starRotation
+            starRotation: env.starRotation,
+            moonEdges: SIMD4<Float>(
+                cos(Self.moonAngularRadius * 1.48), cos(Self.moonAngularRadius),
+                cos(Self.moonAngularRadius * 1.03), cos(Self.moonAngularRadius * 0.97)),
+            detail: SIMD4<Float>(Float(cloudLayers), 0, 0, 0)
         )
         uniformBuffer?.contents().copyMemory(
             from: &data, byteCount: MemoryLayout<SkyUniformsData>.stride)
@@ -268,6 +275,7 @@ final class SkyRenderer {
         if let depth = depthState { encoder.setDepthStencilState(depth) }
         encoder.setCullMode(.none)
         encoder.setFrontFacing(.counterClockwise)
+        encoder.setVertexBuffer(buf, offset: 0, index: 0)
         encoder.setFragmentBuffer(buf, offset: 0, index: 0)
         encoder.setFragmentBytes(&lights, length: MemoryLayout<SkyViewParams>.stride, index: 1)
         encoder.setFragmentBytes(&atmosphere, length: MemoryLayout<SkyAtmosphereParams>.stride, index: 2)

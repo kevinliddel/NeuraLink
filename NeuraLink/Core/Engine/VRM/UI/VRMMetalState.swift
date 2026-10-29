@@ -316,8 +316,8 @@ final class VRMMetalState {
         guard !isAppInBackground else { return }
         let localDecode = OpenAISettings.shared.isLocalLLMEnabled && !OpenAISettings.shared.isEnabled
         let decoding = aiState.status == .thinking || aiState.status == .speaking
-        // A hot or power-saving phone caps the rate and thins the rain
-        // (RuntimePressurePolicy, docs/OPT.md item 7).
+        // A hot or power-saving phone caps the rate, thins the rain and
+        // lightens the sky (RuntimePressurePolicy, docs/OPT.md item 7).
         let tier = RuntimePressureMonitor.shared.tier
         let wanted = (localDecode && decoding) ? Self.decodeRenderFPS : Self.idleRenderFPS
         let target = min(wanted, RuntimePressurePolicy.renderFPSCap(tier))
@@ -326,6 +326,8 @@ final class VRMMetalState {
         }
         renderer?.rainBudgetScale = RuntimePressurePolicy.rainScale(tier)
         renderer?.avatarSelfShadowsEnabled = RuntimePressurePolicy.avatarSelfShadows(tier)
+        renderer?.skyRenderer?.skyViewRefreshDegrees = RuntimePressurePolicy.skyRefreshDegrees(tier)
+        renderer?.skyRenderer?.cloudLayers = RuntimePressurePolicy.skyCloudLayers(tier)
     }
 
     func clear() {

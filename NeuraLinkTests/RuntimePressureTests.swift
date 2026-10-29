@@ -37,4 +37,14 @@ struct RuntimePressureTests {
         #expect(RuntimePressurePolicy.threadCap(.minimal) == 2)
         #expect(RuntimePressureMonitor.currentTier(thermal: .serious, lowPower: false) == .reduced)
     }
+
+    @Test("A hot phone lights the sky half as often and draws one cloud layer")
+    func sky() {
+        #expect(RuntimePressurePolicy.skyRefreshDegrees(.normal) == 0.1)
+        #expect(RuntimePressurePolicy.skyRefreshDegrees(.reduced) == 0.2)
+        #expect(RuntimePressurePolicy.skyRefreshDegrees(.minimal) == 0.2)
+        #expect(RuntimePressurePolicy.skyCloudLayers(.normal) == 2)
+        #expect(RuntimePressurePolicy.skyCloudLayers(.reduced) == 1)
+        #expect(RuntimePressurePolicy.skyCloudLayers(.minimal) == 1)
+    }
 }

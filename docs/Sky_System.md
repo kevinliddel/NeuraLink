@@ -93,7 +93,7 @@ NeuraLink/Core/Engine/Sky/
 ├── SkyAmbient.swift        — The sky's own light at L1 (MToon's GI, the terrain, the environments)
 ├── SkyWind.swift           — The breeze in the hair and clothes
 ├── SkyStarCatalogue.swift  — The bright stars, from sky_bright_stars.txt, in a GPU buffer
-├── SkyUniforms.swift       — The 224-byte GPU uniform struct (Swift ↔ Metal bridge)
+├── SkyUniforms.swift       — The 256-byte GPU uniform struct (Swift ↔ Metal bridge)
 └── SkyRenderer.swift       — Atmosphere tables → uniform upload → sky and star draws
 
 NeuraLink/App/Resources/
@@ -361,7 +361,7 @@ for imported ones. Both switches are in User Profile → Environment Settings
 
 ## 3. GPU Uniforms — `SkyUniforms`
 
-`SkyUniformsData` is a **224-byte flat struct** shared between Swift and Metal. The layout is fixed and must match `SkyUniforms` in `SkyShader.metal` exactly:
+`SkyUniformsData` is a **256-byte flat struct** shared between Swift and Metal. The layout is fixed and must match `SkyUniforms` in `SkyShader.metal` exactly:
 
 | Field | Bytes | Offset | Description |
 |-------|-------|--------|-------------|
@@ -374,6 +374,8 @@ for imported ones. Both switches are in User Profile → Environment Settings
 | `moonDirectionAndPhase` | 16 | 144 | `xyz` = toward-moon unit vector, `w` = lit fraction |
 | `bodyParams` | 16 | 160 | `x` = moon angular radius (radians) · `z` = moon brightness against full |
 | `starRotation` | 48 | 176 | `float3x3`: star catalogue (J2000 equatorial) → world; its transpose takes a view ray back into the stars' frame |
+| `moonEdges` | 16 | 224 | cos of the moon's angular radius × 1.48 (where it starts hiding stars), × 1 (where it hides them all), × 1.03 and × 0.97 (its disc's soft edge): the same for every pixel, so worked out once on the CPU |
+| `detail` | 16 | 240 | `x` = cloud layers drawn: 2, or 1 on a hot phone (see [Cost](#cost)) |
 
 The buffer is allocated once with `.storageModeShared` (CPU-visible Metal memory) and updated every frame via `copyMemory`.
 
@@ -419,7 +421,7 @@ func encode(encoder: MTLRenderCommandEncoder)
 Issues a **single 3-vertex draw** — a fullscreen triangle, with the sky-view
 table, the transmittance table and the clouds' noise as its textures, and the
 sky view's last lights (`SkyViewParams`) and the atmosphere's constants as
-bytes, for the clouds. No vertex buffer is needed; vertex positions are hardcoded in the vertex shader using the `vertex_id` built-in. The depth state is set to **always pass / no write**, ensuring the sky only fills pixels behind all other geometry.
+bytes, for the clouds. No vertex buffer is needed; vertex positions are hardcoded in the vertex shader using the `vertex_id` built-in. The vertex shader also works out the world-space view ray at each corner, through the inverse view-projection matrix. That ray is affine in screen space for a perspective or orthographic camera, so interpolating it is exact, and the fragment only normalises it. The depth state is set to **always pass / no write**, ensuring the sky only fills pixels behind all other geometry.
 
 While stars are out, a second draw adds the bright-star catalogue on top: one
 instanced 4-vertex strip per star (about 300), blended additively, reading the
@@ -433,8 +435,8 @@ by day, and under an orthographic camera, which has no sky to place them in.
 ## 5. Metal Shader — `SkyShader.metal`
 
 The sky is two draws. The fullscreen fragment shader (`sky_fragment`)
-reconstructs a **world-space view ray** from the screen UV using the inverse
-view-projection matrix, then composites layers 1–6 from back to front. The
+takes the **world-space view ray** interpolated from the vertices, then
+composites layers 1–6 from back to front. The
 catalogue stars (7) are a second, instanced draw on top, through their own
 `sky_star_vertex` / `sky_star_fragment`:
 
@@ -599,6 +601,34 @@ The rain system in NeuraLink is a two-tier GPU-driven effect that simulates atmo
 The `RainController` manages the global `intensity` (0.0 to 1.0).
 - **Opacity**: Both the 3D streaks and 2D splashes scale their alpha based on intensity.
 - **MToon Sync**: The character's materials automatically darken and gain a specular sheen as rain intensity increases, simulating wet fabric and skin.
+
+---
+
+## Cost
+
+The sky is one fullscreen pass and the catalogue-star sprites, drawn before
+everything else. On a phone's tiled GPU, the pixels the terrain and the avatar
+cover later are never shaded. Per pixel, the pass does only what shows:
+
+- The view ray comes from the vertices.
+- With no clouds there is no cloud work: coverage is the same for every pixel.
+- The sun's terms run only within 39° of it, and the moon's within 37°;
+  further out they are under a 255th.
+- The moon's edges are cosines worked out once on the CPU, and the faint stars
+  use an integer hash rather than a sine.
+- The atmosphere's tables are rebuilt when a light moves 0.1° (about every
+  25 s), not every frame, and the clouds' noise is baked once.
+
+Measured over the whole screen at the iPhone 11's resolution (828×1792),
+natively on an Intel UHD 630, a GPU of about the iPhone 11's class: 1.3 ms
+cloudless, 2.4 ms on a cloudy day, 2.7 ms at night. On the phone, the half of
+the screen behind the terrain and the avatar is skipped. Read the device's own
+figure from the `SkyBackground` group in a Metal System Trace.
+
+**On a hot phone.** At `RuntimePressurePolicy`'s reduced and minimal tiers
+(serious heat or Low Power Mode, and critical heat), the sky view is lit again
+every 0.2° instead of every 0.1°, so half as often. Only the low cloud layer is
+drawn; the high veil goes. A cloudy day then measures 1.9 ms.
 
 ---
 

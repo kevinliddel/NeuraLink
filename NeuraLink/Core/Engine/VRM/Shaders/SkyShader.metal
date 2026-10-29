@@ -13,7 +13,7 @@
 
 #include "SkyAtmosphereCommon.metal"
 
-// MARK: - Uniforms (must match SkyUniformsData in Swift, 224 bytes)
+// MARK: - Uniforms (must match SkyUniformsData in Swift, 256 bytes)
 
 struct SkyUniforms {
     float4x4 invViewProjection;         // NDC → world-space ray cast
@@ -25,6 +25,8 @@ struct SkyUniforms {
     float4   moonDirectionAndPhase;     // xyz = toward-moon unit vector, w = lit fraction
     float4   bodyParams;                // x = moon angular radius (rad), z = moon brightness
     float3x3 starRotation;              // star catalogue (J2000 equatorial) → world
+    float4   moonEdges;                 // cos of the moon's angular radius × 1.48, 1, 1.03, 0.97
+    float4   detail;                    // x = cloud layers drawn (2, or 1 on a hot phone)
 };
 
 // One catalogue star (must match SkyStarData in Swift, 32 bytes).
@@ -37,33 +39,48 @@ struct SkyStar {
 
 struct SkyOut {
     float4 position [[position]];
-    float2 uv;
+    float3 ray;     // world-space view ray, not normalised
 };
 
-vertex SkyOut sky_vertex(uint vid [[vertex_id]]) {
+// The view ray is worked out at the three corners and interpolated: from
+// near plane to far plane it is affine in screen space for a perspective
+// or orthographic camera, so this is exact, and the fragment only
+// normalises it.
+vertex SkyOut sky_vertex(
+    uint                 vid [[vertex_id]],
+    constant SkyUniforms &sky [[buffer(0)]]
+) {
     constexpr float2 pos[3] = {
         float2(-1.0f, -3.0f),
         float2(-1.0f,  1.0f),
         float2( 3.0f,  1.0f)
     };
+    float4 nearPt = sky.invViewProjection * float4(pos[vid], 0.0f, 1.0f);
+    float4 farPt  = sky.invViewProjection * float4(pos[vid], 1.0f, 1.0f);
     SkyOut out;
     out.position = float4(pos[vid], 0.9999f, 1.0f);
-    out.uv = pos[vid] * 0.5f + 0.5f;
+    out.ray = farPt.xyz / farPt.w - nearPt.xyz / nearPt.w;
     return out;
 }
 
 // MARK: - Noise helpers
 
-static float skyHash(float2 p) {
-    return fract(sin(dot(p, float2(127.1f, 311.7f))) * 43758.5453f);
+// An integer hash, [0, 1]. Integer arithmetic gives the same answer on
+// every GPU and compiler; a sine-based hash doesn't (the moon's seas moved
+// between builds), and costs more.
+static float skyCellHash(uint2 cell, uint salt) {
+    uint h = cell.x * 1597334673u ^ cell.y * 3812015801u ^ salt * 2798796415u;
+    h = (h ^ (h >> 16)) * 0x7feb352du;
+    h = (h ^ (h >> 15)) * 0x846ca68bu;
+    return float(h ^ (h >> 16)) * (1.0f / 4294967295.0f);
 }
 
 static float skyValueNoise(float2 p) {
-    float2 i = floor(p);
     float2 f = fract(p);
     float2 u = f * f * (3.0f - 2.0f * f);
-    return mix(mix(skyHash(i),               skyHash(i + float2(1,0)), u.x),
-               mix(skyHash(i + float2(0,1)), skyHash(i + float2(1,1)), u.x), u.y);
+    uint2  i = uint2(int2(floor(p)) + 4096);   // kept positive for the cast
+    return mix(mix(skyCellHash(i, 0u),               skyCellHash(i + uint2(1, 0), 0u), u.x),
+               mix(skyCellHash(i + uint2(0, 1), 0u), skyCellHash(i + uint2(1, 1), 0u), u.x), u.y);
 }
 
 // MARK: - Stars
@@ -95,12 +112,13 @@ static float faintStars(float3 d) {
     const float cells = 80.0f;
     float2 grid  = (uv * 0.5f + 0.5f) * cells;
     float2 cell  = floor(grid);
-    float2 seed  = cell + float(face) * 97.0f;
+    uint2  key   = uint2(cell);
+    uint   salt  = uint(face) * 3u;
     float2 centre = (cell + 0.5f) / cells * 2.0f - 1.0f;
     float chance = 0.07f * pow(1.0f + dot(centre, centre), -1.5f);
-    float rnd    = skyHash(seed);
+    float rnd    = skyCellHash(key, salt);
     if (rnd > chance) return 0.0f;
-    float2 jitter = float2(skyHash(seed + 13.7f), skyHash(seed + 71.3f)) * 0.5f + 0.25f;
+    float2 jitter = float2(skyCellHash(key, salt + 1u), skyCellHash(key, salt + 2u)) * 0.5f + 0.25f;
     float3 star   = cubeFaceDirection(face, (cell + jitter) / cells * 2.0f - 1.0f);
     float angle   = length(cross(d, star));       // sin θ ≈ θ this close
     float bright  = rnd / chance;                 // 0…1 among the cells that hold one
@@ -203,14 +221,15 @@ static float3 cloudRadiance(float3 arriving, float through, float cosine, float 
     return arriving * (through * (0.15f + 0.04f * forward) + upward * 0.02f) + ambient;
 }
 
-// How much the two layers hide along `d`, for the catalogue stars: a
-// vertex has no footprint to choose a mip level by, so a fixed soft one.
+// How much the layers hide along `d`, for the catalogue stars: a vertex
+// has no footprint to choose a mip level by, so a fixed soft one.
 static float cloudCover(float3 d, constant SkyUniforms &sky, texture2d<float> noise, constant SkyAtmosphereParams &a) {
     float coverage = sky.cloudParams.z;
     if (coverage <= 0.001f || d.y < -0.02f) return 0.0f;
     float2 low  = cloudPosition(cloudPoint(d, kCloudLow, a), kCloudLow, sky);
+    float  lowCover = cloudDensity(noise.sample(kCloudTiled, low * 0.25f, level(1.0f)).r, coverage, kCloudLow);
+    if (sky.detail.x < 1.5f) return lowCover;
     float2 high = cloudPosition(cloudPoint(d, kCloudHigh, a), kCloudHigh, sky);
-    float  lowCover  = cloudDensity(noise.sample(kCloudTiled, low * 0.25f, level(1.0f)).r, coverage, kCloudLow);
     float  highCover = cloudDensity(noise.sample(kCloudTiled, high * 0.25f, level(1.0f)).r, coverage * 0.9f, kCloudHigh)
         * kCloudHigh.opacity;
     return 1.0f - (1.0f - lowCover) * (1.0f - highCover);
@@ -251,13 +270,7 @@ fragment float4 sky_fragment(
     texture2d<float>              transmittance [[texture(1)]],
     texture2d<float>              noise         [[texture(2)]]
 ) {
-    // Reconstruct world-space view direction from screen UV
-    float2 ndc    = in.uv * 2.0f - 1.0f;
-    float4 nearPt = sky.invViewProjection * float4(ndc, 0.0f, 1.0f);
-    float4 farPt  = sky.invViewProjection * float4(ndc, 1.0f, 1.0f);
-    nearPt /= nearPt.w;
-    farPt  /= farPt.w;
-    float3 viewDir = normalize(farPt.xyz - nearPt.xyz);
+    float3 viewDir = normalize(in.ray);
 
     float3 sunDir  = sky.sunDirectionAndIntensity.xyz;
     float3 moonDir = sky.moonDirectionAndPhase.xyz;
@@ -269,11 +282,6 @@ fragment float4 sky_fragment(
     float night   = 1.0f - smoothstep(-0.10f, 0.05f, sunDir.y);
     float moonVis = smoothstep(-0.02f, 0.03f, moonDir.y) * mix(0.7f, 1.0f, night);
     float  cosM    = dot(viewDir, moonDir);
-    // moonOcclude is NOT scaled by moonVis: the moon body is always opaque regardless
-    // of how bright it appears — otherwise partial-night stars bleed through the disc.
-    // The suppression zone starts wider than the disc edge so the anti-aliased rim is
-    // also clean.
-    float  moonOcclude = smoothstep(cos(moonRadius * 1.48f), cos(moonRadius), cosM);
 
     // ── The atmosphere ────────────────────────────────────────────────
     constexpr sampler around(filter::linear, s_address::repeat, t_address::clamp_to_edge);
@@ -284,47 +292,62 @@ fragment float4 sky_fragment(
     if (starVis > 0.001f && viewDir.y > 0.0f) {
         float star = faintStars(transpose(sky.starRotation) * viewDir);
         float glare = moonGlare(cosM, moonDir, sky);
+        // The moon hides the stars behind it however faint it looks, over a
+        // rim a little wider than its disc so the anti-aliased edge is clean.
+        float moonOcclude = smoothstep(sky.moonEdges.x, sky.moonEdges.y, cosM);
         colour += float3(star * starVis * (1.0f - 0.7f * glare) * (1.0f - moonOcclude));
     }
 
     // ── Clouds ────────────────────────────────────────────────────────
-    // Where each layer's noise lies under the pixel, and its footprint for
-    // the mip level, worked out before any branch so the derivatives hold.
-    float3 lowPoint  = cloudPoint(viewDir, kCloudLow, a);
-    float3 highPoint = cloudPoint(viewDir, kCloudHigh, a);
-    float2 low  = cloudPosition(lowPoint, kCloudLow, sky);
-    float2 high = cloudPosition(highPoint, kCloudHigh, sky);
-    float2 lowDx = dfdx(low), lowDy = dfdy(low), highDx = dfdx(high), highDy = dfdy(high);
     float  coverage = sky.cloudParams.z;
     float  clouds = 0.0f;   // how much of what is behind them they hide
-    if (coverage > 0.001f && viewDir.y > -0.02f) {
-        // The sun lights them until it has set for them too, a little
-        // after it has for the ground; the moon after that.
-        float4 key      = lights.sun.y > -0.05f ? lights.sun : lights.moon;
-        float  cosine   = dot(viewDir, key.xyz);
-        float  upward   = saturate(key.y);
-        float3 zenith   = skyView.sample(around, float2(0.5f, 1.0f)).rgb;
-        float3 ambient  = (behind.rgb + zenith) * 0.3f;
-        float3 glow     = sky.nightGlowHigh.rgb * 1.25f;
-
-        float highDensity = cloudDensity(cloudNoise(noise, high, highDx, highDy), coverage * 0.9f, kCloudHigh);
-        if (highDensity > 0.0f) {
-            float3 arriving = cloudLightArriving(highPoint, key, transmittance, a);
-            float  through  = exp(-kCloudHigh.absorption * highDensity * 2.0f);
-            float3 shown    = skyGrade(cloudRadiance(arriving, through, cosine, upward, ambient)) + glow;
-            clouds = highDensity * kCloudHigh.opacity * pow(behind.a, 1.3f);
-            colour = mix(colour, shown, clouds);
+    // Coverage is the same for every pixel: no clouds, no cloud work. Within
+    // it, where each layer's noise lies under the pixel and its footprint
+    // for the mip level come before any per-pixel branch, so the
+    // derivatives hold.
+    if (coverage > 0.001f) {
+        bool   bothLayers = sky.detail.x > 1.5f;
+        float3 lowPoint  = cloudPoint(viewDir, kCloudLow, a);
+        float2 low   = cloudPosition(lowPoint, kCloudLow, sky);
+        float2 lowDx = dfdx(low), lowDy = dfdy(low);
+        float3 highPoint = 0.0f;
+        float2 high = 0.0f, highDx = 0.0f, highDy = 0.0f;
+        if (bothLayers) {
+            highPoint = cloudPoint(viewDir, kCloudHigh, a);
+            high   = cloudPosition(highPoint, kCloudHigh, sky);
+            highDx = dfdx(high);
+            highDy = dfdy(high);
         }
-        float lowNoise   = cloudNoise(noise, low, lowDx, lowDy);
-        float lowDensity = cloudDensity(lowNoise, coverage, kCloudLow);
-        if (lowDensity > 0.0f) {
-            float3 arriving = cloudLightArriving(lowPoint, key, transmittance, a);
-            float  through  = all(arriving == 0.0f) ? 0.0f : cloudThrough(
-                cloudThickness(lowNoise, coverage, kCloudLow), low, key.xyz, coverage, noise, lowDx, lowDy);
-            float3 shown    = skyGrade(cloudRadiance(arriving, through, cosine, upward, ambient)) + glow;
-            float  shownLow = lowDensity * kCloudLow.opacity * behind.a;
-            colour = mix(colour, shown, shownLow);
-            clouds = 1.0f - (1.0f - clouds) * (1.0f - shownLow);
+        if (viewDir.y > -0.02f) {
+            // The sun lights them until it has set for them too, a little
+            // after it has for the ground; the moon after that.
+            float4 key      = lights.sun.y > -0.05f ? lights.sun : lights.moon;
+            float  cosine   = dot(viewDir, key.xyz);
+            float  upward   = saturate(key.y);
+            float3 zenith   = skyView.sample(around, float2(0.5f, 1.0f)).rgb;
+            float3 ambient  = (behind.rgb + zenith) * 0.3f;
+            float3 glow     = sky.nightGlowHigh.rgb * 1.25f;
+
+            float highDensity = bothLayers
+                ? cloudDensity(cloudNoise(noise, high, highDx, highDy), coverage * 0.9f, kCloudHigh) : 0.0f;
+            if (highDensity > 0.0f) {
+                float3 arriving = cloudLightArriving(highPoint, key, transmittance, a);
+                float  through  = exp(-kCloudHigh.absorption * highDensity * 2.0f);
+                float3 shown    = skyGrade(cloudRadiance(arriving, through, cosine, upward, ambient)) + glow;
+                clouds = highDensity * kCloudHigh.opacity * pow(behind.a, 1.3f);
+                colour = mix(colour, shown, clouds);
+            }
+            float lowNoise   = cloudNoise(noise, low, lowDx, lowDy);
+            float lowDensity = cloudDensity(lowNoise, coverage, kCloudLow);
+            if (lowDensity > 0.0f) {
+                float3 arriving = cloudLightArriving(lowPoint, key, transmittance, a);
+                float  through  = all(arriving == 0.0f) ? 0.0f : cloudThrough(
+                    cloudThickness(lowNoise, coverage, kCloudLow), low, key.xyz, coverage, noise, lowDx, lowDy);
+                float3 shown    = skyGrade(cloudRadiance(arriving, through, cosine, upward, ambient)) + glow;
+                float  shownLow = lowDensity * kCloudLow.opacity * behind.a;
+                colour = mix(colour, shown, shownLow);
+                clouds = 1.0f - (1.0f - clouds) * (1.0f - shownLow);
+            }
         }
     }
     colour = skyOvercast(colour, sky.nightGlowLow.w);
@@ -334,11 +357,12 @@ fragment float4 sky_fragment(
     float glowClear = 1.0f - clouds * 0.6f;
 
     // ── Sun disc + glow ───────────────────────────────────────────────
-    if (sunDir.y > -0.10f) {
+    // Only within 39° of it: past that the bloom is under a 255th.
+    float cosG = dot(viewDir, sunDir);
+    if (sunDir.y > -0.10f && cosG > 0.78f) {
         // The disc over the sky, not added to it, so a red sun still shows
         // against the bright glow around it; its colour less deep than the
         // light it gives, as the eye sees a sun it can't look at.
-        float cosG  = max(dot(viewDir, sunDir), 0.0f);
         float disc  = pow(cosG, sky.sunColorAndSize.w);
         float bloom = pow(cosG, 18.0f) * 0.15f;
         float3 discColour = sqrt(sky.sunColorAndSize.rgb);
@@ -347,10 +371,11 @@ fragment float4 sky_fragment(
     }
 
     // ── Moon ──────────────────────────────────────────────────────────
-    if (moonVis > 0.01f) {
-        float mGlow = pow(max(cosM, 0.0f), 32.0f) * 0.12f * sky.bodyParams.z * night * moonVis;
+    // Only within 37° of it: past that its glow is under a thousandth.
+    if (moonVis > 0.01f && cosM > 0.8f) {
+        float mGlow = pow(cosM, 32.0f) * 0.12f * sky.bodyParams.z * night * moonVis;
         colour += float3(0.80f, 0.85f, 0.95f) * mGlow * glowClear;
-        float mDisc = smoothstep(cos(moonRadius * 1.03f), cos(moonRadius * 0.97f), cosM);
+        float mDisc = smoothstep(sky.moonEdges.z, sky.moonEdges.w, cosM);
         if (mDisc > 0.0f) {
             // The disc as a sphere lit from the sun's direction: the phase,
             // and the tilt of its horns, follow from where the two stand.
@@ -405,11 +430,10 @@ vertex SkyStarOut sky_star_vertex(
 
     float3 moonDir = sky.moonDirectionAndPhase.xyz;
     float  cosM    = dot(dir, moonDir);
-    float  moonRadius = sky.bodyParams.x;
-    float  hidden  = smoothstep(cos(moonRadius * 1.48f), cos(moonRadius), cosM);
+    float  hidden  = smoothstep(sky.moonEdges.x, sky.moonEdges.y, cosM);
     // Near the horizon: dimmer through more air, and twinkling.
     float  low     = 1.0f - smoothstep(0.03f, 0.35f, dir.y);
-    float  phase   = skyHash(float2(float(iid), 7.0f));
+    float  phase   = skyCellHash(uint2(iid, 7u), 0u);
     float  twinkle = 1.0f - low * 0.55f * (0.5f + 0.5f * sin(sky.cloudParams.x * (9.0f + 7.0f * phase) + phase * 50.0f));
     float  visible = sky.cloudParams.w
         * smoothstep(-0.01f, 0.04f, dir.y) * (1.0f - 0.55f * low) * twinkle

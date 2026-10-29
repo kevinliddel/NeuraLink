@@ -351,9 +351,9 @@ struct SkySystemTests {
 
     // MARK: - SkyUniformsData layout
 
-    @Test("SkyUniformsData stride is 224 bytes")
+    @Test("SkyUniformsData stride is 256 bytes")
     func testUniformsLayout() {
-        #expect(MemoryLayout<SkyUniformsData>.stride == 224)
+        #expect(MemoryLayout<SkyUniformsData>.stride == 256)
     }
 }
 
