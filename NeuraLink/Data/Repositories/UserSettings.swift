@@ -21,12 +21,26 @@ final class UserSettings {
     private let showEnvironmentKey = "com.neuralink.user.showEnvironment"
     private let selectedEnvironmentKey = "com.neuralink.user.selectedEnvironment"
     private let selectedCharacterKey = "com.neuralink.user.selectedCharacter"
+    private let windKey = "com.neuralink.user.wind"
+    private let windForImportedKey = "com.neuralink.user.windForImported"
     var showEnvironment: Bool {
         didSet { UserDefaults.standard.set(showEnvironment, forKey: showEnvironmentKey) }
     }
     
     var selectedEnvironment: String {
         didSet { UserDefaults.standard.set(selectedEnvironment, forKey: selectedEnvironmentKey) }
+    }
+
+    /// A light breeze in the characters' hair and clothes (SkyWind). On by
+    /// default for the bundled characters, whose springs it was tuned on.
+    var wind: Bool {
+        didSet { UserDefaults.standard.set(wind, forKey: windKey) }
+    }
+
+    /// The breeze for imported characters too: off by default, as their
+    /// springs were tuned for still air.
+    var windForImported: Bool {
+        didSet { UserDefaults.standard.set(windForImported, forKey: windForImportedKey) }
     }
 
     /// Lowercased character name/slug of the last selected model, so the
@@ -86,6 +100,8 @@ final class UserSettings {
         }
         
         self.selectedEnvironment = UserDefaults.standard.string(forKey: selectedEnvironmentKey) ?? "city"
+        self.wind = UserDefaults.standard.object(forKey: windKey) as? Bool ?? true
+        self.windForImported = UserDefaults.standard.bool(forKey: windForImportedKey)
         self.selectedCharacter = UserDefaults.standard.string(forKey: selectedCharacterKey)
         self.name = UserDefaults.standard.string(forKey: "com.neuralink.user.name") ?? ""
         self.gender = UserDefaults.standard.string(forKey: "com.neuralink.user.gender") ?? "Prefer not to say"

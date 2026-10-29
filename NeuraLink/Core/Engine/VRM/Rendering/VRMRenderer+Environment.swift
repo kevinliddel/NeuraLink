@@ -226,10 +226,10 @@ extension VRMRenderer {
         let wideLightVP =
             terrainRenderer?.exposedWideLightViewProjection ?? matrix_identity_float4x4
         let env = skyRenderer?.currentEnvironment
-        let rawSun = env?.sunDirection ?? SIMD3<Float>(0, 1, 0)
-        let sunHeight = rawSun.y
-        let effectiveSun: SIMD3<Float> = rawSun.y >= 0 ? rawSun : rawSun * -1.0
-        let shadowSoft: Float = rawSun.y >= 0 ? 2.5 : 1.5
+        let sunHeight = env?.sunDirection.y ?? 1
+        // Lit and shadowed by the key light, which never flips (SkyKeyLight).
+        let effectiveSun = env?.keyLight.direction ?? SIMD3<Float>(0, 1, 0)
+        let shadowSoft = env?.keyLight.shadowSoftness ?? 2.5
 
         let invView = viewMatrix.inverse
         let cameraPos = SIMD3<Float>(invView[3][0], invView[3][1], invView[3][2])
@@ -243,6 +243,8 @@ extension VRMRenderer {
             sunDirection: effectiveSun,
             sunHeight: sunHeight,
             shadowSoft: shadowSoft,
+            // Indoors, the room's own palette; outdoors, the sky's light.
+            skyLight: EnvironmentCatalog.isInterior(UserSettings.shared.selectedEnvironment) ? nil : env?.ambient,
             shadowMap: wideShadowMap,
             vrmShadowMap: vrmShadowMap,
             shadowSampler: sampler

@@ -96,6 +96,7 @@ extension VRMRenderer {
         } else {
             terrainRenderer?.clearWideShadowMap(commandBuffer: commandBuffer)
         }
+        encodeSkyAtmosphere(commandBuffer: commandBuffer)
 
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor)
         else {
@@ -155,6 +156,7 @@ extension VRMRenderer {
             let clampedDeltaTime = min(deltaTime, 1.0 / 30.0)  // Max 30ms per frame
 
             // Solved and posed in this frame, before the joint palettes.
+            springBoneSolver.wind = springBoneWind()
             springBoneSolver.update(model: model, deltaTime: clampedDeltaTime)
         }
 
@@ -403,6 +405,7 @@ extension VRMRenderer {
         } else {
             terrainRenderer?.clearWideShadowMap(commandBuffer: commandBuffer)
         }
+        encodeSkyAtmosphere(commandBuffer: commandBuffer)
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: renderPassDescriptor)
         else {
             inflightSemaphore.signal()

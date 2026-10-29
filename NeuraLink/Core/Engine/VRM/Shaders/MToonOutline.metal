@@ -82,8 +82,8 @@ fragment float4 mtoon_outline_fragment(VertexOut in [[stage_in]],
         float lightStep = linearstep(-1.0 + toony, 1.0 - toony, shading);
         lit += mix(shade, baseRGB, lightStep) * colors[i].xyz * (colors[i].w / total);
     }
-    float3 ambient = uniforms.ambientColor.xyz;
-    float3 gi = mix(ambient * (1.0 + kMToonHemisphere * normal.y), ambient, saturate(1.0 - material.giIntensityFactor));
+    float3 gi = mix(mtoonAmbientAlong(uniforms, normal), uniforms.ambientColor.xyz,
+                    saturate(1.0 - material.giIntensityFactor));
     float3 surface = lit * uniforms.lightNormalizationFactor + gi * baseRGB;
 
     float3 outlineColor = float3(material.outlineColorR, material.outlineColorG, material.outlineColorB)

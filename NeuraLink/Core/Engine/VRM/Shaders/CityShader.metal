@@ -32,6 +32,10 @@ struct CityUniforms {
     float4   cityParams;              // x = shadowSoft
     float4   cameraPosition;          // xyz = camera world position
     float4x4 vrmLightViewProjection;  // tight VRM shadow map projection
+    float4   skyMean;                 // the sky's light (SkyAmbient): rgb, w = 1 outdoors
+    float4   skyAlongX;               // …along +X, +Y, +Z (rgb)
+    float4   skyAlongY;
+    float4   skyAlongZ;
 };
 struct CityVertexOut {
     float4 position [[position]];
@@ -214,6 +218,16 @@ fragment float4 city_fragment(
 
     float  hemi    = N.y * 0.5f + 0.5f;
     float3 ambient = mix(gndAmb, skyAmb, hemi);
+
+    // Outdoors, the hue of the sky's own light along the normal, at the
+    // palette's brightness: bluish from above at noon, orange from the sun's
+    // side at dusk, cool at night. Interiors keep the palette.
+    if (u.skyMean.w > 0.0f) {
+        const float3 luma = float3(0.2126f, 0.7152f, 0.0722f);
+        float3 sky  = max(u.skyMean.rgb + u.skyAlongX.rgb * N.x + u.skyAlongY.rgb * N.y + u.skyAlongZ.rgb * N.z, 0.0f);
+        float3 tint = dot(sky, luma) > 1e-5f ? sky / dot(sky, luma) : float3(1.0f);
+        ambient = dot(ambient, luma) * mix(float3(1.0f), tint, 0.6f);
+    }
 
     // Artificial city light (street lamps, shop windows) — additive warm glow at night,
     // strongest on downward-facing surfaces (asphalt, awnings), fades at sunrise.

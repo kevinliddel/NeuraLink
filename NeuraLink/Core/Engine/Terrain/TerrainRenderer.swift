@@ -5,6 +5,7 @@
 //  Created by Dedicatus on 18/04/2026.
 //
 
+import Foundation
 import Metal
 import simd
 
@@ -49,14 +50,19 @@ final class TerrainRenderer: @unchecked Sendable {
     // Wide map — tree / grass shadows
     var exposedWideShadowMap: MTLTexture? { wideShadowMapTexture }
     var exposedWideLightViewProjection: simd_float4x4 { wideLightViewProjection }
-    private var currentEnvironment: SkyEnvironment = SkyEnvironment.resolve(hour: 12.0)
+    /// The sky this terrain was last lit by. Seeded from the sky renderer's
+    /// own (its clock, NL_SKY_* overrides included), so a frame drawn before
+    /// the first update isn't lit for another moment.
+    private var currentEnvironment: SkyEnvironment
     private var clearShadowMapPending = false
 
     // MARK: - Init
 
-    init?(device: MTLDevice, config: RendererConfig) {
+    init?(device: MTLDevice, config: RendererConfig, environment: SkyEnvironment) {
         self.device = device
+        currentEnvironment = environment
         guard setup(config: config) else { return nil }
+        update(environment: environment, deltaTime: 0)
     }
 
     // MARK: - Per-frame update
@@ -64,12 +70,23 @@ final class TerrainRenderer: @unchecked Sendable {
     func update(environment: SkyEnvironment, deltaTime: Float) {
         currentEnvironment = environment
         elapsedTime += deltaTime
-        // At night use the moon direction (opposite the sun) so shadows still render.
-        let sunDir = environment.sunDirection
-        // Moon is the mirror of the sun; flip below horizon so shadows always render.
-        let effectiveDir = sunDir.y >= 0 ? sunDir : sunDir * -1.0
-        lightViewProjection = Self.makeLightMatrix(sunDir: effectiveDir, wide: false)
-        wideLightViewProjection = Self.makeLightMatrix(sunDir: effectiveDir, wide: true)
+        // Shadows follow the key light: the sun by day, the night light by
+        // night, and never a jump between them (SkyKeyLight).
+        let lightDir = environment.keyLight.direction
+        lightViewProjection = Self.makeLightMatrix(sunDir: lightDir, wide: false)
+        wideLightViewProjection = Self.makeLightMatrix(sunDir: lightDir, wide: true)
+    }
+
+    /// The hue of the sky's light from above, a quarter of it, for where
+    /// the sun doesn't reach (the shader keeps sunlit sand its own colour):
+    /// more would drain the sand's warmth.
+    static func skyTint(_ ambient: SkyAmbient) -> SIMD3<Float> {
+        softened(SkyAmbient.tint(ambient.along(SIMD3<Float>(0, 1, 0))), by: 0.25)
+    }
+
+    /// `tint` kept to `share` of its colour (white at 0).
+    static func softened(_ tint: SIMD3<Float>, by share: Float) -> SIMD3<Float> {
+        simd_mix(SIMD3<Float>(repeating: 1), tint, SIMD3<Float>(repeating: share))
     }
 
     // MARK: - Shadow map clearing
@@ -192,8 +209,8 @@ final class TerrainRenderer: @unchecked Sendable {
 
         let env = currentEnvironment
         let sd = env.sunDirection
-        let lightDir = sd.y >= 0 ? sd : sd * -1.0
-        let shadowSoft: Float = sd.y >= 0 ? 2.5 : 1.5
+        let lightDir = env.keyLight.direction
+        let shadowSoft = env.keyLight.shadowSoftness
 
         var data = TerrainUniforms(
             viewProjection: viewProjection,
@@ -206,7 +223,9 @@ final class TerrainRenderer: @unchecked Sendable {
                 0.22,
                 shadowSoft,
                 elapsedTime
-            )
+            ),
+            skyTint: SIMD4<Float>(Self.skyTint(env.ambient), 0),
+            keyTint: SIMD4<Float>(Self.softened(SkyAmbient.tint(env.keyLight.color), by: 0.5), 0)
         )
         uniforms.contents().copyMemory(from: &data, byteCount: MemoryLayout<TerrainUniforms>.stride)
 

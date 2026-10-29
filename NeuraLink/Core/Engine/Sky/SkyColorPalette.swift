@@ -5,15 +5,33 @@
 //  Created by Dedicatus on 17/04/2026.
 //
 
+import Foundation
 import simd
 
-/// Full sky and lighting state derived from the current local hour.
+/// Full sky and lighting state for one place at one instant.
 struct SkyEnvironment {
 
     // MARK: - Sky
 
-    /// Unit vector pointing FROM the scene TOWARD the sun (or moon at night).
+    /// Unit vector pointing FROM the scene TOWARD the sun (below the horizon at night).
     let sunDirection: SIMD3<Float>
+
+    /// Colour of the sun's disc in the sky: its light after the air it
+    /// crosses (`SkyAtmosphere.lightColor`). Not the key light's colour,
+    /// which is the moon's at night.
+    let sunColor: SIMD3<Float>
+
+    /// Unit vector FROM the scene TOWARD the moon.
+    let moonDirection: SIMD3<Float>
+
+    /// Lit fraction of the moon's disc [0, 1].
+    let moonIllumination: Float
+
+    /// Moonlight against a full moon's [0, 1].
+    let moonBrightness: Float
+
+    /// Star catalogue (J2000 equatorial) → scene: see `SkyBodies`.
+    let starRotation: simd_float3x3
 
     /// [0,1] cloud coverage fraction.
     let cloudCoverage: Float
@@ -21,25 +39,23 @@ struct SkyEnvironment {
     /// Cloud layer horizontal scroll speed (UV units/s).
     let cloudSpeed: Float
 
-    /// Atmospheric turbidity [2,10]: 2 = crystal clear, 10 = hazy.
-    let turbidity: Float
-
     /// Normalised star field brightness [0,1]: 0 = day, 1 = full night sky.
     let starVisibility: Float
 
-    /// Sky gradient bottom colour (horizon level).
-    let skyColorLow: SIMD3<Float>
+    /// The night's own glow (airglow and starlight) at the horizon, already
+    /// weighted by how dark it is: nothing by day, coming in under
+    /// twilight. The atmosphere itself is the GPU's (`SkyAtmosphere`).
+    let nightGlowLow: SIMD3<Float>
 
-    /// Sky gradient top colour (zenith level).
-    let skyColorHigh: SIMD3<Float>
+    /// The night's own glow at the zenith, weighted the same.
+    let nightGlowHigh: SIMD3<Float>
 
     // MARK: - VRM Lighting
 
-    /// Direction from scene toward the key light source — set `setLight(0, direction: -keyLightDirection)`.
-    let keyLightDirection: SIMD3<Float>
-
-    let keyLightColor: SIMD3<Float>
-    let keyLightIntensity: Float
+    /// The one light the ground, the environment and every shadow on them
+    /// follow, and the avatar too, turned to the camera's side — see
+    /// `SkyKeyLight`.
+    let keyLight: SkyKeyLight
 
     let fillLightDirection: SIMD3<Float>
     let fillLightColor: SIMD3<Float>
@@ -49,24 +65,108 @@ struct SkyEnvironment {
     let rimLightColor: SIMD3<Float>
     let rimLightIntensity: Float
 
+    /// How bright the scene's ambient is through the day: never below a
+    /// moonlit floor, so the model stays readable.
     let ambientColor: SIMD3<Float>
+
+    /// The avatar's ambient (MToon's GI): the sky's own light — its colour
+    /// and where it comes from — as bright as `ambientColor`. A plain
+    /// hemisphere around `ambientColor` until the sky's first sum is back.
+    let ambient: SkyAmbient
+}
+
+/// The scene's key light: the sun by day, the moon (or the night sky above)
+/// by night.
+///
+/// It used to jump straight to the opposite horizon the instant the sun
+/// crossed it, in four places at once, so the avatar's lit side, its
+/// self-shadow and every ground shadow swung across in one frame at dawn and
+/// dusk. Now there is one light, and through twilight it travels from the
+/// sun to the night light OVER the sky: the shadows shorten and turn instead
+/// of flipping.
+struct SkyKeyLight {
+    /// Unit vector FROM the scene TOWARD the light. Never lower than
+    /// `minimumElevation`: a light on the horizon throws endless shadows.
+    let direction: SIMD3<Float>
+    let color: SIMD3<Float>
+    let intensity: Float
+    /// Shadow-filter width the terrain and environment shaders take.
+    let shadowSoftness: Float
+
+    /// sin(≈7°).
+    static let minimumElevation: Float = 0.12
+
+    /// `direction` as the avatar takes it: turned onto the camera's side
+    /// (+Z) when the light stands behind her, so her face stays lit while
+    /// the sun goes down behind her, in view. The real light then rims her
+    /// (`SkyEnvironment.rimLightDirection`), and her shadow on the ground
+    /// still falls from it, toward the camera. A mirror in the camera's
+    /// plane, so it moves as smoothly as `direction` does.
+    var avatarDirection: SIMD3<Float> { SIMD3<Float>(direction.x, direction.y, abs(direction.z)) }
+
+    /// Where the night light comes from when the moon is down: high and a
+    /// little in front, so a face still reads.
+    static let nightSkyDirection = simd_normalize(SIMD3<Float>(0.25, 0.9, 0.35))
+
+    /// Blends the sun's light into the night's as the sun goes down.
+    /// `dayFactor` keeps today's colour and intensity curve; the direction
+    /// changes hands between −6° and +5° of solar elevation.
+    static func resolve(
+        sun: SIMD3<Float>, sunColor: SIMD3<Float>, moon: SIMD3<Float>, moonIllumination: Float,
+        moonBrightness: Float, dayFactor: Float
+    ) -> SkyKeyLight {
+        let moonColor = SIMD3<Float>(0.55, 0.60, 0.85)  // cool blue moonlight
+        let sunIntensity: Float = 0.30 + dayFactor * 0.90
+
+        // At night: the moon while it is up and more than a crescent, the
+        // sky above otherwise. A full moon lights the avatar a little more
+        // than a moonless sky; neither drops below a level a face reads at.
+        let moonRisen = skySmooth(-0.05, 0.15, moon.y)
+        let moonUp = moonRisen * min(1, moonIllumination * 2)
+        let night = simd_normalize(simd_mix(nightSkyDirection, raised(moon), SIMD3<Float>(repeating: moonUp)))
+        let moonIntensity: Float = 0.42 + 0.16 * moonRisen * moonBrightness
+
+        // Sun → night over the top. The lift term keeps the path in the
+        // upper sky even when the two lights sit on opposite horizons, where
+        // a plain mix would pass through zero length.
+        let toSun = skySmooth(-0.10, 0.08, sun.y)
+        let lift = SIMD3<Float>(0, 0.6 * sin(Float.pi * toSun), 0)
+        let direction = simd_normalize(
+            simd_mix(night, raised(sun), SIMD3<Float>(repeating: toSun)) + lift)
+
+        return SkyKeyLight(
+            direction: direction,
+            color: skyLerp(moonColor, sunColor, dayFactor),
+            intensity: moonIntensity + (sunIntensity - moonIntensity) * dayFactor,
+            shadowSoftness: 1.5 + toSun * 1.0)
+    }
+
+    /// `direction` lifted to at least `minimumElevation`, keeping its azimuth.
+    private static func raised(_ direction: SIMD3<Float>) -> SIMD3<Float> {
+        guard direction.y < minimumElevation else { return direction }
+        let horizontal = SIMD2<Float>(direction.x, direction.z)
+        let length = simd_length(horizontal)
+        guard length > 1e-4 else { return SIMD3<Float>(0, 1, 0) }
+        let scale = sqrt(1 - minimumElevation * minimumElevation) / length
+        return SIMD3<Float>(horizontal.x * scale, minimumElevation, horizontal.y * scale)
+    }
 }
 
 // MARK: - Factory
 
 extension SkyEnvironment {
 
-    /// Computes the full sky and lighting environment from the given local hour [0, 24).
-    static func resolve(hour: Float) -> SkyEnvironment {
-        let h = (hour.truncatingRemainder(dividingBy: 24) + 24)
-            .truncatingRemainder(dividingBy: 24)
+    /// The sky over `location` at `date`, lighting the avatar with `sky`
+    /// (`SkyRenderer.skyAmbient`) when there is one.
+    static func resolve(at date: Date, location: SkyLocation, sky: SkyAmbient? = nil) -> SkyEnvironment {
+        resolve(SkyBodies(at: date, location: location), sky: sky)
+    }
 
-        // Hour angle relative to noon: 0 at noon, ±π at midnight.
-        // Sun sweeps east (+X) → overhead (+Y) → west (−X) → underground.
-        let angle = (h - 12.0) * .pi / 12.0
-
-        // Unit sun direction: already normalised because sin²+cos²=1.
-        let sunDir = SIMD3<Float>(-sin(angle), cos(angle), 0.0)
+    /// Colours and lights for wherever the sun and moon stand. The palette
+    /// keys on the sun's elevation alone.
+    static func resolve(_ bodies: SkyBodies, sky: SkyAmbient? = nil) -> SkyEnvironment {
+        let sunDir = bodies.sunDirection
+        let moonDir = bodies.moonDirection
 
         // dayFactor: 0 when sun is well below horizon, 1 at full day.
         // Transition starts slightly below horizon so dusk/dawn looks natural.
@@ -75,49 +175,52 @@ extension SkyEnvironment {
             min(1.0, max(0.0, 1.0 - abs(sunDir.y) * 3.5))
             * (sunDir.y > -0.1 ? 1.0 : 0.0)
 
-        // Key light — moonlight at night, orange→white as sun rises.
-        let moonKeyColor = SIMD3<Float>(0.55, 0.60, 0.85)  // cool blue moonlight
-        let moonKeyIntensity: Float = 0.50
+        // The sun's colour after the air it crosses: white-gold high, orange
+        // low, red on the horizon. The key light takes it where the key
+        // stands, never lower than its floor.
+        let sunElevation = asin(min(1, max(-1, sunDir.y)))
+        let sunColor = SkyAtmosphere.lightColor(elevation: sunElevation)
+        let keyLight = SkyKeyLight.resolve(
+            sun: sunDir,
+            sunColor: SkyAtmosphere.lightColor(elevation: max(sunElevation, asin(SkyKeyLight.minimumElevation))),
+            moon: moonDir, moonIllumination: bodies.moonIllumination,
+            moonBrightness: bodies.moonBrightness, dayFactor: dayFactor)
 
-        let noonColor = SIMD3<Float>(1.00, 0.96, 0.86)
-        let horizonColor = SIMD3<Float>(1.00, 0.52, 0.10)
-        let sunKeyColor = skyLerp(horizonColor, noonColor, dayFactor * (1.0 - sunsetFactor * 0.8))
-        let sunKeyIntensity: Float = 0.30 + dayFactor * 0.90
-
-        let keyColor = skyLerp(moonKeyColor, sunKeyColor, dayFactor)
-        let keyIntensity = moonKeyIntensity + (sunKeyIntensity - moonKeyIntensity) * dayFactor
-
-        // Fill light: soft sky-blue from the opposite side of the sun.
+        // Fill light: soft sky light from the opposite side of the sun, in
+        // the colour of the sky it comes from once there is one. It stays
+        // as strong as it was: MToon averages its lights by strength, so
+        // without the fill the key's share grows and blows out the lit half
+        // of a face at noon.
         let fillDir = simd_normalize(
             SIMD3<Float>(-sunDir.x * 0.6, 0.5, 0.8)
         )
-        let fillColor = skyLerp(
+        let artFill = skyLerp(
             SIMD3<Float>(0.25, 0.28, 0.45),  // night: dim cool blue
             SIMD3<Float>(0.45, 0.60, 0.85),  // day: sky blue
             dayFactor
         )
+        let fillColor = sky.map { SkyAmbient.tint($0.along(fillDir)) * simd_dot(artFill, SkyAmbient.luma) } ?? artFill
         let fillIntensity: Float = 0.20 + dayFactor * 0.18
 
-        // Rim light: fixed, comes from above-behind to separate model from sky.
-        let rimDir = simd_normalize(SIMD3<Float>(0.0, 0.3, -1.0))
-        let rimColor = SIMD3<Float>(0.85, 0.90, 1.00)
-        let rimIntensity: Float = 0.12 + dayFactor * 0.12
+        // Rim light: from above-behind, to separate the model from the sky,
+        // in the colour of the sky there, the sky the camera sees her
+        // against. While the key light stands behind the avatar (the sun
+        // going down in view) it is that light, in its colour, a little
+        // stronger. Kept modest: MToon shares its lights out, so a strong
+        // back light would take the face's.
+        let behind = skySmooth(0.0, 0.5, -keyLight.direction.z)
+        let backSky = simd_normalize(SIMD3<Float>(0.0, 0.3, -1.0))
+        let rimDir = simd_normalize(simd_mix(backSky, keyLight.direction, SIMD3<Float>(repeating: behind)))
+        let artRim = SIMD3<Float>(0.85, 0.90, 1.00)
+        let skyRim = sky.map { skyLerp(artRim, SkyAmbient.tint($0.along(backSky)) * simd_dot(artRim, SkyAmbient.luma), 0.7) }
+        let rimColor = skyLerp(skyRim ?? artRim, keyLight.color, behind)
+        let rimIntensity: Float = 0.12 + dayFactor * 0.12 + behind * 0.12
 
-        // Sky gradient colours — simple palette keyed on sun elevation.
-        let tDawn = skySmooth(-0.12, -0.02, sunDir.y)  // 0=deep night → 1=just below horizon
-        let tDay = skySmooth(-0.02, 0.20, sunDir.y)  // 0=near horizon → 1=full daytime
-
+        // The night's own glow, today's night palette: it comes in as the
+        // twilight the atmosphere draws fades, from the sun 1° down to 9°.
+        let nightWeight = skySmooth(-0.02, -0.16, sunDir.y)
         let nightLow = SIMD3<Float>(0.051, 0.075, 0.129)  // 0x0d1321 dark sky
         let nightHigh = SIMD3<Float>(0.110, 0.137, 0.192)  // 0x1c2331 night sky
-        let horizonLow = SIMD3<Float>(1.000, 0.784, 0.196)  // warm golden yellow at sunrise
-        let horizonHigh = SIMD3<Float>(0.600, 0.400, 0.647)  // soft rose / purple
-        let dayLow = SIMD3<Float>(0.529, 0.808, 0.922)  // 0x87ceeb sky blue
-        let dayHigh = SIMD3<Float>(0.149, 0.302, 0.600)  // deep blue zenith
-
-        var gradLow = skyLerp(nightLow, horizonLow, tDawn)
-        gradLow = skyLerp(gradLow, dayLow, tDay)
-        var gradHigh = skyLerp(nightHigh, horizonHigh, tDawn)
-        gradHigh = skyLerp(gradHigh, dayHigh, tDay)
 
         // Scene ambient — never drops below a moonlit floor so the model stays readable.
         let nightAmbient = SIMD3<Float>(0.13, 0.13, 0.20)
@@ -125,30 +228,29 @@ extension SkyEnvironment {
         let noonAmbient = SIMD3<Float>(0.18, 0.18, 0.18)
         let dayAmbient = skyLerp(dawnAmbient, noonAmbient, dayFactor * (1.0 - sunsetFactor * 0.5))
         let ambient = skyLerp(nightAmbient, dayAmbient, dayFactor)
-
-        // At night the key light is the moon, which is opposite the underground sun.
-        // keyLightDirection must point FROM scene TOWARD the light source so that
-        // applySkyLighting() can pass -keyLightDirection to setLight() correctly.
-        let keyLightDir = sunDir.y >= 0 ? sunDir : -sunDir
+        let avatarAmbient = sky.map { $0.shaped(toBrightness: ambient) } ?? .hemisphere(ambient)
 
         return SkyEnvironment(
             sunDirection: sunDir,
+            sunColor: sunColor,
+            moonDirection: moonDir,
+            moonIllumination: bodies.moonIllumination,
+            moonBrightness: bodies.moonBrightness,
+            starRotation: bodies.starRotation,
             cloudCoverage: 0.50 + sunsetFactor * 0.10,
             cloudSpeed: 0.008 + dayFactor * 0.018,
-            turbidity: 2.0 + sunsetFactor * 5.0,
             starVisibility: min(1.0, max(0.0, -sunDir.y * 2.8)),
-            skyColorLow: gradLow,
-            skyColorHigh: gradHigh,
-            keyLightDirection: keyLightDir,
-            keyLightColor: keyColor,
-            keyLightIntensity: keyIntensity,
+            nightGlowLow: nightLow * nightWeight,
+            nightGlowHigh: nightHigh * nightWeight,
+            keyLight: keyLight,
             fillLightDirection: fillDir,
             fillLightColor: fillColor,
             fillLightIntensity: fillIntensity,
             rimLightDirection: rimDir,
             rimLightColor: rimColor,
             rimLightIntensity: rimIntensity,
-            ambientColor: ambient
+            ambientColor: ambient,
+            ambient: avatarAmbient
         )
     }
 }

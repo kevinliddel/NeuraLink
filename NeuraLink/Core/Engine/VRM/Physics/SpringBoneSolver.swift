@@ -20,6 +20,15 @@
 //  and applied results whenever a readback happened to land: a frame or more
 //  late, and later still while the local LLM held the GPU. Hair vibrated.
 //
+//  Wind (NeuraLink's, not the spec's): with the air moving at `wind`, the
+//  drag that slows a tail relative to still air slows it relative to the
+//  moving air instead, which adds windDisplacement·drag to each step:
+//
+//    nextTail += wind·dt · dragForce
+//
+//  So stiff chains barely move, light hair sways, and with `wind` zero (the
+//  default) the step is exactly the spec's.
+//
 //  Tails: VRM 1.0 lists every joint and the next one is its tail (the last
 //  joint is only a tail). VRM 0.x simulates every node under a group root;
 //  the tail is the first child, or for a leaf a virtual tail 7 cm along the
@@ -84,6 +93,11 @@ final class SpringBoneSolver {
     private(set) var builtJointCount = 0
     /// Tails go back to rest before the next step.
     var needsReset = false
+    /// The air's velocity, metres a second (SkyWind), in the space the
+    /// nodes' world matrices are in: the model's, before the renderer turns
+    /// a VRM 0.x model to face the camera (`VRMRenderer.springBoneWind`).
+    /// Zero leaves the spec's step untouched.
+    var wind = SIMD3<Float>.zero
     /// Rebuild before the next step (a new model, or a graft).
     private var needsSetUp = true
 
@@ -292,7 +306,8 @@ final class SpringBoneSolver {
 
         let retain: Float = pow(1 - joint.dragForce, step * 60) * velocityScale
         let inertia: SIMD3<Float> = (joint.currentTail - joint.prevTail) * retain
-        let pull: SIMD3<Float> = axis * (joint.stiffness * step) + gravity * (joint.gravityPower * step)
+        let airflow: SIMD3<Float> = toCenterRotation * wind * (joint.dragForce * step)
+        let pull: SIMD3<Float> = axis * (joint.stiffness * step) + gravity * (joint.gravityPower * step) + airflow
         let next: SIMD3<Float> = joint.currentTail + inertia + pull
         var nextWorld = center.map { Self.transform($0, next) } ?? next
         nextWorld = Self.constrain(nextWorld, head: head, length: boneLength, fallback: restTail)

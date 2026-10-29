@@ -9,7 +9,7 @@ import simd
 
 /// GPU uniforms for the terrain fragment shader.
 /// Layout must exactly match `TerrainUniforms` in TerrainShader.metal.
-/// Stride = 240 bytes.
+/// Stride = 272 bytes.
 struct TerrainUniforms {
     var viewProjection: simd_float4x4       // offset   0 — transforms world → clip
     var lightViewProjection: simd_float4x4  // offset  64 — tight shadow map (VRM, ±7 m)
@@ -17,6 +17,8 @@ struct TerrainUniforms {
     var sunDirection: SIMD4<Float>          // offset 192 — xyz = toward-sun, w = sun height
     var groundColor: SIMD4<Float>           // offset 208 — xyz = dirt earth base colour
     var terrainParams: SIMD4<Float>         // offset 224 — x=unused y=amp z=shadowSoft w=time
+    var skyTint: SIMD4<Float>               // offset 240 — rgb = the sky's light from above, at luminance 1
+    var keyTint: SIMD4<Float>               // offset 256 — rgb = the key light's colour, at luminance 1
 }
 
 /// Per-primitive uniform written once per shadow-pass draw call.

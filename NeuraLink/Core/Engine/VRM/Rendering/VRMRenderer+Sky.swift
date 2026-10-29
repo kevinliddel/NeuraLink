@@ -19,7 +19,7 @@ extension VRMRenderer {
         rainWorldRenderer = RainWorldRenderer(device: device, config: config)
     }
 
-    /// Advances cloud time and re-derives the sky environment from the current local clock.
+    /// Advances cloud time and re-derives the sky environment from the clock and place.
     func updateSky(deltaTime: Float) {
         skyRenderer?.update(deltaTime: deltaTime)
     }
@@ -59,12 +59,17 @@ extension VRMRenderer {
         rainWorldRenderer?.draw(encoder: encoder)
     }
 
+    /// The atmosphere's lookup tables, when they need it. Before the render
+    /// pass that draws the sky.
+    func encodeSkyAtmosphere(commandBuffer: MTLCommandBuffer) {
+        skyRenderer?.encodeAtmosphere(commandBuffer: commandBuffer)
+    }
+
     /// Encodes the sky background into the current render pass.
     /// Must be called before VRM mesh draw calls.
     func drawSky(encoder: MTLRenderCommandEncoder) {
         guard let sky = skyRenderer else { return }
-        let invVP = (projectionMatrix * viewMatrix).inverse
-        sky.prepareForEncoding(invViewProjection: invVP)
+        sky.prepareForEncoding(viewProjection: projectionMatrix * viewMatrix)
         sky.encode(encoder: encoder)
     }
 }
@@ -75,21 +80,25 @@ extension VRMRenderer {
 
     /// Updates the three VRM lights so they match the current sun position in the sky.
     ///
-    /// - Key light  = sun (or moon at night), direction from sun toward scene.
+    /// - Key light  = `SkyEnvironment.keyLight`: the sun by day, the night light
+    ///   by night, crossing over the sky at twilight, turned to the camera's
+    ///   side when it stands behind the avatar (`avatarDirection`).
     /// - Fill light = opposite sky scatter.
-    /// - Rim light  = fixed above-behind, separates model from background.
+    /// - Rim light  = above-behind, separates model from background, in the
+    ///   sky's colour there; the real key light while that stands behind her.
+    /// - Ambient    = the sky's own light at L1 (`SkyAmbient`): MToon's GI.
     ///
     /// The MToon shader computes `dot(N, -lightDirection)`, so we pass
     /// **−directionTowardLight** as the `direction` argument of `setLight`.
     public func applySkyLighting() {
         guard let env = skyRenderer?.currentEnvironment else { return }
 
-        // Key light: rays travel FROM the sun TOWARD the scene → pass -sunDirection.
+        // Key light: rays travel FROM the light TOWARD the scene → pass -direction.
         setLight(
             0,
-            direction: -env.keyLightDirection,
-            color: env.keyLightColor,
-            intensity: env.keyLightIntensity
+            direction: -env.keyLight.avatarDirection,
+            color: env.keyLight.color,
+            intensity: env.keyLight.intensity
         )
 
         // Fill light: soft sky scatter from the opposite side.
@@ -100,7 +109,7 @@ extension VRMRenderer {
             intensity: env.fillLightIntensity
         )
 
-        // Rim light: fixed above-behind, creates model-sky separation.
+        // Rim light: above-behind, creates model-sky separation.
         setLight(
             2,
             direction: -env.rimLightDirection,
@@ -108,6 +117,22 @@ extension VRMRenderer {
             intensity: env.rimLightIntensity
         )
 
-        setAmbientColor(env.ambientColor)
+        // The sky's own light (SkyEnvironment.ambient), under rain's overcast.
+        setAmbient(env.ambient.overcast(skyRenderer?.rainIntensity ?? 0))
+    }
+
+    /// The breeze in the hair and clothes (SkyWind), in the model's own
+    /// space, where its nodes and the spring solver live: the scene draws a
+    /// VRM 0.x model turned 180° (`vrmVersionRotation`), so its wind is
+    /// turned back, or its hair would blow against the clouds. Still air
+    /// when the user has turned it off, for an imported character unless
+    /// the user let it in, and with no sky to keep its time.
+    func springBoneWind() -> SIMD3<Float> {
+        let settings = UserSettings.shared
+        guard settings.wind, !modelIsImported || settings.windForImported, let sky = skyRenderer else { return .zero }
+        let scene = SkyWind.velocity(
+            time: sky.cloudTime, cloudSpeed: sky.currentEnvironment.cloudSpeed, rain: sky.rainIntensity)
+        let model = vrmVersionRotation.inverse * SIMD4<Float>(scene, 0)
+        return SIMD3<Float>(model.x, model.y, model.z)
     }
 }

@@ -23,6 +23,10 @@ struct Uniforms {
     float _padding5;
     float _padding6;
     float _padding7;
+    // GI(n) = ambientColor + x·n.x + y·n.y + z·n.z, per channel (SkyAmbient).
+    float4 ambientAlongX;
+    float4 ambientAlongY;
+    float4 ambientAlongZ;
 };
 
 struct MToonMaterial {
@@ -133,8 +137,14 @@ struct VertexOut {
     float3 viewNormal;
 };
 
-// Hemisphere GI: ambient × (1 ± this) along world up (MToonMain).
-constant float kMToonHemisphere = 0.35;
+// The ambient light gathered by a surface facing `normal`: the spec's SH
+// probe at L1 (SkyAmbient), never below black.
+static inline float3 mtoonAmbientAlong(constant Uniforms &uniforms, float3 normal) {
+    return max(uniforms.ambientColor.xyz
+        + uniforms.ambientAlongX.xyz * normal.x
+        + uniforms.ambientAlongY.xyz * normal.y
+        + uniforms.ambientAlongZ.xyz * normal.z, 0.0f);
+}
 
 // ── Avatar self-shadow (VRMRenderer+AvatarShadow) ───────────────
 /// Mirrors `AvatarShadowParams` (Swift).
