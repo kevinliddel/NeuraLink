@@ -10,6 +10,7 @@
 //
 
 import Foundation
+import Metal
 import Testing
 import simd
 @testable import NeuraLink
@@ -98,5 +99,23 @@ struct SpringBoneSolverTests {
         let dry = simd_length(SkyWind.velocity(time: 30, cloudSpeed: 0.02, rain: 0))
         let wet = simd_length(SkyWind.velocity(time: 30, cloudSpeed: 0.02, rain: 1))
         #expect(wet > dry * 1.5)
+    }
+
+    @Test("The breeze reaches the springs in the model's own space: turned back for a VRM 0.x model",
+          arguments: ["Oz", "Ekaterina", "Sonya"])
+    func windInModelSpace(name: String) async throws {
+        guard UserSettings.shared.wind, let device = MTLCreateSystemDefaultDevice(),
+              let url = Bundle.main.url(forResource: name, withExtension: "vrm") else { return }
+        let model = try await VRMModel.load(from: url, device: device)
+        let renderer = VRMRenderer(device: device, config: RendererConfig(strict: .off, sampleCount: 1))
+        renderer.loadModel(model)
+        renderer.modelIsImported = false
+        let sky = try #require(renderer.skyRenderer)
+        let scene = SkyWind.velocity(
+            time: sky.cloudTime, cloudSpeed: sky.currentEnvironment.cloudSpeed, rain: sky.rainIntensity)
+        // The scene draws a 0.x model turned 180° about Y.
+        let expected = model.isVRM0 ? SIMD3<Float>(-scene.x, scene.y, -scene.z) : scene
+        #expect(simd_distance(renderer.springBoneWind(), expected) < 1e-5, "\(name)")
+        renderer.clearModel()
     }
 }

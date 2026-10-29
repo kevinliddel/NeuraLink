@@ -93,8 +93,10 @@ final class SpringBoneSolver {
     private(set) var builtJointCount = 0
     /// Tails go back to rest before the next step.
     var needsReset = false
-    /// The air's velocity, world space, metres a second (SkyWind). Zero
-    /// leaves the spec's step untouched.
+    /// The air's velocity, metres a second (SkyWind), in the space the
+    /// nodes' world matrices are in: the model's, before the renderer turns
+    /// a VRM 0.x model to face the camera (`VRMRenderer.springBoneWind`).
+    /// Zero leaves the spec's step untouched.
     var wind = SIMD3<Float>.zero
     /// Rebuild before the next step (a new model, or a graft).
     private var needsSetUp = true

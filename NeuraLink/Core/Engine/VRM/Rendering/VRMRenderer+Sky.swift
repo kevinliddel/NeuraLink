@@ -121,13 +121,18 @@ extension VRMRenderer {
         setAmbient(env.ambient.overcast(skyRenderer?.rainIntensity ?? 0))
     }
 
-    /// The breeze in the hair and clothes (SkyWind), or still air: when the
-    /// user has turned it off, for an imported character unless the user
-    /// let it in, and with no sky to keep its time.
+    /// The breeze in the hair and clothes (SkyWind), in the model's own
+    /// space, where its nodes and the spring solver live: the scene draws a
+    /// VRM 0.x model turned 180° (`vrmVersionRotation`), so its wind is
+    /// turned back, or its hair would blow against the clouds. Still air
+    /// when the user has turned it off, for an imported character unless
+    /// the user let it in, and with no sky to keep its time.
     func springBoneWind() -> SIMD3<Float> {
         let settings = UserSettings.shared
         guard settings.wind, !modelIsImported || settings.windForImported, let sky = skyRenderer else { return .zero }
-        return SkyWind.velocity(
+        let scene = SkyWind.velocity(
             time: sky.cloudTime, cloudSpeed: sky.currentEnvironment.cloudSpeed, rain: sky.rainIntensity)
+        let model = vrmVersionRotation.inverse * SIMD4<Float>(scene, 0)
+        return SIMD3<Float>(model.x, model.y, model.z)
     }
 }
