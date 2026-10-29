@@ -123,9 +123,7 @@ struct LiveMotionClipTests {
 
     // MARK: - Posing
 
-    private static func pose(_ model: VRMModel, with clip: AnimationClip, at time: Float)
-        -> LiveMotionPosed
-    {
+    private static func pose(_ model: VRMModel, with clip: AnimationClip, at time: Float) -> LiveMotionPosed {
         var result = LiveMotionPosed()
         model.withLock {
             for track in clip.jointTracks {

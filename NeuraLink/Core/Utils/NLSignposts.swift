@@ -19,4 +19,6 @@ enum NLSignposts {
     static let llm = OSSignposter(subsystem: subsystem, category: "LLM")
     static let render = OSSignposter(subsystem: subsystem, category: "Render")
     static let speech = OSSignposter(subsystem: subsystem, category: "Speech")
+    /// Generated motion: text encoding, denoised windows, decoding (docs/REALTIME_MOTION_PLAN.md).
+    static let motion = OSSignposter(subsystem: subsystem, category: "Motion")
 }

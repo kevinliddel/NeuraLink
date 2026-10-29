@@ -29,6 +29,7 @@ constexpr int64_t kHybrid         = MOTION_BRIDGE_HYBRID_DIM;
 constexpr int64_t kFrames         = MOTION_BRIDGE_FRAMES;
 constexpr int64_t kJoints         = MOTION_BRIDGE_JOINTS;
 constexpr int64_t kTextDim        = MOTION_BRIDGE_TEXT_DIM;
+constexpr int64_t kMotionDim      = MOTION_BRIDGE_MOTION_DIM;
 constexpr int64_t kFramesPerToken = kFrames / kTokens;
 
 // ORT 1.17's CoreML provider flags (coreml_provider_factory.h, not shipped
@@ -266,7 +267,7 @@ double motion_bridge_denoise(MotionBridge* bridge, float* x, int32_t history_tok
 
 double motion_bridge_decode(MotionBridge* bridge, const float* hybrid, int32_t valid_tokens,
                             const float* global_translation, float* out_local_rotations, float* out_global_rotations,
-                            float* out_root_positions, uint8_t* out_foot_contacts) {
+                            float* out_root_positions, uint8_t* out_foot_contacts, float* out_normalized_motion) {
     if (bridge == nullptr || hybrid == nullptr || global_translation == nullptr || valid_tokens <= 0 ||
         valid_tokens > kTokens) {
         return -1;
@@ -287,14 +288,15 @@ double motion_bridge_decode(MotionBridge* bridge, const float* hybrid, int32_t v
             Ort::Value::CreateTensor<float>(bridge->memory, const_cast<float*>(global_translation), 3,
                                             translationShape.data(), translationShape.size())};
         const std::array<const char*, 3> names{"hybrid_tokens", "motion_pad_mask", "global_translation"};
-        const std::array<const char*, 4> outputs{"local_rotations", "global_rotations", "root_positions",
-                                                 "foot_contacts"};
+        const std::array<const char*, 5> outputs{"local_rotations", "global_rotations", "root_positions",
+                                                 "foot_contacts", "normalized_motion"};
         auto result = bridge->decoder.Run(Ort::RunOptions{nullptr}, names.data(), inputs.data(), inputs.size(),
                                           outputs.data(), outputs.size());
         const size_t rotations = static_cast<size_t>(kFrames * kJoints * 9);
         if (result[0].GetTensorTypeAndShapeInfo().GetElementCount() != rotations ||
             result[2].GetTensorTypeAndShapeInfo().GetElementCount() != static_cast<size_t>(kFrames * 3) ||
-            result[3].GetTensorTypeAndShapeInfo().GetElementCount() != static_cast<size_t>(kFrames * 4)) {
+            result[3].GetTensorTypeAndShapeInfo().GetElementCount() != static_cast<size_t>(kFrames * 4) ||
+            result[4].GetTensorTypeAndShapeInfo().GetElementCount() != static_cast<size_t>(kFrames * kMotionDim)) {
             return -2;
         }
         if (out_local_rotations != nullptr) {
@@ -312,6 +314,10 @@ double motion_bridge_decode(MotionBridge* bridge, const float* hybrid, int32_t v
             for (int64_t index = 0; index < kFrames * 4; ++index) {
                 out_foot_contacts[index] = contacts[index] ? 1 : 0;
             }
+        }
+        if (out_normalized_motion != nullptr) {
+            std::memcpy(out_normalized_motion, result[4].GetTensorData<float>(),
+                        sizeof(float) * static_cast<size_t>(kFrames * kMotionDim));
         }
         return millisecondsSince(start);
     } catch (const Ort::Exception&) { return -3; }

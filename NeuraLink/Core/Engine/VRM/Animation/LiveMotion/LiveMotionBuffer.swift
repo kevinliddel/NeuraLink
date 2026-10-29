@@ -66,6 +66,9 @@ public final class LiveMotionBuffer: @unchecked Sendable {
 
     public var isEmpty: Bool { lock.withLock { poses.isEmpty } }
 
+    /// The most recently appended pose, if any.
+    public var lastPose: LiveMotionPose? { lock.withLock { poses.last } }
+
     public func append(_ newPoses: [LiveMotionPose]) {
         guard !newPoses.isEmpty else { return }
         lock.withLock { poses.append(contentsOf: newPoses) }

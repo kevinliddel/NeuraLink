@@ -69,22 +69,22 @@ public final class LiveMotionSession: @unchecked Sendable {
     }
 
     /// Retargets and appends decoded frames: `globalRotations` holds
-    /// `frames` × 27 × 9 floats, `rootPositions` `frames` × 3.
-    public func append(frames: Int, globalRotations: [Float], rootPositions: [Float]) {
+    /// `frames` × 27 × 9 floats, `rootPositions` `frames` × 3. With
+    /// `blendingFirst` > 0 the first frames ease from the last appended pose
+    /// (a replanned window starts from a fresh inference).
+    public func append(frames: Int, globalRotations: [Float], rootPositions: [Float], blendingFirst: Int = 0) {
         let rotationStride = LiveMotionRetargeter.jointCount * 9
-        guard frames > 0, globalRotations.count >= frames * rotationStride,
-            rootPositions.count >= frames * 3
-        else { return }
+        guard frames > 0, globalRotations.count >= frames * rotationStride, rootPositions.count >= frames * 3 else { return }
         var poses: [LiveMotionPose] = []
         poses.reserveCapacity(frames)
         for frame in 0..<frames {
-            let rotations = Array(
-                globalRotations[(frame * rotationStride)..<((frame + 1) * rotationStride)])
-            let root = SIMD3<Float>(
-                rootPositions[frame * 3], rootPositions[frame * 3 + 1], rootPositions[frame * 3 + 2]
-            )
-            if let pose = retargeter.pose(globalRotations: rotations, rootPosition: root) {
-                poses.append(pose)
+            let rotations = Array(globalRotations[(frame * rotationStride)..<((frame + 1) * rotationStride)])
+            let root = SIMD3<Float>(rootPositions[frame * 3], rootPositions[frame * 3 + 1], rootPositions[frame * 3 + 2])
+            if let pose = retargeter.pose(globalRotations: rotations, rootPosition: root) { poses.append(pose) }
+        }
+        if blendingFirst > 0, let last = buffer.lastPose {
+            for frame in 0..<min(blendingFirst, poses.count) {
+                poses[frame] = last.interpolated(toward: poses[frame], fraction: Float(frame + 1) / Float(blendingFirst + 1))
             }
         }
         buffer.append(poses)

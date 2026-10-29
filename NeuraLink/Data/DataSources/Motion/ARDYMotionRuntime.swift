@@ -70,11 +70,15 @@ struct ARDYDiffusionSchedule: Sendable {
 struct ARDYDecodedWindow: Sendable {
     static let frames = Int(MOTION_BRIDGE_FRAMES)
     static let joints = Int(MOTION_BRIDGE_JOINTS)
+    static let motionDimension = Int(MOTION_BRIDGE_MOTION_DIM)
     /// Row-major 3x3 per joint per frame.
     let localRotations: [Float]
     let globalRotations: [Float]
     let rootPositions: [Float]
     let footContacts: [UInt8]
+    /// FRAMES × 330 normalized motion features; the first five per frame are
+    /// the world root features the next window's history is built from.
+    let normalizedMotion: [Float]
     let milliseconds: Double
 }
 
@@ -88,6 +92,8 @@ final class ARDYMotionRuntime: @unchecked Sendable {
     let provider: ARDYMotionProvider
     let schedule: ARDYDiffusionSchedule
     let defaultCFGWeight: Float
+    /// The window bookkeeping constants from the same model.json.
+    let windowMath: ARDYWindowMath
     private var handle: OpaquePointer?
 
     static var runtimeVersion: String { String(cString: motion_bridge_runtime_version()) }
@@ -109,6 +115,7 @@ final class ARDYMotionRuntime: @unchecked Sendable {
             at: modelDirectory.appendingPathComponent("model.json"))
         schedule = manifest.schedule
         defaultCFGWeight = manifest.cfgWeight
+        windowMath = ARDYWindowMath(layout: manifest.dimensions, recenter: manifest.recenter, quantization: manifest.latentQuantization)
         var used: Int32 = ARDYMotionProvider.cpu.rawValue
         let cache = Self.compiledModelCache.path
         guard let created = motion_bridge_create(modelDirectory.path, requested.rawValue, threads, cache, &used) else {
@@ -173,13 +180,14 @@ final class ARDYMotionRuntime: @unchecked Sendable {
         var global = [Float](repeating: 0, count: rotations)
         var root = [Float](repeating: 0, count: ARDYDecodedWindow.frames * 3)
         var contacts = [UInt8](repeating: 0, count: ARDYDecodedWindow.frames * 4)
+        var motion = [Float](repeating: 0, count: ARDYDecodedWindow.frames * ARDYDecodedWindow.motionDimension)
         let translation = [globalTranslation.x, globalTranslation.y, globalTranslation.z]
         let elapsed = motion_bridge_decode(
-            handle, hybrid, Int32(validTokens), translation, &local, &global, &root, &contacts)
+            handle, hybrid, Int32(validTokens), translation, &local, &global, &root, &contacts, &motion)
         guard elapsed >= 0 else { throw ARDYMotionRuntimeError.bridgeFailed("decode", elapsed) }
         return ARDYDecodedWindow(
             localRotations: local, globalRotations: global, rootPositions: root,
-            footContacts: contacts, milliseconds: elapsed)
+            footContacts: contacts, normalizedMotion: motion, milliseconds: elapsed)
     }
 
     // MARK: - Manifest
@@ -214,6 +222,14 @@ private struct ARDYManifestGeneration: Decodable {
 private struct ARDYModelManifest: Decodable {
     let diffusion: ARDYManifestDiffusion
     let generation: ARDYManifestGeneration
+    let dimensions: ARDYWindowLayout
+    let recenter: ARDYRecenter
+    let latentQuantization: ARDYLatentQuantization
+
+    enum CodingKeys: String, CodingKey {
+        case diffusion, generation, dimensions, recenter
+        case latentQuantization = "latent_quantization"
+    }
 
     var schedule: ARDYDiffusionSchedule {
         ARDYDiffusionSchedule(

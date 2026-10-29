@@ -7,7 +7,7 @@
 //  a phone when the test is run there) — session creation, the text encoder,
 //  a first window and a continuation window at 10 and 4 DDIM steps, the
 //  decoder — on each execution provider the ONNX Runtime build accepts, and
-//  checks the first window against the Python driver's fixture.
+//  checks the first window against the Python driver's two-window fixture.
 //
 //  NL_MOTION_BENCH_DIR: output folder (unset = skip).
 //  NL_MOTION_MODEL_DIR: folder with model.json + the three .onnx files
@@ -31,7 +31,7 @@ private final class FixtureMarker {}
 @Suite("Generated motion bench", .serialized)
 struct GeneratedMotionBench {
 
-    private static let fixtureName = "ardy_mini_wave_window1"
+    private static let fixtureName = "ardy_mini_wave_windows"
 
     @Test("Times the motion graphs when NL_MOTION_BENCH_DIR is set")
     func bench() async throws {
@@ -189,10 +189,9 @@ private struct MotionBenchTokens: Decodable {
     let types: [Int64]
 }
 
-private struct MotionBenchFixture: Decodable {
-    let caption: String
-    let tokens: MotionBenchTokens
-    let textConditions: [Float]
+/// The first window of scripts/ardy_mini_batch.py's two-window fixture
+/// (NeuraLinkTests/Fixtures/ardy_mini_wave_windows.json).
+private struct MotionBenchWindow: Decodable {
     let noise: [Float]
     let denoised: [Float]
     let decoderInput: [Float]
@@ -201,13 +200,31 @@ private struct MotionBenchFixture: Decodable {
     let rootPositions: [Float]
 
     enum CodingKeys: String, CodingKey {
-        case caption, tokens, noise, denoised
-        case textConditions = "text_conditions"
+        case noise, denoised
         case decoderInput = "decoder_input"
         case globalTranslation = "global_translation"
         case localRotationsFrame0 = "local_rotations_frame0"
         case rootPositions = "root_positions"
     }
+}
+
+private struct MotionBenchFixture: Decodable {
+    let caption: String
+    let tokens: MotionBenchTokens
+    let textConditions: [Float]
+    let windows: [MotionBenchWindow]
+
+    enum CodingKeys: String, CodingKey {
+        case caption, tokens, windows
+        case textConditions = "text_conditions"
+    }
+
+    var noise: [Float] { windows[0].noise }
+    var denoised: [Float] { windows[0].denoised }
+    var decoderInput: [Float] { windows[0].decoderInput }
+    var globalTranslation: [Float] { windows[0].globalTranslation }
+    var localRotationsFrame0: [Float] { windows[0].localRotationsFrame0 }
+    var rootPositions: [Float] { windows[0].rootPositions }
 }
 
 // MARK: - Process probes

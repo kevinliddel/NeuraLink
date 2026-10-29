@@ -28,6 +28,7 @@ enum {
     MOTION_BRIDGE_FRAMES            = 80,
     MOTION_BRIDGE_JOINTS            = 27,
     MOTION_BRIDGE_TEXT_DIM          = 2048,
+    MOTION_BRIDGE_MOTION_DIM        = 330,
     MOTION_BRIDGE_MAX_PROMPT_TOKENS = 128
 };
 
@@ -64,11 +65,13 @@ double motion_bridge_denoise(MotionBridge* bridge, float* x, int32_t history_tok
 
 /// Decodes a recentered, requantized window of `valid_tokens` tokens into
 /// FRAMES x JOINTS 3x3 local and global rotations (row-major), FRAMES x 3 root
-/// positions and FRAMES x 4 foot contacts. Any output pointer may be NULL.
+/// positions, FRAMES x 4 foot contacts and the FRAMES x MOTION_DIM normalized
+/// motion features (the first five per frame are the world root features the
+/// next window's history is built from). Any output pointer may be NULL.
 /// Returns the wall time in ms, or a negative error.
 double motion_bridge_decode(MotionBridge* bridge, const float* hybrid, int32_t valid_tokens,
                             const float* global_translation, float* out_local_rotations, float* out_global_rotations,
-                            float* out_root_positions, uint8_t* out_foot_contacts);
+                            float* out_root_positions, uint8_t* out_foot_contacts, float* out_normalized_motion);
 
 /// The ONNX Runtime version string the bridge is linked against.
 const char* motion_bridge_runtime_version(void);
