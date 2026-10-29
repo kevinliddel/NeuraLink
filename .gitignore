@@ -69,3 +69,6 @@ docs/REALTIME_MOTION_PLAN.md
 CustomSources/
 scripts/__pycache__
 CustomParts/
+
+# Local model files for GeneratedMotionBench (bundled with the tests when present)
+NeuraLinkTests/MotionModels/
