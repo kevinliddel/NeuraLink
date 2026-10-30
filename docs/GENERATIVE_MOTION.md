@@ -157,11 +157,21 @@ flowchart TD
 | `Core/Engine/VRM/UI/VRMMetalState+LiveMotion.swift` | Scene side: observer, begin/end with crossfades, per-frame tick, look-at base |
 | `Data/DataSources/AppFunctionTool.swift`, `OpenAI/OpenAIRealtimeManager+Handlers.swift`, `Domain/Entities/CharacterPersona.swift` | `perform_motion` schema (offered only when available), synchronous handler, caption guidance |
 | `Data/DataSources/Motion/MotionSettings.swift`, `Domain/Entities/AutonomyPreset.swift` | The "Gesture while speaking" switch (`AutonomyFlags.gestures`; balanced and lively on) |
+| `Domain/Entities/TutorialScript.swift`, `Presentation/Components/TutorialOverlayHost.swift`, `App/ContentView+Tutorial.swift` | The onboarding tour's "gestures" beat: opens Settings › Autonomy from inside the tour and spotlights the switch |
 | `Data/DataSources/Motion/MotionModelAccess.swift`, `Assets/RemoteAssetRegistry.swift`, `Presentation/Views/AI/MotionModelCard.swift` | Six pinned assets under `motion/ardy-mini/`, download with progress and notices sheet, removal |
 | `scripts/ardy_mini_batch.py`, `scripts/cskel_to_vrma.py`, `scripts/ardy_patch_graphs.py` | The Python driver the fixtures and the Phase 0 clips came from; VRMA writer; the Clip-bounds patch the CoreML provider needs |
 | `NeuraLinkTests/MotionGenerationSessionTests.swift`, `LiveMotionClipTests.swift`, `MotionStreamPolicyTests.swift`, `MotionStreamCoordinatorTests.swift`, `MotionModelAssetsTests.swift`, `GeneratedMotionBench.swift`, `GeneratedClipSnapshots.swift` | Parity with the Python driver (two windows), parity with the VRMA path on all three characters, the rules, the loop with a stub producer, the pins; the device bench and the contact-sheet harness |
 
 ## Integration notes
+
+- **Finding the switch**: the onboarding tour has a beat for it (`gestures`
+  in `TutorialScript`, right after the Settings beat). It is the one beat
+  whose target lives on another screen: `TutorialStep.Screen` lets a step
+  require the Settings sheet the way other steps require a menu row, the
+  scene presents the sheet and `AISettingsView` pushes Autonomy, a second
+  `TutorialOverlayHost` inside the sheet cuts the spotlight around the
+  "Gesture while speaking" row, and the sheet comes down when the tour
+  moves on. The tour is v3 for it, so people who finished v2 see it once.
 
 - **Gates** (`MotionStreamCoordinator.isAvailable`): the switch on, the OpenAI
   path in use with the local model off, Reduce Motion off, the model files

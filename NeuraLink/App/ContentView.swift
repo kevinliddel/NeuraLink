@@ -304,7 +304,8 @@ struct ContentView: View {
         }
         .tutorialLayer(
             isMenuExpanded: $isMenuExpanded,
-            isSecondaryExpanded: $isSecondaryExpanded)
+            isSecondaryExpanded: $isSecondaryExpanded,
+            isSettingsPresented: $aiState.showSettings)
     }
 
     // MARK: - Toolbar

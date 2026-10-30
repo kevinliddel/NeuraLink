@@ -17,6 +17,10 @@ struct AISettingsView: View {
     private var personaStore = PersonaStore.shared
     @State private var showModelLibrary = false
     @Environment(\.dismiss) private var dismiss
+    /// The onboarding tour opens this sheet for its beat about the gesture
+    /// switch on the Autonomy screen; this is the push it drives.
+    @State private var tutorial = TutorialCoordinator.shared
+    @State private var isAutonomyPushedForTour = false
 
     var body: some View {
         NavigationStack {
@@ -29,6 +33,9 @@ struct AISettingsView: View {
             .scrollIndicators(.hidden)
             .navigationTitle("AI Settings")
             .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(isPresented: $isAutonomyPushedForTour) {
+                AutonomySettingsView()
+            }
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
@@ -38,6 +45,19 @@ struct AISettingsView: View {
                 }
             }
         }
+        // The tour's beat about the gesture switch plays in here: its
+        // spotlight is cut in this sheet, not in the scene underneath, and
+        // the sheet can't be swiped away from under the card.
+        .overlay { TutorialOverlayHost(screen: .autonomySettings) }
+        .interactiveDismissDisabled(tutorial.isActive)
+        .onAppear { followTour(to: tutorial.screen) }
+        .onChange(of: tutorial.screen) { _, screen in followTour(to: screen) }
+    }
+
+    /// Pushes the Autonomy screen while the tour points inside it, and pops
+    /// it when the tour moves on (the scene then dismisses the sheet).
+    private func followTour(to screen: TutorialStep.Screen) {
+        isAutonomyPushedForTour = screen == .autonomySettings
     }
 
     // MARK: - Sections

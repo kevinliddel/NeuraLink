@@ -19,18 +19,40 @@ struct AutonomySettingsView: View {
     @Bindable var grounding = GroundingSettings.shared
     @Bindable var affect = AffectSettings.shared
     @Bindable var motion = MotionSettings.shared
+    @State private var tutorial = TutorialCoordinator.shared
+
+    /// Row id the onboarding tour scrolls to: the gesture switch is the one
+    /// control on this screen the tour spotlights.
+    private static let gestureRowID = "gestureToggle"
 
     var body: some View {
-        Form {
-            presetSection
-            talkingSection
-            seeingSection
-            betweenSessionsSection
-            daySection
+        ScrollViewReader { proxy in
+            Form {
+                presetSection
+                talkingSection
+                seeingSection
+                betweenSessionsSection
+                daySection
+            }
+            .scrollIndicators(.hidden)
+            .navigationTitle("Autonomy")
+            .navigationBarTitleDisplayMode(.inline)
+            .onAppear { revealTourTarget(with: proxy) }
+            .onChange(of: tutorial.step?.anchor) { _, _ in revealTourTarget(with: proxy) }
         }
-        .scrollIndicators(.hidden)
-        .navigationTitle("Autonomy")
-        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    /// Brings the gesture switch into view while the tour points at it, once
+    /// the push animation has settled, so the spotlight has a frame to cut.
+    private func revealTourTarget(with proxy: ScrollViewProxy) {
+        guard tutorial.step?.anchor == .gestureToggle else { return }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(350))
+            guard tutorial.step?.anchor == .gestureToggle else { return }
+            withAnimation(.easeInOut(duration: 0.3)) {
+                proxy.scrollTo(Self.gestureRowID, anchor: .center)
+            }
+        }
     }
 
     // MARK: - Presets
@@ -122,6 +144,8 @@ struct AutonomySettingsView: View {
             ) {
                 MotionModelCard()
             }
+            .tutorialAnchor(.gestureToggle)
+            .id(Self.gestureRowID)
             FeatureToggleRow(
                 symbol: "headphones", tint: .indigo,
                 title: "Keep talking in background", subtitle: "The conversation survives the screen going off.",
