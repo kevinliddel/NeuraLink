@@ -316,7 +316,7 @@ final class VRMMetalState {
         let localDecode = OpenAISettings.shared.isLocalLLMEnabled && !OpenAISettings.shared.isEnabled
         let decoding = aiState.status == .thinking || aiState.status == .speaking
         // A hot or power-saving phone caps the rate, thins the rain and
-        // lightens the sky (RuntimePressurePolicy, docs/OPT.md item 7).
+        // lightens the sky (RuntimePressurePolicy).
         let tier = RuntimePressureMonitor.shared.tier
         let wanted = (localDecode && decoding) ? Self.decodeRenderFPS : Self.idleRenderFPS
         let target = min(wanted, RuntimePressurePolicy.renderFPSCap(tier))

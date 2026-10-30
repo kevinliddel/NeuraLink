@@ -8,7 +8,7 @@
 //  keeps `MotionStreamPolicy.leadSeconds` of decoded frames ahead of the
 //  playhead until the reply is over, spending fewer diffusion steps when the
 //  phone is warm. The model files load on first use and are dropped when
-//  the user leaves the OpenAI path. docs/REALTIME_MOTION_PLAN.md, Phase 4.
+//  the user leaves the OpenAI path. See docs/GENERATIVE_MOTION.md.
 //
 //  Created by Dedicatus on 30/10/2026.
 //

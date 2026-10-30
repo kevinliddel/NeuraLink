@@ -4,7 +4,7 @@
 //
 //  The motion model's download under the "Gesture while speaking" switch:
 //  its size and state, a download that first shows the notices the model's
-//  licences ask for, and removal. docs/REALTIME_MOTION_PLAN.md, Phase 5.
+//  licences ask for, and removal. See docs/GENERATIVE_MOTION.md.
 //
 //  Created by Dedicatus on 30/10/2026.
 //

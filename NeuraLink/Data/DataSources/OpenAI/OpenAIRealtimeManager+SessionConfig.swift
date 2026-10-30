@@ -70,7 +70,7 @@ extension OpenAIRealtimeManager {
               from the results. If it returns nothing, say you don't recall.
             """
 
-        // Only while perform_motion is offered (docs/REALTIME_MOTION_PLAN.md).
+        // Only while perform_motion is offered (docs/GENERATIVE_MOTION.md).
         let motionInstruction = MotionSettings.offersTool ? CharacterPersona.motionInstructions : ""
         return persona.instructions + "\n"
             + userContext + mentalModels + memoryContext + kgFacts + companion

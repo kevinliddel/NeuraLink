@@ -1,4 +1,4 @@
-"""Batch driver for the ARDY-mini ONNX graphs (docs/REALTIME_MOTION_PLAN.md, Phase 0).
+"""Batch driver for the ARDY-mini ONNX graphs (docs/GENERATIVE_MOTION.md).
 
 Model files: the fp32 directory of intsuc/Llama-3-ARDY-Mini-Core40-Browser on
 Hugging Face (model.json, text_encoder.onnx, denoiser.onnx, decoder.onnx,

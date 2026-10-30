@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  Keeps the current `RuntimePressureTier` from ProcessInfo's thermal state
-//  and Low Power Mode (docs/OPT.md item 7). Observable, so the render loop
+//  and Low Power Mode. Observable, so the render loop
 //  re-evaluates its frame rate and rain budget the moment the tier moves.
 //
 //  Created by Dedicatus on 19/10/2026.

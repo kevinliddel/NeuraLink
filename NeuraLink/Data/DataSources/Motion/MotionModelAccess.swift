@@ -6,8 +6,7 @@
 //  RemoteAssetRegistry, fetched and verified by RemoteAssetCache into
 //  `<App Support>/hf-assets/motion/ardy-mini/`, removed from the same card
 //  that downloaded them. A hand-copied folder in Caches (the bench's) is
-//  accepted as a fallback for development. docs/REALTIME_MOTION_PLAN.md,
-//  Phase 5.
+//  accepted as a fallback for development. See docs/GENERATIVE_MOTION.md.
 //
 //  Created by Dedicatus on 30/10/2026.
 //

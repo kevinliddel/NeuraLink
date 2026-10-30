@@ -8,7 +8,7 @@
 //  any model; with NL_MOTION_MODEL_DIR set, the whole session must
 //  reproduce both windows (denoised tokens, decoder input, decoded root
 //  and rotations) and fill a LiveMotionSession with 80 frames.
-//  docs/REALTIME_MOTION_PLAN.md, Phase 3.
+//  See docs/GENERATIVE_MOTION.md.
 //
 //  Created by Dedicatus on 29/10/2026.
 //

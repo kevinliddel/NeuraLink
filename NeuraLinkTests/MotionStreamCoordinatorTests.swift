@@ -6,7 +6,7 @@
 //  scene is told when the first window is in, windows keep coming while the
 //  lead is short and the character speaks, a replan reaches the producer,
 //  and the stream ends once it has played out or is cancelled.
-//  docs/REALTIME_MOTION_PLAN.md, Phase 4.
+//  See docs/GENERATIVE_MOTION.md.
 //
 //  Created by Dedicatus on 30/10/2026.
 //

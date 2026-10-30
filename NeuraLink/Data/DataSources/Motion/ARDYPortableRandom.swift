@@ -5,8 +5,8 @@
 //  The browser runtime's reproducible noise source (web/src/runtime/random.ts
 //  in intsuc/ardy-mini): Mulberry32 for uniforms, the Marsaglia polar method
 //  for Gaussians, every written value rounded to float32. Same seed, same
-//  noise, same motion as the Phase 0 driver and the fixtures it wrote.
-//  docs/REALTIME_MOTION_PLAN.md, Phase 3.
+//  noise, same motion as the Python driver (scripts/ardy_mini_batch.py)
+//  and the fixtures it wrote. See docs/GENERATIVE_MOTION.md.
 //
 //  Created by Dedicatus on 29/10/2026.
 //

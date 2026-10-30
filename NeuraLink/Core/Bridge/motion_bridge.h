@@ -6,7 +6,7 @@
 //  denoiser, structured decoder) through the ONNX Runtime NeuraLink already
 //  ships for OpenVoice. One handle owns the three sessions; the Swift layer
 //  (ARDYMotionRuntime) owns the autoregressive window state, recentering and
-//  retargeting. docs/REALTIME_MOTION_PLAN.md, Phase 1.
+//  retargeting. See docs/GENERATIVE_MOTION.md.
 //
 //  Shapes are the fixed browser contract of
 //  intsuc/Llama-3-ARDY-Mini-Core40-Browser: a 20-token window of 148-float

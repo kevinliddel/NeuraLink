@@ -7,7 +7,7 @@
 //  generating a moment after the speech ends, never run longer than a reply
 //  deserves, and spend fewer diffusion steps when the phone is warm. Pure
 //  and unit-tested; the coordinator in Data applies it.
-//  docs/REALTIME_MOTION_PLAN.md, Phase 4.
+//  See docs/GENERATIVE_MOTION.md.
 //
 //  Created by Dedicatus on 30/10/2026.
 //

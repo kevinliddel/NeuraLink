@@ -6,7 +6,6 @@ and onnx2torch mis-parses. This writes a copy of the model directory with every
 Clip given explicit float32 bounds, verifies the three graphs still produce the
 same outputs through ONNX Runtime, and rewrites model.json's file sizes and
 SHA-256s so GeneratedMotionBench can verify the copy.
-docs/REALTIME_MOTION_PLAN.md, Phase 1.
 
 usage: python -I scripts/ardy_patch_graphs.py <model_dir> <output_dir>
 """

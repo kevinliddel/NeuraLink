@@ -7,7 +7,7 @@
 //  talking gestures stand down, and the look-at composes on the stream's
 //  neck and head. A pose or an episode takes the body back at once; the
 //  caller ends the stream when its reply is over and the body crossfades
-//  home. Nothing starts a stream yet. docs/REALTIME_MOTION_PLAN.md, Phase 2.
+//  home. See docs/GENERATIVE_MOTION.md.
 //
 //  Created by Dedicatus on 29/10/2026.
 //

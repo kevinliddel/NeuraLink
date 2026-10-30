@@ -5,7 +5,7 @@
 //  The six motion model assets: distinctive file names (a bundle lookup by
 //  basename must never hit another model's tokenizer.json), one folder in
 //  the dataset, a pin on every file, and the download size the card shows.
-//  docs/REALTIME_MOTION_PLAN.md, Phase 5.
+//  See docs/GENERATIVE_MOTION.md.
 //
 //  Created by Dedicatus on 30/10/2026.
 //

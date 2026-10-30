@@ -6,7 +6,7 @@
 //  reads on any thread: both in UserDefaults, the switch under the Autonomy
 //  screen's "Talking" card. SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor +
 //  @Observable, so storage is explicit backing fields.
-//  docs/REALTIME_MOTION_PLAN.md, Phase 4.
+//  See docs/GENERATIVE_MOTION.md.
 //
 //  Created by Dedicatus on 30/10/2026.
 //

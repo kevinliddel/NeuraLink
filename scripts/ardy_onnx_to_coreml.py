@@ -1,6 +1,6 @@
 """ARDY-mini ONNX graphs -> Core ML programs (fp16), checked against ONNX Runtime.
 
-docs/REALTIME_MOTION_PLAN.md, Phase 1. Runs only the published graphs through pip
+Runs only the published graphs through pip
 libraries (onnx2torch + coremltools); no repository code from ardy-mini is executed.
 
 Needs a machine where a current PyTorch runs: Apple Silicon or Linux with

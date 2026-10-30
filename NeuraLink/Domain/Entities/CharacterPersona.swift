@@ -28,7 +28,7 @@ struct CharacterPersona: Codable {
     """
 
     /// Appended to the session instructions only while `perform_motion` is
-    /// offered (docs/REALTIME_MOTION_PLAN.md). Physical captions move the
+    /// offered (docs/GENERATIVE_MOTION.md). Physical captions move the
     /// body; moods do not.
     static let motionInstructions = """
 

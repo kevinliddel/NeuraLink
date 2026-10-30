@@ -10,7 +10,7 @@
 //  After denoising, root x/z are recentered on the last valid frame and the
 //  latents snapped back to the quantizer's grid before decoding; the decoded
 //  world root features and the requantized latents become the history the
-//  next window continues from. docs/REALTIME_MOTION_PLAN.md, Phase 3.
+//  next window continues from. See docs/GENERATIVE_MOTION.md.
 //
 //  Created by Dedicatus on 29/10/2026.
 //

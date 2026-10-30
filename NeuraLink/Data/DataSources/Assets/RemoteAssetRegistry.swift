@@ -60,7 +60,7 @@ nonisolated enum RemoteAssetRegistry: Hashable, Sendable {
     // (ONNX, Clip bounds made explicit for the CoreML provider by
     // scripts/ardy_patch_graphs.py), model.json and the WordPiece tokenizer.
     // Hosted under `motion/ardy-mini/` in the shared dataset; never bundled
-    // (docs/REALTIME_MOTION_PLAN.md).
+    // (docs/GENERATIVE_MOTION.md).
     case motionManifest
     case motionTextEncoder
     case motionDenoiser

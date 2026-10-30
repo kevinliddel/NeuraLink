@@ -5,7 +5,7 @@
 //  WordPiece ids for the distilled MiniLM text encoder, from the tokenizer
 //  files shipped beside the graphs, through swift-transformers. Prompts
 //  longer than the encoder's context are cut keeping the final [SEP], as
-//  the browser runtime does. docs/REALTIME_MOTION_PLAN.md, Phase 3.
+//  the browser runtime does. See docs/GENERATIVE_MOTION.md.
 //
 //  Created by Dedicatus on 29/10/2026.
 //

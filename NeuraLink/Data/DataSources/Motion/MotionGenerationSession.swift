@@ -10,7 +10,7 @@
 //  carrying the old action's history smothers the new one); the first
 //  frames of that window are blended from the last pose so the body does
 //  not snap. Frames go to a LiveMotionSession, which retargets them.
-//  docs/REALTIME_MOTION_PLAN.md, Phase 3.
+//  See docs/GENERATIVE_MOTION.md.
 //
 //  Created by Dedicatus on 29/10/2026.
 //
