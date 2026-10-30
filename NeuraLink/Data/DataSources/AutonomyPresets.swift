@@ -26,7 +26,8 @@ extension AutonomyPreset {
             notifications: presence.isNotificationsEnabled,
             followUps: presence.followUpsEnabled,
             widgets: presence.showWidgets,
-            engagement: presence.isProactiveEngagementEnabled)
+            engagement: presence.isProactiveEngagementEnabled,
+            gestures: MotionSettings.shared.isEnabled)
     }
 
     /// The preset the current switches match, or nil for a custom mix.
@@ -51,6 +52,7 @@ extension AutonomyPreset {
         if presence.isProactiveEngagementEnabled != flags.engagement {
             presence.isProactiveEngagementEnabled = flags.engagement
         }
+        if MotionSettings.shared.isEnabled != flags.gestures { MotionSettings.shared.isEnabled = flags.gestures }
         nlLog("[Autonomy] preset applied: \(rawValue)", level: .info)
     }
 }

@@ -60,7 +60,7 @@ struct LiveMotionClipTests {
             frames: frames.frames, globalRotations: frames.globalRotations.flatMap { $0 },
             rootPositions: frames.rootPositions.flatMap { $0 })
         #expect(session.buffer.frameCount == frames.frames)
-        #expect(session.clip.jointTracks.count == session.retargeter.bones.count)
+        #expect(session.clip.jointTracks.count >= session.retargeter.bones.count)  // plus the finger curl
         #expect(session.clip.duration >= 1_000)
 
         var worst: Float = 0

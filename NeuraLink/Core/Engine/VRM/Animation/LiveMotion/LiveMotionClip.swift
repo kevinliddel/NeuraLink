@@ -45,6 +45,10 @@ public enum LiveMotionClip {
                     },
                     translationSampler: translation))
         }
+        for finger in retargeter.fingerCurl() {
+            let rotation = finger.rotation
+            clip.addJointTrack(JointTrack(bone: finger.bone, rotationSampler: { _ in rotation }))
+        }
         return clip
     }
 }

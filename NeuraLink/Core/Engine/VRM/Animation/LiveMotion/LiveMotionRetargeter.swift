@@ -53,6 +53,11 @@ public struct LiveMotionRetargeter: Sendable {
     static let coreFootHeight: Float = 0.07
     static let legScale = (referenceHipsHeight - referenceFootHeight) / coreHipsToFoot
 
+    /// ARDY has no fingers; while a stream plays the index to little fingers
+    /// hold a relaxed curl (text-to-vrma's: proximal 14°, intermediate 17°,
+    /// distal 10° about Z, negative on the left hand).
+    public static let fingerCurlDegrees: [String: Float] = ["Proximal": 14, "Intermediate": 17, "Distal": 10]
+
     /// Mocap arms sink into anime torsos; the upper arms open outward by this much.
     public var armSpreadDegrees: Float = 6
     /// Root x/z are pinned so the character gestures in place; y (crouches, bows) is kept.
@@ -67,6 +72,7 @@ public struct LiveMotionRetargeter: Sendable {
     }
 
     private let targets: [BoneTarget]
+    private let fingerTargets: [(bone: VRMHumanoidBone, target: BoneTarget, degrees: Float)]
     private let convertForVRM0: Bool
     private let hipsRest: SIMD3<Float>
     private let hipsDeltaScale: Float
@@ -98,6 +104,17 @@ public struct LiveMotionRetargeter: Sendable {
         }
         self.targets = targets
         self.bones = bones
+        var fingers: [(bone: VRMHumanoidBone, target: BoneTarget, degrees: Float)] = []
+        for bone in VRMHumanoidBone.allCases {
+            let name = bone.rawValue
+            guard let segment = Self.fingerCurlDegrees.first(where: { name.hasSuffix($0.key) }),
+                  ["Index", "Middle", "Ring", "Little"].contains(where: { name.contains($0) }), let rest = rests[bone] else { continue }
+            let sign: Float = name.hasPrefix("left") ? -1 : 1
+            fingers.append((bone, BoneTarget(
+                coreIndex: -1, parentCoreIndex: nil, modelRest: simd_normalize(rest.rotation),
+                parentWorldRest: simd_normalize(parentWorld[bone] ?? simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)), spreadSign: 0), sign * segment.value))
+        }
+        fingerTargets = fingers
         convertForVRM0 = model.isVRM0
         hipsRest = rests[.hips]?.translation ?? SIMD3<Float>(0, Self.referenceHipsHeight, 0)
         let modelHipsY = rests[.hips]?.translation.y ?? Self.referenceHipsHeight
@@ -139,6 +156,15 @@ public struct LiveMotionRetargeter: Sendable {
         }
         return LiveMotionPose(
             rotations: rotations, hipsTranslation: hipsTranslation(for: rootPosition))
+    }
+
+    /// Constant local rotations holding the relaxed finger curl on this
+    /// model, for the finger bones it has.
+    public func fingerCurl() -> [(bone: VRMHumanoidBone, rotation: simd_quatf)] {
+        fingerTargets.map { finger in
+            let delta = simd_quatf(angle: finger.degrees * .pi / 180, axis: SIMD3<Float>(0, 0, 1))
+            return (finger.bone, Self.retarget(delta: delta, target: finger.target, convertForVRM0: convertForVRM0))
+        }
     }
 
     /// The loader's rotation retarget for an identity-rest clip: VRM 0.x

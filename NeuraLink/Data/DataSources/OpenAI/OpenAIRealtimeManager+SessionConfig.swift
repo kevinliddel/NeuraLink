@@ -70,14 +70,17 @@ extension OpenAIRealtimeManager {
               from the results. If it returns nothing, say you don't recall.
             """
 
+        // Only while perform_motion is offered (docs/REALTIME_MOTION_PLAN.md).
+        let motionInstruction = MotionSettings.offersTool ? CharacterPersona.motionInstructions : ""
         return persona.instructions + "\n"
             + userContext + mentalModels + memoryContext + kgFacts + companion
             + FollowUpCoordinator.shared.mentionBlock()
-            + factsTriggerInstruction
+            + factsTriggerInstruction + motionInstruction
     }
 
     func sendInitialSessionUpdate() {
         Task {
+            MotionStreamCoordinator.shared.refreshAvailability()  // decides whether perform_motion is offered
             let finalInstructions = await buildSessionInstructions()
 
             // GA session shape. Key differences from the beta body:

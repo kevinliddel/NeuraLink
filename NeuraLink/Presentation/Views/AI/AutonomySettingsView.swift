@@ -18,6 +18,7 @@ struct AutonomySettingsView: View {
     @Bindable var presence = PresenceSettings.shared
     @Bindable var grounding = GroundingSettings.shared
     @Bindable var affect = AffectSettings.shared
+    @Bindable var motion = MotionSettings.shared
 
     var body: some View {
         Form {
@@ -112,6 +113,12 @@ struct AutonomySettingsView: View {
                 title: "Sense my tone", subtitle: "Hears quiet, lively or hesitant and adapts its own.",
                 info: "The character notices how you sound — quiet and slow, lively, or hesitant — against your own usual voice, and adapts its tone and, on the local voices, its pace. Measured on this device from your speech; only a one-line mood note reaches the model.",
                 isOn: $affect.isEnabled)
+            FeatureToggleRow(
+                symbol: "figure.wave", tint: .mint,
+                title: "Gesture while speaking", subtitle: "Generates body motion for each reply. OpenAI voice mode.",
+                info: "The character moves its body to match what it says: a motion model on this device turns a one-line description from the reply into a short gesture stream. "
+                    + "Needs the motion model files and OpenAI voice mode; off under Reduce Motion or when the phone is hot.",
+                isOn: $motion.isEnabled, disabled: !settings.isEnabled)
             FeatureToggleRow(
                 symbol: "headphones", tint: .indigo,
                 title: "Keep talking in background", subtitle: "The conversation survives the screen going off.",

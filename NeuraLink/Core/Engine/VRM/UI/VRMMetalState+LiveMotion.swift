@@ -23,6 +23,31 @@ extension VRMMetalState {
     /// True while a stream owns the body.
     var isPlayingLiveMotion: Bool { liveMotion != nil }
 
+    /// The coordinator asks for a stream with `.liveMotionRequested`; the
+    /// scene answers with a session for the character on screen.
+    func setupLiveMotionObserver() {
+        NotificationCenter.default.addObserver(forName: .liveMotionRequested, object: nil, queue: .main) { [weak self] note in
+            guard let self, let request = note.userInfo?["request"] as? MotionStreamRequest else { return }
+            Task { @MainActor in self.startLiveMotionStream(request) }
+        }
+        MotionStreamCoordinator.shared.refreshAvailability()
+    }
+
+    /// Builds the live session for the displayed character and lets the
+    /// coordinator fill it; the body crossfades on once the first window is in.
+    func startLiveMotionStream(_ request: MotionStreamRequest) {
+        guard let model = currentModel, !isPlayingAppear, !isPlayingPose,
+              !phoneEpisode.isActive, !listeningEpisode.isActive, !awayEpisode.isActive else {
+            nlLog("[LiveMotion] request dropped: the body is owned elsewhere", level: .info)
+            return
+        }
+        let session = LiveMotionSession(model: model)
+        MotionStreamCoordinator.shared.begin(
+            request, live: session,
+            onReady: { [weak self] in self?.beginLiveMotion(session) },
+            onFinished: { [weak self] reason in self?.endLiveMotion(reason: reason) })
+    }
+
     /// Starts playing `session` on its model. Ignored while a pose or an
     /// episode has the body, during the entrance, or for another model.
     func beginLiveMotion(_ session: LiveMotionSession) {
@@ -54,6 +79,7 @@ extension VRMMetalState {
     func endLiveMotion(reason: String) {
         guard liveMotion != nil else { return }
         resetLiveMotion()
+        MotionStreamCoordinator.shared.cancel()
         animationPlayer.applyRootMotion = false
         guard let model = currentModel, let clip = defaultClip else { return }
         if isPlayingPose || phoneEpisode.isActive || listeningEpisode.isActive || awayEpisode.isActive {
@@ -80,6 +106,7 @@ extension VRMMetalState {
         }
         session.elapsed += dt * animationPlayer.speed
         session.buffer.trim(before: session.elapsed)
+        MotionStreamCoordinator.shared.tick(playhead: session.elapsed, speaking: aiState.status == .speaking, deltaTime: dt)
     }
 
     /// Per-frame, after the player wrote the stream's rotations and before

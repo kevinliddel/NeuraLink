@@ -354,6 +354,7 @@ extension VRMMetalState {
     // MARK: - Pose Handling
 
     func setupPoseObserver() {
+        setupLiveMotionObserver()
         NotificationCenter.default.addObserver(forName: .photoshootCaptureRequested, object: nil, queue: .main) { [weak self] note in
             guard let box = note.userInfo?["completion"] as? CaptureBox else { return }
             guard let self else {
