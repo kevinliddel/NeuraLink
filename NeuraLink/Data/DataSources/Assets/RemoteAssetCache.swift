@@ -118,6 +118,14 @@ actor RemoteAssetCache {
         resolved[asset] = nil
     }
 
+    /// Deletes the downloaded copy (never a bundled one) and forgets it.
+    func remove(_ asset: RemoteAssetRegistry) {
+        invalidate(asset)
+        guard let onDisk = Self.cachedURL(for: asset) else { return }
+        try? FileManager.default.removeItem(at: onDisk)
+        try? FileManager.default.removeItem(at: onDisk.appendingPathExtension("part"))
+    }
+
     // MARK: - Path resolution
 
     private func bundledURL(for asset: RemoteAssetRegistry) -> URL? {

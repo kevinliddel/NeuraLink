@@ -82,13 +82,49 @@ struct ARDYDecodedWindow: Sendable {
     let milliseconds: Double
 }
 
+/// Where the model lives: model.json, the three graphs and the tokenizer's
+/// two files, wherever each sits (the download cache names them
+/// distinctively; a folder uses the standard names).
+struct ARDYModelFiles: Sendable, Equatable {
+    let manifest: URL
+    let textEncoder: URL
+    let denoiser: URL
+    let decoder: URL
+    let tokenizer: URL
+    let tokenizerConfig: URL
+
+    /// The standard names inside `directory`, tokenizer files under `tokenizer/`.
+    init(directory: URL) {
+        manifest = directory.appendingPathComponent("model.json")
+        textEncoder = directory.appendingPathComponent("text_encoder.onnx")
+        denoiser = directory.appendingPathComponent("denoiser.onnx")
+        decoder = directory.appendingPathComponent("decoder.onnx")
+        tokenizer = directory.appendingPathComponent("tokenizer/tokenizer.json")
+        tokenizerConfig = directory.appendingPathComponent("tokenizer/tokenizer_config.json")
+    }
+
+    init(manifest: URL, textEncoder: URL, denoiser: URL, decoder: URL, tokenizer: URL, tokenizerConfig: URL) {
+        self.manifest = manifest
+        self.textEncoder = textEncoder
+        self.denoiser = denoiser
+        self.decoder = decoder
+        self.tokenizer = tokenizer
+        self.tokenizerConfig = tokenizerConfig
+    }
+
+    var all: [URL] { [manifest, textEncoder, denoiser, decoder, tokenizer, tokenizerConfig] }
+
+    /// Every file present on disk.
+    var isComplete: Bool { all.allSatisfy { FileManager.default.fileExists(atPath: $0.path) } }
+}
+
 final class ARDYMotionRuntime: @unchecked Sendable {
     static let tokens = Int(MOTION_BRIDGE_TOKENS)
     static let hybridDimension = Int(MOTION_BRIDGE_HYBRID_DIM)
     static let textDimension = Int(MOTION_BRIDGE_TEXT_DIM)
     static let windowFloats = tokens * hybridDimension
 
-    let modelDirectory: URL
+    let files: ARDYModelFiles
     let provider: ARDYMotionProvider
     let schedule: ARDYDiffusionSchedule
     let defaultCFGWeight: Float
@@ -109,16 +145,22 @@ final class ARDYMotionRuntime: @unchecked Sendable {
         return dir
     }
 
-    init(modelDirectory: URL, provider requested: ARDYMotionProvider = .coreML, threads: Int32 = 0) throws {
-        self.modelDirectory = modelDirectory
-        let manifest = try Self.readManifest(
-            at: modelDirectory.appendingPathComponent("model.json"))
+    /// The standard file names inside one folder (the bench, tests, a hand-copied model).
+    convenience init(modelDirectory: URL, provider requested: ARDYMotionProvider = .coreML, threads: Int32 = 0) throws {
+        try self.init(files: ARDYModelFiles(directory: modelDirectory), provider: requested, threads: threads)
+    }
+
+    init(files: ARDYModelFiles, provider requested: ARDYMotionProvider = .coreML, threads: Int32 = 0) throws {
+        self.files = files
+        let manifest = try Self.readManifest(at: files.manifest)
         schedule = manifest.schedule
         defaultCFGWeight = manifest.cfgWeight
         windowMath = ARDYWindowMath(layout: manifest.dimensions, recenter: manifest.recenter, quantization: manifest.latentQuantization)
         var used: Int32 = ARDYMotionProvider.cpu.rawValue
         let cache = Self.compiledModelCache.path
-        guard let created = motion_bridge_create(modelDirectory.path, requested.rawValue, threads, cache, &used) else {
+        guard let created = motion_bridge_create(
+            files.textEncoder.path, files.denoiser.path, files.decoder.path, requested.rawValue, threads, cache, &used)
+        else {
             let reason = Self.lastError
             nlLog("[ARDYMotion] Sessions failed for \(requested.label): \(reason)", level: .warning)
             throw ARDYMotionRuntimeError.sessionsFailed(reason)

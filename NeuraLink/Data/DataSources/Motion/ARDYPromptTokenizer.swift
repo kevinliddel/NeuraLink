@@ -25,10 +25,16 @@ final class ARDYPromptTokenizer: @unchecked Sendable {
     private let tokenizer: Tokenizer
 
     /// `directory` holds tokenizer.json and tokenizer_config.json.
-    init(directory: URL, maxLength: Int = Int(MOTION_BRIDGE_MAX_PROMPT_TOKENS)) throws {
+    convenience init(directory: URL, maxLength: Int = Int(MOTION_BRIDGE_MAX_PROMPT_TOKENS)) throws {
+        try self.init(
+            tokenizerJSON: directory.appendingPathComponent("tokenizer.json"),
+            configJSON: directory.appendingPathComponent("tokenizer_config.json"), maxLength: maxLength)
+    }
+
+    init(tokenizerJSON: URL, configJSON: URL, maxLength: Int = Int(MOTION_BRIDGE_MAX_PROMPT_TOKENS)) throws {
         self.maxLength = maxLength
-        let data = try Self.config(at: directory.appendingPathComponent("tokenizer.json"))
-        let config = try Self.config(at: directory.appendingPathComponent("tokenizer_config.json"))
+        let data = try Self.config(at: tokenizerJSON)
+        let config = try Self.config(at: configJSON)
         tokenizer = try AutoTokenizer.from(tokenizerConfig: config, tokenizerData: data)
     }
 

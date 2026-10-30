@@ -37,13 +37,13 @@ enum { MOTION_BRIDGE_PROVIDER_CPU = 0, MOTION_BRIDGE_PROVIDER_XNNPACK = 1, MOTIO
 
 typedef struct MotionBridge MotionBridge;
 
-/// Loads text_encoder.onnx, denoiser.onnx and decoder.onnx from `model_dir`.
+/// Loads the text encoder, denoiser and decoder graphs from the given paths.
 /// `provider` is the request; `out_provider` (optional) receives the one the
 /// sessions actually use after fallback. `threads` <= 0 keeps ORT's default.
 /// `cache_dir` (optional) is where the CoreML provider may keep compiled
 /// models between runs, when the runtime supports it. Returns NULL on failure.
-MotionBridge* motion_bridge_create(const char* model_dir, int32_t provider, int32_t threads, const char* cache_dir,
-                                   int32_t* out_provider);
+MotionBridge* motion_bridge_create(const char* text_encoder_path, const char* denoiser_path, const char* decoder_path,
+                                   int32_t provider, int32_t threads, const char* cache_dir, int32_t* out_provider);
 
 void motion_bridge_free(MotionBridge* bridge);
 

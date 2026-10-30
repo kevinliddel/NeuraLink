@@ -112,9 +112,9 @@ const char* motion_bridge_coreml_registration(const MotionBridge* bridge) {
     return bridge == nullptr ? "" : bridge->coremlRegistration.c_str();
 }
 
-MotionBridge* motion_bridge_create(const char* model_dir, int32_t provider, int32_t threads, const char* cache_dir,
-                                   int32_t* out_provider) {
-    if (model_dir == nullptr) { return nullptr; }
+MotionBridge* motion_bridge_create(const char* text_encoder_path, const char* denoiser_path, const char* decoder_path,
+                                   int32_t provider, int32_t threads, const char* cache_dir, int32_t* out_provider) {
+    if (text_encoder_path == nullptr || denoiser_path == nullptr || decoder_path == nullptr) { return nullptr; }
     auto* bridge = new (std::nothrow) MotionBridge();
     if (bridge == nullptr) { return nullptr; }
     try {
@@ -128,10 +128,9 @@ MotionBridge* motion_bridge_create(const char* model_dir, int32_t provider, int3
         } else if (provider != MOTION_BRIDGE_PROVIDER_CPU && appendXNNPACK(options, threads)) {
             used = MOTION_BRIDGE_PROVIDER_XNNPACK;
         }
-        const std::string dir(model_dir);
-        bridge->encoder            = Ort::Session(bridge->env, (dir + "/text_encoder.onnx").c_str(), options);
-        bridge->denoiser           = Ort::Session(bridge->env, (dir + "/denoiser.onnx").c_str(), options);
-        bridge->decoder            = Ort::Session(bridge->env, (dir + "/decoder.onnx").c_str(), options);
+        bridge->encoder            = Ort::Session(bridge->env, text_encoder_path, options);
+        bridge->denoiser           = Ort::Session(bridge->env, denoiser_path, options);
+        bridge->decoder            = Ort::Session(bridge->env, decoder_path, options);
         bridge->provider           = used;
         bridge->coremlRegistration = registration;
         if (out_provider != nullptr) { *out_provider = used; }

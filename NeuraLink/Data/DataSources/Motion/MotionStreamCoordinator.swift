@@ -72,7 +72,19 @@ final class MotionStreamCoordinator {
     private var onReady: (() -> Void)?
     private var onFinished: ((String) -> Void)?
 
-    init() {}
+    /// The models are dropped after this long without a stream.
+    static let idleUnloadSeconds: Double = 600
+    private var idleUnload: Task<Void, Never>?
+
+    init() {
+        NotificationCenter.default.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, !self.isStreaming else { return }
+                self.unload()
+                nlLog("[MotionStream] unloaded on memory warning", level: .info)
+            }
+        }
+    }
 
     /// The switch is on, the OpenAI path is the one in use, Reduce Motion is
     /// off and the model files are on the device.
@@ -93,12 +105,15 @@ final class MotionStreamCoordinator {
     /// Loads the graphs and the tokenizer off the main actor, once.
     func prepareIfNeeded() {
         guard runtime == nil, loading == nil, ARDYModelLocator.isComplete else { return }
-        let directory = ARDYModelLocator.directory
         loading = Task { [weak self] in
+            guard let files = await ARDYModelLocator.files() else {
+                self?.loading = nil
+                return
+            }
             let loaded: (ARDYMotionRuntime, ARDYPromptTokenizer)? = await Task.detached(priority: .userInitiated) {
                 do {
-                    let runtime = try ARDYMotionRuntime(modelDirectory: directory, provider: .coreML)
-                    let tokenizer = try ARDYPromptTokenizer(directory: directory.appendingPathComponent("tokenizer", isDirectory: true))
+                    let runtime = try ARDYMotionRuntime(files: files, provider: .coreML)
+                    let tokenizer = try ARDYPromptTokenizer(tokenizerJSON: files.tokenizer, configJSON: files.tokenizerConfig)
                     return (runtime, tokenizer)
                 } catch {
                     nlLog("[MotionStream] model load failed: \(error)", level: .warning)
@@ -168,6 +183,7 @@ final class MotionStreamCoordinator {
         silentFor = 0
         speaking = true
         budget = policy.budget(requested: request.seconds, continuous: request.continuous)
+        idleUnload?.cancel()
         loop = Task { [weak self] in await self?.run(caption: request.caption) }
     }
 
@@ -194,6 +210,19 @@ final class MotionStreamCoordinator {
         live = nil
         onReady = nil
         onFinished = nil
+        scheduleIdleUnload()
+    }
+
+    /// Frees the sessions when no stream has run for `idleUnloadSeconds`.
+    private func scheduleIdleUnload() {
+        idleUnload?.cancel()
+        guard runtime != nil else { return }
+        idleUnload = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(Self.idleUnloadSeconds))
+            guard let self, !Task.isCancelled, !isStreaming else { return }
+            unload()
+            nlLog("[MotionStream] unloaded after idling", level: .info)
+        }
     }
 
     // MARK: - The loop

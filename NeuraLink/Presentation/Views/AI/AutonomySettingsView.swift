@@ -118,7 +118,10 @@ struct AutonomySettingsView: View {
                 title: "Gesture while speaking", subtitle: "Generates body motion for each reply. OpenAI voice mode.",
                 info: "The character moves its body to match what it says: a motion model on this device turns a one-line description from the reply into a short gesture stream. "
                     + "Needs the motion model files and OpenAI voice mode; off under Reduce Motion or when the phone is hot.",
-                isOn: $motion.isEnabled, disabled: !settings.isEnabled)
+                isOn: $motion.isEnabled, disabled: !settings.isEnabled
+            ) {
+                MotionModelCard()
+            }
             FeatureToggleRow(
                 symbol: "headphones", tint: .indigo,
                 title: "Keep talking in background", subtitle: "The conversation survives the screen going off.",

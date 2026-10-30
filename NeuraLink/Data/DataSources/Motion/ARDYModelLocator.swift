@@ -2,10 +2,10 @@
 //  ARDYModelLocator.swift
 //  NeuraLink
 //
-//  Where the ARDY-mini files live on the device: model.json, the three
-//  ONNX graphs and the tokenizer, in Caches, the folder the motion bench
-//  also fills. Phase 5 adds the pinned download; until then the folder is
-//  filled by the bench or by hand. docs/REALTIME_MOTION_PLAN.md, Phase 4.
+//  Where the ARDY-mini files are on this device: the verified download in
+//  the asset cache (MotionModelAccess), else a folder in Caches with the
+//  standard names, which the motion bench and development fill by hand.
+//  docs/REALTIME_MOTION_PLAN.md, Phases 4 and 5.
 //
 //  Created by Dedicatus on 30/10/2026.
 //
@@ -13,17 +13,23 @@
 import Foundation
 
 enum ARDYModelLocator {
-    static let folderName = "ardy-mini-fp32"
-    static let requiredFiles = ["model.json", "text_encoder.onnx", "denoiser.onnx", "decoder.onnx", "tokenizer/tokenizer.json", "tokenizer/tokenizer_config.json"]
+    static let developmentFolderName = "ardy-mini-fp32"
 
-    /// The model folder in Caches, present or not.
-    nonisolated static var directory: URL {
-        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent(folderName, isDirectory: true)
+    /// The development folder in Caches, present or not.
+    nonisolated static var developmentDirectory: URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent(developmentFolderName, isDirectory: true)
     }
 
-    /// True when every required file is there.
+    /// True when a complete model is on the device, downloaded or hand-copied.
     nonisolated static var isComplete: Bool {
-        let dir = directory
-        return requiredFiles.allSatisfy { FileManager.default.fileExists(atPath: dir.appendingPathComponent($0).path) }
+        MotionModelAccess.isDownloaded || ARDYModelFiles(directory: developmentDirectory).isComplete
+    }
+
+    /// The files to load, downloaded copy first.
+    static func files() async -> ARDYModelFiles? {
+        if let downloaded = await MotionModelAccess.downloadedFiles() { return downloaded }
+        let development = ARDYModelFiles(directory: developmentDirectory)
+        return development.isComplete ? development : nil
     }
 }
