@@ -5,9 +5,10 @@
 //  A growing, lock-protected sequence of retargeted poses at a fixed frame
 //  rate, sampled by clip time: the producer (a motion model decoding 2 s
 //  windows) appends, the animation tick samples. Between frames the pose is
-//  interpolated; past the last frame it holds, so a late window freezes the
-//  body for a moment instead of snapping. Old frames are dropped once they
-//  are well behind the playhead.
+//  interpolated. The player samples through its own clock (`samplePlayer`),
+//  which waits at the last frame while a window is late and resumes from
+//  there when it lands, so the body pauses instead of skipping ahead. Old
+//  frames are dropped once they are well behind the playhead.
 //
 //  Created by Dedicatus on 29/10/2026.
 //
@@ -52,6 +53,10 @@ public final class LiveMotionBuffer: @unchecked Sendable {
     private var poses: [LiveMotionPose] = []
     /// Absolute index of `poses[0]`; the time base never moves when old frames are dropped.
     private var firstFrame = 0
+    /// Player seconds the buffer's clock has waited for late frames so far.
+    private var clockOffset: Float = 0
+    /// Buffer seconds the player last sampled.
+    private var playheadTime: Float = 0
 
     public init(framesPerSecond: Float = 20, retainedFrames: Int = 200) {
         self.framesPerSecond = framesPerSecond
@@ -68,6 +73,9 @@ public final class LiveMotionBuffer: @unchecked Sendable {
 
     /// The most recently appended pose, if any.
     public var lastPose: LiveMotionPose? { lock.withLock { poses.last } }
+
+    /// Buffer seconds the player has reached through `samplePlayer`.
+    public var playhead: Float { lock.withLock { playheadTime } }
 
     public func append(_ newPoses: [LiveMotionPose]) {
         guard !newPoses.isEmpty else { return }
@@ -89,14 +97,39 @@ public final class LiveMotionBuffer: @unchecked Sendable {
     /// neighbours, the last frame past the end, the first before the start,
     /// nil while nothing has been appended.
     public func sample(at time: Float) -> LiveMotionPose? {
+        lock.withLock { sampleLocked(at: time) }
+    }
+
+    /// The pose for the player's clip time. The two clocks run together
+    /// while frames lie ahead; when the player reaches the last frame the
+    /// buffer's clock waits there, so a late window resumes from the pose
+    /// the body stopped in rather than skipping to wherever the player's
+    /// clock has got to meanwhile. Several tracks sampling the same time
+    /// get the same pose.
+    public func samplePlayer(at playerTime: Float) -> LiveMotionPose? {
         lock.withLock {
-            guard !poses.isEmpty else { return nil }
-            let position = max(0, time) * framesPerSecond - Float(firstFrame)
-            let lower = Int(position.rounded(.down))
-            if lower < 0 { return poses[0] }
-            if lower >= poses.count - 1 { return poses[poses.count - 1] }
-            return poses[lower].interpolated(
-                toward: poses[lower + 1], fraction: position - Float(lower))
+            guard !poses.isEmpty else {
+                clockOffset = playerTime
+                return nil
+            }
+            let end = Float(firstFrame + poses.count - 1) / framesPerSecond
+            var local = playerTime - clockOffset
+            if local > end {
+                clockOffset += local - end
+                local = end
+            }
+            playheadTime = max(local, 0)
+            return sampleLocked(at: playheadTime)
         }
+    }
+
+    private func sampleLocked(at time: Float) -> LiveMotionPose? {
+        guard !poses.isEmpty else { return nil }
+        let position = max(0, time) * framesPerSecond - Float(firstFrame)
+        let lower = Int(position.rounded(.down))
+        if lower < 0 { return poses[0] }
+        if lower >= poses.count - 1 { return poses[poses.count - 1] }
+        return poses[lower].interpolated(
+            toward: poses[lower + 1], fraction: position - Float(lower))
     }
 }

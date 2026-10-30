@@ -121,6 +121,31 @@ struct LiveMotionClipTests {
             "frames before the retained window hold the oldest kept frame")
     }
 
+    @Test("The player's clock waits at the last frame for a late window")
+    func playerClockWaits() {
+        let buffer = LiveMotionBuffer(framesPerSecond: 20, retainedFrames: 200)
+        let identity = simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
+        func frames(_ range: Range<Int>) -> [LiveMotionPose] {
+            range.map { LiveMotionPose(rotations: [identity], hipsTranslation: SIMD3<Float>(0, Float($0), 0)) }
+        }
+        #expect(buffer.samplePlayer(at: 0.3) == nil, "nothing to show before the first window")
+        buffer.append(frames(0..<10))  // 0.5 s
+        // The clock starts when frames exist: 0.3 s after that first sample is frame 0.
+        #expect(buffer.samplePlayer(at: 0.3)?.hipsTranslation.y == 0)
+        #expect(abs((buffer.samplePlayer(at: 0.5)?.hipsTranslation.y ?? -1) - 4) < 1e-3)
+        #expect(abs(buffer.playhead - 0.2) < 1e-5)
+        // The player runs 1 s past the last frame: the body waits there.
+        #expect(buffer.samplePlayer(at: 1.5)?.hipsTranslation.y == 9)
+        #expect(abs(buffer.playhead - 0.45) < 1e-5)
+        #expect(buffer.samplePlayer(at: 1.6)?.hipsTranslation.y == 9, "the same pose while waiting")
+        // The late window lands: motion resumes from the frame it stopped on (0.45 s in),
+        // not from where the player's clock has got to; 0.1 s later it is on frame 11.
+        buffer.append(frames(10..<20))
+        #expect(abs((buffer.samplePlayer(at: 1.7)?.hipsTranslation.y ?? -1) - 11) < 1e-3)
+        #expect(abs(buffer.playhead - 0.55) < 1e-5)
+        #expect(abs((buffer.sample(at: 0.55)?.hipsTranslation.y ?? -1) - 11) < 1e-3, "the plain sampler keeps the buffer's own time")
+    }
+
     // MARK: - Posing
 
     private static func pose(_ model: VRMModel, with clip: AnimationClip, at time: Float) -> LiveMotionPosed {

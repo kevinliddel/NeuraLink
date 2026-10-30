@@ -34,6 +34,23 @@ struct MotionStreamPolicyTests {
         #expect(policy.steps(for: .minimal) == nil)
     }
 
+    @Test("Steps follow the measured pace of a window")
+    func pace() {
+        // 0.5 s for 2 s of motion at 10 steps: plenty of room, the ceiling holds.
+        #expect(policy.stepsAfterWindow(steps: 10, wallSeconds: 0.5, ceiling: 10) == 10)
+        // 3 s at 10 steps: 0.3 s a step; 2 s / (1.25 × 0.3) affords 5.
+        #expect(policy.stepsAfterWindow(steps: 10, wallSeconds: 3.0, ceiling: 10) == 5)
+        // Room to spare climbs back one step at a time.
+        #expect(policy.stepsAfterWindow(steps: 5, wallSeconds: 0.8, ceiling: 10) == 6)
+        // The tier's ceiling still caps it.
+        #expect(policy.stepsAfterWindow(steps: 10, wallSeconds: 1.0, ceiling: 4) == 4)
+        // 2.6 s at the fewest steps: even they cannot keep up.
+        #expect(policy.stepsAfterWindow(steps: 4, wallSeconds: 2.6, ceiling: 10) == nil)
+        // No usable measurement: keep what was asked, within bounds.
+        #expect(policy.stepsAfterWindow(steps: 10, wallSeconds: 0, ceiling: 10) == 10)
+        #expect(policy.stepsAfterWindow(steps: 2, wallSeconds: .nan, ceiling: 10) == policy.minimumSteps)
+    }
+
     @Test("Generates the first window, then keeps a lead while speaking")
     func generation() {
         #expect(policy.shouldGenerateWindow(generated: 0, playhead: 0, budget: 6, speaking: false, silentFor: 10))

@@ -33,6 +33,7 @@ extension VRMMetalState {
         MotionStreamCoordinator.shared.refreshAvailability()
         if let caption = MotionStreamCoordinator.shared.debugCaption {
             // After the entrance clip; dropped (and logged) if the body is owned elsewhere.
+            MotionStreamCoordinator.shared.prepareIfNeeded()
             Task { @MainActor in
                 try? await Task.sleep(for: .seconds(6))
                 nlLog("[LiveMotion] debug caption: \(caption)", level: .info)
@@ -101,7 +102,8 @@ extension VRMMetalState {
     }
 
     /// Per-frame, before the player: give way to whatever outranks the
-    /// stream, keep the playhead, drop frames far behind it.
+    /// stream, read the buffer's playhead (it waits while a window is
+    /// late), drop frames far behind it.
     func updateLiveMotion(dt: Float, model: VRMModel) {
         guard let session = liveMotion else { return }
         if session.model !== model {
@@ -113,8 +115,9 @@ extension VRMMetalState {
             return
         }
         session.elapsed += dt * animationPlayer.speed
-        session.buffer.trim(before: session.elapsed)
-        MotionStreamCoordinator.shared.tick(playhead: session.elapsed, speaking: aiState.status == .speaking, deltaTime: dt)
+        let playhead = session.buffer.playhead
+        session.buffer.trim(before: playhead)
+        MotionStreamCoordinator.shared.tick(playhead: playhead, speaking: aiState.status == .speaking, deltaTime: dt)
     }
 
     /// Per-frame, after the player wrote the stream's rotations and before

@@ -13,6 +13,8 @@
 #include "onnxruntime_cxx_api.h"
 
 #include <dlfcn.h>
+#include <pthread.h>
+#include <sys/qos.h>
 
 #include <array>
 #include <chrono>
@@ -41,6 +43,51 @@ constexpr uint32_t kCoreMLFlagCreateMLProgram            = 0x010;
 using AppendCoreMLFn                                     = OrtStatus* (*)(OrtSessionOptions*, uint32_t);
 
 thread_local std::string lastError;
+
+// The threads the runtime may use for one graph run when the caller leaves
+// the count to the bridge: the two performance cores of the smallest phone
+// the app targets, so the render loop and the audio keep the rest.
+constexpr int32_t kDefaultIntraOpThreads = 2;
+
+// ORT's worker threads at utility QoS, so the scheduler puts the main thread
+// (the render loop at 60 fps) ahead of a denoiser step every time.
+struct WorkerStart {
+    OrtThreadWorkerFn fn;
+    void* param;
+};
+
+void* workerTrampoline(void* raw) {
+    auto* start            = static_cast<WorkerStart*>(raw);
+    const WorkerStart copy = *start;
+    delete start;
+    copy.fn(copy.param);
+    return nullptr;
+}
+
+OrtCustomThreadHandle createUtilityThread(void* /*options*/, OrtThreadWorkerFn fn, void* param) {
+    pthread_attr_t attributes;
+    if (pthread_attr_init(&attributes) != 0) { return nullptr; }
+    pthread_attr_set_qos_class_np(&attributes, QOS_CLASS_UTILITY, 0);
+    auto* start = new (std::nothrow) WorkerStart{fn, param};
+    if (start == nullptr) {
+        pthread_attr_destroy(&attributes);
+        return nullptr;
+    }
+    pthread_t thread{};
+    const int created = pthread_create(&thread, &attributes, workerTrampoline, start);
+    pthread_attr_destroy(&attributes);
+    if (created != 0) {
+        delete start;
+        return nullptr;
+    }
+    return reinterpret_cast<OrtCustomThreadHandle>(thread);
+}
+
+void joinUtilityThread(OrtCustomThreadHandle handle) {
+    if (handle != nullptr) {
+        pthread_join(reinterpret_cast<pthread_t>(const_cast<OrtCustomHandleType*>(handle)), nullptr);
+    }
+}
 
 double millisecondsSince(std::chrono::steady_clock::time_point start) {
     return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
@@ -120,7 +167,15 @@ MotionBridge* motion_bridge_create(const char* text_encoder_path, const char* de
     try {
         Ort::SessionOptions options;
         options.SetGraphOptimizationLevel(ORT_ENABLE_ALL);
-        if (threads > 0) { options.SetIntraOpNumThreads(threads); }
+        // A phone shares its cores with the renderer and the audio: few
+        // threads, none of them spinning between ops, all at utility QoS, and
+        // no arena holding a window's activations between runs.
+        options.SetIntraOpNumThreads(threads > 0 ? threads : kDefaultIntraOpThreads);
+        options.SetInterOpNumThreads(1);
+        options.AddConfigEntry("session.intra_op.allow_spinning", "0");
+        options.DisableCpuMemArena();
+        options.SetCustomCreateThreadFn(createUtilityThread);
+        options.SetCustomJoinThreadFn(joinUtilityThread);
         int32_t used = MOTION_BRIDGE_PROVIDER_CPU;
         std::string registration;
         if (provider == MOTION_BRIDGE_PROVIDER_COREML && !(registration = appendCoreML(options, cache_dir)).empty()) {

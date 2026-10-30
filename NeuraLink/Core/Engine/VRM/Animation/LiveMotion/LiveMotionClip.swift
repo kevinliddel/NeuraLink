@@ -32,14 +32,14 @@ public enum LiveMotionClip {
             let translation: ((Float) -> SIMD3<Float>)? =
                 bone == .hips
                 ? { time in
-                    buffer.sample(at: time)?.hipsTranslation ?? rests[.hips]?.translation ?? .zero
+                    buffer.samplePlayer(at: time)?.hipsTranslation ?? rests[.hips]?.translation ?? .zero
                 }
                 : nil
             clip.addJointTrack(
                 JointTrack(
                     bone: bone,
                     rotationSampler: { time in
-                        guard let pose = buffer.sample(at: time), index < pose.rotations.count
+                        guard let pose = buffer.samplePlayer(at: time), index < pose.rotations.count
                         else { return rest }
                         return pose.rotations[index]
                     },
@@ -62,7 +62,8 @@ public final class LiveMotionSession: @unchecked Sendable {
     public let retargeter: LiveMotionRetargeter
     public let clip: AnimationClip
     public let model: VRMModel
-    /// Clip seconds the player has advanced, kept by the scene's tick.
+    /// Clip seconds the player has advanced, kept by the scene's tick. The
+    /// buffer's own clock (`buffer.playhead`) lags it while a window is late.
     public var elapsed: Float = 0
 
     public init(model: VRMModel, framesPerSecond: Float = 20) {
@@ -94,6 +95,6 @@ public final class LiveMotionSession: @unchecked Sendable {
         buffer.append(poses)
     }
 
-    /// Seconds of motion appended beyond the playhead.
-    public var lead: Float { buffer.duration - elapsed }
+    /// Seconds of motion appended beyond the buffer's playhead.
+    public var lead: Float { buffer.duration - buffer.playhead }
 }

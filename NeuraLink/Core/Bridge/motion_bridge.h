@@ -39,7 +39,9 @@ typedef struct MotionBridge MotionBridge;
 
 /// Loads the text encoder, denoiser and decoder graphs from the given paths.
 /// `provider` is the request; `out_provider` (optional) receives the one the
-/// sessions actually use after fallback. `threads` <= 0 keeps ORT's default.
+/// sessions actually use after fallback. `threads` <= 0 means two intra-op
+/// threads (a phone's performance cores); the runtime's workers run at
+/// utility QoS without spinning, so the render loop keeps its frames.
 /// `cache_dir` (optional) is where the CoreML provider may keep compiled
 /// models between runs, when the runtime supports it. Returns NULL on failure.
 MotionBridge* motion_bridge_create(const char* text_encoder_path, const char* denoiser_path, const char* decoder_path,

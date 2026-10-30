@@ -13,6 +13,7 @@ import SwiftUI
 
 struct MotionModelCard: View {
     @Bindable var state = MotionModelDownloadState.shared
+    @State private var hold = MotionStreamHold.shared
     @State private var showsNotices = false
 
     var body: some View {
@@ -26,6 +27,10 @@ struct MotionModelCard: View {
                     .foregroundStyle(.secondary)
             }
             statusLine
+            if case .ready = state.phase, let reason = hold.reason {
+                Label(reason, systemImage: "pause.circle")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             actions
         }
         .padding(.vertical, 4)

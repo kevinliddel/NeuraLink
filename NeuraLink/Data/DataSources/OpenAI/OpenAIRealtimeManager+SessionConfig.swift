@@ -80,7 +80,10 @@ extension OpenAIRealtimeManager {
 
     func sendInitialSessionUpdate() {
         Task {
-            MotionStreamCoordinator.shared.refreshAvailability()  // decides whether perform_motion is offered
+            // Decides whether perform_motion is offered, and starts loading the
+            // motion model now so the first reply's gesture is not late.
+            MotionStreamCoordinator.shared.refreshAvailability()
+            MotionStreamCoordinator.shared.prepareIfNeeded()
             let finalInstructions = await buildSessionInstructions()
 
             // GA session shape. Key differences from the beta body:
