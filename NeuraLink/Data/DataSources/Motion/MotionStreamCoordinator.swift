@@ -86,11 +86,23 @@ final class MotionStreamCoordinator {
         }
     }
 
+    /// Developer hook: the `nl.debug.motionCaption` default (a launch argument
+    /// in the scheme) plays this caption once the character is on screen,
+    /// with no Realtime session and whatever the switch says; the model files
+    /// are still required. Device checks without an API key.
+    static let debugCaptionKey = "nl.debug.motionCaption"
+    var debugCaption: String? {
+        let caption = UserDefaults.standard.string(forKey: Self.debugCaptionKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return caption?.isEmpty == false ? caption : nil
+    }
+
     /// The switch is on, the OpenAI path is the one in use, Reduce Motion is
-    /// off and the model files are on the device.
+    /// off and the model files are on the device (or the developer hook is set).
     var isAvailable: Bool {
-        MotionSettings.shared.isEnabled && OpenAISettings.shared.isEnabled && !OpenAISettings.shared.isLocalLLMEnabled
-            && !UIAccessibility.isReduceMotionEnabled && ARDYModelLocator.isComplete
+        guard ARDYModelLocator.isComplete else { return false }
+        if debugCaption != nil { return true }
+        return MotionSettings.shared.isEnabled && OpenAISettings.shared.isEnabled && !OpenAISettings.shared.isLocalLLMEnabled
+            && !UIAccessibility.isReduceMotionEnabled
     }
 
     var isStreaming: Bool { live != nil }

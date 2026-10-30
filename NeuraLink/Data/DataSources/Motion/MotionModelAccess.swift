@@ -101,7 +101,7 @@ final class MotionModelDownloadState {
             } catch is CancellationError {
                 self?.phase = MotionModelAccess.isDownloaded ? .ready : .missing
             } catch {
-                self?.phase = .failed(error.localizedDescription)
+                self?.phase = .failed(Self.message(for: error))
                 nlLog("[MotionModel] download failed: \(error)", level: .warning)
             }
             MotionStreamCoordinator.shared.refreshAvailability()
@@ -111,6 +111,20 @@ final class MotionModelDownloadState {
     func cancel() {
         task?.cancel()
         task = nil
+    }
+
+    /// What the card says: a 404 means the files are not in the dataset yet,
+    /// which is a publishing step, not a phone problem.
+    static func message(for error: Error) -> String {
+        if case RemoteAssetCache.CacheError.httpStatus(let code) = error {
+            switch code {
+            case 404: return "Not published yet: the model files are not in the asset dataset."
+            case 400..<500: return "The download was refused (HTTP \(code))."
+            default: return "The server failed (HTTP \(code)). Try again later."
+            }
+        }
+        if (error as? URLError) != nil { return "No connection. Try again when online." }
+        return error.localizedDescription
     }
 
     func remove() {

@@ -31,6 +31,14 @@ extension VRMMetalState {
             Task { @MainActor in self.startLiveMotionStream(request) }
         }
         MotionStreamCoordinator.shared.refreshAvailability()
+        if let caption = MotionStreamCoordinator.shared.debugCaption {
+            // After the entrance clip; dropped (and logged) if the body is owned elsewhere.
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(6))
+                nlLog("[LiveMotion] debug caption: \(caption)", level: .info)
+                MotionStreamCoordinator.shared.request(MotionStreamRequest(caption: caption, seconds: 8, continuous: false))
+            }
+        }
     }
 
     /// Builds the live session for the displayed character and lets the
