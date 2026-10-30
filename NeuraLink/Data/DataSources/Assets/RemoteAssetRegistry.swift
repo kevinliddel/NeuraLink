@@ -56,6 +56,18 @@ nonisolated enum RemoteAssetRegistry: Hashable, Sendable {
     // semantic recall arm.
     case embeddingModel
 
+    // Generated body motion — ARDY-mini's text encoder, denoiser and decoder
+    // (ONNX, Clip bounds made explicit for the CoreML provider by
+    // scripts/ardy_patch_graphs.py), model.json and the WordPiece tokenizer.
+    // Hosted under `motion/ardy-mini/` in the shared dataset; never bundled
+    // (docs/GENERATIVE_MOTION.md).
+    case motionManifest
+    case motionTextEncoder
+    case motionDenoiser
+    case motionDecoder
+    case motionTokenizer
+    case motionTokenizerConfig
+
     /// On-disk filename — the basename only. Used for `Bundle.main`
     /// lookup and as the local cache filename. Folder prefix comes
     /// from `pathInRepo`.
@@ -70,6 +82,12 @@ nonisolated enum RemoteAssetRegistry: Hashable, Sendable {
         case .openVoiceBert: return "bert_en.onnx"
         case .whisperModel: return "ggml-base.bin"
         case .embeddingModel: return "embeddinggemma-300M-Q8_0.gguf"
+        case .motionManifest: return "ardy_mini_model.json"
+        case .motionTextEncoder: return "ardy_mini_text_encoder.onnx"
+        case .motionDenoiser: return "ardy_mini_denoiser.onnx"
+        case .motionDecoder: return "ardy_mini_decoder.onnx"
+        case .motionTokenizer: return "ardy_mini_tokenizer.json"
+        case .motionTokenizerConfig: return "ardy_mini_tokenizer_config.json"
         }
     }
 
@@ -93,6 +111,8 @@ nonisolated enum RemoteAssetRegistry: Hashable, Sendable {
             return "stt/whisper/\(filename)"
         case .embeddingModel:
             return "embeddings/\(filename)"
+        case .motionManifest, .motionTextEncoder, .motionDenoiser, .motionDecoder, .motionTokenizer, .motionTokenizerConfig:
+            return "motion/ardy-mini/\(filename)"
         }
     }
 
@@ -122,7 +142,8 @@ nonisolated enum RemoteAssetRegistry: Hashable, Sendable {
             return "open_jtalk_dic_utf_8-1.11"
         case .voicevoxSpeaker,
             .openVoiceMelo, .openVoiceConverter, .openVoiceBert,
-            .whisperModel, .embeddingModel:
+            .whisperModel, .embeddingModel,
+            .motionManifest, .motionTextEncoder, .motionDenoiser, .motionDecoder, .motionTokenizer, .motionTokenizerConfig:
             return nil
         }
     }
@@ -184,6 +205,21 @@ nonisolated enum RemoteAssetRegistry: Hashable, Sendable {
             return .init(
                 size: 333_590_944,
                 sha256: "b5ce9d77a3fc4b3b39ccb5643c36777911cc4eb46a66962eadfa3f5f60490d63")
+        // intsuc/Llama-3-ARDY-Mini-Core40-Browser fp32, Clip bounds patched
+        // (scripts/ardy_patch_graphs.py); hashes of the patched files,
+        // captured 2026-10-30. Re-capture if the folder is re-uploaded.
+        case .motionManifest:
+            return .init(size: 72_080, sha256: "0e2212ada7bea4652e27c33c1d96fe58d950171063462fe9fbd7496ea607f30d")
+        case .motionTextEncoder:
+            return .init(size: 112_430_726, sha256: "50f1338d9049af7b9ac3f0e03a0494f51a165b898a649c47640d920bd4d9c875")
+        case .motionDenoiser:
+            return .init(size: 590_701_771, sha256: "beeb81e1be2b3544b3f4eebd09babaa96b5e2907611f1eae5358ce49472e8343")
+        case .motionDecoder:
+            return .init(size: 71_642_244, sha256: "77689a8340386d2bc813231f4f0abfdda8d997750cbe5507a2881704723d6abb")
+        case .motionTokenizer:
+            return .init(size: 711_649, sha256: "2fc687b11de0bc1b3d8348f92e3b49ef1089a621506c7661fbf3248fcd54947e")
+        case .motionTokenizerConfig:
+            return .init(size: 593, sha256: "4b91f63e0ec01ae5112b4fab0027b301a38d94f6b1fd001abf2236390168b553")
         }
     }
 

@@ -78,6 +78,27 @@ func buildAnimationParentWorldRotations(
     return result
 }
 
+/// World REST rotation of each humanoid bone's parent, composed from the
+/// model's bind-pose locals root → parent. The basis in which a VRMA's
+/// normalized rotations are applied (see makeRotationSampler); the live
+/// motion retargeter uses the same one.
+func buildModelParentWorldRotations(model: VRMModel?) -> [VRMHumanoidBone: simd_quatf] {
+    guard let model, let humanoid = model.humanoid else { return [:] }
+    var map: [VRMHumanoidBone: simd_quatf] = [:]
+    for bone in VRMHumanoidBone.allCases {
+        guard let idx = humanoid.getBoneNode(bone),
+              let node = model.nodes[safe: idx] else { continue }
+        var rotation = simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
+        var ancestor = node.parent
+        while let current = ancestor {
+            rotation = current.initialRotation * rotation
+            ancestor = current.parent
+        }
+        map[bone] = simd_normalize(rotation)
+    }
+    return map
+}
+
 func buildModelRestTransforms(model: VRMModel?) -> [VRMHumanoidBone: RestTransform] {
     guard let model, let humanoid = model.humanoid, let gltfNodes = model.gltf.nodes else { return [:] }
     var map: [VRMHumanoidBone: RestTransform] = [:]

@@ -1,9 +1,9 @@
 # NeuraLink
 
 <p align="center">
-    <img src="./docs/Models/Oz.png" alt="NeuraLink Model" width="300" style="margin:6px;" />
-    <img src="./docs/Models/Ekaterina.png" alt="NeuraLink Model" width="300" style="margin:6px;" />
-    <img src="./docs/Models/Sonya.png" alt="NeuraLink Model" width="300" style="margin:6px;" />
+    <img src="./docs/Models/Oz.png" alt="NeuraLink Model" width=200" style="margin:6px;" />
+    <img src="./docs/Models/Ekaterina.png" alt="NeuraLink Model" width="200" style="margin:6px;" />
+    <img src="./docs/Models/Sonya.png" alt="NeuraLink Model" width="200" style="margin:6px;" />
 </p>
 
 <p align="center">

@@ -7,7 +7,7 @@
 //  one property each — an anti-aliased edge, a correctly blended texel, a
 //  minified texture that averages instead of aliasing, a data texture read
 //  as data. Properties rather than golden images, so the simulator's GPU
-//  and a device's give the same verdict. (docs/VRM_RENDERING_PLAN.md)
+//  and a device's give the same verdict.
 //
 //  Created by Dedicatus on 22/10/2026.
 //

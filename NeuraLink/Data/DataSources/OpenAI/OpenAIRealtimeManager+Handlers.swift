@@ -156,6 +156,19 @@ extension OpenAIRealtimeManager {
                         )
                     }
                     sendFunctionResult(callId: pendingFunctionCallId, result: "ok")
+                } else if pendingFunctionName == AppFunctionTool.performMotion {
+                    // Also pre-speech and synchronous: the motion stream starts
+                    // decoding while the audio is still being produced.
+                    let args =
+                        (try? JSONSerialization.jsonObject(
+                            with: Data(pendingFunctionArgsJSON.utf8)) as? [String: Any]) ?? [:]
+                    let caption = (args["caption"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                    let seconds = (args["seconds"] as? Double).map(Float.init)
+                    let continuous = args["continuous"] as? Bool ?? false
+                    let started = !caption.isEmpty
+                        && MotionStreamCoordinator.shared.request(MotionStreamRequest(caption: caption, seconds: seconds, continuous: continuous))
+                    nlLog("֎ [FunctionCall] perform_motion → \"\(caption)\" \(started ? "started" : "unavailable")", level: .info)
+                    sendFunctionResult(callId: pendingFunctionCallId, result: started ? "ok" : "unavailable")
                 } else if !pendingFunctionName.isEmpty {
                     deferredFunctionCall = (
                         id: pendingFunctionCallId,

@@ -144,8 +144,10 @@ extension VRMMetalState {
             }
         }
 
-        // Random idle animation controller (an episode owns the body meanwhile)
-        if !isPlayingAppear && !phoneEpisode.isActive && !listeningEpisode.isActive && !awayEpisode.isActive {
+        updateLiveMotion(dt: dt, model: model)
+
+        // Random idle animation controller (an episode or a live stream owns the body meanwhile)
+        if !isPlayingAppear && liveMotion == nil && !phoneEpisode.isActive && !listeningEpisode.isActive && !awayEpisode.isActive {
             if isPlayingRandomAnim {
                 randomAnimElapsed += dt
                 if randomAnimElapsed >= randomAnimDuration {
@@ -214,6 +216,7 @@ extension VRMMetalState {
 
         // Base animation runs uninterrupted
         animationPlayer.update(deltaTime: dt, model: model)
+        publishLiveMotionHeadBase(model: model)
 
         // Look-back slerp overlay: blend affected bones toward peak look-back pose
         if isPlayingLookBack, let lbClip = lookBackClip {
@@ -351,6 +354,7 @@ extension VRMMetalState {
     // MARK: - Pose Handling
 
     func setupPoseObserver() {
+        setupLiveMotionObserver()
         NotificationCenter.default.addObserver(forName: .photoshootCaptureRequested, object: nil, queue: .main) { [weak self] note in
             guard let box = note.userInfo?["completion"] as? CaptureBox else { return }
             guard let self else {

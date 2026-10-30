@@ -17,7 +17,7 @@ struct AutonomyPresetTests {
     func presets() {
         #expect(AutonomyPreset.quiet.flags.onCount < AutonomyPreset.balanced.flags.onCount)
         #expect(AutonomyPreset.balanced.flags.onCount < AutonomyPreset.lively.flags.onCount)
-        #expect(AutonomyPreset.lively.flags.onCount == 9)
+        #expect(AutonomyPreset.lively.flags.onCount == 10)
         for preset in AutonomyPreset.allCases {
             #expect(AutonomyPreset.matching(preset.flags) == preset)
             #expect(!preset.title.isEmpty && !preset.blurb.isEmpty && !preset.symbol.isEmpty)
