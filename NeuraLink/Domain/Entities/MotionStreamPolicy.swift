@@ -45,14 +45,17 @@ struct MotionStreamPolicy: Equatable, Sendable {
 
     /// Steps for the next window, from the one just generated at `steps` in
     /// `wallSeconds`: as many as the measured cost affords with `paceMargin`
-    /// to spare, one more than before at most, never above `ceiling`; nil
-    /// when even `minimumSteps` could not keep ahead of playback, so the
-    /// stream should end rather than hold a frozen body.
+    /// to spare, one more than before at most, never above `ceiling` and
+    /// never under `minimumSteps`; nil only when even `minimumSteps` would
+    /// take longer than the window plays, so the stream should end rather
+    /// than hold a frozen body. In between, the fewest steps run on: the
+    /// lead absorbs a window that lands with less than the margin to spare
+    /// (an iPhone 11 at 0.41 s a step, 2026-11-02).
     func stepsAfterWindow(steps: Int, wallSeconds: Float, ceiling: Int) -> Int? {
         guard steps > 0, wallSeconds > 0, wallSeconds.isFinite else { return min(max(steps, minimumSteps), ceiling) }
         let perStep = wallSeconds / Float(steps)
+        guard perStep * Float(minimumSteps) < windowSeconds else { return nil }
         let affordable = Int((windowSeconds / (paceMargin * perStep)).rounded(.down))
-        guard affordable >= minimumSteps else { return nil }
         return max(minimumSteps, min(ceiling, affordable, steps + 1))
     }
 

@@ -131,34 +131,28 @@ The `visemeWeights` dict uses the unified keys from section 1.3 and is translate
 
 ### 2.1 OpenAI Realtime API (WebRTC Audio)
 
-The Realtime API streams **PCM16 audio** over the WebRTC data channel.  
-We do not receive phoneme timestamps from OpenAI — so we drive lip-sync from **audio energy analysis**.
+The Realtime API plays its audio through WebRTC's own audio unit. OpenAI sends no phoneme timings, and the shipped WebRTC build (stasel/WebRTC 147) gives no way at the played samples: `RTCAudioTrack` has no renderer, and only a replacement `RTCAudioDevice` (the app owning the whole audio unit) would. So the mouth is driven from the connection's **statistics**, read off the main thread:
 
-**Pipeline:**
+1. **Poll** — `RealtimeLipSyncPoller` asks the peer connection for its statistics every 50 ms on its own queue (`DispatchSourceTimer`, user-initiated QoS).
+2. **Energy difference** — from the inbound audio's `totalAudioEnergy` and `totalSamplesDuration`, the difference between two polls is the mean power of the audio played out since the last one, after the jitter buffer: an RMS envelope at 20 Hz. Totals that did not advance mean nothing was played, which is silence.
+3. **Level** — `LipSyncLevelNormalizer` maps the RMS against a peak that halves every 1.5 s, so a quiet voice opens the mouth as far as a loud one and a pause closes it.
+4. **Publish** — the cue goes to `LipSyncFeed` with the time it was measured; the render tick reads it once a frame. A cue older than 250 ms reads as silence.
+5. **Shape** — a power figure names no vowel, so `VRMLipSyncController` cycles its open-weighted sequence at phoneme pace.
 
-1. **Capture** — `RTCAudioSource` delivers 10 ms PCM16 frames.
-2. **RMS energy** — Compute root-mean-square amplitude of each frame.
-3. **Band-pass** — A simple 300–3400 Hz filter emphasizes speech frequencies.
-4. **Viseme mapping** — Energy → jaw-open weight (`aa`/`oh`) with thresholding.
-5. **Smoothing** — Exponential moving average damps rapid changes.
-6. **Apply** — `VRMExpressionManager.setWeight(for:, weight:)` each render tick.
+Until 2026-11-02 the manager read the `audioLevel` statistic from a timer on the main run loop: a peak held over 100 ms and refreshed at that rate, hopped to the main actor per poll and logged on every poll with sound. The mouth trailed short syllables and held through gaps, and the main thread's own load (rendering, the motion stream's windows) delayed the timer.
 
-> For higher fidelity, a future upgrade could run **on-device phoneme classification** (e.g., a small CoreML mel-spectrogram model) to produce full 15-viseme output.
+> Vowels from the audio on this path need the played samples. The routes: a WebRTC build whose tracks accept an audio renderer (LiveKit's `webrtc-xcframework` adds `RTCAudioRenderer` to `RTCAudioTrack`), or a custom `RTCAudioDevice` so the app pulls the playout buffers itself. Either feeds `LipSyncAudioAnalyzer` exactly as the local path does.
 
 ---
 
 ### 2.2 Local LLM TTS (OpenVoice / VOICEVOX)
 
-Local TTS generates a full audio buffer before playback.  
-This gives us **word timestamps** that can be aligned to phonemes.
+Local TTS plays through the app's `AVAudioEngine`, whose main-mixer tap hands the played buffers (1024 frames at 48 kHz, about 21 ms) to `LipSyncAudioAnalyzer`:
 
-**Pipeline:**
-
-1. **Generate** — TTS produces PCM audio + optional word/phoneme alignment.
-2. **Forced alignment** (optional) — `whisper.cpp` or `Piper` forced-aligner maps words → phonemes → timestamps.
-3. **Viseme schedule** — Build a timeline of `(timestamp, visemeID, weight)` events.
-4. **Playback** — `AVAudioPlayer` plays audio; a `DisplayLink` timer advances the viseme schedule in sync.
-5. **Apply** — Same `VRMExpressionManager` path as OpenAI.
+1. **RMS** — the buffer's level, kept for the barge-in arbiter and normalized as above.
+2. **Bands** — 512-point Hann-windowed spectra over the buffer (vDSP), summed into three bands: 100–600 Hz (voicing and the rounded vowels), 600–1 500 Hz (the open vowel's first formant), 1 500–4 000 Hz (the front vowels' second formant).
+3. **Vowel** — the band shares name the shape when the level is at least 0.15: high ≥ 45 % → `ee` (mid ≥ 20 %) or `ih`; else mid ≥ 35 % → `aa`; else mid ≥ 15 % → `oh`, under that `ou`. Not phonemes, but the mouth follows the words.
+4. **Publish** — the same `LipSyncFeed`; the controller takes the named shape once the current one has shown for 70 ms and holds it while the analysis agrees.
 
 ---
 
@@ -166,74 +160,49 @@ This gives us **word timestamps** that can be aligned to phonemes.
 
 ```mermaid
 flowchart TD
-    %% Sources
     subgraph Sources
-        OAI["OpenAI Realtime API\n(WebRTC PCM16 stream)"]
-        TTS["Local LLM TTS\n(OpenVoice / VOICEVOX)"]
+        OAI["OpenAI Realtime API<br/>WebRTC audio unit"]
+        TTS["Local TTS<br/>AVAudioEngine"]
     end
-
-    %% Audio Analysis
-    subgraph AudioAnalysis["Audio Analysis"]
-        RMS["RMS Energy\nper 10 ms frame"]
-        BPF["Band-pass Filter\n300–3400 Hz"]
-        PHO["Phoneme Classifier\n(optional CoreML)"]
-        ALN["Forced Aligner\n(whisper.cpp)"]
+    subgraph Cues["Mouth cues (audio threads)"]
+        POLL["RealtimeLipSyncPoller<br/>statistics every 50 ms<br/>energy difference → RMS"]
+        TAP["Main-mixer tap<br/>1024 frames"]
+        ANA["LipSyncAudioAnalyzer<br/>RMS + three bands → vowel"]
+        NORM["LipSyncLevelNormalizer<br/>RMS against a decaying peak"]
     end
-
-    %% Viseme Mapping
-    subgraph VisemeMapper["Viseme Mapping"]
-        EV["Energy → Viseme Weight\naa / oh"]
-        PV["Phoneme → Viseme ID\n15-shape lookup"]
-        SCH["Viseme Schedule\n(t, id, weight)"]
-    end
-
-    %% Smoothing
-    subgraph Smoothing
-        EMA["Exponential Moving Average\nα ≈ 0.35"]
-    end
-
-    %% VRM Runtime
-    subgraph VRMRuntime["VRM Runtime (GPU)"]
+    FEED["LipSyncFeed<br/>latest cue, stale after 250 ms"]
+    subgraph Render["Render tick (main thread)"]
+        CTRL["VRMLipSyncController<br/>named vowel or cycle<br/>open 15/s, close 8/s"]
         VER{"VRM version?"}
-        V0["VRM 0.x\nBlendShapeProxy"]
-        V1["VRM 1.0\nExpressionManager"]
-        MORPH["Morph Target Upload\nMTLBuffer per frame"]
-        MESH["Mesh Deformation\nVertex Shader"]
-        RENDER["SceneKit / Metal Render"]
+        V0["VRM 0.x<br/>BlendShapeProxy"]
+        V1["VRM 1.0<br/>ExpressionManager"]
+        MORPH["Morph weights → GPU"]
     end
-
-    %% Flow
-    OAI --> D1["PCM Stream"] --> RMS --> BPF --> EV
-    OAI -.-> D2["Future Upgrade"] --> PHO --> PV
-    TTS --> D3["Aligned Text"] --> ALN --> SCH --> PV
-
-    EV --> D4["Energy Weights"] --> EMA
-    PV --> D5["Viseme IDs"] --> EMA
-
-    EMA --> D6["Smoothed Weights"] --> VER
-
-    VER --> D7["specVersion 0.x"] --> V0 --> MORPH
-    VER --> D8["specVersion 1.0"] --> V1 --> MORPH
-
-    MORPH --> D9["Morph Buffers"] --> MESH --> RENDER
-
-    %% Data style (consistent with your other diagrams)
+    OAI --> POLL --> NORM --> FEED
+    TTS --> TAP --> ANA --> NORM
+    FEED --> CTRL --> VER
+    VER --> V0 --> MORPH
+    VER --> V1 --> MORPH
     classDef data fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
-    class D1,D2,D3,D4,D5,D6,D7,D8,D9 data
+    class FEED data
 ```
 
 ---
 
 ## 4. Smoothing & Timing Parameters
 
-| Parameter         | Value     | Description                                  |
-|-------------------|-----------|----------------------------------------------|
-| Frame size        | 10 ms     | PCM16 frame from WebRTC / AVAudioEngine      |
-| EMA alpha (open)  | 0.35      | Smoothing speed for jaw opening              |
-| EMA alpha (close) | 0.20      | Smoothing speed for jaw closing (softer)     |
-| Silence threshold | 0.012 RMS | Below this → drive weight toward 0           |
-| Max jaw weight    | 0.85      | Prevents unnatural full-open at loud volumes |
-| Crossfade         | 2 frames  | Blend between consecutive viseme weights     |
+| Parameter                | Value                   | Description                                          |
+|--------------------------|-------------------------|------------------------------------------------------|
+| Poll interval (OpenAI)   | 50 ms                   | Statistics energy difference → RMS, 20 Hz envelope   |
+| Tap buffer (local)       | 1024 frames @ 48 kHz    | About 21 ms per cue                                   |
+| Spectrum                 | 512-point Hann (vDSP)   | Bands 100–600 / 600–1 500 / 1 500–4 000 Hz            |
+| Level peak half-life     | 1.5 s                   | The loudest recent sound the level is measured against |
+| Level floor              | 0.002 RMS               | Below this → silence                                  |
+| Voiced level             | 0.15                    | Under this no shape is named                          |
+| Stale cue                | 250 ms                  | An older cue reads as silence                         |
+| Silence threshold        | 0.04 level              | Below this the mouth closes                           |
+| Lerp (open / close)      | 15 /s, 8 /s             | Opening fast, closing softer                          |
+| Vowel hold               | 70–140 ms               | The cycle's pace; a named shape shows at least 70 ms  |
 
 ---
 

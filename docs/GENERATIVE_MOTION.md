@@ -195,12 +195,17 @@ flowchart TD
   one more than before at most and never under 4; the first window's time
   is discounted for the text encode and warm-up it carries. The count that
   kept up is remembered (`motion.generated.paceSteps`) so the next stream
-  starts there. When even 4 steps cannot keep up the stream ends ("too
-  slow") rather than hold a frozen body; after two such streams in a row no
-  more run while the loaded sessions live, and the Settings card says so.
-  The next load (ten idle minutes, a memory warning, a return to the OpenAI
-  path) tries again, in case the pace was the moment's: a download just
-  verified, a hot phone, cold weight pages.
+  starts there. The margin only decides how many steps to spend: at 4 steps
+  the stream runs on as long as a window takes less than the 2 s it plays,
+  with the 2.5 s lead absorbing a window that lands late (the iPhone 11
+  takes 1.64 s a window at 0.41 s a step; the earlier rule, which wanted
+  1.6 s, ended every stream there). When 4 steps take 2 s or more the lead
+  would shrink every window, so the stream ends ("too slow") rather than
+  hold a frozen body; after two such streams in a row no more run at that
+  pressure tier, or a worse one, while the loaded sessions live, and the
+  Settings card says so. A better tier (the phone cooled, Low Power Mode
+  went off) or the next load (ten idle minutes, a memory warning, a return
+  to the OpenAI path) tries again, in case the pace was the moment's.
 - **Threads**: the bridge gives the runtime two intra-op threads, with
   spinning between ops off and no CPU arena (`motion_bridge_create`), at
   user-initiated QoS, and the generation task runs at the same priority:
@@ -283,7 +288,7 @@ flowchart TD
 | The gesture starts late | The first window costs a text encode plus 10 denoiser steps, and its first step reads the weight sidecars from storage when the kernel has dropped their pages. `[Bench] motion window` lines give the per-window cost; `[ARDYMotion] Sessions ready` says which provider was used. |
 | The body freezes mid-gesture | The buffer ran dry: the next window was late. The body waits on its last pose and resumes when the window lands. The `[MotionStream] window N` lines give each window's wall time and the steps chosen next; a "too slow" end means even 4 steps could not keep up on this phone. |
 | The card says "Paused" | `MotionStreamHold`: the phone had less than 300 MB of allowance when the model was to load (or a memory warning dropped it), or two streams in a row were too slow. The `[MotionStream]` log lines carry the numbers. A pace pause lasts until the models reload: ten idle minutes, or leaving and returning to the OpenAI path. |
-| Every stream ends "too slow" | Each `[Bench] motion window` line gives the denoise time and its step count; over 0.4 s a step cannot keep a 2 s window 1.25× ahead at 4 steps. The `window` line names the pressure tier (Low Power Mode and a serious thermal state cap the steps and the clock), and `[Bench] motion encode` says what the first window's text encode cost. Both runtime threads must be at user-initiated QoS (`motion_bridge.cpp`, `MotionStreamCoordinator.begin`): at utility the iPhone 11 took 1.1 s a step. |
+| Every stream ends "too slow" | Each `[Bench] motion window` line gives the denoise time and its step count; at 0.5 s a step or more, 4 steps take as long as the window plays. The `window` line names the pressure tier (Low Power Mode and a serious thermal state cap the steps and the clock), and `[Bench] motion encode` says what the first window's text encode cost. Both runtime threads must be at user-initiated QoS (`motion_bridge.cpp`, `MotionStreamCoordinator.begin`): at utility the iPhone 11 took 1.1 s a step. |
 | The whole scene stutters while a gesture is generated | The runtime's threads: `motion_bridge_create` caps them at two, at user-initiated QoS under the render loop's user-interactive, without spinning. A stutter now points at memory pressure (watch the footprint in the window lines). |
 | The gestures look different from the review clips | The phone runs the publisher's fp32 numbers, so a visible difference points at the provider (the `[ARDYMotion] Sessions ready` line must say `cpu`); a float16 download from the bench folder would show 0.17 cm of drift, not a visible one. |
 | The app is ended for memory during a reply | Look for `not loading the motion model` and `unloaded on memory warning` lines; each carries the footprint and its peak since launch. The weights are mapped, not held, so a climb between `models ready` and the warning is activations or the scene itself; calibrate `loadHeadroomBytes` and `streamMemoryFloorBytes` from those lines. |
@@ -339,11 +344,17 @@ newest phone available:
   step on the efficiency cores, two streams ended "too slow", and the
   two-strike rule (then per launch) stopped gestures for the session. The
   threads moved to user-initiated QoS and the rule now lifts at the next
-  load. The next run's `[Bench] motion window` and `motion encode` lines
-  say what a step and the first window's encode cost on the performance
-  cores, and whether a step slows when the kernel has dropped the
-  sidecars' pages (the second stream's first window was 2.5 s slower than
-  the first's).
+  load. Fifth run (2026-11-02, threads at user-initiated): models ready in
+  1.4 s at a footprint of 952 MB with 1145 MB available; window 1 4.16 s,
+  window 2 1.64 s at 4 steps in the `normal` tier (0.41 s a step, 2.7×
+  faster), then the phone went to `reduced` (hot, or Low Power Mode) and a
+  window took 2.36 s. Both gestures looked right to the user. Both streams
+  were ended by the 1.25× margin, which wanted 1.6 s a window; the margin
+  now only governs extra steps and a stream ends at 2 s a window, and a
+  pause taken in `reduced` lifts when the tier improves. Still to read: the
+  `[Bench] motion encode` line (the first window costs 2.5 s more than the
+  second), and whether a step slows when the kernel has dropped the
+  sidecars' pages.
 - Pacing on the iPhone 11: the `window` lines show the steps settling, the
   body waits rather than skips when a window is late, and a "too slow" end
   hands the body back cleanly.

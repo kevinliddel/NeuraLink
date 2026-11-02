@@ -122,21 +122,14 @@ extension LocalLLMManager {
         micGatedUntilUptime = ProcessInfo.processInfo.systemUptime + seconds
     }
 
+    /// From the main mixer's tap: the playback RMS the barge-in arbiter
+    /// compares with the microphone, and the mouth cue for the lip sync.
     func reportAmplitude(_ buffer: AVAudioPCMBuffer) {
-        guard let channelData = buffer.floatChannelData else { return }
-        let length = Int(buffer.frameLength)
-        guard length > 0 else { return }
-
-        var sum: Float = 0
-        for i in 0..<length {
-            sum += channelData[0][i] * channelData[0][i]
-        }
-        let rms = sqrt(sum / Float(length))
-        lastPlaybackRMS = rms
-
-        Task { @MainActor in
-            self.state.audioLevel = min(rms * 5.0, 1.0)
-        }
+        guard let channelData = buffer.floatChannelData, buffer.frameLength > 0 else { return }
+        let samples = UnsafeBufferPointer(start: channelData[0], count: Int(buffer.frameLength))
+        let cue = lipSyncAnalyzer.analyze(samples, sampleRate: buffer.format.sampleRate)
+        lastPlaybackRMS = cue.rms
+        LipSyncFeed.shared.publish(cue.sample)
     }
 
     func processCapturedAudio(buffer: AVAudioPCMBuffer) {

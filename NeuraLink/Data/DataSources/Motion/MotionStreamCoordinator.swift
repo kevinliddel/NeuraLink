@@ -61,7 +61,7 @@ final class MotionStreamHold {
 
     enum Reason: Equatable {
         case memory(availableMB: Int)
-        case pace(secondsPerWindow: Float)
+        case pace(secondsPerWindow: Float, tier: RuntimePressureTier)
     }
 
     private(set) var current: Reason?
@@ -74,10 +74,11 @@ final class MotionStreamHold {
         case .memory(let availableMB):
             let needed = MotionStreamCoordinator.loadHeadroomBytes / 1_048_576
             return "Paused: \(availableMB) MB of memory free, about \(needed) MB needed to load the model."
-        case .pace(let seconds):
-            return String(
-                format: "Paused: this phone took %.1f s to generate 2 s of motion, too slow to keep up with speech. It will try again later.",
-                seconds)
+        case .pace(let seconds, let tier):
+            let when = tier > .normal
+                ? "while hot or in Low Power Mode; gestures resume once it is back to normal."
+                : "too slow to keep up with speech. It will try again later."
+            return String(format: "Paused: this phone took %.1f s to generate 2 s of motion, ", seconds) + when
         }
     }
 
@@ -110,11 +111,13 @@ final class MotionStreamCoordinator {
     private var onFinished: ((String) -> Void)?
 
     /// Streams in a row that ended because even the fewest steps were too
-    /// slow; two in a row and no more streams run while these sessions
-    /// live. The next load (after ten idle minutes, a memory warning or a
-    /// return to the OpenAI path) tries again, in case the pace was the
-    /// moment's: a download just verified, a hot phone, cold weight pages.
+    /// slow, and the pressure tier of the last of them; two in a row and no
+    /// more streams run at that tier or a worse one while these sessions
+    /// live. A better tier (the phone cooled, Low Power Mode went off) or
+    /// the next load (after ten idle minutes, a memory warning or a return
+    /// to the OpenAI path) tries again, in case the pace was the moment's.
     private var tooSlowStreak = 0
+    private var tooSlowTier: RuntimePressureTier = .normal
 
     /// The models are dropped after this long without a stream.
     static let idleUnloadSeconds: Double = 600
@@ -164,7 +167,7 @@ final class MotionStreamCoordinator {
     }
 
     var isStreaming: Bool { live != nil }
-    var isPaceExhausted: Bool { tooSlowStreak >= 2 }
+    var isPaceExhausted: Bool { tooSlowStreak >= 2 && RuntimePressureMonitor.shared.tier >= tooSlowTier }
 
     /// Records whether the model files are present (the tool list reads it),
     /// drops the models when the OpenAI path is no longer the one in use,
@@ -411,11 +414,12 @@ final class MotionStreamCoordinator {
                 if first { onReady?() }
                 guard let next = pace(after: wall, steps: steps, ceiling: ceiling, first: first) else {
                     tooSlowStreak += 1
+                    tooSlowTier = tier
                     rememberPace(policy.minimumSteps)
-                    MotionStreamHold.shared.set(.pace(secondsPerWindow: wall))
+                    MotionStreamHold.shared.set(.pace(secondsPerWindow: wall, tier: tier))
                     nlLog(
                         "[MotionStream] too slow: window \(windows) took \(Self.format(wall)) s at \(steps) steps (\(tier)); "
-                            + "stream \(tooSlowStreak) of 2 before gestures pause until the models reload",
+                            + "stream \(tooSlowStreak) of 2 before gestures pause at this tier until the models reload",
                         level: .warning)
                     finish("too slow")
                     return

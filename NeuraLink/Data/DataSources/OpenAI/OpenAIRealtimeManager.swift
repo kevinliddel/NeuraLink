@@ -20,7 +20,7 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
     var localAudioTrack: RTCAudioTrack?
     var remoteDataChannel: RTCDataChannel?
     let factory: RTCPeerConnectionFactory
-    private var statsTimer: Timer?
+    private let lipSync = RealtimeLipSyncPoller()
     var pendingOffer: RTCSessionDescription?
     var iceGatheringTimeout: Task<Void, Never>?
     let sileroVAD = SileroVADProcessor()
@@ -171,10 +171,10 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
         micGateReasons.removeAll()
         sileroVAD.stop()
         ProactiveVisionManager.shared.stop()
+        stopLipSyncFeed()
         remoteDataChannel?.close()
         peerConnection?.close()
         peerConnection = nil
-        stopStatsPolling()
         state.status = .disconnected
     }
 
@@ -343,38 +343,15 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
         sendOfferToOpenAI(offer)
     }
 
-    /// Polling stats to extract audio levels for lip-sync
-    func startStatsPolling() {
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            self.statsTimer?.invalidate()
-            self.statsTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) {
-                [weak self] _ in
-                self?.peerConnection?.statistics { report in
-                    for (_, stats) in report.statistics {
-                        if stats.type == "inbound-rtp",
-                            let audioLevelValue = stats.values["audioLevel"] {
-                            let level = (audioLevelValue as? NSNumber)?.floatValue ?? 0.0
-                            if level > 0.01 {
-                                nlLog("[AI]: Incoming audio level detected: \(level)", level: .info)
-                            }
-                            Task { @MainActor in
-                                RealtimeChatState.shared.audioLevel = level
-                            }
-                        }
-                    }
-                }
-            }
-        }
+    /// Feeds the mouth from the connection's audio statistics
+    /// (`RealtimeLipSyncPoller`); the render tick reads `LipSyncFeed`.
+    func startLipSyncFeed() {
+        guard let peerConnection else { return }
+        lipSync.start(peerConnection)
     }
 
-    /// Stops polling
-    func stopStatsPolling() {
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            self.statsTimer?.invalidate()
-            self.statsTimer = nil
-        }
+    func stopLipSyncFeed() {
+        lipSync.stop()
     }
 
     // MARK: - Silero VAD

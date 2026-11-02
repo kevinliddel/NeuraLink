@@ -255,9 +255,12 @@ extension VRMMetalState {
             lookAt.update(deltaTime: dt)
         }
         
-        // AI Lip-Sync — driven by inbound-rtp audioLevel (OpenAI audio only),
-        // not by status, so mouth stays in sync through the WebRTC jitter buffer drain.
-        lipSyncController.update(audioLevel: aiState.audioLevel, deltaTime: dt)
+        // AI Lip-Sync — from LipSyncFeed, refreshed by whichever path plays
+        // the voice (the OpenAI path from the connection's statistics, after
+        // the jitter buffer; the local path from its playback tap, with the
+        // shape read from the spectrum). A stale cue reads as silence.
+        let cue = LipSyncFeed.shared.current()
+        lipSyncController.update(audioLevel: cue?.level ?? 0, vowel: cue?.vowel, deltaTime: dt)
         lipSyncController.apply(to: renderer?.expressionController)
 
         // AI Emotion handling — countdown and revert to neutral

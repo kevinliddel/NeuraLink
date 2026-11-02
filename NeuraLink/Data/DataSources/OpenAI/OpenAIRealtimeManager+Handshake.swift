@@ -176,7 +176,7 @@ extension OpenAIRealtimeManager {
                         nlLog("[AI]: Connection established and ready", level: .info)
                         self.state.status = .ready
                         self.forceAudioToSpeaker()
-                        self.startStatsPolling()
+                        self.startLipSyncFeed()
                         self.startSileroVADIfEnabled()
                     }
                 }

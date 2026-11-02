@@ -44,8 +44,18 @@ struct MotionStreamPolicyTests {
         #expect(policy.stepsAfterWindow(steps: 5, wallSeconds: 0.8, ceiling: 10) == 6)
         // The tier's ceiling still caps it.
         #expect(policy.stepsAfterWindow(steps: 10, wallSeconds: 1.0, ceiling: 4) == 4)
+        // 1.64 s at the fewest steps (0.41 s a step, under the margin but
+        // ahead of the 2 s the window plays): they run on.
+        #expect(policy.stepsAfterWindow(steps: 4, wallSeconds: 1.64, ceiling: 10) == 4)
+        #expect(policy.stepsAfterWindow(steps: 4, wallSeconds: 1.99, ceiling: 4) == 4)
+        // 2 s or more at the fewest steps: the lead would shrink every window.
+        #expect(policy.stepsAfterWindow(steps: 4, wallSeconds: 2.0, ceiling: 10) == nil)
+        #expect(policy.stepsAfterWindow(steps: 4, wallSeconds: 2.36, ceiling: 4) == nil)
         // 2.6 s at the fewest steps: even they cannot keep up.
         #expect(policy.stepsAfterWindow(steps: 4, wallSeconds: 2.6, ceiling: 10) == nil)
+        // Measured at more steps, the verdict is still about the fewest.
+        #expect(policy.stepsAfterWindow(steps: 10, wallSeconds: 4.5, ceiling: 10) == 4, "0.45 s a step: 4 fit, 5 would not")
+        #expect(policy.stepsAfterWindow(steps: 10, wallSeconds: 5.5, ceiling: 10) == nil, "0.55 s a step: 4 take 2.2 s")
         // No usable measurement: keep what was asked, within bounds.
         #expect(policy.stepsAfterWindow(steps: 10, wallSeconds: 0, ceiling: 10) == 10)
         #expect(policy.stepsAfterWindow(steps: 2, wallSeconds: .nan, ceiling: 10) == policy.minimumSteps)
