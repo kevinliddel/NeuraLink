@@ -2,11 +2,14 @@
 //  MotionModelAccess.swift
 //  NeuraLink
 //
-//  The six motion model files as remote assets: pinned in
+//  The nine motion model files as remote assets: pinned in
 //  RemoteAssetRegistry, fetched and verified by RemoteAssetCache into
-//  `<App Support>/hf-assets/motion/ardy-mini/`, removed from the same card
-//  that downloaded them. A hand-copied folder in Caches (the bench's) is
-//  accepted as a fallback for development. See docs/GENERATIVE_MOTION.md.
+//  `<App Support>/hf-assets/motion/ardy-mini-external/`, removed from the
+//  same card that downloaded them. Each graph's weights are a sidecar the
+//  graph names, so the two must sit together, as they do there. A
+//  hand-copied folder in Caches (the bench's) is accepted as a fallback for
+//  development. The download folders of the two earlier families are
+//  deleted once, at launch. See docs/GENERATIVE_MOTION.md.
 //
 //  Created by Dedicatus on 30/10/2026.
 //
@@ -16,7 +19,8 @@ import Observation
 
 enum MotionModelAccess {
     static let assets: [RemoteAssetRegistry] = [
-        .motionManifest, .motionTextEncoder, .motionDenoiser, .motionDecoder, .motionTokenizer, .motionTokenizerConfig
+        .motionManifest, .motionTextEncoder, .motionTextEncoderWeights, .motionDenoiser, .motionDenoiserWeights,
+        .motionDecoder, .motionDecoderWeights, .motionTokenizer, .motionTokenizerConfig
     ]
 
     /// Bytes of the whole download.
@@ -35,11 +39,16 @@ enum MotionModelAccess {
               let tokenizer = await cache.localURLIfAvailable(for: .motionTokenizer),
               let config = await cache.localURLIfAvailable(for: .motionTokenizerConfig)
         else { return nil }
-        return ARDYModelFiles(manifest: manifest, textEncoder: encoder, denoiser: denoiser, decoder: decoder, tokenizer: tokenizer, tokenizerConfig: config)
+        let files = ARDYModelFiles(
+            manifest: manifest, textEncoder: encoder, denoiser: denoiser, decoder: decoder, tokenizer: tokenizer,
+            tokenizerConfig: config)
+        // The sidecars are found by name beside their graphs; the cache put
+        // them there, but a missing one must not reach the runtime.
+        return files.isComplete ? files : nil
     }
 
     /// Downloads whatever is missing, one file after another; `progress`
-    /// gets the bytes done over the total across all six.
+    /// gets the bytes done over the total across all nine.
     static func download(progress: @escaping @Sendable (Int64, Int64) -> Void) async throws {
         let total = totalBytes
         var done: Int64 = 0
@@ -56,6 +65,30 @@ enum MotionModelAccess {
 
     static func remove() async {
         for asset in assets { await RemoteAssetCache.shared.remove(asset) }
+    }
+
+    /// The download folders of the earlier families, relative to the asset
+    /// cache's base: the single-file fp32 graphs (775 MB, until 2026-11-02)
+    /// and the float16 graphs (371 MB, the same day).
+    static let supersededFolders = ["motion/ardy-mini", "motion/ardy-mini-fp16"]
+
+    /// Deletes an earlier family's download if a phone still has it, so it
+    /// does not linger beside the current one. Safe to call every launch:
+    /// one stat per folder.
+    nonisolated static func removeSupersededDownloads() {
+        guard let support = try? FileManager.default.url(
+            for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: false)
+        else { return }
+        for superseded in supersededFolders {
+            let folder = support.appendingPathComponent("hf-assets").appendingPathComponent(superseded, isDirectory: true)
+            guard FileManager.default.fileExists(atPath: folder.path) else { continue }
+            do {
+                try FileManager.default.removeItem(at: folder)
+                nlLog("[MotionModel] removed the superseded download \(superseded)", level: .info)
+            } catch {
+                nlLog("[MotionModel] could not remove the superseded download \(superseded): \(error)", level: .warning)
+            }
+        }
     }
 }
 

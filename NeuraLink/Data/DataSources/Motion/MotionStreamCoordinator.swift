@@ -75,7 +75,9 @@ final class MotionStreamHold {
             let needed = MotionStreamCoordinator.loadHeadroomBytes / 1_048_576
             return "Paused: \(availableMB) MB of memory free, about \(needed) MB needed to load the model."
         case .pace(let seconds):
-            return String(format: "Paused: this phone took %.1f s to generate 2 s of motion, too slow to keep up with speech.", seconds)
+            return String(
+                format: "Paused: this phone took %.1f s to generate 2 s of motion, too slow to keep up with speech. It will try again later.",
+                seconds)
         }
     }
 
@@ -108,7 +110,10 @@ final class MotionStreamCoordinator {
     private var onFinished: ((String) -> Void)?
 
     /// Streams in a row that ended because even the fewest steps were too
-    /// slow; two in a row and no more streams run this launch.
+    /// slow; two in a row and no more streams run while these sessions
+    /// live. The next load (after ten idle minutes, a memory warning or a
+    /// return to the OpenAI path) tries again, in case the pace was the
+    /// moment's: a download just verified, a hot phone, cold weight pages.
     private var tooSlowStreak = 0
 
     /// The models are dropped after this long without a stream.
@@ -116,10 +121,13 @@ final class MotionStreamCoordinator {
     private var idleUnload: Task<Void, Never>?
 
     /// Bytes the app must still be able to take before the model files are
-    /// loaded: the fp32 graphs weigh about 1.2 GB once the sessions are up,
-    /// and a window's activations come on top. Below this the gesture is
-    /// skipped rather than the app ended for memory.
-    static let loadHeadroomBytes: UInt64 = 1_500 * 1_048_576
+    /// loaded. The weights themselves are memory-mapped from their sidecars
+    /// and stay out of the footprint; what loads is the session state, and
+    /// each step adds a window's activations: 11 MB and a 25 MB peak in the
+    /// simulator bench of 2026-11-02. The rest of this is room for what the
+    /// scene itself takes during a reply (about 250 MB on an iPhone 11).
+    /// Below this the gesture is skipped rather than the app ended for memory.
+    static let loadHeadroomBytes: UInt64 = 300 * 1_048_576
     /// A stream ends when the app's remaining allowance falls under this.
     static let streamMemoryFloorBytes: UInt64 = 160 * 1_048_576
     /// Diffusion steps that kept up last time, so the next stream starts
@@ -158,12 +166,14 @@ final class MotionStreamCoordinator {
     var isStreaming: Bool { live != nil }
     var isPaceExhausted: Bool { tooSlowStreak >= 2 }
 
-    /// Records whether the model files are present (the tool list reads it)
-    /// and drops the models when the OpenAI path is no longer the one in
-    /// use. Loading is `prepareIfNeeded`'s, at the Realtime session start.
+    /// Records whether the model files are present (the tool list reads it),
+    /// drops the models when the OpenAI path is no longer the one in use,
+    /// and clears a superseded download. Loading is `prepareIfNeeded`'s, at
+    /// the Realtime session start.
     func refreshAvailability() {
         UserDefaults.standard.set(ARDYModelLocator.isComplete, forKey: MotionSettings.modelsReadyKey)
         if !OpenAISettings.shared.isEnabled || OpenAISettings.shared.isLocalLLMEnabled { unload() }
+        Task.detached(priority: .utility) { MotionModelAccess.removeSupersededDownloads() }
     }
 
     /// Loads the graphs and the tokenizer off the main actor, at utility
@@ -177,7 +187,7 @@ final class MotionStreamCoordinator {
             MotionStreamHold.shared.set(.memory(availableMB: Int(available / 1_048_576)))
             nlLog(
                 "[MotionStream] not loading the motion model: \(MemoryFootprint.megabytes(available)) available, "
-                    + "\(MemoryFootprint.megabytes(Self.loadHeadroomBytes)) needed (footprint \(MemoryFootprint.megabytes(MemoryFootprint.physicalBytes)))",
+                    + "\(MemoryFootprint.megabytes(Self.loadHeadroomBytes)) needed (\(MemoryFootprint.summary))",
                 level: .warning)
             return false
         }
@@ -187,9 +197,15 @@ final class MotionStreamCoordinator {
                 return
             }
             let started = ContinuousClock.now
+            // The CPU provider: it memory-maps the weights from their sidecars
+            // and reads them in place, where the CoreML provider compiles a
+            // copy of the graph (and the shipped runtime's computed float16
+            // wrong, bench of 2026-11-02) and XNNPACK brings spinning threads
+            // of its own; the CPU path keeps every step on the bridge's two
+            // threads, at user-initiated QoS.
             let loaded: (ARDYMotionRuntime, ARDYPromptTokenizer)? = await Task.detached(priority: .utility) {
                 do {
-                    let runtime = try ARDYMotionRuntime(files: files, provider: .coreML)
+                    let runtime = try ARDYMotionRuntime(files: files, provider: .cpu)
                     let tokenizer = try ARDYPromptTokenizer(tokenizerJSON: files.tokenizer, configJSON: files.tokenizerConfig)
                     return (runtime, tokenizer)
                 } catch {
@@ -202,9 +218,11 @@ final class MotionStreamCoordinator {
                 runtime = loaded.0
                 tokenizer = loaded.1
                 MotionStreamHold.shared.set(nil)
+                let read = loaded.0.weightsReadThrough
                 nlLog(
-                    "[MotionStream] models ready on \(loaded.0.provider.label) in \(Self.seconds(since: started)) s: "
-                        + "footprint \(MemoryFootprint.megabytes(MemoryFootprint.physicalBytes)), available \(MemoryFootprint.megabytes(MemoryFootprint.availableBytes))",
+                    "[MotionStream] models ready on \(loaded.0.provider.label) in \(Self.seconds(since: started)) s "
+                        + "(weights \(MemoryFootprint.megabytes(UInt64(read.bytes))) read through in \(Self.format(Float(read.seconds))) s): "
+                        + "\(MemoryFootprint.summary), available \(MemoryFootprint.megabytes(MemoryFootprint.availableBytes))",
                     level: .info)
             }
             loading = nil
@@ -216,13 +234,15 @@ final class MotionStreamCoordinator {
         return true
     }
 
-    /// Drops the sessions (the OpenAI path was left, or memory is short).
+    /// Drops the sessions (the OpenAI path was left, memory is short, or
+    /// nothing ran for a while); the next load judges the pace afresh.
     func unload() {
         cancel()
         loading?.cancel()
         loading = nil
         runtime = nil
         tokenizer = nil
+        tooSlowStreak = 0
     }
 
     /// A running stream is cut and the models go, whatever the state: a
@@ -237,7 +257,7 @@ final class MotionStreamCoordinator {
         MotionStreamHold.shared.set(.memory(availableMB: Int((available ?? 0) / 1_048_576)))
         nlLog(
             "[MotionStream] unloaded on memory warning\(wasStreaming ? " mid-stream" : ""): "
-                + "footprint \(MemoryFootprint.megabytes(MemoryFootprint.physicalBytes)), available \(MemoryFootprint.megabytes(available))",
+                + "\(MemoryFootprint.summary), available \(MemoryFootprint.megabytes(available))",
             level: .warning)
     }
 
@@ -282,8 +302,11 @@ final class MotionStreamCoordinator {
         speaking = true
         budget = policy.budget(requested: request.seconds, continuous: request.continuous)
         idleUnload?.cancel()
-        // Utility priority: the denoiser must never outrank the render loop.
-        loop = Task(priority: .utility) { [weak self] in await self?.run(caption: request.caption) }
+        // User-initiated priority: the task's thread is one of the runtime's
+        // two intra-op threads, and at utility the scheduler would keep it on
+        // an efficiency core (1.1 s a step on an iPhone 11); the render loop
+        // runs user-interactive and still goes first.
+        loop = Task(priority: .userInitiated) { [weak self] in await self?.run(caption: request.caption) }
     }
 
     /// Per frame from the scene while a stream plays.
@@ -334,7 +357,7 @@ final class MotionStreamCoordinator {
     private func replan(with request: MotionStreamRequest) {
         guard let producer else { return }
         budget = min(policy.maxReplySeconds, generated + policy.budget(requested: request.seconds, continuous: request.continuous))
-        Task(priority: .utility) { [weak self] in
+        Task(priority: .userInitiated) { [weak self] in
             do {
                 try await producer.replan(caption: request.caption)
                 nlLog("[MotionStream] replanned: \(request.caption)", level: .info)
@@ -362,7 +385,8 @@ final class MotionStreamCoordinator {
             var steps = policy.steps(for: RuntimePressureMonitor.shared.tier).map { startingSteps(ceiling: $0) } ?? 0
             var windows = 0
             while !Task.isCancelled {
-                guard let ceiling = policy.steps(for: RuntimePressureMonitor.shared.tier) else {
+                let tier = RuntimePressureMonitor.shared.tier
+                guard let ceiling = policy.steps(for: tier) else {
                     finish("thermal")
                     return
                 }
@@ -389,14 +413,17 @@ final class MotionStreamCoordinator {
                     tooSlowStreak += 1
                     rememberPace(policy.minimumSteps)
                     MotionStreamHold.shared.set(.pace(secondsPerWindow: wall))
-                    nlLog("[MotionStream] too slow: window \(windows) took \(Self.format(wall)) s at \(steps) steps; stream \(tooSlowStreak) of 2 before gestures stop", level: .warning)
+                    nlLog(
+                        "[MotionStream] too slow: window \(windows) took \(Self.format(wall)) s at \(steps) steps (\(tier)); "
+                            + "stream \(tooSlowStreak) of 2 before gestures pause until the models reload",
+                        level: .warning)
                     finish("too slow")
                     return
                 }
                 if !first { tooSlowStreak = 0 }
                 nlLog(
-                    "[MotionStream] window \(windows): \(Self.format(wall)) s at \(steps) steps → \(next), lead \(Self.format(generated - playhead)) s, "
-                        + "footprint \(MemoryFootprint.megabytes(MemoryFootprint.physicalBytes))",
+                    "[MotionStream] window \(windows): \(Self.format(wall)) s at \(steps) steps → \(next) (ceiling \(ceiling), \(tier)), "
+                        + "lead \(Self.format(generated - playhead)) s, \(MemoryFootprint.summary)",
                     level: .info)
                 steps = next
                 rememberPace(next)

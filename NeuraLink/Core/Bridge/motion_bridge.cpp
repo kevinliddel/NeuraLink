@@ -49,11 +49,15 @@ thread_local std::string lastError;
 // the app targets, so the render loop and the audio keep the rest.
 constexpr int32_t kDefaultIntraOpThreads = 2;
 
-// ORT's worker threads at utility QoS, so the scheduler puts the main thread
-// (the render loop at 60 fps) ahead of a denoiser step every time.
+// ORT's worker threads at user-initiated QoS: under the main thread's
+// user-interactive, so the render loop (60 fps) still goes ahead of a
+// denoiser step every time, and above utility, which Apple silicon keeps on
+// the efficiency cores while the main thread and the audio hold the
+// performance cores (an iPhone 11 took 1.1 s a denoiser step there,
+// 2026-11-02). The local LLM's generation threads run at the same class.
 struct WorkerStart {
-    OrtThreadWorkerFn fn;
-    void* param;
+    OrtThreadWorkerFn fn = nullptr;
+    void* param          = nullptr;
 };
 
 void* workerTrampoline(void* raw) {
@@ -64,10 +68,10 @@ void* workerTrampoline(void* raw) {
     return nullptr;
 }
 
-OrtCustomThreadHandle createUtilityThread(void* /*options*/, OrtThreadWorkerFn fn, void* param) {
+OrtCustomThreadHandle createWorkerThread(void* /*options*/, OrtThreadWorkerFn fn, void* param) {
     pthread_attr_t attributes;
     if (pthread_attr_init(&attributes) != 0) { return nullptr; }
-    pthread_attr_set_qos_class_np(&attributes, QOS_CLASS_UTILITY, 0);
+    pthread_attr_set_qos_class_np(&attributes, QOS_CLASS_USER_INITIATED, 0);
     auto* start = new (std::nothrow) WorkerStart{fn, param};
     if (start == nullptr) {
         pthread_attr_destroy(&attributes);
@@ -83,7 +87,7 @@ OrtCustomThreadHandle createUtilityThread(void* /*options*/, OrtThreadWorkerFn f
     return reinterpret_cast<OrtCustomThreadHandle>(thread);
 }
 
-void joinUtilityThread(OrtCustomThreadHandle handle) {
+void joinWorkerThread(OrtCustomThreadHandle handle) {
     if (handle != nullptr) {
         pthread_join(reinterpret_cast<pthread_t>(const_cast<OrtCustomHandleType*>(handle)), nullptr);
     }
@@ -168,14 +172,19 @@ MotionBridge* motion_bridge_create(const char* text_encoder_path, const char* de
         Ort::SessionOptions options;
         options.SetGraphOptimizationLevel(ORT_ENABLE_ALL);
         // A phone shares its cores with the renderer and the audio: few
-        // threads, none of them spinning between ops, all at utility QoS, and
-        // no arena holding a window's activations between runs.
+        // threads, none of them spinning between ops, all at user-initiated
+        // QoS (createWorkerThread), and no arena holding a window's
+        // activations between runs.
         options.SetIntraOpNumThreads(threads > 0 ? threads : kDefaultIntraOpThreads);
         options.SetInterOpNumThreads(1);
         options.AddConfigEntry("session.intra_op.allow_spinning", "0");
         options.DisableCpuMemArena();
-        options.SetCustomCreateThreadFn(createUtilityThread);
-        options.SetCustomJoinThreadFn(joinUtilityThread);
+        // The graphs keep their weights in external-data sidecars, which the
+        // runtime memory-maps and reads in place; prepacking would copy every
+        // MatMul weight into anonymous memory that counts against the app.
+        options.AddConfigEntry("session.disable_prepacking", "1");
+        options.SetCustomCreateThreadFn(createWorkerThread);
+        options.SetCustomJoinThreadFn(joinWorkerThread);
         int32_t used = MOTION_BRIDGE_PROVIDER_CPU;
         std::string registration;
         if (provider == MOTION_BRIDGE_PROVIDER_COREML && !(registration = appendCoreML(options, cache_dir)).empty()) {

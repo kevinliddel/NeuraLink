@@ -146,7 +146,7 @@ enum MotionModelNotices {
              detail: "CC BY 4.0.",
              url: URL(string: "https://huggingface.co/datasets/nvidia/SEED-Timeline-Annotations")),
         Item(title: "Graph preparation",
-             detail: "The downloaded graphs are the published ONNX files with Clip bounds made explicit; nothing else is changed.",
+             detail: "The downloaded graphs are the published ONNX files with Clip bounds made explicit and the weights moved into files beside them that the phone maps from storage; the numbers are unchanged.",
              url: nil)
     ]
 }

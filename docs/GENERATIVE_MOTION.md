@@ -17,10 +17,13 @@ window at 20 fps, continuing from up to 40 frames of its own history, so a
 stream of any length is a chain of windows. The text goes in through
 **ARDY-mini**'s distilled encoder, a 28 M-parameter MiniLM student of
 ARDY's Llama 3 conditioning, which is what makes the whole thing fit on a
-phone. Three ONNX graphs do the work (text encoder, denoiser, decoder;
-`motion_bridge.cpp` runs them on the ONNX Runtime the app already ships
-for VOICEVOX, on the CoreML provider when it is accepted, else XNNPACK,
-else the CPU), and `MotionGenerationSession` wraps them in the window
+phone. Three ONNX graphs do the work (text encoder, denoiser, decoder),
+their float32 weights in sidecar files (775 MB together) that ONNX Runtime
+memory-maps, so a phone holds them as file-backed pages outside the app's
+footprint rather than as memory of its own; `motion_bridge.cpp` runs them
+on the ONNX Runtime the app already ships for VOICEVOX, on its CPU provider
+(the one that reads the mapped weights in place; see Providers below), and
+`MotionGenerationSession` wraps them in the window
 bookkeeping: noise in, history recentred on the last frame, latents snapped
 back to the quantizer's grid, the decoded root kept as the next history.
 A seed gives the same motion as the browser build and the Python driver
@@ -164,7 +167,7 @@ flowchart TD
 | `Data/DataSources/Motion/MotionSettings.swift`, `Domain/Entities/AutonomyPreset.swift` | The "Gesture while speaking" switch (`AutonomyFlags.gestures`; balanced and lively on) |
 | `Domain/Entities/TutorialScript.swift`, `Presentation/Components/TutorialOverlayHost.swift`, `App/ContentView+Tutorial.swift` | The onboarding tour's "gestures" beat: opens Settings › Autonomy from inside the tour and spotlights the switch |
 | `Data/DataSources/Motion/MotionModelAccess.swift`, `Assets/RemoteAssetRegistry.swift`, `Presentation/Views/AI/MotionModelCard.swift` | Six pinned assets under `motion/ardy-mini/`, download with progress and notices sheet, removal |
-| `scripts/ardy_mini_batch.py`, `scripts/cskel_to_vrma.py`, `scripts/ardy_patch_graphs.py` | The Python driver the fixtures and the Phase 0 clips came from; VRMA writer; the Clip-bounds patch the CoreML provider needs |
+| `scripts/ardy_mini_batch.py`, `scripts/cskel_to_vrma.py`, `scripts/ardy_patch_graphs.py`, `scripts/ardy_external_graphs.py`, `scripts/ardy_fp16_graphs.py` | The Python driver the fixtures and the review clips came from; VRMA writer; the Clip-bounds patch; the external-data split the downloaded files use (each graph's weights moved into a sidecar it names, outputs checked bit for bit); the float16 conversion kept for the bench (inputs and outputs kept float32, the graph's own casts retargeted, output tensors that are also read internally rewired) |
 | `NeuraLinkTests/MotionGenerationSessionTests.swift`, `LiveMotionClipTests.swift`, `MotionStreamPolicyTests.swift`, `MotionStreamCoordinatorTests.swift`, `MotionModelAssetsTests.swift`, `GeneratedMotionBench.swift`, `GeneratedClipSnapshots.swift` | Parity with the Python driver (two windows), parity with the VRMA path on all three characters, the rules, the loop with a stub producer, the pins; the device bench and the contact-sheet harness |
 
 ## Integration notes
@@ -194,29 +197,76 @@ flowchart TD
   kept up is remembered (`motion.generated.paceSteps`) so the next stream
   starts there. When even 4 steps cannot keep up the stream ends ("too
   slow") rather than hold a frozen body; after two such streams in a row no
-  more run until the next launch, and the Settings card says so.
-- **Threads**: the bridge gives the runtime two intra-op threads at utility
-  QoS, with spinning between ops off and no CPU arena (`motion_bridge_create`),
-  and the generation task runs at utility priority, so a denoiser step
-  never outranks the render loop or the audio.
-- **Memory**: the fp32 graphs are about 740 MB on disk and about 1.2 GB
-  resident with the CoreML provider in the simulator (the phone figure is
-  in the `[MotionStream] models ready` log line). The models load when the
-  Realtime session starts (`sendInitialSessionUpdate` → `prepareIfNeeded`),
-  off the main actor, and only when the kernel says the app may still take
-  1.5 GB (`os_proc_available_memory`, `MotionStreamCoordinator.loadHeadroomBytes`);
+  more run while the loaded sessions live, and the Settings card says so.
+  The next load (ten idle minutes, a memory warning, a return to the OpenAI
+  path) tries again, in case the pace was the moment's: a download just
+  verified, a hot phone, cold weight pages.
+- **Threads**: the bridge gives the runtime two intra-op threads, with
+  spinning between ops off and no CPU arena (`motion_bridge_create`), at
+  user-initiated QoS, and the generation task runs at the same priority:
+  under the main thread's user-interactive, so a denoiser step never
+  outranks the render loop or the audio, and above utility, which Apple
+  silicon keeps on the efficiency cores while the main thread and the audio
+  hold the performance cores. The first phone run with the weights mapped
+  (iPhone 11, 2026-11-02) had both threads at utility and took 1.1 s a
+  denoiser step, 4.4 s for a 2 s window at 4 steps, so every stream ended
+  "too slow"; the local LLM's generation threads had been at user-initiated
+  for the same reason (`LLMRuntimeProfile`). The `window` lines name the
+  pressure tier beside the steps, since Low Power Mode and a serious
+  thermal state cap the steps at 4 and the CPU's clock with them.
+- **Memory**: the weights never enter the footprint. Each graph's float32
+  weights sit in a sidecar (`ardy_mini_<graph>.onnx.data`, ONNX external
+  data) that the runtime memory-maps and reads in place
+  (`session.disable_prepacking`, or it would copy every MatMul weight into
+  memory of its own), so they are clean, file-backed pages the kernel drops
+  and fetches again as it needs, the way a game streams its assets; what
+  the app pays for is the session state and a window's activations: in the
+  simulator bench of 2026-11-02 the three sessions added 11 MB to the
+  footprint and the whole first window peaked 25 MB above that, against
+  441 MB loaded and a 984 MB peak for the float16 graphs on the same
+  provider (the phone's figures are in the `[MotionStream] models ready`
+  and `window` log lines, footprint and peak since launch). The first step
+  after a load would fault the mapped weights in a page at a time (13 s in
+  the simulator), so `ARDYMotionRuntime.readThrough` reads the sidecars
+  once, front to back, before the sessions are made (1.8 s there; the
+  `models ready` line says how long on the phone) and the first step then
+  costs about twice a warm one. On the iPhone 11 (2026-11-02) the sessions
+  loaded at a footprint of 1026 MB against the scene's 1.0 GB, with
+  1071 MB available, and the footprint peaked at 1064 MB through two
+  windows: the weights stayed out of it.
+  The models load when the Realtime session starts
+  (`sendInitialSessionUpdate` → `prepareIfNeeded`), off the main actor, and
+  only when the kernel says the app may still take 300 MB
+  (`os_proc_available_memory`, `MotionStreamCoordinator.loadHeadroomBytes`);
   otherwise the gesture is skipped, the card shows why and the log line
   carries the numbers. A memory warning ends a running stream and drops the
   models, as does less than 160 MB of allowance left before a window. They
   are also dropped when the user leaves the OpenAI path or after 10 minutes
-  without a stream. On the 4 GB tier the gate may refuse: the fp32
-  denoiser is the cost, and fp16 or external-data weights are the way down.
-- **CoreML provider**: the shipped ONNX Runtime (1.20) registers CoreML
-  through the legacy flags call, which has no compiled-model cache, so the
-  first session of a process recompiles the ML Programs. The published
-  graphs leave Clip's upper bound empty, which that provider refuses; the
-  downloaded files are the published ones with explicit bounds
-  (`scripts/ardy_patch_graphs.py`), bit-identical on the CPU provider.
+  without a stream. Measured on an iPhone 11: the scene sits at about
+  1.0 GB and the app's limit is about 2.1 GB (2026-10-30), so a model held
+  in memory has about 1 GB to fit in, with the scene's own growth during a
+  reply taken out of it. The fp32 graphs in one file (1.2 GB loaded) never
+  passed the gate; the float16 family (2026-11-02) loaded at a footprint of
+  1197 MB and climbed to 1697 MB in the first window, where a memory
+  warning dropped it: the shipped runtime's CPU provider has no float16
+  MatMul kernel, so it casts every weight to float32 at the start of each
+  step and holds the whole set for the step. Hence the sidecars. A phone
+  with an earlier family's download still on it deletes it at launch
+  (`MotionModelAccess.removeSupersededDownloads`).
+- **Providers**: the sessions run on the CPU provider, the one that reads
+  the memory-mapped weights in place. The shipped ONNX Runtime (1.20)
+  registers CoreML only through the legacy flags call, with no
+  compiled-model cache, compiles a copy of the graph of its own, and
+  computes float16 graphs wrong (the simulator bench of 2026-11-02 put the
+  denoised window 2.6 off the fixture against 0.014 on the CPU); XNNPACK
+  brings spinning threads of its own. The published graphs leave Clip's
+  upper bound empty, which the CoreML provider refuses; the downloaded
+  files carry explicit bounds (`scripts/ardy_patch_graphs.py`) and their
+  weights in sidecars (`scripts/ardy_external_graphs.py`), the numbers the
+  publisher's, bit for bit. The float16 family (`scripts/ardy_fp16_graphs.py`,
+  371 MB, 0.17 cm of joint position from fp32 on 24 four-second clips) stays
+  in the dataset under `motion/ardy-mini-fp16/` for the bench: on this
+  runtime's CPU provider it costs more memory than fp32, not less.
 - **Model files and licences**: the denoiser and decoder are NVIDIA's under
   the NVIDIA Open Model License; the distilled encoder carries the Meta
   Llama 3 Community License ("Built with Meta Llama 3"), MiniLM's Apache
@@ -230,13 +280,15 @@ flowchart TD
 |---|---|
 | The model never calls `perform_motion` | It is only offered when `MotionSettings.offersTool` is true at session start: switch on **and** files present (`motion.generated.modelsReady`). Reconnect after downloading. |
 | `perform_motion` returns "unavailable" | A gate failed: local backend on, Reduce Motion on, files missing, or the stream could not start (the `[LiveMotion]` log says who owns the body). |
-| The gesture starts late | The first window costs a text encode plus 10 denoiser steps; the first session of a process also compiles the CoreML programs. `[Bench] motion window` lines give the per-window cost; `[ARDYMotion] Sessions ready` says which provider was used. |
+| The gesture starts late | The first window costs a text encode plus 10 denoiser steps, and its first step reads the weight sidecars from storage when the kernel has dropped their pages. `[Bench] motion window` lines give the per-window cost; `[ARDYMotion] Sessions ready` says which provider was used. |
 | The body freezes mid-gesture | The buffer ran dry: the next window was late. The body waits on its last pose and resumes when the window lands. The `[MotionStream] window N` lines give each window's wall time and the steps chosen next; a "too slow" end means even 4 steps could not keep up on this phone. |
-| The card says "Paused" | `MotionStreamHold`: the phone had less than 1.5 GB of allowance when the model was to load (or a memory warning dropped it), or two streams in a row were too slow. The `[MotionStream]` log lines carry the numbers. |
-| The whole scene stutters while a gesture is generated | The runtime's threads: `motion_bridge_create` caps them at two, at utility QoS, without spinning. A stutter now points at the CoreML provider's own work or at memory pressure (watch the footprint in the window lines). |
-| The app is ended for memory during a reply | Look for `not loading the motion model` and `unloaded on memory warning` lines. The 1.5 GB gate was set from the simulator footprint; calibrate `loadHeadroomBytes` and `streamMemoryFloorBytes` from the `models ready` line of a phone run. |
+| The card says "Paused" | `MotionStreamHold`: the phone had less than 300 MB of allowance when the model was to load (or a memory warning dropped it), or two streams in a row were too slow. The `[MotionStream]` log lines carry the numbers. A pace pause lasts until the models reload: ten idle minutes, or leaving and returning to the OpenAI path. |
+| Every stream ends "too slow" | Each `[Bench] motion window` line gives the denoise time and its step count; over 0.4 s a step cannot keep a 2 s window 1.25× ahead at 4 steps. The `window` line names the pressure tier (Low Power Mode and a serious thermal state cap the steps and the clock), and `[Bench] motion encode` says what the first window's text encode cost. Both runtime threads must be at user-initiated QoS (`motion_bridge.cpp`, `MotionStreamCoordinator.begin`): at utility the iPhone 11 took 1.1 s a step. |
+| The whole scene stutters while a gesture is generated | The runtime's threads: `motion_bridge_create` caps them at two, at user-initiated QoS under the render loop's user-interactive, without spinning. A stutter now points at memory pressure (watch the footprint in the window lines). |
+| The gestures look different from the review clips | The phone runs the publisher's fp32 numbers, so a visible difference points at the provider (the `[ARDYMotion] Sessions ready` line must say `cpu`); a float16 download from the bench folder would show 0.17 cm of drift, not a visible one. |
+| The app is ended for memory during a reply | Look for `not loading the motion model` and `unloaded on memory warning` lines; each carries the footprint and its peak since launch. The weights are mapped, not held, so a climb between `models ready` and the warning is activations or the scene itself; calibrate `loadHeadroomBytes` and `streamMemoryFloorBytes` from those lines. |
 | Feet slide or sink | The root is pinned in x/z and only hips height is applied; a different hips-height ratio than the reference skeleton (0.9 m) scales the bob. |
-| Download fails with 404 | The six files are not (yet) in the dataset under `motion/ardy-mini/`. |
+| Download fails with 404 | The nine files are not (yet) in the dataset under `motion/ardy-mini-external/`. |
 
 ## Known device-test items
 
@@ -266,10 +318,32 @@ newest phone available:
   hand back cleanly; switching the backend to local unloads the models.
 - Thermal: `reduced` drops to 4 steps, `minimal` ends the stream, both
   recover; a 30-minute session in a quiet room for heat.
-- The fp32 download on a 4 GB phone does not jetsam the app during a stream:
-  the `models ready` line gives the real footprint and allowance after
-  loading, and the `window` lines the footprint per window; the 1.5 GB
-  gate and the 160 MB floor are to be calibrated from them.
+- The download on a 4 GB phone does not jetsam the app during a stream.
+  Second iPhone 11 run (2026-10-30, fp32 in one file): the gate refused
+  every time, with 1042–1116 MB available against a footprint of
+  981–1055 MB, and the app fell back to the static clips without a crash.
+  Third run (2026-11-02, float16): loaded in 1.6 s at a footprint of
+  1197 MB with 900 MB available, climbed to 1697 MB in the first window and
+  was dropped on a memory warning with 400 MB left (the runtime's float32
+  casts of every weight, each step; the simulator bench reproduces it as a
+  984 MB peak over 441 MB loaded). The sidecar family replaces it (66 MB
+  loaded, 79 MB peak in the simulator); the `models ready` and `window`
+  lines now carry the peak as well, to calibrate the 300 MB gate and the
+  160 MB floor.
+- Speed of the fp32 graphs on the iPhone 11's CPU from mapped weights.
+  Fourth run (2026-11-02, sidecars, both runtime threads still at utility
+  QoS): models ready in 2.2 s with the 737 MB read through in 0.93 s,
+  footprint 1026 MB (peak 1035 MB) with 1071 MB available; window 1 took
+  8.5 s and 11.0 s, window 2 4.4 s and 4.2 s, all at 4 steps, footprint
+  1037–1064 MB through them. Memory held and the pace did not: 1.1 s a
+  step on the efficiency cores, two streams ended "too slow", and the
+  two-strike rule (then per launch) stopped gestures for the session. The
+  threads moved to user-initiated QoS and the rule now lifts at the next
+  load. The next run's `[Bench] motion window` and `motion encode` lines
+  say what a step and the first window's encode cost on the performance
+  cores, and whether a step slows when the kernel has dropped the
+  sidecars' pages (the second stream's first window was 2.5 s slower than
+  the first's).
 - Pacing on the iPhone 11: the `window` lines show the steps settling, the
   body waits rather than skips when a window is late, and a "too slow" end
   hands the body back cleanly.

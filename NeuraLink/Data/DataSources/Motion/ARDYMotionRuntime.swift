@@ -82,9 +82,11 @@ struct ARDYDecodedWindow: Sendable {
     let milliseconds: Double
 }
 
-/// Where the model lives: model.json, the three graphs and the tokenizer's
-/// two files, wherever each sits (the download cache names them
-/// distinctively; a folder uses the standard names).
+/// Where the model lives: model.json, the three graphs, each graph's weight
+/// sidecar and the tokenizer's two files, wherever each sits (the download
+/// cache names the graphs distinctively; a folder uses the standard names).
+/// A graph records its sidecar's name and the runtime opens it next to the
+/// graph, so the sidecars carry the dataset's names everywhere.
 struct ARDYModelFiles: Sendable, Equatable {
     let manifest: URL
     let textEncoder: URL
@@ -92,6 +94,12 @@ struct ARDYModelFiles: Sendable, Equatable {
     let decoder: URL
     let tokenizer: URL
     let tokenizerConfig: URL
+
+    /// The sidecar a graph file reads its weights from: `<graph>.onnx.data`
+    /// under the dataset's name.
+    static func sidecar(of graph: URL, named name: String) -> URL {
+        graph.deletingLastPathComponent().appendingPathComponent("ardy_mini_\(name).onnx.data")
+    }
 
     /// The standard names inside `directory`, tokenizer files under `tokenizer/`.
     init(directory: URL) {
@@ -112,7 +120,13 @@ struct ARDYModelFiles: Sendable, Equatable {
         self.tokenizerConfig = tokenizerConfig
     }
 
-    var all: [URL] { [manifest, textEncoder, denoiser, decoder, tokenizer, tokenizerConfig] }
+    var textEncoderWeights: URL { Self.sidecar(of: textEncoder, named: "text_encoder") }
+    var denoiserWeights: URL { Self.sidecar(of: denoiser, named: "denoiser") }
+    var decoderWeights: URL { Self.sidecar(of: decoder, named: "decoder") }
+
+    var all: [URL] {
+        [manifest, textEncoder, textEncoderWeights, denoiser, denoiserWeights, decoder, decoderWeights, tokenizer, tokenizerConfig]
+    }
 
     /// Every file present on disk.
     var isComplete: Bool { all.allSatisfy { FileManager.default.fileExists(atPath: $0.path) } }
@@ -130,6 +144,10 @@ final class ARDYMotionRuntime: @unchecked Sendable {
     let defaultCFGWeight: Float
     /// The window bookkeeping constants from the same model.json.
     let windowMath: ARDYWindowMath
+    /// What `readThrough` did before the sessions were made: the sidecar
+    /// bytes read and the seconds they took (0 when the graphs carry their
+    /// own weights).
+    let weightsReadThrough: (bytes: Int64, seconds: Double)
     private var handle: OpaquePointer?
 
     static var runtimeVersion: String { String(cString: motion_bridge_runtime_version()) }
@@ -153,6 +171,7 @@ final class ARDYMotionRuntime: @unchecked Sendable {
     init(files: ARDYModelFiles, provider requested: ARDYMotionProvider = .coreML, threads: Int32 = 0) throws {
         self.files = files
         let manifest = try Self.readManifest(at: files.manifest)
+        weightsReadThrough = Self.readThrough([files.textEncoderWeights, files.denoiserWeights, files.decoderWeights])
         schedule = manifest.schedule
         defaultCFGWeight = manifest.cfgWeight
         windowMath = ARDYWindowMath(layout: manifest.dimensions, recenter: manifest.recenter, quantization: manifest.latentQuantization)
@@ -233,6 +252,33 @@ final class ARDYMotionRuntime: @unchecked Sendable {
     }
 
     // MARK: - Manifest
+
+    /// Reads the weight sidecars once, front to back, and drops the bytes,
+    /// so the kernel has their pages cached when the runtime first faults
+    /// them in through its memory mapping. Without this the first denoiser
+    /// step pays a fault per 4 KB of weights (13 s on the simulator,
+    /// 2026-11-02); a sequential read of the same bytes is a fraction of
+    /// that. The pages stay clean and evictable either way. Sidecars that
+    /// are not there (a single-file graph) are skipped.
+    static func readThrough(_ sidecars: [URL]) -> (bytes: Int64, seconds: Double) {
+        let started = Date()
+        var bytes: Int64 = 0
+        // One reused buffer and POSIX reads: `FileHandle` would hand back an
+        // autoreleased Data per chunk, and on a utility thread those pile up
+        // until the pool drains (a 737 MB spike in the simulator bench).
+        var buffer = [UInt8](repeating: 0, count: 4 << 20)
+        for url in sidecars {
+            let descriptor = open(url.path, O_RDONLY)
+            guard descriptor >= 0 else { continue }
+            defer { close(descriptor) }
+            while true {
+                let count = buffer.withUnsafeMutableBytes { read(descriptor, $0.baseAddress, $0.count) }
+                guard count > 0 else { break }
+                bytes += Int64(count)
+            }
+        }
+        return (bytes, bytes > 0 ? -started.timeIntervalSinceNow : 0)
+    }
 
     private static func readManifest(at url: URL) throws -> ARDYModelManifest {
         do {

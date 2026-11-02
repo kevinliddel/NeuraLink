@@ -58,13 +58,20 @@ nonisolated enum RemoteAssetRegistry: Hashable, Sendable {
 
     // Generated body motion — ARDY-mini's text encoder, denoiser and decoder
     // (ONNX, Clip bounds made explicit for the CoreML provider by
-    // scripts/ardy_patch_graphs.py), model.json and the WordPiece tokenizer.
-    // Hosted under `motion/ardy-mini/` in the shared dataset; never bundled
-    // (docs/GENERATIVE_MOTION.md).
+    // scripts/ardy_patch_graphs.py, the float32 weights of each graph moved
+    // into a sidecar it names, by scripts/ardy_external_graphs.py, so the
+    // runtime memory-maps them instead of holding them), model.json and the
+    // WordPiece tokenizer. Hosted under `motion/ardy-mini-external/` in the
+    // shared dataset (`motion/ardy-mini/` and `motion/ardy-mini-fp16/` hold
+    // the single-file fp32 and float16 families for the bench); never
+    // bundled (docs/GENERATIVE_MOTION.md).
     case motionManifest
     case motionTextEncoder
+    case motionTextEncoderWeights
     case motionDenoiser
+    case motionDenoiserWeights
     case motionDecoder
+    case motionDecoderWeights
     case motionTokenizer
     case motionTokenizerConfig
 
@@ -84,8 +91,11 @@ nonisolated enum RemoteAssetRegistry: Hashable, Sendable {
         case .embeddingModel: return "embeddinggemma-300M-Q8_0.gguf"
         case .motionManifest: return "ardy_mini_model.json"
         case .motionTextEncoder: return "ardy_mini_text_encoder.onnx"
+        case .motionTextEncoderWeights: return "ardy_mini_text_encoder.onnx.data"
         case .motionDenoiser: return "ardy_mini_denoiser.onnx"
+        case .motionDenoiserWeights: return "ardy_mini_denoiser.onnx.data"
         case .motionDecoder: return "ardy_mini_decoder.onnx"
+        case .motionDecoderWeights: return "ardy_mini_decoder.onnx.data"
         case .motionTokenizer: return "ardy_mini_tokenizer.json"
         case .motionTokenizerConfig: return "ardy_mini_tokenizer_config.json"
         }
@@ -111,8 +121,9 @@ nonisolated enum RemoteAssetRegistry: Hashable, Sendable {
             return "stt/whisper/\(filename)"
         case .embeddingModel:
             return "embeddings/\(filename)"
-        case .motionManifest, .motionTextEncoder, .motionDenoiser, .motionDecoder, .motionTokenizer, .motionTokenizerConfig:
-            return "motion/ardy-mini/\(filename)"
+        case .motionManifest, .motionTextEncoder, .motionTextEncoderWeights, .motionDenoiser, .motionDenoiserWeights,
+            .motionDecoder, .motionDecoderWeights, .motionTokenizer, .motionTokenizerConfig:
+            return "motion/ardy-mini-external/\(filename)"
         }
     }
 
@@ -143,7 +154,8 @@ nonisolated enum RemoteAssetRegistry: Hashable, Sendable {
         case .voicevoxSpeaker,
             .openVoiceMelo, .openVoiceConverter, .openVoiceBert,
             .whisperModel, .embeddingModel,
-            .motionManifest, .motionTextEncoder, .motionDenoiser, .motionDecoder, .motionTokenizer, .motionTokenizerConfig:
+            .motionManifest, .motionTextEncoder, .motionTextEncoderWeights, .motionDenoiser, .motionDenoiserWeights,
+            .motionDecoder, .motionDecoderWeights, .motionTokenizer, .motionTokenizerConfig:
             return nil
         }
     }
@@ -206,16 +218,23 @@ nonisolated enum RemoteAssetRegistry: Hashable, Sendable {
                 size: 333_590_944,
                 sha256: "b5ce9d77a3fc4b3b39ccb5643c36777911cc4eb46a66962eadfa3f5f60490d63")
         // intsuc/Llama-3-ARDY-Mini-Core40-Browser fp32, Clip bounds patched
-        // (scripts/ardy_patch_graphs.py); hashes of the patched files,
-        // captured 2026-10-30. Re-capture if the folder is re-uploaded.
+        // (scripts/ardy_patch_graphs.py) and each graph's weights moved into
+        // its sidecar (scripts/ardy_external_graphs.py); hashes of those
+        // files, captured 2026-11-02. Re-capture if the folder is re-uploaded.
         case .motionManifest:
-            return .init(size: 72_080, sha256: "0e2212ada7bea4652e27c33c1d96fe58d950171063462fe9fbd7496ea607f30d")
+            return .init(size: 72_805, sha256: "8ee927bd29ecdf7879d5725f73dc3504c3518fdfd59b8940e01874bf92ce5343")
         case .motionTextEncoder:
-            return .init(size: 112_430_726, sha256: "50f1338d9049af7b9ac3f0e03a0494f51a165b898a649c47640d920bd4d9c875")
+            return .init(size: 119_144, sha256: "c47fbeb133f3045967567e15aba3c2d55a3451efee7b920ea514fda59dd3a44f")
+        case .motionTextEncoderWeights:
+            return .init(size: 112_320_512, sha256: "dd76bf0cd129ac76bf58941480037b4c12cf93c1de737b8171368484b19f66e6")
         case .motionDenoiser:
-            return .init(size: 590_701_771, sha256: "beeb81e1be2b3544b3f4eebd09babaa96b5e2907611f1eae5358ce49472e8343")
+            return .init(size: 980_575, sha256: "14a4cf7dcaca998eeed8793774aa13642f36d79b72361927840943090f537d32")
+        case .motionDenoiserWeights:
+            return .init(size: 589_737_984, sha256: "569408d4f22064647ad4303bdab5ff2185cf5f43ab231a4210604b7dd2b8b32b")
         case .motionDecoder:
-            return .init(size: 71_642_244, sha256: "77689a8340386d2bc813231f4f0abfdda8d997750cbe5507a2881704723d6abb")
+            return .init(size: 312_756, sha256: "7297658968cf4df22cc7e87f5a78ac36dbf8cfd7a88188849c3b08a54721e506")
+        case .motionDecoderWeights:
+            return .init(size: 71_337_104, sha256: "83688baba35f50d18245ac445dce128ad2c978d00806ac5bb792f2e1528699ac")
         case .motionTokenizer:
             return .init(size: 711_649, sha256: "2fc687b11de0bc1b3d8348f92e3b49ef1089a621506c7661fbf3248fcd54947e")
         case .motionTokenizerConfig:

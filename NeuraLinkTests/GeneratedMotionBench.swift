@@ -50,7 +50,7 @@ struct GeneratedMotionBench {
         var report =
             "device: \(MotionBenchProbe.deviceModel)  ORT \(ARDYMotionRuntime.runtimeVersion)  model: \(modelDir.lastPathComponent)  "
         report +=
-            "thermal: \(MotionBenchProbe.thermal)  footprint at start: \(MotionBenchProbe.footprintMB) MB\n"
+            "thermal: \(MotionBenchProbe.thermal)  footprint at start: \(MotionBenchProbe.footprintMB) MB (peak \(MotionBenchProbe.peakMB) MB)\n"
         var seen: Set<Int32> = []
         for requested in providers {
             let created = Date()
@@ -68,10 +68,12 @@ struct GeneratedMotionBench {
             }
             report +=
                 "\n== requested \(requested.label), using \(runtime.provider.label)\(Self.registrationNote(runtime)): sessions in \(Self.ms(-created.timeIntervalSinceNow * 1000))"
-            report += ", footprint \(MotionBenchProbe.footprintMB) MB\n"
+            report += ", footprint \(MotionBenchProbe.footprintMB) MB (peak \(MotionBenchProbe.peakMB) MB)"
+            report +=
+                ", weights \(runtime.weightsReadThrough.bytes / 1_048_576) MB read through in \(Self.ms(runtime.weightsReadThrough.seconds * 1000))\n"
             report += try Self.measure(runtime, fixture: fixture, stepCounts: stepCounts)
             report +=
-                "footprint after: \(MotionBenchProbe.footprintMB) MB, thermal: \(MotionBenchProbe.thermal)\n"
+                "footprint after: \(MotionBenchProbe.footprintMB) MB (peak \(MotionBenchProbe.peakMB) MB), thermal: \(MotionBenchProbe.thermal)\n"
         }
         try report.write(
             to: outputDir.appendingPathComponent("report.txt"), atomically: true, encoding: .utf8)
@@ -106,6 +108,7 @@ struct GeneratedMotionBench {
         report +=
             "first window, \(firstSteps.count) steps: \(ms(firstSteps.reduce(0, +))) total, steps \(firstSteps.map(ms).joined(separator: " "))"
         report += "  max |Δ| vs fixture \(String(format: "%.4g", denoiseError))\n"
+        report += "footprint after the first window: \(MotionBenchProbe.footprintMB) MB (peak \(MotionBenchProbe.peakMB) MB)\n"
         if runtime.provider == .cpu {
             #expect(
                 denoiseError < 0.01, "CPU provider drifts from the Python driver by \(denoiseError)"
@@ -254,16 +257,9 @@ private enum MotionBenchProbe {
     }
 
     /// Physical footprint in MB, the number Xcode's memory gauge shows.
-    static var footprintMB: Int {
-        var info = task_vm_info_data_t()
-        var count = mach_msg_type_number_t(
-            MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
-        let result = withUnsafeMutablePointer(to: &info) { pointer in
-            pointer.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
-                task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count)
-            }
-        }
-        guard result == KERN_SUCCESS else { return -1 }
-        return Int(info.phys_footprint / 1_048_576)
-    }
+    static var footprintMB: Int { Int((MemoryFootprint.physicalBytes ?? 0) / 1_048_576) }
+
+    /// The footprint's high-water mark since launch, in MB: what a step
+    /// allocates and frees before a reading after it could see it.
+    static var peakMB: Int { Int((MemoryFootprint.peakPhysicalBytes ?? 0) / 1_048_576) }
 }

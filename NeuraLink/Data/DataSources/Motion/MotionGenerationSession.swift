@@ -101,8 +101,10 @@ actor MotionGenerationSession {
         let signpost = NLSignposts.motion.beginInterval("encodeText")
         defer { NLSignposts.motion.endInterval("encodeText", signpost) }
         let tokens = tokenizer.encode(text)
-        conditions = try runtime.encodeText(ids: tokens.ids, attentionMask: tokens.attentionMask, tokenTypeIds: tokens.tokenTypeIds).conditions
+        let encoded = try runtime.encodeText(ids: tokens.ids, attentionMask: tokens.attentionMask, tokenTypeIds: tokens.tokenTypeIds)
+        conditions = encoded.conditions
         caption = text
+        nlLog("[Bench] motion encode: \(Int(encoded.milliseconds)) ms, \(tokens.ids.count) tokens", level: .info)
     }
 
     /// Generates the next window (40 frames) and returns its decoded frames.
