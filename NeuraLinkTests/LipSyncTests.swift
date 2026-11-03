@@ -68,6 +68,21 @@ struct LipSyncTests {
         #expect(feed.current(at: 5.1) == nil)
     }
 
+    @Test("A statistics report already read is skipped; the totals' difference is the level")
+    func statistics() {
+        var envelope = LipSyncStatisticsEnvelope()
+        #expect(envelope.level(reportTimestamp: 1, energy: 0, duration: 0, peakLevel: 0.5, now: 10) == 0, "nothing to difference yet")
+        #expect(envelope.level(reportTimestamp: 1, energy: 0, duration: 0, peakLevel: 0.5, now: 10.025) == nil, "the cached report")
+        // 50 ms at 0.2 RMS: energy 0.04 × 0.05.
+        #expect(envelope.level(reportTimestamp: 2, energy: 0.002, duration: 0.05, peakLevel: 0.5, now: 10.05) == 1, "the first sound sets the peak")
+        // Then 50 ms at 0.1 RMS.
+        let quieter = envelope.level(reportTimestamp: 3, energy: 0.0025, duration: 0.1, peakLevel: 0.5, now: 10.1) ?? 0
+        #expect(quieter > 0.45 && quieter < 0.55)
+        #expect(envelope.level(reportTimestamp: 4, energy: 0.0025, duration: 0.1, peakLevel: 0.5, now: 10.15) == 0, "nothing played")
+        var fallback = LipSyncStatisticsEnvelope()
+        #expect(fallback.level(reportTimestamp: 1, energy: nil, duration: nil, peakLevel: 0.3, now: 1) == 0.3, "no totals: the peak statistic")
+    }
+
     @MainActor
     @Test("The controller takes the named shape and holds it, and cycles without one")
     func controller() {

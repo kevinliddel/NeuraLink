@@ -133,15 +133,15 @@ The `visemeWeights` dict uses the unified keys from section 1.3 and is translate
 
 The Realtime API plays its audio through WebRTC's own audio unit. OpenAI sends no phoneme timings, and the shipped WebRTC build (stasel/WebRTC 147) gives no way at the played samples: `RTCAudioTrack` has no renderer, and only a replacement `RTCAudioDevice` (the app owning the whole audio unit) would. So the mouth is driven from the connection's **statistics**, read off the main thread:
 
-1. **Poll** — `RealtimeLipSyncPoller` asks the peer connection for its statistics every 50 ms on its own queue (`DispatchSourceTimer`, user-initiated QoS).
-2. **Energy difference** — from the inbound audio's `totalAudioEnergy` and `totalSamplesDuration`, the difference between two polls is the mean power of the audio played out since the last one, after the jitter buffer: an RMS envelope at 20 Hz. Totals that did not advance mean nothing was played, which is silence.
+1. **Poll** — `RealtimeLipSyncPoller` asks the peer connection for its statistics every 25 ms on its own queue (`DispatchSourceTimer`, user-initiated QoS). libwebrtc hands back the same report for 50 ms after collecting one (`RTCStatsCollector`'s cache lifetime), so a report carrying the timestamp of the last one is dropped (`LipSyncStatisticsEnvelope`): polling at the cache's own period read every second report as nothing played, and the mouth flickered shut mid-word.
+2. **Energy difference** — from the inbound audio's `totalAudioEnergy` and `totalSamplesDuration` (libwebrtc accumulates both at playout, as the audio unit pulls each 10 ms frame), the difference between two fresh reports is the mean power of the audio played out between them, after the jitter buffer: an RMS envelope at 20 Hz. Totals that did not advance mean nothing was played, which is silence.
 3. **Level** — `LipSyncLevelNormalizer` maps the RMS against a peak that halves every 1.5 s, so a quiet voice opens the mouth as far as a loud one and a pause closes it.
 4. **Publish** — the cue goes to `LipSyncFeed` with the time it was measured; the render tick reads it once a frame. A cue older than 250 ms reads as silence.
 5. **Shape** — a power figure names no vowel, so `VRMLipSyncController` cycles its open-weighted sequence at phoneme pace.
 
 Until 2026-11-02 the manager read the `audioLevel` statistic from a timer on the main run loop: a peak held over 100 ms and refreshed at that rate, hopped to the main actor per poll and logged on every poll with sound. The mouth trailed short syllables and held through gaps, and the main thread's own load (rendering, the motion stream's windows) delayed the timer.
 
-> Vowels from the audio on this path need the played samples. The routes: a WebRTC build whose tracks accept an audio renderer (LiveKit's `webrtc-xcframework` adds `RTCAudioRenderer` to `RTCAudioTrack`), or a custom `RTCAudioDevice` so the app pulls the playout buffers itself. Either feeds `LipSyncAudioAnalyzer` exactly as the local path does.
+> Vowels from the audio on this path need the played samples. The routes: a WebRTC build whose tracks accept an audio renderer (LiveKit's `webrtc-xcframework` adds `RTCAudioRenderer` to `RTCAudioTrack`), or a custom `RTCAudioDevice` so the app pulls the playout buffers itself. Either feeds `LipSyncAudioAnalyzer` exactly as the local path does, and as Sonya (the author's React Native VRM app) does: it plays the Realtime API's PCM16 chunks through an `AVAudioPlayerNode` and taps that node with 512-frame buffers, so its analysis sees exactly what is heard.
 
 ---
 
@@ -193,7 +193,7 @@ flowchart TD
 
 | Parameter                | Value                   | Description                                          |
 |--------------------------|-------------------------|------------------------------------------------------|
-| Poll interval (OpenAI)   | 50 ms                   | Statistics energy difference → RMS, 20 Hz envelope   |
+| Poll interval (OpenAI)   | 25 ms                   | Reports are cached 50 ms; fresh ones give a 20 Hz envelope |
 | Tap buffer (local)       | 1024 frames @ 48 kHz    | About 21 ms per cue                                   |
 | Spectrum                 | 512-point Hann (vDSP)   | Bands 100–600 / 600–1 500 / 1 500–4 000 Hz            |
 | Level peak half-life     | 1.5 s                   | The loudest recent sound the level is measured against |
