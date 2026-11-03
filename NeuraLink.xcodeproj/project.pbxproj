@@ -16,7 +16,7 @@
 		041885CB2F99F90100609CCE /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = 041885CA2F99F90100609CCE /* WhisperKit */; };
 		041885CD2F99F90100609CCE /* argmax-cli in Frameworks */ = {isa = PBXBuildFile; productRef = 041885CC2F99F90100609CCE /* argmax-cli */; };
 		041E139A2F913E1500D2D110 /* Starscream in Frameworks */ = {isa = PBXBuildFile; productRef = 041E13992F913E1500D2D110 /* Starscream */; };
-		04332ACD2F9913B00035B9D0 /* WebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = 04332ACC2F9913B00035B9D0 /* WebRTC */; };
+		04332ACD2F9913B00035B9D0 /* LiveKitWebRTC in Frameworks */ = {isa = PBXBuildFile; productRef = 04332ACC2F9913B00035B9D0 /* LiveKitWebRTC */; };
 		04AA000100000000000000AE /* NeuraLinkWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 04AA000100000000000000A8 /* NeuraLinkWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		04C895512FC041F90015EDC0 /* SQLCipher in Frameworks */ = {isa = PBXBuildFile; productRef = 04C895502FC041F90015EDC0 /* SQLCipher */; };
 		04CCE3AD2FC5B55500C119D0 /* MLX in Frameworks */ = {isa = PBXBuildFile; productRef = 04CCE3AC2FC5B55500C119D0 /* MLX */; };
@@ -160,7 +160,7 @@
 				041885CB2F99F90100609CCE /* WhisperKit in Frameworks */,
 				04CCE3AD2FC5B55500C119D0 /* MLX in Frameworks */,
 				041885C52F99F90100609CCE /* ArgmaxOSS in Frameworks */,
-				04332ACD2F9913B00035B9D0 /* WebRTC in Frameworks */,
+				04332ACD2F9913B00035B9D0 /* LiveKitWebRTC in Frameworks */,
 				04CCE3B32FC5B55500C119D0 /* MLXLinalg in Frameworks */,
 				041885AB2F99F0B200609CCE /* Hub in Frameworks */,
 				041885C72F99F90100609CCE /* SpeakerKit in Frameworks */,
@@ -257,7 +257,7 @@
 			packageProductDependencies = (
 				041E13992F913E1500D2D110 /* Starscream */,
 				04F3BD6E2F9630CD00D2DDF2 /* RealTimeCutVADLibrary */,
-				04332ACC2F9913B00035B9D0 /* WebRTC */,
+				04332ACC2F9913B00035B9D0 /* LiveKitWebRTC */,
 				041885AA2F99F0B200609CCE /* Hub */,
 				041885AC2F99F0B200609CCE /* Tokenizers */,
 				041885AE2F99F0B200609CCE /* Transformers */,
@@ -381,7 +381,7 @@
 			packageReferences = (
 				041E13982F913E1500D2D110 /* XCRemoteSwiftPackageReference "Starscream" */,
 				04F3BD6D2F9630CD00D2DDF2 /* XCRemoteSwiftPackageReference "RealTimeCutVADLibrary" */,
-				04332ACB2F9913B00035B9D0 /* XCRemoteSwiftPackageReference "WebRTC" */,
+				04332ACB2F9913B00035B9D0 /* XCRemoteSwiftPackageReference "webrtc-xcframework" */,
 				041885A92F99F0B200609CCE /* XCRemoteSwiftPackageReference "swift-transformers" */,
 				041885C32F99F90100609CCE /* XCRemoteSwiftPackageReference "argmax-oss-swift" */,
 				04C8954F2FC041F90015EDC0 /* XCRemoteSwiftPackageReference "SQLCipher.swift" */,
@@ -916,12 +916,12 @@
 				minimumVersion = 4.0.8;
 			};
 		};
-		04332ACB2F9913B00035B9D0 /* XCRemoteSwiftPackageReference "WebRTC" */ = {
+		04332ACB2F9913B00035B9D0 /* XCRemoteSwiftPackageReference "webrtc-xcframework" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/stasel/WebRTC.git";
+			repositoryURL = "https://github.com/livekit/webrtc-xcframework.git";
 			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 147.0.0;
+				kind = exactVersion;
+				version = 150.7871.05;
 			};
 		};
 		04C8954F2FC041F90015EDC0 /* XCRemoteSwiftPackageReference "SQLCipher.swift" */ = {
@@ -996,10 +996,10 @@
 			package = 041E13982F913E1500D2D110 /* XCRemoteSwiftPackageReference "Starscream" */;
 			productName = Starscream;
 		};
-		04332ACC2F9913B00035B9D0 /* WebRTC */ = {
+		04332ACC2F9913B00035B9D0 /* LiveKitWebRTC */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 04332ACB2F9913B00035B9D0 /* XCRemoteSwiftPackageReference "WebRTC" */;
-			productName = WebRTC;
+			package = 04332ACB2F9913B00035B9D0 /* XCRemoteSwiftPackageReference "webrtc-xcframework" */;
+			productName = LiveKitWebRTC;
 		};
 		04C895502FC041F90015EDC0 /* SQLCipher */ = {
 			isa = XCSwiftPackageProductDependency;

@@ -34,7 +34,7 @@ final class PiPManager: NSObject, AVPictureInPictureControllerDelegate {
 
     private func setupAudioSession() {
         // PiP requires an active audio session, but the voice pipelines
-        // (OpenAIRealtimeManager via RTCAudioSession, LocalLLMManager) own
+        // (OpenAIRealtimeManager via LKRTCAudioSession, LocalLLMManager) own
         // the session configuration. Rewriting it here used to fight them:
         // a different mode (.voiceChat vs .videoChat) plus .mixWithOthers
         // could degrade WebRTC's echo cancellation and let other apps'

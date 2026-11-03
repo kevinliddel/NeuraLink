@@ -13,7 +13,7 @@
 //
 
 import Foundation
-import WebRTC
+import LiveKitWebRTC
 
 extension Notification.Name {
     /// Something that feeds the Realtime system instructions changed.

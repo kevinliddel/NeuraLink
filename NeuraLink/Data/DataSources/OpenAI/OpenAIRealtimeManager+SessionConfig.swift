@@ -9,7 +9,7 @@
 //
 
 import Foundation
-import WebRTC
+import LiveKitWebRTC
 
 extension OpenAIRealtimeManager {
 

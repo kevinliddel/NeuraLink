@@ -9,19 +9,20 @@ import AVFoundation
 import Foundation
 import RealTimeCutVADLibrary
 import SwiftUI
-import WebRTC
+import LiveKitWebRTC
 
 /// Core manager for OpenAI Realtime API via WebRTC.
 final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
     static let shared = OpenAIRealtimeManager()
 
-    var peerConnection: RTCPeerConnection?
+    var peerConnection: LKRTCPeerConnection?
     /// The outgoing (mic) track — kept so song recognition can gate it.
-    var localAudioTrack: RTCAudioTrack?
-    var remoteDataChannel: RTCDataChannel?
-    let factory: RTCPeerConnectionFactory
-    private let lipSync = RealtimeLipSyncPoller()
-    var pendingOffer: RTCSessionDescription?
+    var localAudioTrack: LKRTCAudioTrack?
+    var remoteDataChannel: LKRTCDataChannel?
+    let factory: LKRTCPeerConnectionFactory
+    /// Hears the remote audio track for the mouth (attached in `didStartReceiver`).
+    let lipSync = RealtimeLipSyncRenderer()
+    var pendingOffer: LKRTCSessionDescription?
     var iceGatheringTimeout: Task<Void, Never>?
     let sileroVAD = SileroVADProcessor()
 
@@ -73,17 +74,17 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
     var transcriptDoneTime: Date?
 
     override init() {
-        RTCInitializeSSL()
-        let videoEncoderFactory = RTCDefaultVideoEncoderFactory()
-        let videoDecoderFactory = RTCDefaultVideoDecoderFactory()
-        self.factory = RTCPeerConnectionFactory(
+        LKRTCInitializeSSL()
+        let videoEncoderFactory = LKRTCDefaultVideoEncoderFactory()
+        let videoDecoderFactory = LKRTCDefaultVideoDecoderFactory()
+        self.factory = LKRTCPeerConnectionFactory(
             encoderFactory: videoEncoderFactory, decoderFactory: videoDecoderFactory)
         super.init()
         setupAudioSession()
     }
 
     private func setupAudioSession() {
-        let rtcSession = RTCAudioSession.sharedInstance()
+        let rtcSession = LKRTCAudioSession.sharedInstance()
         rtcSession.lockForConfiguration()
         do {
             try rtcSession.setCategory(
@@ -95,9 +96,9 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
             // them to get an unprocessed mic signal.
             rtcSession.useManualAudio = true
             rtcSession.isAudioEnabled = true
-            nlLog("[AI]: RTCAudioSession configured for speaker output", level: .info)
+            nlLog("[AI]: LKRTCAudioSession configured for speaker output", level: .info)
         } catch {
-            nlLog("[AI]: Failed to configure RTCAudioSession: \(error)", level: .error)
+            nlLog("[AI]: Failed to configure LKRTCAudioSession: \(error)", level: .error)
         }
         rtcSession.unlockForConfiguration()
     }
@@ -181,21 +182,21 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
     // MARK: - WebRTC Signaling
 
     func setupPeerConnection() {
-        let config = RTCConfiguration()
+        let config = LKRTCConfiguration()
         config.sdpSemantics = .unifiedPlan
         config.bundlePolicy = .maxBundle
         config.iceCandidatePoolSize = 10
 
         // Add STUN servers to help with NAT traversal
         config.iceServers = [
-            RTCIceServer(urlStrings: ["stun:stun.l.google.com:19302"]),
-            RTCIceServer(urlStrings: ["stun:stun1.l.google.com:19302"]),
-            RTCIceServer(urlStrings: ["stun:stun2.l.google.com:19302"]),
-            RTCIceServer(urlStrings: ["stun:stun3.l.google.com:19302"]),
-            RTCIceServer(urlStrings: ["stun:stun4.l.google.com:19302"])
+            LKRTCIceServer(urlStrings: ["stun:stun.l.google.com:19302"]),
+            LKRTCIceServer(urlStrings: ["stun:stun1.l.google.com:19302"]),
+            LKRTCIceServer(urlStrings: ["stun:stun2.l.google.com:19302"]),
+            LKRTCIceServer(urlStrings: ["stun:stun3.l.google.com:19302"]),
+            LKRTCIceServer(urlStrings: ["stun:stun4.l.google.com:19302"])
         ]
 
-        let constraints = RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)
+        let constraints = LKRTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)
 
         self.peerConnection = factory.peerConnection(
             with: config, constraints: constraints, delegate: self)
@@ -210,7 +211,7 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
         micGateReasons.removeAll()
 
         // Setup Data Channel
-        let dataChannelConfig = RTCDataChannelConfiguration()
+        let dataChannelConfig = LKRTCDataChannelConfiguration()
         self.remoteDataChannel = peerConnection?.dataChannel(
             forLabel: "oai-events", configuration: dataChannelConfig)
         self.remoteDataChannel?.delegate = self
@@ -224,7 +225,7 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
     /// restores voice mode. No-op when offline.
     func suspendAudioUnit() {
         guard peerConnection != nil else { return }
-        let rtcSession = RTCAudioSession.sharedInstance()
+        let rtcSession = LKRTCAudioSession.sharedInstance()
         rtcSession.lockForConfiguration()
         rtcSession.isAudioEnabled = false
         do {
@@ -238,13 +239,13 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
 
     func resumeAudioUnit() {
         guard peerConnection != nil else { return }
-        let rtcSession = RTCAudioSession.sharedInstance()
+        let rtcSession = LKRTCAudioSession.sharedInstance()
         // Restore the FULL WebRTC session configuration, not just the mode:
         // the capture window can leave the hardware at a different sample
         // rate (Shazam records at the device default), and restarting the
         // audio units against the wrong rate pitch-shifts/accelerates all
         // assistant speech until the next reconnect.
-        let config = RTCAudioSessionConfiguration.webRTC()
+        let config = LKRTCAudioSessionConfiguration.webRTC()
         config.category = AVAudioSession.Category.playAndRecord.rawValue
         config.categoryOptions = [.allowBluetoothHFP, .defaultToSpeaker]
         config.mode = AVAudioSession.Mode.videoChat.rawValue
@@ -296,7 +297,7 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
     }
 
     func createAndSendOffer() {
-        let constraints = RTCMediaConstraints(
+        let constraints = LKRTCMediaConstraints(
             mandatoryConstraints: [
                 kRTCMediaConstraintsOfferToReceiveAudio: kRTCMediaConstraintsValueTrue
             ], optionalConstraints: nil)
@@ -343,15 +344,8 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
         sendOfferToOpenAI(offer)
     }
 
-    /// Feeds the mouth from the connection's audio statistics
-    /// (`RealtimeLipSyncPoller`); the render tick reads `LipSyncFeed`.
-    func startLipSyncFeed() {
-        guard let peerConnection else { return }
-        lipSync.start(peerConnection)
-    }
-
     func stopLipSyncFeed() {
-        lipSync.stop()
+        lipSync.detach()
     }
 
     // MARK: - Silero VAD

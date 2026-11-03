@@ -8,7 +8,7 @@
 
 import Foundation
 import UIKit
-import WebRTC
+import LiveKitWebRTC
 
 final class ProactiveVisionManager {
     static let shared = ProactiveVisionManager()

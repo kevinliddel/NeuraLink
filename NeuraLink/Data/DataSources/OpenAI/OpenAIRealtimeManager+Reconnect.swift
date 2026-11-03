@@ -14,7 +14,7 @@
 
 import Foundation
 import UIKit
-import WebRTC
+import LiveKitWebRTC
 
 /// Pure backoff schedule, testable without WebRTC.
 nonisolated struct ReconnectPolicy: Sendable {
@@ -48,12 +48,12 @@ extension OpenAIRealtimeManager {
             nlLog("[AI]: dropped \(event["type"] as? String ?? "event") — data channel not open", level: .warning)
             return false
         }
-        return channel.sendData(RTCDataBuffer(data: data, isBinary: false))
+        return channel.sendData(LKRTCDataBuffer(data: data, isBinary: false))
     }
 
     // MARK: - Failure detection
 
-    func handleICEStateChange(_ newState: RTCIceConnectionState) {
+    func handleICEStateChange(_ newState: LKRTCIceConnectionState) {
         switch newState {
         case .failed:
             iceGraceTask?.cancel()
@@ -74,7 +74,7 @@ extension OpenAIRealtimeManager {
         }
     }
 
-    func handlePeerStateChange(_ newState: RTCPeerConnectionState) {
+    func handlePeerStateChange(_ newState: LKRTCPeerConnectionState) {
         if newState == .failed { scheduleReconnect(reason: "peer connection failed") }
     }
 
