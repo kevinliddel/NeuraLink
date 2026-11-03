@@ -299,7 +299,7 @@ final class OpenAIRealtimeManager: NSObject, @unchecked Sendable {
     func createAndSendOffer() {
         let constraints = LKRTCMediaConstraints(
             mandatoryConstraints: [
-                kRTCMediaConstraintsOfferToReceiveAudio: kRTCMediaConstraintsValueTrue
+                kLKRTCMediaConstraintsOfferToReceiveAudio: kLKRTCMediaConstraintsValueTrue
             ], optionalConstraints: nil)
 
         peerConnection?.offer(for: constraints) { [weak self] offer, error in
