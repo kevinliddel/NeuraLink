@@ -86,6 +86,16 @@ struct LipSyncTests {
         LipSyncFeed.shared.reset()
     }
 
+    @Test("The renderer's attach point is a delegate callback WebRTC really sends")
+    func attachPoint() {
+        // A Swift method that only looks like a delegate requirement compiles
+        // fine and never runs: `didStartReceiver` did exactly that until
+        // 2026-11-03. The runtime knows which selectors the manager answers.
+        #expect(OpenAIRealtimeManager.instancesRespond(to: Selector(("peerConnection:didAddReceiver:streams:"))))
+        #expect(OpenAIRealtimeManager.instancesRespond(to: Selector(("peerConnection:didAddStream:"))))
+        #expect(!OpenAIRealtimeManager.instancesRespond(to: Selector(("peerConnection:didStartReceiver:streams:"))))
+    }
+
     @MainActor
     @Test("The controller takes the named shape and holds it, and cycles without one")
     func controller() {

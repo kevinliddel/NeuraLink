@@ -27,21 +27,45 @@ nonisolated final class RealtimeLipSyncRenderer: NSObject, LKRTCAudioRenderer {
 
     private let analyzer = LipSyncAudioAnalyzer()
     private let samples = UnsafeMutablePointer<Float>.allocate(capacity: capacity)
-    private weak var track: LKRTCAudioTrack?
+    /// The track wrapper, held strongly: the renderer list lives in the
+    /// wrapper, not in the native track, and the delegate hands out a fresh
+    /// wrapper per call that nobody else keeps. Held weakly it was released
+    /// at once and its deallocation took the sink off the track (2026-11-03,
+    /// "renderer attached" twice and never a buffer).
+    private var track: LKRTCAudioTrack?
+    private let lock = NSLock()
+    /// Playout buffers seen since the attach; the first one is logged with
+    /// its format, the proof on a phone that the hook delivers.
+    private var buffers = 0
 
     deinit {
         samples.deallocate()
     }
 
-    /// Hears `track` until `detach()`, or until the track goes.
+    /// Hears `track` until `detach()`. Attaching to the track already heard
+    /// (another wrapper of the same native track) is a no-op.
     func attach(to track: LKRTCAudioTrack) {
-        detach()
+        lock.lock()
+        defer { lock.unlock() }
+        guard track.trackId != self.track?.trackId else { return }
+        release()
         track.add(self)
         self.track = track
+        buffers = 0
+        nlLog("[LipSync] renderer attached to remote track \(track.trackId)", level: .info)
     }
 
     func detach() {
-        track?.remove(self)
+        lock.lock()
+        defer { lock.unlock() }
+        release()
+    }
+
+    private func release() {
+        if let track {
+            track.remove(self)
+            nlLog("[LipSync] renderer detached after \(buffers) playout buffers", level: .info)
+        }
         track = nil
         LipSyncFeed.shared.reset()
     }
@@ -68,5 +92,13 @@ nonisolated final class RealtimeLipSyncRenderer: NSObject, LKRTCAudioRenderer {
         }
         let cue = analyzer.analyze(UnsafeBufferPointer(start: samples, count: frames), sampleRate: format.sampleRate)
         LipSyncFeed.shared.publish(cue.sample)
+        buffers += 1
+        if buffers == 1 {
+            nlLog(
+                "[LipSync] first playout buffer: \(frames) frames, \(Int(format.sampleRate)) Hz, \(format.channelCount) ch, "
+                    + "\(buffer.int16ChannelData != nil ? "int16" : "float32")\(format.isInterleaved ? " interleaved" : ""), "
+                    + "rms \(String(format: "%.3f", cue.rms))",
+                level: .info)
+        }
     }
 }

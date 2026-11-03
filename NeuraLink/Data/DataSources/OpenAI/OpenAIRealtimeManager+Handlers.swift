@@ -379,6 +379,9 @@ extension OpenAIRealtimeManager: LKRTCPeerConnectionDelegate {
             track.isEnabled = true
             nlLog("[AI]: Audio track \(track.trackId) enabled", level: .info)
         }
+        // The receiver callback below is the one that fires under unified
+        // plan; this legacy one is the fallback for the mouth.
+        if let track = stream.audioTracks.first { lipSync.attach(to: track) }
     }
 
     func peerConnection(_ peerConnection: LKRTCPeerConnection, didRemove stream: LKRTCMediaStream) {
@@ -427,13 +430,16 @@ extension OpenAIRealtimeManager: LKRTCPeerConnectionDelegate {
         Task { @MainActor in self.handlePeerStateChange(newState) }
     }
 
+    /// `didAddReceiver:streams:`, the callback for a remote track under
+    /// unified plan. (Until 2026-11-03 this was declared as
+    /// `didStartReceiver`, a selector no delegate has, so it never ran.)
     func peerConnection(
-        _ peerConnection: LKRTCPeerConnection, didStartReceiver receiver: LKRTCRtpReceiver,
-        streams: [LKRTCMediaStream]
+        _ peerConnection: LKRTCPeerConnection, didAdd rtpReceiver: LKRTCRtpReceiver,
+        streams mediaStreams: [LKRTCMediaStream]
     ) {
-        let kind = receiver.track?.kind ?? "unknown"
-        nlLog("[AI]: Started receiver for \(kind) track", level: .info)
-        if let audioTrack = receiver.track as? LKRTCAudioTrack {
+        let kind = rtpReceiver.track?.kind ?? "unknown"
+        nlLog("[AI]: Receiver added for \(kind) track", level: .info)
+        if let audioTrack = rtpReceiver.track as? LKRTCAudioTrack {
             audioTrack.isEnabled = true
             lipSync.attach(to: audioTrack)
             nlLog("[AI]: Remote audio track enabled: \(audioTrack.trackId)", level: .info)
