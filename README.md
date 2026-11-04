@@ -99,11 +99,11 @@ Images used by the docs and this README are in [`docs/Assets/`](./docs/Assets). 
 
 NeuraLink renders a fully procedural, physically-inspired sky backdrop that **follows the user's real clock and place** — the sun rises and sets at the real times, the moon shows tonight's phase, and the real constellations turn through the night.
 
-| Before dawn | Sunrise | Morning | Noon |
+| Before dawn | Sunrise | Morning | Noon |  
 |:---:|:---:|:---:|:---:|
-| <img src="./docs/Sky/day-before-dawn.png" alt="Before dawn" width="200" /> | <img src="./docs/Sky/day-sunrise.png" alt="Sunrise" width="200" /> | <img src="./docs/Sky/day-morning.png" alt="Morning" width="200" /> | <img src="./docs/Sky/day-noon.png" alt="Noon" width="200" /> |
+| <img src="./docs/Assets/Sky/day-before-dawn.png" alt="Before dawn" width="200" /> | <img src="./docs/Assets/Sky/day-sunrise.png" alt="Sunrise" width="200" /> | <img src="./docs/Assets/Sky/day-morning.png" alt="Morning" width="200" /> | <img src="./docs/Assets/Sky/day-noon.png" alt="Noon" width="200" /> |
 | **Afternoon** | **Sunset** | **Dusk** | **Night, toward the moon** |
-| <img src="./docs/Sky/day-afternoon.png" alt="Afternoon" width="200" /> | <img src="./docs/Sky/day-sunset.png" alt="Sunset" width="200" /> | <img src="./docs/Sky/day-dusk.png" alt="Dusk" width="200" /> | <img src="./docs/Sky/day-night.png" alt="Night, toward the moon" width="200" /> |
+| <img src="./docs/Assets/Sky/day-afternoon.png" alt="Afternoon" width="200" /> | <img src="./docs/Assets/Sky/day-sunset.png" alt="Sunset" width="200" /> | <img src="./docs/Assets/Sky/day-dusk.png" alt="Dusk" width="200" /> | <img src="./docs/Assets/Sky/day-night.png" alt="Night, toward the moon" width="200" /> |
 
 
 Key highlights:
