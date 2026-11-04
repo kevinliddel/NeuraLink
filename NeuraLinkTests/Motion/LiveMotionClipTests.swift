@@ -195,7 +195,7 @@ struct LiveMotionClipTests {
     private static func fixtureURL(_ name: String, _ ext: String) throws -> URL {
         let bundled = Bundle(for: LiveMotionFixtureMarker.self).url(
             forResource: name, withExtension: ext)
-        let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Fixtures/\(name).\(ext)")
         return try #require(
             bundled ?? (FileManager.default.fileExists(atPath: source.path) ? source : nil))

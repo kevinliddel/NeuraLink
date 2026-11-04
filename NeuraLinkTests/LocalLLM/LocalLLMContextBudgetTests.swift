@@ -3,8 +3,8 @@
 //  NeuraLinkTests
 //
 //  Unit tests for the token-estimation and compaction-trigger heuristics
-//  used by the local LLM 3-tier memory hierarchy. Phase 2A of the plan in
-//  docs/local_llm_memory_plan.md.
+//  used by the local LLM 3-tier memory hierarchy (docs/AGENTIC_MEMORY.md,
+//  Prompt integration).
 //
 //  Created by Dedicatus on 18/05/2026.
 //

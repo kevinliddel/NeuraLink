@@ -184,7 +184,7 @@ struct MotionGenerationSessionTests {
     private static func fixtureURL(_ name: String, _ ext: String?) throws -> URL {
         let bundle = Bundle(for: MotionFixtureMarker.self)
         let bundled = ext.flatMap { bundle.url(forResource: name, withExtension: $0) } ?? bundle.resourceURL?.appendingPathComponent(name)
-        let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("Fixtures/\(name)\(ext.map { ".\($0)" } ?? "")")
+        let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Fixtures/\(name)\(ext.map { ".\($0)" } ?? "")")
         if FileManager.default.fileExists(atPath: source.path) { return source }
         return try #require(bundled)
     }

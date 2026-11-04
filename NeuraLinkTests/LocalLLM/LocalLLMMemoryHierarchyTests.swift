@@ -7,7 +7,7 @@
 //    - `candidatesBeyondWindow(allRecent:windowMessages:lastCompactedID:)`
 //      — what to compact
 //
-//  Phase 2B of docs/local_llm_memory_plan.md.
+//  Background: docs/Local_SLM_Model.md, Turn latency (the history window).
 //
 //  Created by Dedicatus on 19/05/2026.
 //

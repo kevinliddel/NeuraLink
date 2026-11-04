@@ -176,7 +176,7 @@ struct GeneratedMotionBench {
     private static func loadFixture() throws -> MotionBenchFixture {
         let bundled = Bundle(for: FixtureMarker.self).url(
             forResource: Self.fixtureName, withExtension: "json")
-        let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Fixtures/\(Self.fixtureName).json")
         let url = try #require(
             bundled ?? (FileManager.default.fileExists(atPath: source.path) ? source : nil))

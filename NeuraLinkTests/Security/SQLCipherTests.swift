@@ -7,8 +7,7 @@
 //  not the system SQLite), writing + reading data through the cipher,
 //  and confirming the on-disk file is not openable without the key.
 //
-//  Phase 2b of the security audit remediation plan. See
-//  `docs/security_audit_plan.md` §3.2 Path B.
+//  Layer B (opt-in SQLCipher page encryption) in `docs/APP_SECURITY.md`.
 //
 
 import Foundation
