@@ -129,11 +129,14 @@ nonisolated enum RemoteAssetRegistry: Hashable, Sendable {
 
     /// Where to download from. Everything lives in the shared dataset except
     /// assets that are re-used verbatim from a public model repo, which are
-    /// still pinned by size + SHA-256 like the rest.
+    /// still pinned by size + SHA-256 like the rest. Those also name the commit
+    /// the hash was taken from: a re-upload on a repo we don't own would
+    /// otherwise fail the pin and break the download.
     var remoteURL: URL? {
         switch self {
         case .embeddingModel:
-            return URL(string: "https://huggingface.co/ggml-org/embeddinggemma-300M-GGUF/resolve/main/\(filename)")
+            return URL(
+                string: "https://huggingface.co/ggml-org/embeddinggemma-300M-GGUF/resolve/0f741b5a6585bd53aeb15cd1372c56f2a0f65e12/\(filename)")
         default:
             return URL(string: "https://huggingface.co/datasets/\(Self.repoID)/resolve/main/\(pathInRepo)")
         }

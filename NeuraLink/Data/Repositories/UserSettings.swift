@@ -4,6 +4,8 @@
 //
 //  Manages persistent user profile information (name, gender, birthday).
 //  Injects profile + live date/time into the AI system prompt for personalized greetings.
+//  The profile and photo persist through UserProfileStore (protected, not
+//  backed up); the scene preferences below stay in UserDefaults.
 //
 //  Created by Dedicatus on 09/05/2026.
 //
@@ -14,10 +16,7 @@ import SwiftUI
 @Observable
 final class UserSettings {
     static let shared = UserSettings()
-    
-    private let nameKey = "com.neuralink.user.name"
-    private let genderKey = "com.neuralink.user.gender"
-    private let birthdayKey = "com.neuralink.user.birthday"
+
     private let showEnvironmentKey = "com.neuralink.user.showEnvironment"
     private let selectedEnvironmentKey = "com.neuralink.user.selectedEnvironment"
     private let selectedCharacterKey = "com.neuralink.user.selectedCharacter"
@@ -54,23 +53,26 @@ final class UserSettings {
     /// can re-sync the facts it keeps about who the user is.
     nonisolated static let profileDidChange = Notification.Name("com.neuralink.user.profileDidChange")
 
+    // Each setter persists only its own field: under default MainActor
+    // isolation these didSets also fire during init, so they must not touch
+    // the other properties.
     var name: String {
         didSet {
-            UserDefaults.standard.set(name, forKey: nameKey)
+            UserProfileStore.set(\.name, name)
             announceProfileChange(changed: name != oldValue)
         }
     }
 
     var gender: String {
         didSet {
-            UserDefaults.standard.set(gender, forKey: genderKey)
+            UserProfileStore.set(\.gender, gender)
             announceProfileChange(changed: gender != oldValue)
         }
     }
 
     var birthday: Date {
         didSet {
-            UserDefaults.standard.set(birthday.timeIntervalSince1970, forKey: birthdayKey)
+            UserProfileStore.set(\.birthday, birthday.timeIntervalSince1970)
             announceProfileChange(changed: birthday != oldValue)
         }
     }
@@ -81,10 +83,10 @@ final class UserSettings {
     }
 
     /// JPEG bytes of the user's profile photo, or nil. Kept in-memory for
-    /// `@Observable` change tracking; mirrored to a file in Application
-    /// Support (too large for UserDefaults).
+    /// `@Observable` change tracking; mirrored to a protected file by
+    /// UserProfileStore.
     var profileImageData: Data? {
-        didSet { Self.persistProfileImage(profileImageData) }
+        didSet { UserProfileStore.saveImage(profileImageData) }
     }
 
     /// Decoded profile image, if set. Sidebar/transcript header use this.
@@ -103,40 +105,15 @@ final class UserSettings {
         self.wind = UserDefaults.standard.object(forKey: windKey) as? Bool ?? true
         self.windForImported = UserDefaults.standard.bool(forKey: windForImportedKey)
         self.selectedCharacter = UserDefaults.standard.string(forKey: selectedCharacterKey)
-        self.name = UserDefaults.standard.string(forKey: "com.neuralink.user.name") ?? ""
-        self.gender = UserDefaults.standard.string(forKey: "com.neuralink.user.gender") ?? "Prefer not to say"
-        
-        let interval = UserDefaults.standard.double(forKey: "com.neuralink.user.birthday")
-        self.birthday = interval == 0 ? Date() : Date(timeIntervalSince1970: interval)
 
-        self.profileImageData = Self.loadProfileImage()
+        let profile = UserProfileStore.load()
+        self.name = profile.name
+        self.gender = profile.gender
+        self.birthday = profile.birthday == 0 ? Date() : Date(timeIntervalSince1970: profile.birthday)
+
+        self.profileImageData = UserProfileStore.loadImage()
     }
 
-    // MARK: - Profile image file storage
-
-    private static func profileImageURL() -> URL? {
-        guard let dir = FileManager.default.urls(
-            for: .applicationSupportDirectory, in: .userDomainMask).first
-        else { return nil }
-        return dir.appendingPathComponent("user_profile.jpg")
-    }
-
-    private static func loadProfileImage() -> Data? {
-        guard let url = profileImageURL(),
-              FileManager.default.fileExists(atPath: url.path)
-        else { return nil }
-        return try? Data(contentsOf: url)
-    }
-
-    private static func persistProfileImage(_ data: Data?) {
-        guard let url = profileImageURL() else { return }
-        if let data {
-            try? data.write(to: url, options: .atomic)
-        } else {
-            try? FileManager.default.removeItem(at: url)
-        }
-    }
-    
     /// Returns a formatted string to be injected into the AI's system prompt.
     var systemPromptContext: String {
         var context = "\n[Current Context]\n"

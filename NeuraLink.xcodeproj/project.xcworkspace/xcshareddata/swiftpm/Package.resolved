@@ -6,7 +6,6 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/argmaxinc/argmax-oss-swift",
       "state" : {
-        "branch" : "main",
         "revision" : "80d96762fa727f816ffceab76a6529cd12c2726f"
       }
     },

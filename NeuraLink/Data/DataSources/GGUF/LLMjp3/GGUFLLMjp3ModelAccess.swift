@@ -39,6 +39,12 @@ enum GGUFLLMjp3ModelAccess {
     //   (~1.16 GB) file is "llm-jp-3-1.8b-instruct3-Q4_K_M.gguf".
     static let repoID   = "mmnga/llm-jp-3-1.8b-instruct3-gguf"
     static let filename = "llm-jp-3-1.8b-instruct3-Q3_K_M.gguf"
+    /// Pinned commit + LFS size/SHA-256 of `filename` (captured 2026-11-04);
+    /// see GGUFModelAccess. A quant swap means re-capturing both.
+    static let revision = "d908906be3bed7681e4d7269f5c441ea91d2fd56"
+    static let integrity = RemoteAssetRegistry.AssetIntegrity(
+        size: 961_319_200,
+        sha256: "b6572f3da9a2068406f5f6775744910374416f5e734fb87eddd306508554d78f")
 
     private static let pathKey = "LocalModel_GGUFLLMjp3Path"
     static let hubSlug = "models--mmnga--llm-jp-3-1.8b-instruct3-gguf"

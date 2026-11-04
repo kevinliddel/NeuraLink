@@ -34,7 +34,9 @@ enum GGUFLLMjp3Downloader {
         // (GGUFDirectDownloader); `api` is kept for the call sites' signature.
         _ = api
         let file = try await GGUFDirectDownloader.download(
-            repoID: GGUFLLMjp3ModelAccess.repoID, filename: GGUFLLMjp3ModelAccess.filename, hubSlug: GGUFLLMjp3ModelAccess.hubSlug,
+            repoID: GGUFLLMjp3ModelAccess.repoID, revision: GGUFLLMjp3ModelAccess.revision,
+            filename: GGUFLLMjp3ModelAccess.filename, hubSlug: GGUFLLMjp3ModelAccess.hubSlug,
+            integrity: GGUFLLMjp3ModelAccess.integrity,
             progress: { progressHandler($0) })
         GGUFLLMjp3ModelAccess.setModelPath(file)
     }

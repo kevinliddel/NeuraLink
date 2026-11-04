@@ -24,6 +24,13 @@ enum GGUFModelAccess {
     // `filename`, so this triggers a re-download. (Q8_0 file name was
     // "Llama-3.2-1B-Instruct-Q8_0.gguf" if reverting.)
     static let filename = "Llama-3.2-1B-Instruct-Q4_K_M.gguf"
+    /// Commit the download URL is pinned to, and the LFS size + SHA-256 of
+    /// `filename` at that commit (captured 2026-11-04). Changing `filename`
+    /// or `repoID` means re-capturing both from the Hub API.
+    static let revision = "067b946cf014b7c697f3654f621d577a3e3afd1c"
+    static let integrity = RemoteAssetRegistry.AssetIntegrity(
+        size: 807_694_464,
+        sha256: "6f85a640a97cf2bf5b8e764087b1e83da0fdb51d7c9fab7d0fece9385611df83")
 
     private static let pathKey  = "LocalModel_GGUFPath"
     static let hubSlug  = "models--bartowski--Llama-3.2-1B-Instruct-GGUF"
