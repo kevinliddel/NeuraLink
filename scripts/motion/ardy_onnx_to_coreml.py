@@ -8,7 +8,7 @@ torch >= 2.4, coremltools >= 8, onnx2torch. On the Intel Mac (torch 2.2.2, the
 last Intel build) onnx2torch segfaults while converting the text encoder
 (2026-10-29), so the conversion was not completed there.
 
-usage: python -I scripts/ardy_onnx_to_coreml.py <model_dir with model.json + *.onnx> <output dir>
+usage: python -I scripts/motion/ardy_onnx_to_coreml.py <model_dir with model.json + *.onnx> <output dir>
 """
 
 import sys, time, json

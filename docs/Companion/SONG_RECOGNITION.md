@@ -65,7 +65,7 @@ flowchart TD
 | `Data/DataSources/SongRecognition/SongRecognitionManager+Session.swift` | Co-listening loop, auto-stop observers, pure `trackKey` / duration / battery helpers |
 | `Presentation/Views/Overlays/SongRecognitionOverlay.swift` | Nav-bar principal capsule: pulsing listening state → artwork + link pills; retry on no-match / failure |
 | `Presentation/Components/ExpandableFABMenu.swift` | Identify Song FAB (tap = one-shot, long-press = session) |
-| `Domain/Entities/Motion/ListeningEpisode.swift` | App-wide switch: the body loops `listen_to_music.vrma` (Mixamo → VRMA via `scripts/fbx_to_vrma.py`) during a recognition and for a whole co-listening session; `VRMMetalState+ListeningEpisode.swift` is the scene side |
+| `Domain/Entities/Motion/ListeningEpisode.swift` | App-wide switch: the body loops `listen_to_music.vrma` (Mixamo → VRMA via `scripts/assets/fbx_to_vrma.py`) during a recognition and for a whole co-listening session; `VRMMetalState+ListeningEpisode.swift` is the scene side |
 | `Domain/Entities/Skills/IdentifySongSkill.swift` | `identify_song` tool (awaits the result and returns it to the AI; `"session"` starts a co-listening session) |
 | `Data/DataSources/FunctionCalling/AppFunctionTool.swift` | `identifySongTool` schema (optional `mode`: `once` / `session`) |
 | `NeuraLinkTests/Companion/SongRecognitionTests.swift`, `CoListeningTests.swift`, `NeuraLinkTests/Animation/ListeningEpisodeTests.swift` | Links, session rules and schema, listening loop |

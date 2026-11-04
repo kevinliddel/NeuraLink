@@ -227,7 +227,7 @@ and to the bones appended with the part.
 
 ## Parts library
 
-`scripts/extract_parts.py` cuts whole VRoid models into minimal part VRMs:
+`scripts/assets/extract_parts.py` cuts whole VRoid models into minimal part VRMs:
 `<model>__hair`, `__outfit`, `__tops`, `__bottoms`, `__shoes` and `__eyes`.
 Each file keeps:
 
@@ -380,7 +380,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    SRC["🗂 whole VRoid models<br/>CustomSources/"] --> EXTRACT["scripts/extract_parts.py<br/>hair · outfit · tops · bottoms · shoes · eyes"]
+    SRC["🗂 whole VRoid models<br/>CustomSources/"] --> EXTRACT["scripts/assets/extract_parts.py<br/>hair · outfit · tops · bottoms · shoes · eyes"]
     EXTRACT --> HF["Hugging Face dataset<br/>Parts/ (SHA-256 pinned)"]
     EXTRACT --> GEN["PartThumbnailGeneratorTests<br/>(NL_THUMB_OUTPUT_DIR)"]
     GEN --> THUMBS["App/Resources/Custom/Thumbs<br/>model__category.png"]
@@ -449,7 +449,7 @@ flowchart TD
 | `Presentation/Views/Characters/Customization/CharacterCustomizationCoordinator.swift` | Presentation flag |
 | `Presentation/Views/Settings/Persona/PersonaSettingsView+Appearance.swift` | "Customize Appearance" in character settings |
 | `Presentation/Views/Overlays/ModelSelectionOverlay.swift`, `App/ContentView.swift` | Long-press "Customize"; the overlay host and the downloader start |
-| `scripts/extract_parts.py` | Cuts whole models into part VRMs |
+| `scripts/assets/extract_parts.py` | Cuts whole models into part VRMs |
 
 ## Integration notes
 

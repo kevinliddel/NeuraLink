@@ -452,7 +452,7 @@ episode outranks it, and it crossfades home when the reply's motion has
 played out. The pose tool keeps offering the same four names to every
 character, and the body resolves a feminine pose when it plays. The male
 clips came from the Sonya project's male set, plus Mixamo FBX clips
-converted with `scripts/fbx_to_vrma.py` (`male_breathing`,
+converted with `scripts/assets/fbx_to_vrma.py` (`male_breathing`,
 `male_stretching_arms`); rows and models that predate the label are female.
 
 ## Diary pictures

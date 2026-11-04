@@ -1,6 +1,6 @@
 """Split the ARDY-mini ONNX graphs from their weights: ONNX external data.
 
-Writes a copy of a patched float32 model directory (scripts/ardy_patch_graphs.py)
+Writes a copy of a patched float32 model directory (scripts/motion/ardy_patch_graphs.py)
 with each graph's initializers moved out of the protobuf into a sidecar
 (`ardy_mini_<graph>.onnx.data`, the name the asset dataset uses, which the
 graph records and ONNX Runtime resolves next to the graph wherever it sits).
@@ -16,7 +16,7 @@ float32 set is live in each step (iPhone 11, 2026-11-02).
 Each graph is then run against the original through ONNX Runtime and must
 match exactly; model.json's `files` gain the sidecars with sizes and SHA-256s.
 
-usage: python -I scripts/ardy_external_graphs.py <patched_fp32_dir> <output_dir> [--skip-compare]
+usage: python -I scripts/motion/ardy_external_graphs.py <patched_fp32_dir> <output_dir> [--skip-compare]
 """
 import argparse
 import hashlib
@@ -144,7 +144,7 @@ def main():
     notes = dict(manifest.get("notes", {}))
     notes["layout"] = (
         "float32 weights in ONNX external-data sidecars (ardy_mini_<graph>.onnx.data), memory-mapped by "
-        "ONNX Runtime's CPU provider (scripts/ardy_external_graphs.py)"
+        "ONNX Runtime's CPU provider (scripts/motion/ardy_external_graphs.py)"
     )
     manifest["notes"] = notes
     (target / "model.json").write_text(json.dumps(manifest))

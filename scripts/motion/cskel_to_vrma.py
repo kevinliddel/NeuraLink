@@ -5,7 +5,7 @@ skeleton with identity rotations (+Z forward, +X left, Y up — the VRM 1.0
 convention, which is also ARDY's identity-pose convention), one LINEAR
 rotation channel per bone and a translation channel for the hips.
 
-usage: python -I scripts/cskel_to_vrma.py --in DIR --out DIR [--arm-spread 6] [--pin-root] [--fps-div 1]
+usage: python -I scripts/motion/cskel_to_vrma.py --in DIR --out DIR [--arm-spread 6] [--pin-root] [--fps-div 1]
 """
 import argparse
 import json

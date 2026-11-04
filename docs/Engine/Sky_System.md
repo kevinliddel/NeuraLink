@@ -713,7 +713,7 @@ flowchart TD
 | `NeuraLink/Domain/Entities/System/RuntimePressure.swift` | The hot-phone tiers: sky refresh, cloud layers, rain scale |
 | `NeuraLink/App/Resources/sky_zones.txt` | IANA time zone → coordinates (tz database `zone.tab`) |
 | `NeuraLink/App/Resources/sky_bright_stars.txt` | 305 stars down to magnitude 3.55 (Yale Bright Star Catalogue) |
-| `scripts/make_sky_tables.py` | Generates both tables |
+| `scripts/assets/make_sky_tables.py` | Generates both tables |
 | `NeuraLinkTests/Engine/SkySystemTests.swift` | Ephemeris against Meeus and NOAA, compass, key light continuity, exposure, uniform stride |
 | `NeuraLinkTests/Engine/SkyTableTests.swift` | The GPU tables: noon blue, sunset red, twilight lit, haze before the clouds |
 | `NeuraLinkTests/Engine/SkyAmbientTests.swift` | The sky's light, its shaping for the character, rain's overcast, the `Uniforms` layout |

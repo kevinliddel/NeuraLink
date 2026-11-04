@@ -184,7 +184,7 @@ struct GeneratedMotionBench {
     }
 }
 
-// MARK: - Fixture shape (scripts/ardy_mini_batch.py, first window of "A person waves" seed 1)
+// MARK: - Fixture shape (scripts/motion/ardy_mini_batch.py, first window of "A person waves" seed 1)
 
 private struct MotionBenchTokens: Decodable {
     let ids: [Int64]
@@ -192,7 +192,7 @@ private struct MotionBenchTokens: Decodable {
     let types: [Int64]
 }
 
-/// The first window of scripts/ardy_mini_batch.py's two-window fixture
+/// The first window of scripts/motion/ardy_mini_batch.py's two-window fixture
 /// (NeuraLinkTests/Fixtures/ardy_mini_wave_windows.json).
 private struct MotionBenchWindow: Decodable {
     let noise: [Float]

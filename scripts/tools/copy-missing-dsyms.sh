@@ -8,17 +8,17 @@
 # "Upload Symbols Failed" for them.
 #
 # Usage:
-#   scripts/copy-missing-dsyms.sh /path/to/NeuraLink.xcarchive
+#   scripts/tools/copy-missing-dsyms.sh /path/to/NeuraLink.xcarchive
 #
 # Or wire it up as an Archive post-action in the NeuraLink scheme, where Xcode
 # provides $ARCHIVE_PATH:
 #   Product > Scheme > Edit Scheme > Archive > Post-actions > New Run Script
-#   "${PROJECT_DIR}/scripts/copy-missing-dsyms.sh" "${ARCHIVE_PATH}"
+#   "${PROJECT_DIR}/scripts/tools/copy-missing-dsyms.sh" "${ARCHIVE_PATH}"
 
 set -euo pipefail
 
 ARCHIVE="${1:-${ARCHIVE_PATH:-}}"
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 if [[ -z "$ARCHIVE" || ! -d "$ARCHIVE" ]]; then
 	echo "usage: $(basename "$0") <path to .xcarchive>" >&2

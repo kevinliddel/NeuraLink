@@ -9,7 +9,7 @@ A Python port of ardy-mini's browser runtime loop (web/src/runtime/engine.ts,
 windows.ts, ddim.ts, random.ts) so clips can be generated in batch on the Mac
 without running any downloaded code: only the ONNX graphs (data) are loaded.
 
-usage: python -I scripts/ardy_mini_batch.py --model-dir DIR --out DIR [--captions FILE]
+usage: python -I scripts/motion/ardy_mini_batch.py --model-dir DIR --out DIR [--captions FILE]
        [--seeds 1,2,3] [--seconds 4] [--steps 10] [--cfg 2.0] [--history-frames 40]
        [--provider cpu|coreml]
 """

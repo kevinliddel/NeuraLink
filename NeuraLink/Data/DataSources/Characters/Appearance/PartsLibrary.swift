@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  Donor parts for character customization, cut from whole VRoid models by
-//  scripts/extract_parts.py into `<model>__hair.vrm`, `<model>__outfit.vrm`,
+//  scripts/assets/extract_parts.py into `<model>__hair.vrm`, `<model>__outfit.vrm`,
 //  one file per garment, and `<model>__eyes.vrm` (a texture donor). Each is
 //  a minimal VRM with just that part, so a hair donor loads in a fraction
 //  of the time the whole model took.

@@ -3,7 +3,7 @@
 //  NeuraLinkTests
 //
 //  The bundled parts library (App/Resources/Custom/Parts, cut from whole
-//  models by scripts/extract_parts.py) and what the picker derives from it:
+//  models by scripts/assets/extract_parts.py) and what the picker derives from it:
 //  part kinds from the file name, per-part fingerprints that collapse the
 //  same uniform worn by different models, pre-rendered thumbnails matching
 //  those fingerprints, grafts onto BOTH VRM versions, and the offscreen

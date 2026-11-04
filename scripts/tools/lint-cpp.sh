@@ -5,11 +5,11 @@
 #   1. clang-format --dry-run -Werror  (style, config in .clang-format)
 #   2. cppcheck                        (static analysis, if installed)
 #
-# Usage: scripts/lint-cpp.sh
+# Usage: scripts/tools/lint-cpp.sh
 
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${REPO_ROOT}"
 
 # Our first-party C/C++ lives only in NeuraLink/Core/Bridge. Discover it so new

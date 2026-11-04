@@ -7,7 +7,7 @@ Clip given explicit float32 bounds, verifies the three graphs still produce the
 same outputs through ONNX Runtime, and rewrites model.json's file sizes and
 SHA-256s so GeneratedMotionBench can verify the copy.
 
-usage: python -I scripts/ardy_patch_graphs.py <model_dir> <output_dir>
+usage: python -I scripts/motion/ardy_patch_graphs.py <model_dir> <output_dir>
 """
 import hashlib
 import json
@@ -132,7 +132,7 @@ def main():
     for name in ("tokenizer/tokenizer.json", "tokenizer/tokenizer_config.json"):
         (target / name).parent.mkdir(exist_ok=True)
         shutil.copyfile(source / name, target / name)
-    manifest["notes"] = {"patched": "Clip bounds made explicit for the CoreML execution provider (scripts/ardy_patch_graphs.py)"}
+    manifest["notes"] = {"patched": "Clip bounds made explicit for the CoreML execution provider (scripts/motion/ardy_patch_graphs.py)"}
     (target / "model.json").write_text(json.dumps(manifest))
     print("model.json rewritten with the patched hashes")
 

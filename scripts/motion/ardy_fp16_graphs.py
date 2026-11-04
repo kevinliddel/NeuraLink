@@ -1,11 +1,11 @@
 """Halve the ARDY-mini ONNX graphs: float16 weights and activations.
 
 Kept for the bench. The app downloads the float32 graphs with their weights
-in external-data sidecars (scripts/ardy_external_graphs.py): on ONNX Runtime
+in external-data sidecars (scripts/motion/ardy_external_graphs.py): on ONNX Runtime
 1.20's CPU provider a float16 graph costs more memory than float32, not
 less, since every weight is cast to float32 at the start of each step.
 
-Writes a copy of a patched model directory (scripts/ardy_patch_graphs.py) with
+Writes a copy of a patched model directory (scripts/motion/ardy_patch_graphs.py) with
 the three graphs converted to float16, the graph inputs and outputs kept
 float32 so motion_bridge's tensor contract is unchanged, and model.json's
 sizes and SHA-256s rewritten. Ops that float16 cannot carry stay float32:
@@ -14,9 +14,9 @@ named inputs feed before the first weight multiply (for a sinusoidal timestep
 embedding in another export; ARDY's is a learned ten-entry table, so nothing
 by default). Each graph is then run
 against the float32 original through ONNX Runtime and the largest difference
-reported; the real check is scripts/ardy_mini_batch.py on both folders.
+reported; the real check is scripts/motion/ardy_mini_batch.py on both folders.
 
-usage: python -I scripts/ardy_fp16_graphs.py <patched_fp32_dir> <output_dir> [--keep-fp32-from timestep,...]
+usage: python -I scripts/motion/ardy_fp16_graphs.py <patched_fp32_dir> <output_dir> [--keep-fp32-from timestep,...]
 """
 import argparse
 import hashlib
@@ -202,7 +202,7 @@ def main():
         shutil.copyfile(source / name, target / name)
     notes = dict(manifest.get("notes", {}))
     islands = f"; the subgraphs fed by {', '.join(keep_from)} stay float32" if keep_from else ""
-    notes["precision"] = f"float16 weights and activations, float32 inputs/outputs{islands} (scripts/ardy_fp16_graphs.py)"
+    notes["precision"] = f"float16 weights and activations, float32 inputs/outputs{islands} (scripts/motion/ardy_fp16_graphs.py)"
     manifest["notes"] = notes
     (target / "model.json").write_text(json.dumps(manifest))
     print("model.json rewritten with the float16 hashes", flush=True)

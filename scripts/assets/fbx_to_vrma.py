@@ -9,8 +9,8 @@ Reproduces the pipeline used for the bundled speaking/talking clips:
        ``mixamorig:*`` node names, and the result is written as ``.vrma``.
 
 Usage:
-    scripts/fbx_to_vrma.py clip.fbx NeuraLink/App/Resources/Animations/clip.vrma
-    scripts/fbx_to_vrma.py clip.glb clip.vrma          # inject only
+    scripts/assets/fbx_to_vrma.py clip.fbx NeuraLink/App/Resources/Animations/clip.vrma
+    scripts/assets/fbx_to_vrma.py clip.glb clip.vrma          # inject only
 Options:
     --fbx2gltf PATH        FBX2glTF binary (else $FBX2GLTF, PATH, or the
                            ``fbx2gltf`` npm package: ``npm i fbx2gltf@0.9.7-p1``
@@ -117,7 +117,7 @@ def write_glb(path: Path, doc: dict, binary: bytes) -> None:
 def find_fbx2gltf(explicit: str | None) -> str:
     candidates = [explicit, os.environ.get("FBX2GLTF"), shutil.which("FBX2glTF")]
     system = platform.system()
-    for root in (Path.cwd(), Path(__file__).resolve().parent.parent):
+    for root in (Path.cwd(), Path(__file__).resolve().parents[2]):
         candidates.append(str(root / "node_modules" / "fbx2gltf" / "bin" / system / "FBX2glTF"))
     for candidate in candidates:
         if candidate and Path(candidate).is_file():

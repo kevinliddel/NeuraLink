@@ -19,7 +19,7 @@ index counts are copied verbatim so the app's part fingerprints (and therefore
 the pre-rendered thumbnails) are identical to the original model's.
 
 Usage:
-    python3 scripts/extract_parts.py <input dir> <output dir>
+    python3 scripts/assets/extract_parts.py <input dir> <output dir>
 """
 
 import json

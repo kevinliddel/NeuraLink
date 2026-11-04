@@ -4,7 +4,7 @@
 //
 //  The real bright stars, so the constellations read: every star of the
 //  Yale Bright Star Catalogue down to magnitude 3.55 (sky_bright_stars.txt,
-//  scripts/make_sky_tables.py), about 300 of them. The sky draws them as
+//  scripts/assets/make_sky_tables.py), about 300 of them. The sky draws them as
 //  small sprites over its procedural field of faint ones, sized and
 //  brightened by magnitude and tinted by colour index.
 //

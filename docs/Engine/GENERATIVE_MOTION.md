@@ -172,8 +172,8 @@ flowchart TD
 | `Data/DataSources/Motion/MotionSettings.swift`, `Domain/Entities/Companion/AutonomyPreset.swift`, `Presentation/Views/Settings/AutonomySettingsView.swift` | The "Gesture while speaking" switch (`AutonomyFlags.gestures`; balanced and lively on), with the model card under it |
 | `Domain/Entities/Tutorial/TutorialScript.swift`, `Presentation/Components/Tutorial/TutorialOverlayHost.swift`, `App/ContentView+Tutorial.swift` | The onboarding tour's "gestures" beat: opens Settings › Autonomy from inside the tour and spotlights the switch |
 | `Data/DataSources/Motion/MotionModelAccess.swift`, `Data/DataSources/Assets/RemoteAssetRegistry.swift`, `Presentation/Views/Settings/Models/MotionModelCard.swift` | Nine pinned assets under `motion/ardy-mini-external/`, download with progress after a notices sheet, removal, deletion of superseded downloads |
-| `scripts/ardy_mini_batch.py`, `scripts/cskel_to_vrma.py` | The Python driver the fixtures and review clips came from (`--captions` takes a JSON list of captions) and its VRMA writer |
-| `scripts/ardy_patch_graphs.py`, `scripts/ardy_external_graphs.py`, `scripts/ardy_fp16_graphs.py`, `scripts/ardy_onnx_to_coreml.py` | Explicit Clip bounds; the external-data split the downloaded files use (outputs checked bit for bit); the float16 conversion kept for the bench; a Core ML conversion attempt the app does not use |
+| `scripts/motion/ardy_mini_batch.py`, `scripts/motion/cskel_to_vrma.py` | The Python driver the fixtures and review clips came from (`--captions` takes a JSON list of captions) and its VRMA writer |
+| `scripts/motion/ardy_patch_graphs.py`, `scripts/motion/ardy_external_graphs.py`, `scripts/motion/ardy_fp16_graphs.py`, `scripts/motion/ardy_onnx_to_coreml.py` | Explicit Clip bounds; the external-data split the downloaded files use (outputs checked bit for bit); the float16 conversion kept for the bench; a Core ML conversion attempt the app does not use |
 | `NeuraLinkTests/Motion/MotionGenerationSessionTests.swift`, `LiveMotionClipTests.swift`, `MotionStreamPolicyTests.swift`, `MotionStreamCoordinatorTests.swift`, `MotionModelAssetsTests.swift` | Parity with the Python driver (two windows), parity with the VRMA path on Oz, Ekaterina and Sonya, the rules, the loop with a stub producer, the pins |
 | `NeuraLinkTests/Motion/GeneratedMotionBench.swift`, `MotionBenchModelFiles.swift`, `GeneratedClipSnapshots.swift` | The device bench and where it finds its model files; the contact-sheet harness for review clips |
 
@@ -283,10 +283,10 @@ flowchart TD
   bench the denoised window was 2.6 off the fixture, against 0.014 on the
   CPU). XNNPACK brings spinning threads of its own. The published graphs
   leave Clip's upper bound empty, which the CoreML provider refuses; the
-  downloaded files carry explicit bounds (`scripts/ardy_patch_graphs.py`)
-  and their weights in sidecars (`scripts/ardy_external_graphs.py`), the
+  downloaded files carry explicit bounds (`scripts/motion/ardy_patch_graphs.py`)
+  and their weights in sidecars (`scripts/motion/ardy_external_graphs.py`), the
   publisher's numbers bit for bit. The float16 family
-  (`scripts/ardy_fp16_graphs.py`, 371 MB, 0.17 cm of joint position from
+  (`scripts/motion/ardy_fp16_graphs.py`, 371 MB, 0.17 cm of joint position from
   fp32 on 24 four-second clips) and the single-file fp32 graphs stay in the
   dataset under `motion/ardy-mini-fp16/` and `motion/ardy-mini/` for the
   bench.
@@ -323,7 +323,7 @@ phone available:
 - `GeneratedMotionBench`: session creation time per provider, the
   continuation-window time at 10 and 4 steps, footprint, thermal state,
   twice in a row. The app's own files are the sidecar family: bundle the
-  output of `scripts/ardy_external_graphs.py` in the git-ignored
+  output of `scripts/motion/ardy_external_graphs.py` in the git-ignored
   `NeuraLinkTests/MotionModels/` (or point `NL_MOTION_MODEL_DIR` at it in
   the simulator). `NL_MOTION_MODEL_DOWNLOAD=1` fetches the publisher's
   single-file fp32 graphs instead, whose Clip has no upper bound, so the
