@@ -29,7 +29,8 @@ public struct LiveMotionRetargeter: Sendable {
 
     /// Driven humanoid bone → (core joint index, VRM parent bone). The local
     /// rotation is parent-core⁻¹ · core, so a skipped core joint (Spine2)
-    /// is absorbed by its child.
+    /// is absorbed by its child; so is a parent the model lacks (an optional
+    /// upperChest or shoulder), through `parentCore(of:modelHas:)`.
     public static let drivenBones: [(bone: VRMHumanoidBone, core: Int, parent: VRMHumanoidBone?)] =
         [
             (.hips, 0, nil), (.spine, 1, .hips), (.chest, 2, .spine), (.upperChest, 4, .chest),
@@ -88,9 +89,7 @@ public struct LiveMotionRetargeter: Sendable {
         var bones: [VRMHumanoidBone] = []
         for entry in Self.drivenBones {
             guard let rest = rests[entry.bone] else { continue }
-            let parentCore = entry.parent.flatMap { parent in
-                Self.drivenBones.first { $0.bone == parent }?.core
-            }
+            let parentCore = Self.parentCore(of: entry.bone) { rests[$0] != nil }
             let spread: Float =
                 entry.bone == .leftUpperArm ? 1 : entry.bone == .rightUpperArm ? -1 : 0
             targets.append(
@@ -120,6 +119,19 @@ public struct LiveMotionRetargeter: Sendable {
         let modelHipsY = rests[.hips]?.translation.y ?? Self.referenceHipsHeight
         hipsDeltaScale =
             modelHipsY > 0.01 ? min(max(modelHipsY / Self.referenceHipsHeight, 0.5), 2.0) : 1
+    }
+
+    /// The core joint a driven bone's rotation is measured from: its parent's,
+    /// or, when the model lacks that parent, the nearest ancestor it has.
+    /// The local rotation is then applied under the model's real parent, so
+    /// the joints between them (Spine2 and Spine3 under a missing upperChest,
+    /// the clavicle under a missing shoulder) still reach the child.
+    static func parentCore(of bone: VRMHumanoidBone, modelHas: (VRMHumanoidBone) -> Bool) -> Int? {
+        var parent = drivenBones.first { $0.bone == bone }?.parent
+        while let candidate = parent, !modelHas(candidate) {
+            parent = drivenBones.first { $0.bone == candidate }?.parent
+        }
+        return parent.flatMap { found in drivenBones.first { $0.bone == found }?.core }
     }
 
     /// Retargets one decoded frame: 27 row-major 3×3 global rotation

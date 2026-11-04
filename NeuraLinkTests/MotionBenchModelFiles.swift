@@ -39,7 +39,10 @@ enum MotionBenchModelFiles {
         let base = env["NL_MOTION_MODEL_URL"].flatMap { $0.isEmpty ? nil : $0 } ?? huggingFace
         let gzipped = base == huggingFace
         let caches = try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-        let folder = gzipped ? "ardy-mini-fp32" : "ardy-mini-" + String(base.hashValue.magnitude % 100_000)
+        // A stable name per base (hashValue is seeded per process), so a
+        // custom base is downloaded once, not on every run.
+        let digest = SHA256.hash(data: Data(base.utf8)).prefix(5).map { String(format: "%02x", $0) }.joined()
+        let folder = gzipped ? "ardy-mini-fp32" : "ardy-mini-" + digest
         let dir = caches.appendingPathComponent(folder, isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         for name in files where !FileManager.default.fileExists(atPath: dir.appendingPathComponent(name).path) {

@@ -26,8 +26,20 @@ enum MotionModelAccess {
     /// Bytes of the whole download.
     static var totalBytes: Int64 { assets.compactMap { $0.integrity?.size }.reduce(0, +) }
 
-    /// True when every file has been downloaded and verified.
-    nonisolated static var isDownloaded: Bool { assets.allSatisfy(\.isCachedLocally) }
+    /// True when every file is on disk at its pinned size (the download
+    /// verified each one before moving it there; this is one stat apiece).
+    nonisolated static var isDownloaded: Bool { assets.allSatisfy(isOnDiskAtPinnedSize) }
+
+    nonisolated static func isOnDiskAtPinnedSize(_ asset: RemoteAssetRegistry) -> Bool {
+        guard asset.isCachedLocally else { return false }
+        guard let expected = asset.integrity?.size,
+              let support = try? FileManager.default.url(
+                  for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: false)
+        else { return true }
+        let file = support.appendingPathComponent("hf-assets").appendingPathComponent(asset.pathInRepo)
+        let size = (try? FileManager.default.attributesOfItem(atPath: file.path))?[.size] as? NSNumber
+        return size?.int64Value == expected
+    }
 
     /// The downloaded files, when all are there.
     static func downloadedFiles() async -> ARDYModelFiles? {
@@ -37,7 +49,12 @@ enum MotionModelAccess {
               let denoiser = await cache.localURLIfAvailable(for: .motionDenoiser),
               let decoder = await cache.localURLIfAvailable(for: .motionDecoder),
               let tokenizer = await cache.localURLIfAvailable(for: .motionTokenizer),
-              let config = await cache.localURLIfAvailable(for: .motionTokenizerConfig)
+              let config = await cache.localURLIfAvailable(for: .motionTokenizerConfig),
+              // The sidecars too, size-checked like the rest: the runtime finds
+              // them by name beside their graphs.
+              await cache.localURLIfAvailable(for: .motionTextEncoderWeights) != nil,
+              await cache.localURLIfAvailable(for: .motionDenoiserWeights) != nil,
+              await cache.localURLIfAvailable(for: .motionDecoderWeights) != nil
         else { return nil }
         let files = ARDYModelFiles(
             manifest: manifest, textEncoder: encoder, denoiser: denoiser, decoder: decoder, tokenizer: tokenizer,
@@ -53,6 +70,7 @@ enum MotionModelAccess {
         let total = totalBytes
         var done: Int64 = 0
         for asset in assets {
+            try Task.checkCancellation()
             let size = asset.integrity?.size ?? 0
             let base = done
             _ = try await RemoteAssetCache.shared.url(for: asset) { received, _ in
@@ -126,7 +144,12 @@ final class MotionModelDownloadState {
             do {
                 try await MotionModelAccess.download { done, total in
                     let fraction = total > 0 ? Double(done) / Double(total) : 0
-                    Task { @MainActor in self?.phase = .downloading(fraction: fraction) }
+                    // Queued updates can land after the download ended; they
+                    // must not turn a finished card back into a busy one.
+                    Task { @MainActor in
+                        guard let self, case .downloading = self.phase else { return }
+                        self.phase = .downloading(fraction: fraction)
+                    }
                 }
                 self?.phase = .ready
                 nlLog("[MotionModel] downloaded and verified", level: .info)
@@ -143,6 +166,13 @@ final class MotionModelDownloadState {
     func cancel() {
         task?.cancel()
         task = nil
+        // The cache downloads each file in a task of its own, which
+        // cancelling ours does not reach; invalidating cancels the file in
+        // flight (the same call the loading screen's Retry uses). Only the
+        // motion files: no other feature shares them.
+        Task {
+            for asset in MotionModelAccess.assets { await RemoteAssetCache.shared.invalidate(asset) }
+        }
     }
 
     /// What the card says: a 404 means the files are not in the dataset yet,

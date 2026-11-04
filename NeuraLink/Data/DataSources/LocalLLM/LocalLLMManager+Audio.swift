@@ -125,6 +125,11 @@ extension LocalLLMManager {
     /// From the main mixer's tap: the playback RMS the barge-in arbiter
     /// compares with the microphone, and the mouth cue for the lip sync.
     func reportAmplitude(_ buffer: AVAudioPCMBuffer) {
+        // Only while the local session is in use: `unload()` (a switch to
+        // OpenAI) stops the player, not the engine, and this tap would keep
+        // publishing silence over the Realtime path's cues in the one-slot
+        // feed. The flag is lock-guarded; this runs on the audio thread.
+        guard stateLock.withLock({ isPreparingOrActive }) else { return }
         guard let channelData = buffer.floatChannelData, buffer.frameLength > 0 else { return }
         let samples = UnsafeBufferPointer(start: channelData[0], count: Int(buffer.frameLength))
         let cue = lipSyncAnalyzer.analyze(samples, sampleRate: buffer.format.sampleRate)

@@ -23,6 +23,13 @@ extension VRMMetalState {
     /// True while a stream owns the body.
     var isPlayingLiveMotion: Bool { liveMotion != nil }
 
+    /// A character is on screen and nothing that outranks a stream (the
+    /// entrance, a pose, an episode) holds its body.
+    var isBodyFreeForLiveMotion: Bool {
+        currentModel != nil && !isPlayingAppear && !isPlayingPose
+            && !phoneEpisode.isActive && !listeningEpisode.isActive && !awayEpisode.isActive
+    }
+
     /// The coordinator asks for a stream with `.liveMotionRequested`; the
     /// scene answers with a session for the character on screen.
     func setupLiveMotionObserver() {
@@ -30,6 +37,7 @@ extension VRMMetalState {
             guard let self, let request = note.userInfo?["request"] as? MotionStreamRequest else { return }
             Task { @MainActor in self.startLiveMotionStream(request) }
         }
+        MotionStreamCoordinator.shared.sceneCanStart = { [weak self] in self?.isBodyFreeForLiveMotion ?? false }
         MotionStreamCoordinator.shared.refreshAvailability()
         if let caption = MotionStreamCoordinator.shared.debugCaption {
             // After the entrance clip; dropped (and logged) if the body is owned elsewhere.
@@ -45,8 +53,7 @@ extension VRMMetalState {
     /// Builds the live session for the displayed character and lets the
     /// coordinator fill it; the body crossfades on once the first window is in.
     func startLiveMotionStream(_ request: MotionStreamRequest) {
-        guard let model = currentModel, !isPlayingAppear, !isPlayingPose,
-              !phoneEpisode.isActive, !listeningEpisode.isActive, !awayEpisode.isActive else {
+        guard isBodyFreeForLiveMotion, let model = currentModel else {
             nlLog("[LiveMotion] request dropped: the body is owned elsewhere", level: .info)
             return
         }
@@ -57,12 +64,14 @@ extension VRMMetalState {
             onFinished: { [weak self] reason in self?.endLiveMotion(reason: reason) })
     }
 
-    /// Starts playing `session` on its model. Ignored while a pose or an
-    /// episode has the body, during the entrance, or for another model.
+    /// Starts playing `session` on its model. Refused while a pose or an
+    /// episode has the body, during the entrance, or for another model; the
+    /// stream is then cancelled too, or the coordinator would keep a stream
+    /// nobody plays and replan it instead of starting the next one.
     func beginLiveMotion(_ session: LiveMotionSession) {
-        guard let model = currentModel, session.model === model, !isPlayingAppear, !isPlayingPose,
-              !phoneEpisode.isActive, !listeningEpisode.isActive, !awayEpisode.isActive else {
+        guard isBodyFreeForLiveMotion, let model = currentModel, session.model === model else {
             nlLog("[LiveMotion] not started: the body is owned elsewhere", level: .info)
+            MotionStreamCoordinator.shared.cancel()
             return
         }
         isPlayingRandomAnim = false
@@ -76,11 +85,13 @@ extension VRMMetalState {
     }
 
     /// Forgets the stream and the gaze base without touching the player; the
-    /// scene's reset calls it as the character leaves.
+    /// scene's reset calls it as the character leaves. The coordinator's
+    /// stream goes too, whether it was playing or still on its first window.
     func resetLiveMotion() {
         liveMotion = nil
         renderer?.lookAtController?.neckBaseRotation = nil
         renderer?.lookAtController?.headBaseRotation = nil
+        MotionStreamCoordinator.shared.cancel()
     }
 
     /// Ends the stream and hands the body back: to the running episode if
@@ -88,7 +99,6 @@ extension VRMMetalState {
     func endLiveMotion(reason: String) {
         guard liveMotion != nil else { return }
         resetLiveMotion()
-        MotionStreamCoordinator.shared.cancel()
         animationPlayer.applyRootMotion = false
         guard let model = currentModel, let clip = defaultClip else { return }
         if isPlayingPose || phoneEpisode.isActive || listeningEpisode.isActive || awayEpisode.isActive {

@@ -108,6 +108,22 @@ struct MotionStreamCoordinatorTests {
         #expect(await producer.captions.count == 1)
     }
 
+    @Test("Unloading the models finishes a running stream, so the scene takes the body back")
+    func unloadFinishes() async throws {
+        guard let model = try await Self.model() else { return }
+        let coordinator = MotionStreamCoordinator()
+        let live = LiveMotionSession(model: model)
+        var finished: [String] = []
+        coordinator.begin(
+            MotionStreamRequest(caption: "A person waves with the right hand.", seconds: 4, continuous: false),
+            live: live, producer: StubProducer(), onReady: {}, onFinished: { finished.append($0) })
+        await Self.settle()
+        #expect(coordinator.isStreaming)
+        coordinator.unload()
+        #expect(finished == ["models unloaded"])
+        #expect(!coordinator.isStreaming)
+    }
+
     @Test("Silence past the tail stops generation and the stream ends when played")
     func silence() async throws {
         guard let model = try await Self.model() else { return }

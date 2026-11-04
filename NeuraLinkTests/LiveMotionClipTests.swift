@@ -45,6 +45,24 @@ struct LiveMotionClipTests {
     private static let toleranceDegrees: Float = 0.5
     private static let hipsToleranceMetres: Float = 0.002
 
+    @Test("A bone whose parent the model lacks is measured from the nearest ancestor it has")
+    func parentCoreWalksToADrivenAncestor() {
+        let every: (VRMHumanoidBone) -> Bool = { _ in true }
+        #expect(LiveMotionRetargeter.parentCore(of: .neck, modelHas: every) == 4)
+        #expect(LiveMotionRetargeter.parentCore(of: .leftUpperArm, modelHas: every) == 13)
+        #expect(LiveMotionRetargeter.parentCore(of: .hips, modelHas: every) == nil)
+        // No upperChest: the neck and shoulders hang from the chest (Spine1),
+        // so Spine2 and Spine3 reach them through their own rotation.
+        let noUpperChest: (VRMHumanoidBone) -> Bool = { $0 != .upperChest }
+        #expect(LiveMotionRetargeter.parentCore(of: .neck, modelHas: noUpperChest) == 2)
+        #expect(LiveMotionRetargeter.parentCore(of: .rightShoulder, modelHas: noUpperChest) == 2)
+        // No shoulders: the upper arms hang from the upperChest (Spine3).
+        let noShoulders: (VRMHumanoidBone) -> Bool = { $0 != .leftShoulder && $0 != .rightShoulder }
+        #expect(LiveMotionRetargeter.parentCore(of: .leftUpperArm, modelHas: noShoulders) == 4)
+        // Neither: from the chest.
+        #expect(LiveMotionRetargeter.parentCore(of: .rightUpperArm) { $0 != .rightShoulder && $0 != .upperChest } == 2)
+    }
+
     @Test(
         "Matches the VRMA path on every bundled character", arguments: ["Oz", "Ekaterina", "Sonya"])
     func matchesVRMAPath(character: String) async throws {

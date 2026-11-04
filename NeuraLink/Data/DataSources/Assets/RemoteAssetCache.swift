@@ -208,6 +208,9 @@ actor RemoteAssetCache {
                 try await fetch(
                     from: remoteURL, to: partURL, expectedSize: integrity?.size, onProgress: onProgress)
                 try verify(fileAt: partURL, against: integrity)
+                // A download cancelled while it was being verified does not
+                // land in the cache; the verified partial stays for next time.
+                try Task.checkCancellation()
                 if FileManager.default.fileExists(atPath: target.path) {
                     try? FileManager.default.removeItem(at: target)
                 }

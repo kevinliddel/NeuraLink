@@ -20,6 +20,10 @@ struct MotionStreamPolicy: Equatable, Sendable {
     var leadSeconds: Float = 2.5
     /// Seconds one window adds (the model's horizon).
     var windowSeconds: Float = 2
+    /// Seconds between two frames (the model's 20 fps). The buffer's
+    /// playhead stops on the last frame, which starts this long before the
+    /// end of what was generated.
+    var frameSeconds: Float = 1.0 / 20
     /// The most motion one reply may generate, whatever it asked for.
     var maxReplySeconds: Float = 12
     /// Generation continues this long after the speech ends.
@@ -70,10 +74,11 @@ struct MotionStreamPolicy: Equatable, Sendable {
     }
 
     /// The stream ends once nothing more will be generated and what was
-    /// generated has played out.
+    /// generated has played out: the playhead is on the last frame, one
+    /// frame interval short of `generated` (it never gets further).
     func shouldEnd(generated: Float, playhead: Float, budget: Float, speaking: Bool, silentFor: Float) -> Bool {
         guard generated > 0 else { return false }
         let exhausted = generated >= budget || (!speaking && silentFor >= tailSeconds)
-        return exhausted && playhead >= generated
+        return exhausted && playhead >= generated - frameSeconds - 0.001
     }
 }

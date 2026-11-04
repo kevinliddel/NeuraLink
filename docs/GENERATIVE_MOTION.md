@@ -45,7 +45,14 @@ out, the body crossfades home and the idle timer re-arms. A second
 `perform_motion` during the reply replans: the next window starts as a
 fresh inference from the current position and heading and its first eight
 frames ease in from the last pose, because carrying the old action's
-history smothers the new one.
+history smothers the new one. While the entrance, a pose or an episode
+holds the body the call is answered "unavailable" instead
+(`MotionStreamCoordinator.sceneCanStart`, the scene's
+`isBodyFreeForLiveMotion`), so the model is not told a gesture started
+that never plays; a first window that lands after the body was taken, or
+after the character changed, cancels its stream. The stream ends when the
+playhead is on the buffer's last frame, one frame interval (50 ms) short of
+the seconds generated, since the playhead waits there and never passes it.
 
 ## The live clip
 
@@ -205,7 +212,9 @@ flowchart TD
   pressure tier, or a worse one, while the loaded sessions live, and the
   Settings card says so. A better tier (the phone cooled, Low Power Mode
   went off) or the next load (ten idle minutes, a memory warning, a return
-  to the OpenAI path) tries again, in case the pace was the moment's.
+  to the OpenAI path) tries again, in case the pace was the moment's; the
+  card's line clears when that next stream is allowed to try, or when a
+  window keeps up.
 - **Threads**: the bridge gives the runtime two intra-op threads, with
   spinning between ops off and no CPU arena (`motion_bridge_create`), at
   user-initiated QoS, and the generation task runs at the same priority:
@@ -239,15 +248,20 @@ flowchart TD
   loaded at a footprint of 1026 MB against the scene's 1.0 GB, with
   1071 MB available, and the footprint peaked at 1064 MB through two
   windows: the weights stayed out of it.
-  The models load when the Realtime session starts
-  (`sendInitialSessionUpdate` → `prepareIfNeeded`), off the main actor, and
+  The models load when the Realtime session starts with gestures available
+  (`sendInitialSessionUpdate` → `prepareIfNeeded`; with the switch off, or
+  Reduce Motion on, nothing loads until a request), off the main actor, and
   only when the kernel says the app may still take 300 MB
   (`os_proc_available_memory`, `MotionStreamCoordinator.loadHeadroomBytes`);
   otherwise the gesture is skipped, the card shows why and the log line
   carries the numbers. A memory warning ends a running stream and drops the
   models, as does less than 160 MB of allowance left before a window. They
-  are also dropped when the user leaves the OpenAI path or after 10 minutes
-  without a stream. Measured on an iPhone 11: the scene sits at about
+  are also dropped when the user leaves the OpenAI path, when the files are
+  removed from the card, or after 10 minutes without a stream, counted from
+  the load or the last stream; a stream still playing then is finished, so
+  the body crossfades home. An unload during a load wins: the load's result
+  is discarded, and a request waiting on a load that failed is dropped
+  rather than replayed into the same failure. Measured on an iPhone 11: the scene sits at about
   1.0 GB and the app's limit is about 2.1 GB (2026-10-30), so a model held
   in memory has about 1 GB to fit in, with the scene's own growth during a
   reply taken out of it. The fp32 graphs in one file (1.2 GB loaded) never
@@ -259,9 +273,12 @@ flowchart TD
   with an earlier family's download still on it deletes it at launch
   (`MotionModelAccess.removeSupersededDownloads`).
 - **Providers**: the sessions run on the CPU provider, the one that reads
-  the memory-mapped weights in place. The shipped ONNX Runtime (1.20)
-  registers CoreML only through the legacy flags call, with no
-  compiled-model cache, compiles a copy of the graph of its own, and
+  the memory-mapped weights in place. For CoreML the bridge tries the
+  generic provider registration with a compiled-model cache, then without
+  the cache, then the legacy flags call (`appendCoreML`); the shipped ONNX
+  Runtime (1.20) accepts only the legacy call, so CoreML gets no
+  compiled-model cache there. It also compiles a copy of the graph of its
+  own, and
   computes float16 graphs wrong (the simulator bench of 2026-11-02 put the
   denoised window 2.6 off the fixture against 0.014 on the CPU); XNNPACK
   brings spinning threads of its own. The published graphs leave Clip's
@@ -284,10 +301,10 @@ flowchart TD
 | Symptom | Where to look |
 |---|---|
 | The model never calls `perform_motion` | It is only offered when `MotionSettings.offersTool` is true at session start: switch on **and** files present (`motion.generated.modelsReady`). Reconnect after downloading. |
-| `perform_motion` returns "unavailable" | A gate failed: local backend on, Reduce Motion on, files missing, or the stream could not start (the `[LiveMotion]` log says who owns the body). |
+| `perform_motion` returns "unavailable" | A gate failed: local backend on, Reduce Motion on, files missing, a pace or memory pause, or the body is held by the entrance, a pose or an episode (`[MotionStream] declined: the body is owned elsewhere`). |
 | The gesture starts late | The first window costs a text encode plus 10 denoiser steps, and its first step reads the weight sidecars from storage when the kernel has dropped their pages. `[Bench] motion window` lines give the per-window cost; `[ARDYMotion] Sessions ready` says which provider was used. |
 | The body freezes mid-gesture | The buffer ran dry: the next window was late. The body waits on its last pose and resumes when the window lands. The `[MotionStream] window N` lines give each window's wall time and the steps chosen next; a "too slow" end means even 4 steps could not keep up on this phone. |
-| The card says "Paused" | `MotionStreamHold`: the phone had less than 300 MB of allowance when the model was to load (or a memory warning dropped it), or two streams in a row were too slow. The `[MotionStream]` log lines carry the numbers. A pace pause lasts until the models reload: ten idle minutes, or leaving and returning to the OpenAI path. |
+| The card says "Paused" | `MotionStreamHold`: the phone had less than 300 MB of allowance when the model was to load (or a memory warning dropped it), or two streams in a row were too slow. The `[MotionStream]` log lines carry the numbers. A pace pause lifts when the pressure tier improves or the models reload (ten idle minutes, or leaving and returning to the OpenAI path); the card's line clears when the next stream is allowed to try. |
 | Every stream ends "too slow" | Each `[Bench] motion window` line gives the denoise time and its step count; at 0.5 s a step or more, 4 steps take as long as the window plays. The `window` line names the pressure tier (Low Power Mode and a serious thermal state cap the steps and the clock), and `[Bench] motion encode` says what the first window's text encode cost. Both runtime threads must be at user-initiated QoS (`motion_bridge.cpp`, `MotionStreamCoordinator.begin`): at utility the iPhone 11 took 1.1 s a step. |
 | The whole scene stutters while a gesture is generated | The runtime's threads: `motion_bridge_create` caps them at two, at user-initiated QoS under the render loop's user-interactive, without spinning. A stutter now points at memory pressure (watch the footprint in the window lines). |
 | The gestures look different from the review clips | The phone runs the publisher's fp32 numbers, so a visible difference points at the provider (the `[ARDYMotion] Sessions ready` line must say `cpu`); a float16 download from the bench folder would show 0.17 cm of drift, not a visible one. |
@@ -297,17 +314,23 @@ flowchart TD
 
 ## Known device-test items
 
-Nothing in this feature has run on a phone yet; everything above was proven
-in the simulator (x86) against the Python driver. On the iPhone 11 and the
-newest phone available:
+The iPhone 11 runs recorded below (2026-10-30 to 2026-11-03) cover loading,
+memory, pace, threads and the gesture itself; the other items here are
+still owed. On the iPhone 11 and the newest phone available:
 
-- `GeneratedMotionBench` first (model files bundled with the tests in the
-  git-ignored `NeuraLinkTests/MotionModels/`, or downloaded with
-  `NL_MOTION_MODEL_DOWNLOAD=1`): session creation time per provider, the
+- `GeneratedMotionBench`: session creation time per provider, the
   continuation-window time at 10 and 4 steps, footprint, thermal state,
-  twice in a row. The gate is under 1 s a window on the iPhone 11 and under
-  0.3 s on a recent phone, memory under 500 MB; the numbers decide between
-  the CoreML provider and XNNPACK/CPU on device.
+  twice in a row. The app's own files are the sidecar family: point
+  `NL_MOTION_MODEL_DIR` at the output of `scripts/ardy_external_graphs.py`
+  (or bundle it in the git-ignored `NeuraLinkTests/MotionModels/`).
+  `NL_MOTION_MODEL_DOWNLOAD=1` fetches the publisher's single-file fp32
+  graphs instead, whose Clip has no upper bound, so the CoreML provider
+  refuses them and reports a failure or a fallback, never a timing; CoreML
+  numbers need the patched graphs (`scripts/ardy_patch_graphs.py`), served
+  from the Mac (`python3 -m http.server` in the output folder) with
+  `NL_MOTION_MODEL_URL` set to that address. The gate is under 1 s a window
+  on the iPhone 11 and under 0.3 s on a recent phone; the numbers decide
+  whether another provider is worth what it costs in memory.
 - A gesture without an API key: the launch argument
   `-nl.debug.motionCaption "A person waves with the right hand."` plays the
   caption six seconds after the character appears (files required; the

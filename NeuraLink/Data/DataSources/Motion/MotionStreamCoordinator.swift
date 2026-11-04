@@ -8,15 +8,15 @@
 //  keeps `MotionStreamPolicy.leadSeconds` of decoded frames ahead of the
 //  playhead until the reply is over, spending fewer diffusion steps when the
 //  phone is warm or cannot generate a window faster than it plays. The
-//  model files load when the Realtime session starts, behind a memory gate,
-//  and are dropped when the user leaves the OpenAI path, after idling, or
-//  on a memory warning. See docs/GENERATIVE_MOTION.md.
+//  model files load when the Realtime session starts with gestures
+//  available, behind a memory gate, and are dropped when the user leaves
+//  the OpenAI path, after idling, or on a memory warning.
+//  See docs/GENERATIVE_MOTION.md.
 //
 //  Created by Dedicatus on 30/10/2026.
 //
 
 import Foundation
-import Observation
 import UIKit
 
 /// What the tool asked for.
@@ -53,41 +53,6 @@ extension MotionGenerationSession: MotionWindowProducer {
     }
 }
 
-/// Why no stream will run right now, for the Settings card: the phone is
-/// short of memory for the model, or it generates too slowly to keep up.
-@Observable
-final class MotionStreamHold {
-    static let shared = MotionStreamHold()
-
-    enum Reason: Equatable {
-        case memory(availableMB: Int)
-        case pace(secondsPerWindow: Float, tier: RuntimePressureTier)
-    }
-
-    private(set) var current: Reason?
-
-    private init() {}
-
-    var reason: String? {
-        switch current {
-        case .none: return nil
-        case .memory(let availableMB):
-            let needed = MotionStreamCoordinator.loadHeadroomBytes / 1_048_576
-            return "Paused: \(availableMB) MB of memory free, about \(needed) MB needed to load the model."
-        case .pace(let seconds, let tier):
-            let when = tier > .normal
-                ? "while hot or in Low Power Mode; gestures resume once it is back to normal."
-                : "too slow to keep up with speech. It will try again later."
-            return String(format: "Paused: this phone took %.1f s to generate 2 s of motion, ", seconds) + when
-        }
-    }
-
-    func set(_ reason: Reason?) {
-        guard reason != current else { return }
-        current = reason
-    }
-}
-
 @MainActor
 final class MotionStreamCoordinator {
     static let shared = MotionStreamCoordinator()
@@ -109,6 +74,14 @@ final class MotionStreamCoordinator {
     private var silentFor: Float = 0
     private var onReady: (() -> Void)?
     private var onFinished: ((String) -> Void)?
+    /// Counts streams, so work started for one (a replan) cannot end the next.
+    private var streamID = 0
+
+    /// Set by the scene: whether the body is free for a stream now (no pose,
+    /// entrance or episode holds it, a character is on screen). A request
+    /// the scene would drop is declined up front, so the tool does not
+    /// report a gesture that never plays.
+    var sceneCanStart: (() -> Bool)?
 
     /// Streams in a row that ended because even the fewest steps were too
     /// slow, and the pressure tier of the last of them; two in a row and no
@@ -196,7 +169,9 @@ final class MotionStreamCoordinator {
         }
         loading = Task(priority: .utility) { [weak self] in
             guard let files = await ARDYModelLocator.files() else {
-                self?.loading = nil
+                guard let self, !Task.isCancelled else { return }
+                loading = nil
+                pendingRequest = nil
                 return
             }
             let started = ContinuousClock.now
@@ -216,36 +191,45 @@ final class MotionStreamCoordinator {
                     return nil
                 }
             }.value
-            guard let self else { return }
-            if let loaded {
-                runtime = loaded.0
-                tokenizer = loaded.1
-                MotionStreamHold.shared.set(nil)
-                let read = loaded.0.weightsReadThrough
-                nlLog(
-                    "[MotionStream] models ready on \(loaded.0.provider.label) in \(Self.seconds(since: started)) s "
-                        + "(weights \(MemoryFootprint.megabytes(UInt64(read.bytes))) read through in \(Self.format(Float(read.seconds))) s): "
-                        + "\(MemoryFootprint.summary), available \(MemoryFootprint.megabytes(MemoryFootprint.availableBytes))",
-                    level: .info)
-            }
+            // An unload while the graphs were loading wins: nothing is
+            // installed, and a newer load's handle is left alone.
+            guard let self, !Task.isCancelled else { return }
             loading = nil
-            if let pending = pendingRequest {
-                pendingRequest = nil
-                request(pending)
-            }
+            let pending = pendingRequest
+            pendingRequest = nil
+            // A failed load drops the request: replaying it would only start
+            // the same load again.
+            guard let loaded else { return }
+            runtime = loaded.0
+            tokenizer = loaded.1
+            MotionStreamHold.shared.set(nil)
+            let read = loaded.0.weightsReadThrough
+            nlLog(
+                "[MotionStream] models ready on \(loaded.0.provider.label) in \(Self.seconds(since: started)) s "
+                    + "(weights \(MemoryFootprint.megabytes(UInt64(read.bytes))) read through in \(Self.format(Float(read.seconds))) s): "
+                    + "\(MemoryFootprint.summary), available \(MemoryFootprint.megabytes(MemoryFootprint.availableBytes))",
+                level: .info)
+            // The idle clock starts with the models, not with the first stream.
+            scheduleIdleUnload()
+            if let pending { request(pending) }
         }
         return true
     }
 
-    /// Drops the sessions (the OpenAI path was left, memory is short, or
-    /// nothing ran for a while); the next load judges the pace afresh.
+    /// Drops the sessions (the OpenAI path was left, memory is short, the
+    /// files were removed, or nothing ran for a while); the next load judges
+    /// the pace afresh. A running stream is finished, so the scene takes the
+    /// body back instead of holding the last pose.
     func unload() {
-        cancel()
+        if isStreaming { finish("models unloaded") } else { cancel() }
         loading?.cancel()
         loading = nil
+        pendingRequest = nil
         runtime = nil
         tokenizer = nil
         tooSlowStreak = 0
+        idleUnload?.cancel()
+        idleUnload = nil
     }
 
     /// A running stream is cut and the models go, whatever the state: a
@@ -266,21 +250,34 @@ final class MotionStreamCoordinator {
 
     // MARK: - Requests
 
-    /// From the tool handler. Returns false when no stream can run now.
+    /// From the tool handler. Returns false when no stream can run now,
+    /// including when the scene would drop it (a pose, the entrance or an
+    /// episode holds the body).
     @discardableResult
     func request(_ request: MotionStreamRequest) -> Bool {
         guard isAvailable else { return false }
+        if live != nil {
+            replan(with: request)
+            return true
+        }
+        guard sceneCanStart?() ?? true else {
+            nlLog("[MotionStream] declined: the body is owned elsewhere", level: .info)
+            return false
+        }
+        // The pace pause has lifted (a cooler tier, or a reload): the card
+        // stops saying so as this stream tries.
+        clearPaceHold()
         if runtime == nil {
             guard prepareIfNeeded() else { return false }
             pendingRequest = request
             return true
         }
-        if live != nil {
-            replan(with: request)
-            return true
-        }
         NotificationCenter.default.post(name: .liveMotionRequested, object: nil, userInfo: ["request": request])
         return true
+    }
+
+    private func clearPaceHold() {
+        if case .pace = MotionStreamHold.shared.current { MotionStreamHold.shared.set(nil) }
     }
 
     /// The scene's answer to `.liveMotionRequested`: a live session for its
@@ -295,6 +292,7 @@ final class MotionStreamCoordinator {
             finished("no runtime")
             return
         }
+        streamID += 1
         producer = source
         live = session
         onReady = ready
@@ -360,13 +358,16 @@ final class MotionStreamCoordinator {
     private func replan(with request: MotionStreamRequest) {
         guard let producer else { return }
         budget = min(policy.maxReplySeconds, generated + policy.budget(requested: request.seconds, continuous: request.continuous))
+        let stream = streamID
         Task(priority: .userInitiated) { [weak self] in
             do {
                 try await producer.replan(caption: request.caption)
                 nlLog("[MotionStream] replanned: \(request.caption)", level: .info)
             } catch {
                 nlLog("[MotionStream] replan failed: \(error)", level: .warning)
-                self?.finish("replan failed")
+                // Only the stream it was for; a newer one carries on.
+                guard let self, streamID == stream else { return }
+                finish("replan failed")
             }
         }
     }
@@ -424,7 +425,10 @@ final class MotionStreamCoordinator {
                     finish("too slow")
                     return
                 }
-                if !first { tooSlowStreak = 0 }
+                if !first {
+                    tooSlowStreak = 0
+                    clearPaceHold()
+                }
                 nlLog(
                     "[MotionStream] window \(windows): \(Self.format(wall)) s at \(steps) steps → \(next) (ceiling \(ceiling), \(tier)), "
                         + "lead \(Self.format(generated - playhead)) s, \(MemoryFootprint.summary)",

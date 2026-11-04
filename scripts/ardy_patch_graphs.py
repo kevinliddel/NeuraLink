@@ -61,11 +61,26 @@ def patch_clip_bounds(model):
     return fixed
 
 
+# The patch only spells out bounds Clip already had; anything beyond float
+# noise means it changed the graph.
+MAX_DELTA = 1e-5
+
+
+def max_difference(x, y):
+    """Largest |x - y| over the finite entries; infinite when the two
+    disagree on where the NaNs are."""
+    x64, y64 = x.astype(np.float64), y.astype(np.float64)
+    if not np.array_equal(np.isnan(x64), np.isnan(y64)):
+        return float("inf")
+    finite = ~np.isnan(x64)
+    return float(np.max(np.abs(x64[finite] - y64[finite]))) if finite.any() else 0.0
+
+
 def same_outputs(original, patched, feeds):
     outputs = [o.name for o in original.get_outputs()]
     a = original.run(outputs, feeds)
     b = patched.run(outputs, feeds)
-    return max(float(np.abs(x - y).max()) for x, y in zip(a, b) if x.dtype != np.bool_)
+    return max(max_difference(x, y) for x, y in zip(a, b) if x.dtype != np.bool_)
 
 
 def example_feeds(session):
@@ -109,6 +124,8 @@ def main():
         patched = ort.InferenceSession(str(out), providers=["CPUExecutionProvider"])
         delta = same_outputs(original, patched, example_feeds(original))
         print(f"{name}: {fixed} Clip bounds added, max |Δ| vs original {delta:.3g}, {out.stat().st_size / 2**20:.0f} MB")
+        if not delta <= MAX_DELTA:  # written so a NaN fails too
+            raise SystemExit(f"{name}: the patched graph's outputs differ from the original's by {delta:.3g}")
         entry = manifest["files"][f"{name}.onnx"]
         entry["sha256"], entry["size_bytes"] = sha256(out), out.stat().st_size
         entry.pop("transport", None)

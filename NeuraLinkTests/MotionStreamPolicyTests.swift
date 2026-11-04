@@ -79,5 +79,19 @@ struct MotionStreamPolicyTests {
         #expect(policy.shouldEnd(generated: 6, playhead: 6, budget: 6, speaking: true, silentFor: 0), "budget spent and played")
         #expect(policy.shouldEnd(generated: 4, playhead: 4, budget: 6, speaking: false, silentFor: 2), "silence past the tail and played")
         #expect(!policy.shouldEnd(generated: 4, playhead: 4, budget: 6, speaking: true, silentFor: 0), "speaking: more may come")
+        #expect(policy.shouldEnd(generated: 4, playhead: 3.95, budget: 4, speaking: true, silentFor: 0), "on the last frame")
+        #expect(!policy.shouldEnd(generated: 4, playhead: 3.9, budget: 4, speaking: true, silentFor: 0), "a frame still to play")
+    }
+
+    @Test("A buffer played to its end ends the stream (the playhead stops on the last frame)")
+    func endsOnTheBuffersLastFrame() {
+        let buffer = LiveMotionBuffer(framesPerSecond: 1 / policy.frameSeconds)
+        let rest = LiveMotionPose(rotations: [], hipsTranslation: .zero)
+        buffer.append([LiveMotionPose](repeating: rest, count: Int(policy.windowSeconds / policy.frameSeconds)))
+        _ = buffer.samplePlayer(at: 0)
+        _ = buffer.samplePlayer(at: 10)  // the player's clock runs on; the buffer's waits at its end
+        #expect(buffer.playhead < policy.windowSeconds, "the playhead never reaches the seconds generated")
+        #expect(policy.shouldEnd(
+            generated: policy.windowSeconds, playhead: buffer.playhead, budget: policy.windowSeconds, speaking: true, silentFor: 0))
     }
 }

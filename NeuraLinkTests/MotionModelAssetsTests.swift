@@ -56,8 +56,10 @@ struct MotionModelAssetsTests {
         #expect(RemoteAssetRegistry.motionDenoiserWeights.integrity?.size == 589_737_984)
     }
 
-    @Test("The policy's budget matches the model's window")
+    @Test("The policy's window and frame interval match the model's (40 frames at 20 fps)")
     func policyWindow() {
-        #expect(MotionStreamPolicy().windowSeconds == 2)
+        let policy = MotionStreamPolicy()
+        #expect(policy.windowSeconds == 2)
+        #expect((policy.windowSeconds / policy.frameSeconds).rounded() == 40)
     }
 }
