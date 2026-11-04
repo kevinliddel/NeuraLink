@@ -55,7 +55,7 @@ final class SystemTTSEngine: NSObject, TTSEngineProtocol {
                     .filter { $0.language.hasPrefix(prefix) }
                     .max { $0.quality.rawValue < $1.quality.rawValue }
                 utterance.voice = best ?? AVSpeechSynthesisVoice(language: language)
-                // Bent by how the user sounds right now (docs/LLM_VOICE.md).
+                // Bent by how the user sounds right now (docs/AI/LLM_VOICE.md).
                 utterance.rate = AVSpeechUtteranceDefaultSpeechRate * Float(modulation.speed)
                 utterance.pitchMultiplier = Float(modulation.pitch)
 

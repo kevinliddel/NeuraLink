@@ -4,7 +4,7 @@
 //
 //  Where on Earth the sky is drawn for, without asking: the place the
 //  device's time zone is named after, from a bundled table of the tz
-//  database's zones (sky_zones.txt, scripts/make_sky_tables.py). The
+//  database's zones (sky_zones.txt, scripts/assets/make_sky_tables.py). The
 //  Antananarivo zone puts the sun within a few minutes of its real rise and
 //  set anywhere in Madagascar, and no location permission is involved.
 //

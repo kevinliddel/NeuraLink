@@ -1,0 +1,283 @@
+//
+//  AISettingsView.swift
+//  NeuraLink
+//
+//  Created by Dedicatus on 16/04/2026.
+//
+
+import SwiftUI
+
+struct AISettingsView: View {
+    @Bindable var settings = OpenAISettings.shared
+    @Bindable var presence = PresenceSettings.shared
+    @State private var aiState = RealtimeChatState.shared
+    /// Voice model at open time; a change reconnects on Done.
+    @State private var realtimeModelAtOpen = OpenAISettings.shared.realtimeModel
+    private var downloader = LocalModelDownloadManager.shared
+    private var personaStore = PersonaStore.shared
+    @State private var showModelLibrary = false
+    @Environment(\.dismiss) private var dismiss
+    /// The onboarding tour opens this sheet for its beat about the gesture
+    /// switch on the Autonomy screen; this is the push it drives.
+    @State private var tutorial = TutorialCoordinator.shared
+    @State private var isAutonomyPushedForTour = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                openAISection
+                companionSection
+                localSLMSection
+                helpSection
+            }
+            .scrollIndicators(.hidden)
+            .navigationTitle("AI Settings")
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(isPresented: $isAutonomyPushedForTour) {
+                AutonomySettingsView()
+            }
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        triggerConnectionIfNeeded()
+                        dismiss()
+                    }
+                }
+            }
+        }
+        // The tour's beat about the gesture switch plays in here: its
+        // spotlight is cut in this sheet, not in the scene underneath, and
+        // the sheet can't be swiped away from under the card.
+        .overlay { TutorialOverlayHost(screen: .autonomySettings) }
+        .interactiveDismissDisabled(tutorial.isActive)
+        .onAppear { followTour(to: tutorial.screen) }
+        .onChange(of: tutorial.screen) { _, screen in followTour(to: screen) }
+    }
+
+    /// Pushes the Autonomy screen while the tour points inside it, and pops
+    /// it when the tour moves on (the scene then dismisses the sheet).
+    private func followTour(to screen: TutorialStep.Screen) {
+        isAutonomyPushedForTour = screen == .autonomySettings
+    }
+
+    // MARK: - Sections
+
+    /// Row into the dedicated Models screen, inside the OpenAI card.
+    private var modelsRow: some View {
+        SettingsLinkRow(symbol: "cpu", tint: .purple, title: "Models", subtitle: modelsSummary) {
+            ModelsSettingsView()
+        }
+        .disabled(!settings.isEnabled)
+    }
+
+    /// One-line status of the chosen models, shown under the row title.
+    private var modelsSummary: String {
+        guard settings.isEnabled else { return "Enable OpenAI to choose models" }
+        let usage =
+            aiState.sessionUsage.responses > 0
+            ? " · \(aiState.sessionUsage.summary)" : ""
+        return "\(settings.realtimeModel) · \(settings.textModel)\(usage)"
+    }
+
+    /// One card for everything cloud: the switch, the key, then the models
+    /// and the usage it drives (docs/AI/API_USAGE.md).
+    private var openAISection: some View {
+        Section {
+            Toggle("Enable OpenAI", isOn: $settings.isEnabled)
+
+            SecureField("API Key", text: $settings.apiKey)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .disabled(!settings.isEnabled)
+
+            modelsRow
+            UsageNavigationRow()
+                .disabled(!settings.isEnabled)
+        } header: {
+            Text("OpenAI")
+        } footer: {
+            Text(
+                settings.isEnabled
+                    ? "Voice runs in the cloud; the key never leaves the Keychain."
+                    : "Off, the local model answers (see On device).")
+        }
+    }
+
+    /// One card for who she is and how much she does on her own.
+    private var companionSection: some View {
+        Section {
+            personaRow
+            autonomyRow
+        } header: {
+            Text("Companion")
+        }
+    }
+    /// Replays the onboarding tour. The sheet has to go first — the tour
+    /// draws over the scene, so it would sit behind this sheet otherwise;
+    /// `replay()` waits out the dismiss animation before starting.
+    private var helpSection: some View {
+        Section {
+            Button {
+                dismiss()
+                TutorialCoordinator.shared.replay()
+            } label: {
+                Label("Replay Tutorial", systemImage: "graduationcap.fill")
+            }
+            .buttonStyle(.borderless)
+        } header: {
+            Text("Help")
+        } footer: {
+            Text("Walks through every button, toggle and gesture in the app.")
+        }
+    }
+
+    private var localSLMSection: some View {
+        Section {
+            NavigationLink {
+                ModelLibraryView()
+            } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Model Library")
+                            .font(.headline)
+                        Text(downloader.selectedConfig.rawValue)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    stateBadge
+                }
+            }
+            .foregroundStyle(.primary)
+
+            if downloader.isAvailable {
+                Toggle("Use Local SLM (Offline)", isOn: $settings.isLocalLLMEnabled)
+            }
+
+            if settings.isLocalLLMEnabled {
+                Text("Runs completely offline on the Apple Neural Engine. No internet required.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("On device LLMs")
+        } footer: {
+            VStack(alignment: .leading, spacing: 8) {
+                if case .failed(let msg) = downloader.state {
+                    Text("Download failed: \(msg)")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+            }
+        }
+    }
+
+    private var personaRow: some View {
+        _ = personaStore.lastUpdated  // Observe changes
+        let modelID = RealtimeChatState.shared.selectedCharacterName
+        let persona = CharacterPersona.forCharacter(named: modelID)
+        let avatarImage: UIImage? = VRMModelRegistry.shared.all
+            .first { $0.name.lowercased() == modelID.lowercased() }
+            .flatMap { entry -> UIImage? in
+                let pngURL = entry.url.deletingPathExtension().appendingPathExtension("png")
+                guard FileManager.default.fileExists(atPath: pngURL.path) else { return nil }
+                return UIImage(contentsOfFile: pngURL.path)
+            }
+        return NavigationLink {
+            PersonaSettingsView(modelID: modelID)
+        } label: {
+            HStack(spacing: 12) {
+                if let img = avatarImage {
+                    Image(uiImage: img)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 44, height: 44)
+                        .clipped()
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(Color.primary.opacity(0.15), lineWidth: 1))
+                        .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
+                } else {
+                    Circle()
+                        .fill(Color.secondary.opacity(0.15))
+                        .frame(width: 44, height: 44)
+                        .overlay(Circle().stroke(Color.primary.opacity(0.15), lineWidth: 1))
+                        .overlay(Image(systemName: "person.fill").foregroundStyle(.secondary))
+                        .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(persona.name)
+                        .font(.headline)
+                    Text(settings.isLocalLLMEnabled ? "System Prompt" : "Instructions & Voice")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    /// Entry into AutonomySettingsView, whose preset names the summary.
+    private var autonomyRow: some View {
+        SettingsLinkRow(
+            symbol: "wand.and.stars", tint: .cyan, title: "Autonomy", subtitle: autonomySummary
+        ) {
+            AutonomySettingsView()
+        }
+    }
+
+    /// The preset in force, plus the permission-gated extras that are on.
+    private var autonomySummary: String {
+        _ = settings.isVADEnabled
+        _ = presence.isPresenceEnabled
+        _ = presence.isProactiveEngagementEnabled
+        var parts = [AutonomyPreset.current()?.title ?? "Custom"]
+        if settings.isEnabled && settings.isProactiveVisionEnabled { parts.append("Vision") }
+        if presence.isDeskPresenceEnabled { parts.append("Desk") }
+        if GroundingSettings.shared.isCalendarEnabled || GroundingSettings.shared.isSleepEnabled {
+            parts.append("Grounding")
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    // MARK: - Sub-views
+
+    @ViewBuilder
+    private var stateBadge: some View {
+        switch downloader.state {
+        case .bundled:
+            Label("Built-in", systemImage: "checkmark.seal.fill")
+                .font(.caption.bold())
+                .foregroundStyle(.green)
+        case .ready:
+            Label("Ready", systemImage: "checkmark.circle.fill")
+                .font(.caption.bold())
+                .foregroundStyle(.green)
+        case .downloading:
+            Label("Downloading…", systemImage: "arrow.down.circle")
+                .font(.caption.bold())
+                .foregroundStyle(.blue)
+        case .paused:
+            Label("Paused", systemImage: "pause.circle")
+                .font(.caption.bold())
+                .foregroundStyle(.secondary)
+        case .notDownloaded:
+            Label("Not downloaded", systemImage: "arrow.down.circle.dotted")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        case .failed:
+            Label("Failed", systemImage: "xmark.circle.fill")
+                .font(.caption.bold())
+                .foregroundStyle(.red)
+        }
+    }
+
+    private func triggerConnectionIfNeeded() {
+        if settings.isEnabled && settings.hasValidKey {
+            if settings.realtimeModel != realtimeModelAtOpen {
+                OpenAIRealtimeManager.shared.disconnect()
+            }
+            OpenAIRealtimeManager.shared.connect()
+        } else if settings.isLocalLLMEnabled && LocalModelDownloadManager.shared.isAvailable {
+            LocalLLMManager.shared.startListening()
+        }
+    }
+}

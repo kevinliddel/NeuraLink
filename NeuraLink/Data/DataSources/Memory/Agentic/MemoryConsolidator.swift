@@ -2,7 +2,7 @@
 //  MemoryConsolidator.swift
 //  NeuraLink
 //
-//  Observation consolidation (docs/AGENTIC_MEMORY.md §Observations). Folds
+//  Observation consolidation (docs/Memory/AGENTIC_MEMORY.md §Observations). Folds
 //  freshly retained world/experience facts into deduplicated observations:
 //  for each batch the existing observations are pooled via recall, one LLM
 //  call returns CREATE / UPDATE / DELETE actions, and a cosine dedup guard

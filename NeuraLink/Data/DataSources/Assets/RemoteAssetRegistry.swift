@@ -58,13 +58,13 @@ nonisolated enum RemoteAssetRegistry: Hashable, Sendable {
 
     // Generated body motion — ARDY-mini's text encoder, denoiser and decoder
     // (ONNX, Clip bounds made explicit for the CoreML provider by
-    // scripts/ardy_patch_graphs.py, the float32 weights of each graph moved
-    // into a sidecar it names, by scripts/ardy_external_graphs.py, so the
+    // scripts/motion/ardy_patch_graphs.py, the float32 weights of each graph moved
+    // into a sidecar it names, by scripts/motion/ardy_external_graphs.py, so the
     // runtime memory-maps them instead of holding them), model.json and the
     // WordPiece tokenizer. Hosted under `motion/ardy-mini-external/` in the
     // shared dataset (`motion/ardy-mini/` and `motion/ardy-mini-fp16/` hold
     // the single-file fp32 and float16 families for the bench); never
-    // bundled (docs/GENERATIVE_MOTION.md).
+    // bundled (docs/Engine/GENERATIVE_MOTION.md).
     case motionManifest
     case motionTextEncoder
     case motionTextEncoderWeights
@@ -129,11 +129,14 @@ nonisolated enum RemoteAssetRegistry: Hashable, Sendable {
 
     /// Where to download from. Everything lives in the shared dataset except
     /// assets that are re-used verbatim from a public model repo, which are
-    /// still pinned by size + SHA-256 like the rest.
+    /// still pinned by size + SHA-256 like the rest. Those also name the commit
+    /// the hash was taken from: a re-upload on a repo we don't own would
+    /// otherwise fail the pin and break the download.
     var remoteURL: URL? {
         switch self {
         case .embeddingModel:
-            return URL(string: "https://huggingface.co/ggml-org/embeddinggemma-300M-GGUF/resolve/main/\(filename)")
+            return URL(
+                string: "https://huggingface.co/ggml-org/embeddinggemma-300M-GGUF/resolve/0f741b5a6585bd53aeb15cd1372c56f2a0f65e12/\(filename)")
         default:
             return URL(string: "https://huggingface.co/datasets/\(Self.repoID)/resolve/main/\(pathInRepo)")
         }
@@ -218,8 +221,8 @@ nonisolated enum RemoteAssetRegistry: Hashable, Sendable {
                 size: 333_590_944,
                 sha256: "b5ce9d77a3fc4b3b39ccb5643c36777911cc4eb46a66962eadfa3f5f60490d63")
         // intsuc/Llama-3-ARDY-Mini-Core40-Browser fp32, Clip bounds patched
-        // (scripts/ardy_patch_graphs.py) and each graph's weights moved into
-        // its sidecar (scripts/ardy_external_graphs.py); hashes of those
+        // (scripts/motion/ardy_patch_graphs.py) and each graph's weights moved into
+        // its sidecar (scripts/motion/ardy_external_graphs.py); hashes of those
         // files, captured 2026-11-02. Re-capture if the folder is re-uploaded.
         case .motionManifest:
             return .init(size: 72_805, sha256: "8ee927bd29ecdf7879d5725f73dc3504c3518fdfd59b8940e01874bf92ce5343")

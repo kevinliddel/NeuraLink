@@ -904,8 +904,8 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/argmaxinc/argmax-oss-swift";
 			requirement = {
-				branch = main;
-				kind = branch;
+				kind = revision;
+				revision = 80d96762fa727f816ffceab76a6529cd12c2726f;
 			};
 		};
 		041E13982F913E1500D2D110 /* XCRemoteSwiftPackageReference "Starscream" */ = {

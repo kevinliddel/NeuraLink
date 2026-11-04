@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  Fetches the calendar and sleep lines once per foreground visit and
-//  holds them for the Companion State block (docs/LIVING_COMPANION.md),
+//  holds them for the Companion State block (docs/Companion/LIVING_COMPANION.md),
 //  the same freeze the time-apart line uses, so the block reads the same
 //  on every turn of a session. When a fetch lands after the first block
 //  was built, the Realtime instructions are refreshed.

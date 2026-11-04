@@ -2,7 +2,7 @@
 //  AcousticAffectState.swift
 //  NeuraLink
 //
-//  The current read on how the user sounds (docs/LLM_VOICE.md). Each
+//  The current read on how the user sounds (docs/AI/LLM_VOICE.md). Each
 //  engine's VAD hands over the utterance's features; the transcript then
 //  adds the word count and the turn is classified against the user's own
 //  baseline. The local prompt builder, the Realtime handler and the local

@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  `search_memory` tool — lets the model query long-term memory
-//  agentically mid-conversation (docs/AGENTIC_MEMORY.md §Reflect). Runs the
+//  agentically mid-conversation (docs/Memory/AGENTIC_MEMORY.md §Reflect). Runs the
 //  zero-LLM retrieval ladder and hands the evidence back as text for the
 //  model to reason over.
 //

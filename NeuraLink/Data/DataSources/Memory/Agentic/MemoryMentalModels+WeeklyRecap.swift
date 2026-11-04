@@ -2,7 +2,7 @@
 //  MemoryMentalModels+WeeklyRecap.swift
 //  NeuraLink
 //
-//  The weekly recap standing question (docs/MEMORY_OWNERSHIP.md): a
+//  The weekly recap standing question (docs/Memory/MEMORY_OWNERSHIP.md): a
 //  per-character summary of the week — Monday to now — built from dated
 //  facts, observations and journal entries. It is a weekend thing: written
 //  on Saturday/Sunday (refreshed there as new memories arrive), and only

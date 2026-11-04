@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  Single authoritative clock for "when did the user last interact" —
-//  Living Companion (docs/LIVING_COMPANION.md).
+//  Living Companion (docs/Companion/LIVING_COMPANION.md).
 //
 //  Two signals with different lifetimes:
 //    • lastUserSpeechAt — in-memory, per-launch; feeds in-session silence

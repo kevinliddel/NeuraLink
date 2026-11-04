@@ -15,9 +15,8 @@
 //          cycle (including while the screen is locked again), which keeps
 //          background features that may fire post-screen-lock working.
 //        * `.complete` would be stricter but would lock out any code path
-//          that runs while the screen is dimmed/locked — the app currently
-//          has no `UIBackgroundModes` so this is a future concern, but the
-//          chosen class is the conservative match.
+//          that runs while the screen is dimmed/locked — the opt-in
+//          background audio session and background fetch both do.
 //    - The parent directory is marked `isExcludedFromBackup` so its
 //      contents do not get copied to iCloud / iTunes backups even when
 //      backups are encrypted. Files created inside the directory inherit

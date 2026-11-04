@@ -59,15 +59,11 @@ agents/
 .clauderules
 .github/copilot-instructions.md
 
-# Local-only optimization backlog (working notes, not shipped)
-docs/OPT.md
-docs/COMPANION_EVOLUTION.md
-docs/VRM_RENDERING_PLAN.md
-docs/SKY_PLAN.md
-docs/REALTIME_MOTION_PLAN.md
+# Local-only plans and backlogs (working notes, not shipped)
+docs/Plans/
 
 CustomSources/
-scripts/__pycache__
+scripts/**/__pycache__/
 CustomParts/
 
 # Local model files for GeneratedMotionBench (bundled with the tests when present)

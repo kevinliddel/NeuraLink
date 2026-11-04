@@ -2,7 +2,7 @@
 //  AcousticFeatureExtractor.swift
 //  NeuraLink
 //
-//  Per-utterance acoustic features for AcousticAffect (docs/LLM_VOICE.md):
+//  Per-utterance acoustic features for AcousticAffect (docs/AI/LLM_VOICE.md):
 //  frame RMS, a lag-domain autocorrelation pitch estimate on voiced frames,
 //  and inner pauses. Runs once per utterance on a few seconds of mono
 //  audio; the input is decimated to ≤ 16 kHz first so the pitch search

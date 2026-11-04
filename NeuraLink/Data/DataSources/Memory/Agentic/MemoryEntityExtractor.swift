@@ -2,7 +2,7 @@
 //  MemoryEntityExtractor.swift
 //  NeuraLink
 //
-//  No-LLM entity extraction for memory units (docs/AGENTIC_MEMORY.md
+//  No-LLM entity extraction for memory units (docs/Memory/AGENTIC_MEMORY.md
 //  §Retain). Uses NLTagger name recognition (people, places,
 //  organisations) with a capitalised-word fallback so entity linking works
 //  on the simulator and for languages without a name-tagging model. The

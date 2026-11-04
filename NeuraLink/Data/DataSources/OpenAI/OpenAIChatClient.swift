@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  One-shot Chat Completions client — Living Companion
-//  (docs/LIVING_COMPANION.md). Consolidates the hand-rolled
+//  (docs/Companion/LIVING_COMPANION.md). Consolidates the hand-rolled
 //  URLRequest copies (ConversationTitler, VisionAnalyzer, TTS callers) so
 //  background text calls (titling, reflection) share one implementation.
 //  The Realtime/WebRTC voice path is separate and unaffected.

@@ -2,7 +2,7 @@
 //  MemoryReflect.swift
 //  NeuraLink
 //
-//  Reflect (docs/AGENTIC_MEMORY.md §Reflect): Hindsight's retrieval ladder
+//  Reflect (docs/Memory/AGENTIC_MEMORY.md §Reflect): Hindsight's retrieval ladder
 //  — fresh mental models first, then observations, then raw facts — with
 //  the descent stopping as soon as enough evidence exists. `evidence(for:)`
 //  is the zero-LLM ladder used by the `search_memory` tool so the main

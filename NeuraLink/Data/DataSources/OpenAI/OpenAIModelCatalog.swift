@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  Curated model ids for the three OpenAI roles the app uses
-//  (docs/CHAT_LLM.md). A fixed list per role — every text entry is a
+//  (docs/AI/CHAT_LLM.md). A fixed list per role — every text entry is a
 //  Chat Completions model with function calling + image input; realtime
 //  entries are the conversational Realtime API models; transcription
 //  entries are the ids a Realtime session accepts for input transcription.

@@ -58,11 +58,11 @@ brew install swiftlint clang-format cppcheck
 After every coding session, run:
 
 ```bash
-swiftlint lint --strict     # Swift
-scripts/lint-cpp.sh         # C/C++ bridge code (clang-format + cppcheck)
+swiftlint lint --strict       # Swift
+scripts/tools/lint-cpp.sh     # C/C++ bridge code (clang-format + cppcheck)
 ```
 
-`scripts/lint-cpp.sh` only covers our first-party bridge code in `NeuraLink/Core/Bridge/` — the upstream `llama.cpp/` tree and `NeuraLink/Dependencies/` are never formatted or linted.
+`scripts/tools/lint-cpp.sh` only covers our first-party bridge code in `NeuraLink/Core/Bridge/` — the upstream `llama.cpp/` tree and `NeuraLink/Dependencies/` are never formatted or linted.
 
 Fix **all** reported violations before opening a Pull Request. The CI pipeline enforces both checks and will block merging if any lint error or warning is present.
 
@@ -72,18 +72,44 @@ Fix **all** reported violations before opening a Pull Request. The CI pipeline e
 
 ```
 NeuraLink/
-├── NeuraLink/           — Main application target
-│   ├── App/             — Application entry point, root views, and global configurations
-│   ├── Core/            — Low-level rendering engines, bridges, and utilities
-│   ├── Data/            — Data sources, repository implementations, and mappers
-│   ├── Domain/          — Business logic, entities, use cases, and repository interfaces
-│   └── Presentation/    — SwiftUI views, view models, and UI components
-├── NeuraLinkTests/      — Unit tests
-├── NeuraLinkUITests/    — UI tests
-└── docs/                — Project documentation and screenshots
+├── NeuraLink/                 — Main application target
+│   ├── App/                   — Entry point, root views, App Intents, bundled resources
+│   ├── Core/                  — Engines, bridges and cross-cutting utilities
+│   │   ├── Bridge/            — llama.cpp C++ bridge (the only first-party C/C++)
+│   │   ├── Engine/            — Metal engine: VRM/, Sky/, Rain/, Terrain/
+│   │   ├── Notifications/     — Companion notification scheduling and copy
+│   │   ├── Security/          — Keychain and Data Protection helpers
+│   │   └── Utils/             — Logging/ and small shared helpers
+│   ├── Data/
+│   │   ├── DataSources/       — One folder per feature: OpenAI/, LocalLLM/, GGUF/, STT/, TTS/,
+│   │   │                        Memory/, Motion/, Companion/, BeyondApp/, Vision/, Photos/, …
+│   │   └── Repositories/      — Persistence facades (settings, personas, profile, …)
+│   ├── Domain/
+│   │   ├── Entities/          — Pure models grouped by feature: Chat/, Companion/, Character/,
+│   │   │                        Motion/, Skills/, Appearance/, Tutorial/, System/
+│   │   └── Interfaces/        — Engine protocols
+│   ├── Presentation/
+│   │   ├── Components/        — Reusable controls (Tutorial/ holds the spotlight tour)
+│   │   ├── ViewModels/
+│   │   └── Views/             — Chat/, Memory/, Journal/, Settings/, Overlays/, Characters/, Camera/
+│   └── Dependencies/          — Vendored xcframeworks (VOICEVOX, Whisper, …)
+├── NeuraLinkShared/           — Code shared by the app and the widget extension
+├── NeuraLinkWidgets/          — Widgets and Live Activity extension
+├── NeuraLinkTests/            — Unit tests, grouped like the app: App/, Engine/, Animation/, Motion/,
+│                                Characters/, Chat/, LocalLLM/, Memory/, Companion/, BeyondApp/, Security/
+├── NeuraLinkUITests/          — UI tests
+├── docs/                      — Feature documentation (see the README for the index)
+│   ├── AI/  Memory/  Companion/  Engine/  Security/
+│   └── Assets/                — Screenshots and images used by the docs and the README
+└── scripts/
+    ├── tools/                 — C/C++ lint and the dSYM helper for archives
+    ├── motion/                — ARDY model tooling: graph patching, batch driver, VRMA writer
+    └── assets/                — Generators for bundled and dataset assets (VRMA clips, parts, sky tables)
 ```
 
 The project follows **Clean Architecture** principles. **Do not** mix concerns across layers — UI components (Presentation) should only interact with ViewModels, which coordinate with Domain UseCases.
+
+New files go into the feature folder they belong to, never loose in `Data/DataSources/`, `Domain/Entities/` or the root of `NeuraLinkTests/`. When a folder grows past roughly 15 files, give its largest group (a type and its `+` extensions, or one sub-feature) its own subfolder. The Xcode groups are synchronized with the file system, so moving a file needs no project edit. New docs go into the matching `docs/` category, with images in `docs/Assets/`.
 
 ---
 
@@ -166,7 +192,7 @@ refactor(vrm): split VRMLoader into parser and builder modules
 
 2. Ensure all of the following pass locally:
    - `swiftlint lint --strict` — zero warnings, zero errors.
-   - `scripts/lint-cpp.sh` — clean clang-format + cppcheck (only if you touched C/C++ bridge code).
+   - `scripts/tools/lint-cpp.sh` — clean clang-format + cppcheck (only if you touched C/C++ bridge code).
    - The Xcode build succeeds on the simulator (`Cmd+B`).
    - All unit tests pass (`Cmd+U`).
 

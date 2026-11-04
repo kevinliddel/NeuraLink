@@ -289,7 +289,7 @@ final class VoiceVoxEngine: NSObject, @unchecked Sendable, TTSEngineProtocol {
                 voicevox_json_free(originalJsonPtr)
 
                 // House defaults (1.1 / 1.5), bent by how the user sounds
-                // right now (AcousticAffect, docs/LLM_VOICE.md).
+                // right now (AcousticAffect, docs/AI/LLM_VOICE.md).
                 queryJson = queryJson.replacingOccurrences(
                     of: "\"speedScale\":1.0",
                     with: String(format: "\"speedScale\":%.2f", 1.1 * modulation.speed)

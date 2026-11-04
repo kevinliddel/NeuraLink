@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  Rule-based temporal query analyser for the temporal arm of recall and
-//  for resolving relative dates at retain time (docs/AGENTIC_MEMORY.md
+//  for resolving relative dates at retain time (docs/Memory/AGENTIC_MEMORY.md
 //  §Temporal). Hindsight uses `dateparser`; on-device we combine
 //  NSDataDetector (absolute dates) with a small set of relative-expression
 //  rules ("yesterday", "last week", "3 days ago", "in March").

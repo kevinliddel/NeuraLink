@@ -2,7 +2,7 @@
 //  AffectSettings.swift
 //  NeuraLink
 //
-//  Toggle for acoustic affect sensing (docs/LLM_VOICE.md). Same storage
+//  Toggle for acoustic affect sensing (docs/AI/LLM_VOICE.md). Same storage
 //  idiom as PresenceSettings: explicit `_x` backing, never `didSet`.
 //
 //  Created by Dedicatus on 16/10/2026.

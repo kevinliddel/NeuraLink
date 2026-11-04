@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  Tokeniser + BM25 scorer for the keyword arm of recall
-//  (docs/AGENTIC_MEMORY.md §Recall). Hindsight uses Postgres full-text
+//  (docs/Memory/AGENTIC_MEMORY.md §Recall). Hindsight uses Postgres full-text
 //  search; on-device we store a normalised token string per unit at insert
 //  time and score BM25 in Swift over the (small) corpus, which avoids
 //  depending on an FTS5 build of SQLCipher.

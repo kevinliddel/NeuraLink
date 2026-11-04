@@ -1,0 +1,301 @@
+//
+//  LocalLLMManager+Engine.swift
+//  NeuraLink
+//
+//  LocalLLMEngineDelegate implementation.
+//  Handles tokens as they are streamed from the local SLM.
+//
+//  Created by Dedicatus on 10/05/2026.
+//
+
+import Foundation
+
+extension LocalLLMManager: LocalLLMEngineDelegate {
+
+    func localLLM(didGenerateToken token: String) {
+        // A cue's reply is checked whole before anything is shown or said.
+        if activeCueInstruction != nil { return }
+        let piece = replyLabelFilter.feed(token)
+        guard !piece.isEmpty else { return }
+        tagBuffer += piece
+
+        let (cleanText, emotions) = drainTagBuffer()
+
+        if !firstTokenLatencyLogged,
+            let start = turnStartNs,
+            !cleanText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            firstTokenLatencyLogged = true
+            let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000.0
+            nlLog(
+                "[LocalLLM] First token latency: \(String(format: "%.1f", elapsedMs)) ms",
+                level: .info)
+        }
+
+        // Coalesce into the typewriter rather than a per-token Task{@MainActor}:
+        // the status flip, emotion triggers, and the smooth transcript reveal
+        // all happen on its single ~33 fps tick (Fix 2 typewriter + Fix 3
+        // coalesce). Emotion tags are intercepted here so they never appear in
+        // the UI or reach TTS, matching the OpenAI set_emotion() path.
+        transcriptTypewriter.enqueue(text: cleanText, emotions: emotions)
+
+        guard !cleanText.isEmpty else { return }
+
+        ttsBuffer += cleanText
+
+        // Two-tier sentence/clause chunking : emit whole
+        // sentences where possible for natural TTS prosody and fewer (slow)
+        // synthesis calls, but break at a clause boundary once a sentence runs
+        // long, and break aggressively for the *first* chunk of the turn so
+        // audio starts as soon as possible
+        let isCJK = ttsBuffer.unicodeScalars.contains { s in
+            (0x3040...0x30FF).contains(s.value)  // Hiragana + Katakana
+                || (0x4E00...0x9FFF).contains(s.value)  // CJK Unified Ideographs
+        }
+        // Hard sentence ends: JP 。！？, newline, and Latin ". "/"! "/"? ". A
+        // bare "." is NOT a break — avoids splitting decimals/abbreviations
+        // like "3.14" or "Mr." mid-number (`hasLatinSentenceEnd`).
+        let endsSentence =
+            ttsBuffer.contains { "。！？\n".contains($0) }
+            || hasLatinSentenceEnd(ttsBuffer)
+        // Soft clause boundaries: JP 、，…, and Latin ", ".
+        let hasClause =
+            ttsBuffer.contains { "、，…".contains($0) }
+            || ttsBuffer.contains(", ")
+        let len = ttsBuffer.count
+        // English needs a space so we never split mid-word; CJK has no spaces,
+        // so the count gates apply once the buffer holds kana/ideographs.
+        let hasSpaceOrCJK = ttsBuffer.contains(" ") || isCJK
+
+        let shouldFlush: Bool
+        if firstTTSChunkPending {
+            // First chunk: flush at the earliest boundary or a short run.
+            shouldFlush = endsSentence || hasClause || (len >= 12 && hasSpaceOrCJK)
+        } else {
+            // Later chunks: whole sentences; clause only once the run is long;
+            // hard count cap as the runaway safety net.
+            shouldFlush =
+                endsSentence
+                || (hasClause && len >= 40)
+                || (len >= 64 && hasSpaceOrCJK)
+        }
+
+        if shouldFlush {
+            let chunkToSpeak = ttsBuffer
+            ttsBuffer = ""
+            firstTTSChunkPending = false
+            speakChunk(chunkToSpeak)
+        }
+    }
+
+    /// True if `s` contains a Latin sentence terminator that should break a
+    /// TTS chunk: ".", "!" or "?" immediately followed by whitespace or the
+    /// end of the buffer. A "." sitting between two digits (e.g. "3.14") is
+    /// ignored so decimals — and, by the trailing-flush at end of generation,
+    /// abbreviations like "Mr." mid-stream — don't fragment the audio.
+    private func hasLatinSentenceEnd(_ s: String) -> Bool {
+        let chars = Array(s)
+        for i in chars.indices {
+            let c = chars[i]
+            guard c == "." || c == "!" || c == "?" else { continue }
+            let next: Character = (i + 1 < chars.count) ? chars[i + 1] : " "
+            if c == "." {
+                let prev: Character = (i > 0) ? chars[i - 1] : " "
+                if prev.isNumber && next.isNumber { continue }  // decimal, e.g. 3.14
+            }
+            if next == " " || next == "\n" { return true }
+        }
+        return false
+    }
+
+    // Drains tagBuffer: returns (cleanText, [(emotion, duration)]).
+    // Emotion tags are extracted and returned; all other text is returned as cleanText.
+    // Leaves any partial open tag (no closing ']' yet) in tagBuffer for the next token.
+    private func drainTagBuffer() -> (String, [(String, Float)]) {
+        var clean = ""
+        var emotions: [(String, Float)] = []
+
+        while !tagBuffer.isEmpty {
+            guard let openIdx = tagBuffer.firstIndex(of: "[") else {
+                clean += tagBuffer
+                tagBuffer = ""
+                break
+            }
+            // Flush text that precedes the '['
+            clean += String(tagBuffer[..<openIdx])
+            tagBuffer = String(tagBuffer[openIdx...])
+
+            guard let closeIdx = tagBuffer.firstIndex(of: "]") else {
+                // No closing bracket yet — keep buffering if short enough for a tag
+                if tagBuffer.count > 20 {
+                    clean += tagBuffer
+                    tagBuffer = ""
+                }
+                break
+            }
+
+            let candidate = String(tagBuffer[...closeIdx])
+            tagBuffer = String(tagBuffer[tagBuffer.index(after: closeIdx)...])
+
+            if let (emotion, duration) = matchEmotionTag(candidate) {
+                emotions.append((emotion, duration))
+            } else {
+                clean += candidate
+            }
+        }
+        return (clean, emotions)
+    }
+
+    private func matchEmotionTag(_ s: String) -> (String, Float)? {
+        let pattern =
+            #"(?i)^\[(happy|angry|sad|relaxed|surprised|shocked|shy|embarrassed|bored|confused|wink|neutral):(\d+(?:\.\d+)?)\]$"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let ns = s as NSString
+        let range = NSRange(location: 0, length: ns.length)
+        guard let m = regex.firstMatch(in: s, range: range),
+            m.numberOfRanges >= 3,
+            let r1 = Range(m.range(at: 1), in: s),
+            let r2 = Range(m.range(at: 2), in: s),
+            let duration = Float(s[r2])
+        else { return nil }
+        return (String(s[r1]).lowercased(), duration)
+    }
+
+    func localLLM(didFinishGeneration fullText: String) {
+        let names = replyLabelNames
+        if let instruction = activeCueInstruction {
+            activeCueInstruction = nil
+            guard let line = CueReplyValidator.clean(fullText, instruction: instruction, names: names) else {
+                nlLogSensitive("[LocalLLM] Cue reply dropped (echoed or narrated its instruction): \(fullText.prefix(80))",
+                               level: .info)
+                transcriptTypewriter.endGeneration()
+                if state.status == .thinking { state.status = .ready }
+                return
+            }
+            // Now through the normal path: emotion tags, typewriter, TTS chunks.
+            localLLM(didGenerateToken: line)
+            finishTurn(line, isCue: true)
+            return
+        }
+        let held = replyLabelFilter.flush()
+        if !held.isEmpty { localLLM(didGenerateToken: held) }
+        finishTurn(LeadingLabelFilter.strip(fullText, names: names), isCue: false)
+    }
+
+    /// Names a reply might be labelled with.
+    var replyLabelNames: [String] {
+        let character = state.selectedCharacterName
+        let names = [state.characterDisplayName, character.capitalized, CharacterPersona.forCharacter(named: character).name]
+        // The Japanese persona names itself in katakana (オズ), not "Oz".
+        return names + [LocalLLMPromptStore.shared.japaneseName(for: character)].compactMap { $0 }
+    }
+
+    private func finishTurn(_ fullText: String, isCue: Bool) {
+        if let start = turnStartNs {
+            let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000.0
+            nlLog(
+                "[LocalLLM] Turn total latency: \(String(format: "%.1f", elapsedMs)) ms",
+                level: .info)
+        }
+
+        // Full final response at debug level — useful for inspecting what the
+        // model actually produced (including tool-call blocks and emotion
+        // tags before LocalToolCallParser / drainTagBuffer strip them out).
+        nlLog("[LocalLLM] Full AI response: \(fullText)", level: .debug)
+
+        // Local tool calls are grammar-constrained to the curated set in
+        // `ToolGrammarBuilder.localToolNames` (docs/AI/CHAT_LLM.md), so the JSON
+        // parses; anything outside that set is ignored and
+        // stripped from the transcript by `strippedText` below. Emotion stays
+        // separate ([emotion:n] tags via tagBuffer).
+        if let tool = LocalToolCallParser.firstToolCall(in: fullText),
+            ToolGrammarBuilder.localToolNames.contains(tool.name) {
+            nlLog(
+                "֎ [FunctionCall] LocalLLM emitted <tool name=\"\(tool.name)\"> with args \(tool.arguments)",
+                level: .info
+            )
+            Task { @MainActor in
+                let result = await AppFunctionExecutor.shared.execute(
+                    name: tool.name, arguments: tool.arguments)
+                ChatTimelineStore.logToolCall(name: tool.name, result: result)
+                // Recall and fact-filing are bookkeeping: the raw result is
+                // for the model, not something to put on screen or read
+                // aloud. Every other tool still reports back.
+                if !ChatTimelineStore.isSilentTool(tool.name) {
+                    self.transcriptTypewriter.setImmediate(result)
+                    self.speakChunk(result)
+                }
+                // Also for an active phone episode with nothing to open
+                // (reminders): the drain is what puts the phone away.
+                if AppFunctionExecutor.shared.pendingUIAction != nil || PhoneEpisode.isActive {
+                    self.schedulePendingUIActionAfterSpeech()
+                }
+            }
+        }
+
+        // RAG: Store in long-term memory — skip for Japanese model because English user
+        // queries mixed with Japanese AI responses produce low-quality embeddings that
+        // degrade future RAG retrieval across all models sharing the same memory store.
+        let userText = state.userTranscript
+        let isLLMjp = LocalModelDownloadManager.shared.selectedConfig == .llmJp3
+        // A cue has no user words of its own (userTranscript is the previous turn's).
+        if !isLLMjp && !isCue {
+            RAGManager.shared.store(text: userText, source: "user")
+        }
+        let stripped = LocalToolCallParser.strippedText(fullText)
+        if !stripped.isEmpty {
+            if !isLLMjp {
+                RAGManager.shared.store(text: stripped, source: "ai")
+            }
+            ChatTimelineStore.logAIMessage(stripped)
+        }
+
+        // Flush any partial tag buffer (e.g. generation stopped mid-tag)
+        if !tagBuffer.isEmpty {
+            let (leftover, emotions) = drainTagBuffer()
+            let remaining = leftover + tagBuffer  // tagBuffer holds unresolvable partial '[...'
+            tagBuffer = ""
+            if !remaining.isEmpty {
+                ttsBuffer += remaining
+            }
+            transcriptTypewriter.enqueue(text: remaining, emotions: emotions)
+        }
+
+        // No more tokens — let the typewriter reveal the remaining backlog and
+        // then stop its tick.
+        transcriptTypewriter.endGeneration()
+
+        // Decode is done, so the LLM-residency pressure is over: reload Whisper
+        // (freed at generation start on the 4 GB tier) so STT is warm before
+        // the user can speak again (VAD only listens once status == .ready).
+        // No-op when it was never freed — `setup()` returns immediately.
+        Task { _ = await whisperManager.setup() }
+
+        if !ttsBuffer.trimmingCharacters(in: .whitespaces).isEmpty {
+            speakChunk(ttsBuffer)
+            ttsBuffer = ""
+        }
+        Task { @MainActor in
+            // A barge-in already moved the state to .listening; the user owns the turn.
+            if state.status == .listening, bargeInInterrupted { return }
+            if pendingTTSBuffers == 0 {
+                speakingStartedUptime = nil
+                state.status = .ready
+            } else {
+                ttsGenerationDone = true
+            }
+        }
+
+        // Memory hierarchy: after each user-facing turn, see if any chat
+        // events have aged out of the verbatim window. If so, kick off
+        // background fact extraction so the next prompt's Tier 3 surfaces
+        // them via RAG. No-ops when there's nothing new to compact or a
+        // previous compaction is still running.
+        maybeRunCompaction()
+    }
+
+    func localLLM(didFailWithError error: Error) {
+        Task { @MainActor in
+            state.setError(error.localizedDescription)
+        }
+    }
+}

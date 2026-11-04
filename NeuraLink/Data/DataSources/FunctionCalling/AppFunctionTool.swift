@@ -1,0 +1,399 @@
+//
+//  AppFunctionTool.swift
+//  NeuraLink
+//
+//  Declares the OpenAI Realtime tool schemas for iOS app interactions.
+//  These are injected into session.update so the AI can call them naturally.
+//
+//  Created by Dedicatus on 27/04/2026.
+//
+
+import Foundation
+
+/// All tool definitions sent to OpenAI during session.update.
+enum AppFunctionTool {
+
+    // MARK: - Tool name constants
+
+    static let setEmotion = "set_emotion"
+    static let getWeather = "get_weather"
+    static let searchWeb = "search_web"
+    static let playMusic = "play_music"
+    static let createReminder = "create_reminder"
+    static let createNote = "create_note"
+    static let openApp = "open_app"
+    static let analyzeCamera = "analyze_camera"
+    static let rememberFact = "remember_fact"
+    static let poseForPhoto = "pose_for_photo"
+    static let identifySong = "identify_song"
+    static let playGame = "play_game"
+    static let searchMemory = "search_memory"
+    static let showPhoto = "show_photo"
+    static let performMotion = "perform_motion"
+
+    // MARK: - OpenAI tool schema array
+
+    /// Returns the full `tools` array ready to embed in a session.update payload.
+    static var all: [[String: Any]] {
+        var tools: [[String: Any]] = [
+            emotionTool, weatherTool, searchTool, musicTool, reminderTool,
+            noteTool, openAppTool, cameraTool, factTool, photoTool, identifySongTool,
+            playGameTool, searchMemoryTool, showPhotoTool
+        ]
+        // Generated body motion needs its model files and the user's switch
+        // (docs/Engine/GENERATIVE_MOTION.md); without them the tool is not offered.
+        if MotionSettings.offersTool { tools.append(motionTool) }
+        return tools
+    }
+
+    /// Body motion for the reply: a short physical caption the motion model
+    /// turns into a gesture stream while the character speaks.
+    static var motionTool: [String: Any] {
+        [
+            "type": "function",
+            "name": performMotion,
+            "description": "Move your body while you speak this reply. Call it right after set_emotion, before speaking. "
+                + "Describe ONE physical movement in plain English as a motion caption starting with \"A person\": "
+                + "name the body parts and the movement, not the mood (e.g. \"A person nods the head up and down several times\", "
+                + "\"A person shrugs with both shoulders and open palms\", \"A person waves with the right hand\", "
+                + "\"A person talks, gesturing with both hands\"). Stay in place; no walking.",
+            "parameters": [
+                "type": "object",
+                "properties": [
+                    "caption": [
+                        "type": "string",
+                        "description": "The motion caption, e.g. \"A person waves with the right hand.\""
+                    ],
+                    "seconds": [
+                        "type": "number",
+                        "description": "How long the movement should last, 2 to 12 seconds (default 6)."
+                    ],
+                    "continuous": [
+                        "type": "boolean",
+                        "description": "True for a movement that repeats for the whole reply (talking with the hands); false for a single gesture."
+                    ]
+                ],
+                "required": ["caption"]
+            ]
+        ]
+    }
+
+    // MARK: - Individual schemas
+
+    private static var showPhotoTool: [String: Any] {
+        [
+            "type": "function",
+            "name": showPhoto,
+            "description": "Open the user's photo picker so they can show you a picture. Use this when the "
+                + "user says they want to show you a photo, a picture of someone or somewhere, or asks you "
+                + "to look at an image from their library. You will receive a description afterwards and "
+                + "remember the photo.",
+            "parameters": [
+                "type": "object",
+                "properties": [String: Any](),
+                "required": [String]()
+            ]
+        ]
+    }
+
+    private static var searchMemoryTool: [String: Any] {
+        [
+            "type": "function",
+            "name": searchMemory,
+            "description": "Search your long-term memory of past conversations with the user. "
+                + "Use this BEFORE answering whenever the user refers to something from the past "
+                + "(\"remember when\", \"what did I say about\", a person, place or plan you may have "
+                + "heard before, or a question about their life). The result lists dated memories; "
+                + "answer from it and say so honestly when nothing was found.",
+            "parameters": [
+                "type": "object",
+                "properties": [
+                    "query": [
+                        "type": "string",
+                        "description": "What to look for, in natural language (e.g. 'the user's sister', 'trip last month')."
+                    ]
+                ],
+                "required": ["query"]
+            ]
+        ]
+    }
+
+    private static var identifySongTool: [String: Any] {
+        [
+            "type": "function",
+            "name": identifySong,
+            "description": "Listen through the microphone and identify the song currently "
+                + "playing nearby (like Shazam). Use this whenever the user asks what song "
+                + "is playing, who sings this, or to name the music they can hear. "
+                + "Listening takes several seconds; the result appears on screen with links. "
+                + "Pass mode \"session\" when the user wants to listen to music TOGETHER — "
+                + "you'll follow along and react as tracks change (up to 30 minutes).",
+            "parameters": [
+                "type": "object",
+                "properties": [
+                    "mode": [
+                        "type": "string",
+                        "enum": ["once", "session"],
+                        "description": "\"once\" (default) identifies the current song; "
+                            + "\"session\" starts a listening-together session."
+                    ]
+                ],
+                "required": [String]()
+            ]
+        ]
+    }
+
+    private static var playGameTool: [String: Any] {
+        [
+            "type": "function",
+            "name": playGame,
+            "description": "Play a quick spoken game together. Use this when the user wants to "
+                + "play something: 20 Questions (you host and keep a secret), Trivia (you quiz "
+                + "them, 5 questions), or Word Chain (alternate words, each starting with the "
+                + "last letter of the previous). Call with action \"stop\" when the user wants "
+                + "to end the game. The result tells you the rules — follow them exactly.",
+            "parameters": [
+                "type": "object",
+                "properties": [
+                    "game": [
+                        "type": "string",
+                        "enum": ["twenty_questions", "trivia", "word_chain"],
+                        "description": "Which game to start (required unless action is \"stop\")"
+                    ],
+                    "action": [
+                        "type": "string",
+                        "enum": ["start", "stop"],
+                        "description": "\"start\" (default) begins the game; \"stop\" ends it"
+                    ]
+                ],
+                "required": [String]()
+            ]
+        ]
+    }
+
+    private static var photoTool: [String: Any] {
+        [
+            "type": "function",
+            "name": poseForPhoto,
+            "description": "Strike a pose for a photo! Use this when the user wants to take a screenshot or see you posing. "
+                + "Pick whichever pose fits the mood: cool, peace_sign, relax, or stretch. "
+                + "This will hide the UI and play the animation.",
+            "parameters": [
+                "type": "object",
+                "properties": [
+                    "pose": [
+                        "type": "string",
+                        "enum": ["cool", "peace_sign", "relax", "stretch"],
+                        "description": "The pose animation to play"
+                    ]
+                ],
+                "required": ["pose"]
+            ]
+        ]
+    }
+
+    private static var factTool: [String: Any] {
+        [
+            "type": "function",
+            "name": rememberFact,
+            "description": "Store a structured fact about the user or their preferences in your long-term memory. "
+                + "Use this when the user reveals personal details (likes, dislikes, pets, relationships, job, etc.). "
+                + "Example facts: subject='User', predicate='likes', object='Blue'.",
+            "parameters": [
+                "type": "object",
+                "properties": [
+                    "subject": [
+                        "type": "string",
+                        "description": "The entity the fact is about (usually 'User')"
+                    ],
+                    "predicate": [
+                        "type": "string",
+                        "description": "The relationship or attribute (e.g. 'likes', 'has', 'works_at')"
+                    ],
+                    "object": [
+                        "type": "string",
+                        "description": "The value or related entity (e.g. 'Sushi', 'Dog', 'Rex')"
+                    ]
+                ],
+                "required": ["subject", "predicate", "object"]
+            ]
+        ]
+    }
+
+    private static var emotionTool: [String: Any] {
+        [
+            "type": "function",
+            "name": setEmotion,
+            "description": "Update the avatar's facial expression to reflect your emotional state. "
+                + "Call this at the VERY START of every response, before speaking any words. "
+                + "Never mention the emotion in speech — the avatar shows it silently.",
+            "parameters": [
+                "type": "object",
+                "properties": [
+                    "emotion": [
+                        "type": "string",
+                        "enum": [
+                            "happy", "angry", "sad", "relaxed", "surprised",
+                            "shocked", "shy", "embarrassed", "bored", "confused",
+                            "wink", "neutral"
+                        ],
+                        "description": "The emotion to display on the avatar face"
+                    ],
+                    "duration": [
+                        "type": "number",
+                        "description": "How long to hold the expression, in seconds (e.g. 2.0)"
+                    ]
+                ],
+                "required": ["emotion", "duration"]
+            ]
+        ]
+    }
+
+    private static var weatherTool: [String: Any] {
+        [
+            "type": "function",
+            "name": getWeather,
+            "description": "Get the current weather for any city or location. "
+                + "Call this whenever the user asks about weather, temperature, rain, or climate.",
+            "parameters": [
+                "type": "object",
+                "properties": [
+                    "location": [
+                        "type": "string",
+                        "description": "City name or location, e.g. 'Tokyo' or 'New York, US'"
+                    ]
+                ],
+                "required": ["location"]
+            ]
+        ]
+    }
+
+    private static var searchTool: [String: Any] {
+        [
+            "type": "function",
+            "name": searchWeb,
+            "description": "Search the web via Safari. Use this when the user asks you to look "
+                + "something up, search for information, or open a website.",
+            "parameters": [
+                "type": "object",
+                "properties": [
+                    "query": [
+                        "type": "string",
+                        "description": "The search query or URL to open"
+                    ]
+                ],
+                "required": ["query"]
+            ]
+        ]
+    }
+
+    private static var musicTool: [String: Any] {
+        [
+            "type": "function",
+            "name": playMusic,
+            "description": "Search for and play music in Apple Music. Use this when the user "
+                + "asks to play a song, artist, album, or playlist.",
+            "parameters": [
+                "type": "object",
+                "properties": [
+                    "query": [
+                        "type": "string",
+                        "description": "Song name, artist, album, or playlist to play"
+                    ]
+                ],
+                "required": ["query"]
+            ]
+        ]
+    }
+
+    private static var reminderTool: [String: Any] {
+        [
+            "type": "function",
+            "name": createReminder,
+            "description": "Create a reminder in the Reminders app. Use this when the user "
+                + "asks to set a reminder, alert, or todo item.",
+            "parameters": [
+                "type": "object",
+                "properties": [
+                    "title": [
+                        "type": "string",
+                        "description": "The reminder text"
+                    ],
+                    "notes": [
+                        "type": "string",
+                        "description": "Optional additional details for the reminder"
+                    ]
+                ],
+                "required": ["title"]
+            ]
+        ]
+    }
+
+    private static var noteTool: [String: Any] {
+        [
+            "type": "function",
+            "name": createNote,
+            "description": "Open the Notes app and create a new note. Use this when the user "
+                + "asks to write something down, take a note, or save information.",
+            "parameters": [
+                "type": "object",
+                "properties": [
+                    "title": [
+                        "type": "string",
+                        "description": "Title of the note"
+                    ],
+                    "body": [
+                        "type": "string",
+                        "description": "The main content of the note"
+                    ]
+                ],
+                "required": ["title", "body"]
+            ]
+        ]
+    }
+
+    private static var cameraTool: [String: Any] {
+        [
+            "type": "function",
+            "name": analyzeCamera,
+            "description": "Look through the device camera and describe what you see. "
+                + "Use this whenever the user asks you to look, see, observe, or describe "
+                + "something in front of the camera.",
+            "parameters": [
+                "type": "object",
+                "properties": [
+                    "prompt": [
+                        "type": "string",
+                        "description":
+                            "Optional focus for the description, e.g. 'describe the person' "
+                            + "or 'what objects are visible'"
+                    ]
+                ],
+                "required": []
+            ]
+        ]
+    }
+
+    private static var openAppTool: [String: Any] {
+        [
+            "type": "function",
+            "name": openApp,
+            "description": "Open a built-in iOS app by name. Use this when the user asks to "
+                + "open an app like Maps, Photos, Calendar, Settings, Camera, or Clock.",
+            "parameters": [
+                "type": "object",
+                "properties": [
+                    "app": [
+                        "type": "string",
+                        "enum": [
+                            "Maps", "Photos", "Calendar", "Settings",
+                            "Camera", "Clock", "Health", "FaceTime"
+                        ],
+                        "description": "The name of the app to open"
+                    ]
+                ],
+                "required": ["app"]
+            ]
+        ]
+    }
+}

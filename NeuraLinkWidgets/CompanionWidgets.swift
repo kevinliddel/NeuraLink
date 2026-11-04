@@ -3,7 +3,7 @@
 //  NeuraLinkWidgets
 //
 //  Home-screen and lock-screen widgets fed by the App Group snapshot
-//  (docs/PRESENCE_BEYOND_APP.md). No database access, no network;
+//  (docs/Companion/PRESENCE_BEYOND_APP.md). No database access, no network;
 //  everything comes from `CompanionSnapshotStore.load()`. The app rewrites
 //  the snapshot whenever the relationship, the memory summary or the
 //  character (and how it is dressed) changes, then reloads the timelines.

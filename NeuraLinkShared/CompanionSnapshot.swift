@@ -4,7 +4,7 @@
 //
 //  The only companion data that leaves the protected sandbox: a small JSON
 //  snapshot in the App Group container that widgets and Live Activities
-//  read (docs/PRESENCE_BEYOND_APP.md). Deliberately holds no
+//  read (docs/Companion/PRESENCE_BEYOND_APP.md). Deliberately holds no
 //  transcript, facts or observations beyond one hand-picked line.
 //  Compiled into both targets, so Foundation only and explicitly
 //  nonisolated.
@@ -84,7 +84,7 @@ nonisolated enum CompanionSnapshotStore {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         guard let data = try? encoder.encode(snapshot) else { return false }
-        return (try? data.write(to: url, options: .atomic)) != nil
+        return writeProtected(data, to: url)
     }
 
     /// Writes a thumbnail PNG; returns the stored file name.
@@ -92,8 +92,22 @@ nonisolated enum CompanionSnapshotStore {
         guard let dir = containerURL?.appendingPathComponent(thumbnailDirectory, isDirectory: true) else { return nil }
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let file = "\(character.lowercased()).png"
-        guard (try? data.write(to: dir.appendingPathComponent(file), options: .atomic)) != nil else { return nil }
+        guard writeProtected(data, to: dir.appendingPathComponent(file)) else { return nil }
         return file
+    }
+
+    /// The snapshot is rebuilt by the app at any time, so it stays out of
+    /// backups. Readable after first unlock (not `.complete`) so lock-screen
+    /// widgets and Live Activities still render. The backup flag is set on
+    /// every write because an atomic write replaces the file and drops it.
+    private static func writeProtected(_ data: Data, to url: URL) -> Bool {
+        let options: Data.WritingOptions = [.atomic, .completeFileProtectionUntilFirstUserAuthentication]
+        guard (try? data.write(to: url, options: options)) != nil else { return false }
+        var excluded = url
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try? excluded.setResourceValues(values)
+        return true
     }
 
     static func clear() {

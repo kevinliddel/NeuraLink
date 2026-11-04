@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  Hybrid recall — the on-device port of Hindsight's TEMPR retrieval
-//  (docs/AGENTIC_MEMORY.md §Recall). No LLM call. Four arms run over the
+//  (docs/Memory/AGENTIC_MEMORY.md §Recall). No LLM call. Four arms run over the
 //  candidate pool (semantic, keyword/BM25, entity-graph link expansion,
 //  temporal), their rankings are fused with reciprocal rank fusion, and the
 //  fused list is reranked with recency / temporal-proximity / evidence
@@ -32,7 +32,7 @@ struct MemoryRecallQuery {
     var bank: String?
 }
 
-/// Bank policy (docs/CHAT_LLM.md): facts about the user
+/// Bank policy (docs/AI/CHAT_LLM.md): facts about the user
 /// are shared (""), while what a character did, believes or said lives in
 /// that character's bank.
 enum MemoryBanks {

@@ -2,7 +2,7 @@
 //  GroundingSettings.swift
 //  NeuraLink
 //
-//  Opt-in toggles for daily grounding (docs/LIVING_COMPANION.md): calendar
+//  Opt-in toggles for daily grounding (docs/Companion/LIVING_COMPANION.md): calendar
 //  events and HealthKit sleep in the Companion State block. Same storage
 //  idiom as PresenceSettings: explicit `_x` backing + access/withMutation,
 //  never `didSet`.

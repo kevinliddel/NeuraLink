@@ -226,7 +226,7 @@ public struct VRMSceneView: View {
             guard !Task.isCancelled else { return }
             let entry = VRMModelRegistry.shared.entry(named: characterName)
             state.display(model, gender: entry?.gender ?? .fallback, isImported: entry?.isImported ?? false)
-            // Saved customization (docs/CHARACTER_CUSTOMIZATION.md) —
+            // Saved customization (docs/Engine/CHARACTER_CUSTOMIZATION.md) —
             // applied on top of the fresh model, never by reloading it, and
             // awaited before the scene is declared ready so the character is
             // never shown in its original clothes first.

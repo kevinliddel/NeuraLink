@@ -42,7 +42,9 @@ enum GGUFLlamaDownloader {
         // (GGUFDirectDownloader); `api` is kept for the call sites' signature.
         _ = api
         let file = try await GGUFDirectDownloader.download(
-            repoID: GGUFModelAccess.repoID, filename: GGUFModelAccess.filename, hubSlug: GGUFModelAccess.hubSlug,
+            repoID: GGUFModelAccess.repoID, revision: GGUFModelAccess.revision,
+            filename: GGUFModelAccess.filename, hubSlug: GGUFModelAccess.hubSlug,
+            integrity: GGUFModelAccess.integrity,
             progress: { progressHandler($0) })
         GGUFModelAccess.setModelPath(file)
     }
