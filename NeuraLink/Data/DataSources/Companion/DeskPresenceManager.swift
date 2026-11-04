@@ -2,7 +2,7 @@
 //  DeskPresenceManager.swift
 //  NeuraLink
 //
-//  Runs the desk-presence policy (docs/LIVING_COMPANION.md, Desk presence)
+//  Runs the desk-presence policy (docs/Companion/LIVING_COMPANION.md, Desk presence)
 //  over the face detector once a second while the camera is on: the
 //  arrival greeting through the shared proactive seam, and the away loop
 //  through AwayEpisode. Opt-in (Autonomy → "Notice me at the desk").

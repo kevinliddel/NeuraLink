@@ -130,7 +130,7 @@ struct ChatHistorySidebar: View {
         .buttonStyle(.plain)
     }
 
-    /// Search across titles and message text (docs/CHAT_LLM.md).
+    /// Search across titles and message text (docs/AI/CHAT_LLM.md).
     private var searchBar: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")

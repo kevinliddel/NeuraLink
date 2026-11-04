@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  Candid pictures of the companion's world for the diary and the return
-//  notifications — Companion Evolution pillar 2 (docs/LIVING_COMPANION.md).
+//  notifications — Companion Evolution pillar 2 (docs/Companion/LIVING_COMPANION.md).
 //  Metal only draws while the scene is on screen, and the reflection runs
 //  after the app has gone to the background, so instead of rendering then
 //  this keeps ONE fresh capture of the live scene (every 30 s while idle,

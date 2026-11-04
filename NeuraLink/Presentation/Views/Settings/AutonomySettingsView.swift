@@ -2,7 +2,7 @@
 //  AutonomySettingsView.swift
 //  NeuraLink
 //
-//  How much the companion does on her own (docs/LIVING_COMPANION.md). A
+//  How much the companion does on her own (docs/Companion/LIVING_COMPANION.md). A
 //  preset header first — Quiet / Balanced / Lively — then four cards, one
 //  per sense: talking, seeing, between sessions, knowing your day. Every
 //  switch has a face (tile, one line of meaning, ⓘ for the rest) and its

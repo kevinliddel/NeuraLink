@@ -15,7 +15,7 @@ import Foundation
 
 extension LocalLLMManager {
 
-    /// Kicks the agentic-memory retain step (docs/AGENTIC_MEMORY.md
+    /// Kicks the agentic-memory retain step (docs/Memory/AGENTIC_MEMORY.md
     /// §Retain). Extraction, chunking and the un-retained-turn watermark
     /// live in `MemoryRetain`; this keeps the historical call site in
     /// `handleFinishedGeneration`. The JP tier is excluded inside

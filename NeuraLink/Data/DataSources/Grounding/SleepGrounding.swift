@@ -2,7 +2,7 @@
 //  SleepGrounding.swift
 //  NeuraLink
 //
-//  HealthKit read behind the sleep line (docs/LIVING_COMPANION.md):
+//  HealthKit read behind the sleep line (docs/Companion/LIVING_COMPANION.md):
 //  last night's sleep-analysis samples, split into "asleep" (stages, from
 //  a Watch or a sleep app) and "in bed" (what the iPhone alone records).
 //  Read-only; nothing is ever written to Health.

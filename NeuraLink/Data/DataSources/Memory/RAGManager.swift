@@ -2,7 +2,7 @@
 //  RAGManager.swift
 //  NeuraLink
 //
-//  Facade over the agentic memory layer (docs/AGENTIC_MEMORY.md). Keeps the
+//  Facade over the agentic memory layer (docs/Memory/AGENTIC_MEMORY.md). Keeps the
 //  historical call sites — `store`, `fetchContext`, `storeFact`,
 //  `fetchFacts` — while routing them through MemoryRetain (ingest) and
 //  MemoryRecall (hybrid retrieval) instead of the old single-signal

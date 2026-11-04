@@ -2,7 +2,7 @@
 //  MemoryRecapCard.swift
 //  NeuraLink
 //
-//  "This week with <character>" card (docs/MEMORY_OWNERSHIP.md),
+//  "This week with <character>" card (docs/Memory/MEMORY_OWNERSHIP.md),
 //  fed by the weekly recap mental model. Dismissable per ISO week.
 //
 

@@ -7,7 +7,7 @@
 //  not the system SQLite), writing + reading data through the cipher,
 //  and confirming the on-disk file is not openable without the key.
 //
-//  Layer B (opt-in SQLCipher page encryption) in `docs/APP_SECURITY.md`.
+//  Layer B (opt-in SQLCipher page encryption) in `docs/Security/APP_SECURITY.md`.
 //
 
 import Foundation

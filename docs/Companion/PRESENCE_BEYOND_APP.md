@@ -257,24 +257,24 @@ flowchart TD
 
 | File | Role |
 |---|---|
-| `Data/DataSources/BackgroundSessionKeeper.swift` | Pure `BackgroundSessionPolicy` + keeper (watchdog, guards, notice, reconnect) |
-| `Data/DataSources/SessionLifecycle.swift` | Defers `sessionDidEnd` while the keeper holds the session |
-| `Data/DataSources/LocalLLM/LocalLLMManager+Audio.swift` | `.allowBluetoothHFP`, `suspendForBackground()` |
-| `Data/DataSources/PresenceSettings.swift` | `keepTalkingInBackground`, `backgroundIdleMinutes`, `showWidgets` |
-| `Presentation/Views/AI/AutonomySettingsView.swift` | Background audio section, "Companion widgets" toggle |
-| `Data/DataSources/CompanionActivityController.swift` | Starts, updates and ends the Live Activity |
-| `../NeuraLinkShared/CompanionActivityAttributes.swift` | Activity payload (app + extension) |
-| `../NeuraLinkShared/CompanionSnapshot.swift` | `CompanionSnapshot` + `CompanionSnapshotStore` (App Group JSON, thumbnails) |
-| `Data/DataSources/CompanionSnapshotWriter.swift` | Builds and writes the snapshot (memory-summary line, stats, live portrait), background flush, reloads widgets |
+| `Data/DataSources/BeyondApp/BackgroundSessionKeeper.swift` | Pure `BackgroundSessionPolicy` + keeper (watchdog, guards, notice, reconnect) |
+| `Data/DataSources/Companion/SessionLifecycle.swift` | Defers `sessionDidEnd` while the keeper holds the session |
+| `Data/DataSources/LocalLLM/Manager/LocalLLMManager+Audio.swift` | `.allowBluetoothHFP`, `suspendForBackground()` |
+| `Data/DataSources/Companion/PresenceSettings.swift` | `keepTalkingInBackground`, `backgroundIdleMinutes`, `showWidgets` |
+| `Presentation/Views/Settings/AutonomySettingsView.swift` | Background audio section, "Companion widgets" toggle |
+| `Data/DataSources/BeyondApp/CompanionActivityController.swift` | Starts, updates and ends the Live Activity |
+| `NeuraLinkShared/CompanionActivityAttributes.swift` | Activity payload (app + extension) |
+| `NeuraLinkShared/CompanionSnapshot.swift` | `CompanionSnapshot` + `CompanionSnapshotStore` (App Group JSON, thumbnails) |
+| `Data/DataSources/BeyondApp/CompanionSnapshotWriter.swift` | Builds and writes the snapshot (memory-summary line, stats, live portrait), background flush, reloads widgets |
 | `Core/Engine/VRM/Appearance/VRMPartThumbnailRenderer.swift` | `.portrait` subject + `renderPortrait(of:recolorsFrom:)` for the widget picture |
-| `../NeuraLinkWidgets/NeuraLinkWidgetsBundle.swift` | Extension entry point |
-| `../NeuraLinkWidgets/CompanionWidgets.swift` | Companion + Come back widgets (gradient, portrait, heart ring, chips), timeline provider |
-| `../NeuraLinkWidgets/CompanionLiveActivity.swift` | Lock-screen banner + Dynamic Island views |
+| `NeuraLinkWidgets/NeuraLinkWidgetsBundle.swift` | Extension entry point |
+| `NeuraLinkWidgets/CompanionWidgets.swift` | Companion + Come back widgets (gradient, portrait, heart ring, chips), timeline provider |
+| `NeuraLinkWidgets/CompanionLiveActivity.swift` | Lock-screen banner + Dynamic Island views |
 | `App/AppIntents/CompanionIntents.swift` | Intents, `CharacterEntity`, `IntentTimeout`, `NeuraLinkShortcuts` |
 | `App/ContentView.swift` | Consumes `AppIntentRequests.pendingCharacter` |
-| `../NeuraLinkTests/BackgroundSessionTests.swift` | Keep-alive policy |
-| `../NeuraLinkTests/CompanionSnapshotTests.swift` | Snapshot model |
-| `../NeuraLinkTests/AppIntentTests.swift` | Character matching, first → third person normalisation, timeout |
+| `NeuraLinkTests/BeyondApp/BackgroundSessionTests.swift` | Keep-alive policy |
+| `NeuraLinkTests/BeyondApp/CompanionSnapshotTests.swift` | Snapshot model |
+| `NeuraLinkTests/App/AppIntentTests.swift` | Character matching, first → third person normalisation, timeout |
 
 ## Integration notes
 

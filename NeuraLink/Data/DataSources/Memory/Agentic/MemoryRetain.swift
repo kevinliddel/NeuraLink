@@ -2,7 +2,7 @@
 //  MemoryRetain.swift
 //  NeuraLink
 //
-//  Retain orchestrator (docs/AGENTIC_MEMORY.md §Retain). Two paths:
+//  Retain orchestrator (docs/Memory/AGENTIC_MEMORY.md §Retain). Two paths:
 //    - no-LLM: every dialogue turn is stored verbatim as a `raw` unit with
 //      tokens, entities and temporal/semantic links (this is what the old
 //      RAGManager.store did, plus the links);

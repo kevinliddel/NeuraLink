@@ -2,7 +2,7 @@
 //  OpenAIModelSettingsTests.swift
 //  NeuraLinkTests
 //
-//  Model selection + usage metering (docs/CHAT_LLM.md).
+//  Model selection + usage metering (docs/AI/CHAT_LLM.md).
 //
 
 import Foundation

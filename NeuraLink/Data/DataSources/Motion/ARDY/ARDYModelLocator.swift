@@ -5,7 +5,7 @@
 //  Where the ARDY-mini files are on this device: the verified download in
 //  the asset cache (MotionModelAccess), else a folder in Caches with the
 //  standard names, which the motion bench and development fill by hand.
-//  See docs/GENERATIVE_MOTION.md.
+//  See docs/Engine/GENERATIVE_MOTION.md.
 //
 //  Created by Dedicatus on 30/10/2026.
 //

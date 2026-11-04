@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  What the journal shows under the calendar — Living Companion
-//  (docs/LIVING_COMPANION.md): the selected day's conversations (opening
+//  (docs/Companion/LIVING_COMPANION.md): the selected day's conversations (opening
 //  their read-only transcripts), diary entries and keepsakes, or, with no
 //  day selected, the month's diary and keepsakes newest first.
 //

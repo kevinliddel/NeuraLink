@@ -2,7 +2,7 @@
 //  CharacterBondTests.swift
 //  NeuraLinkTests
 //
-//  One bond per character (docs/LIVING_COMPANION.md): turns, facts and the
+//  One bond per character (docs/Companion/LIVING_COMPANION.md): turns, facts and the
 //  carry-over line count only what the user shared with that character, and
 //  history written before messages carried a character is attributed from
 //  the diary. Shares the app-host MemoryStore under throwaway characters.

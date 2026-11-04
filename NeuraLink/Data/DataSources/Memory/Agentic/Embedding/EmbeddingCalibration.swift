@@ -2,7 +2,7 @@
 //  EmbeddingCalibration.swift
 //  NeuraLink
 //
-//  Per-backend cosine calibration (docs/CHAT_LLM.md).
+//  Per-backend cosine calibration (docs/AI/CHAT_LLM.md).
 //  Different embedding models put "related" and "unrelated" at different
 //  cosine values, so the user-facing Memory Quality slider (0.3…0.7) and
 //  the internal link / dedup floors are expressed on a nominal scale and
@@ -36,7 +36,7 @@ struct EmbeddingCalibration: Sendable {
     /// EmbeddingGemma-300M Q8_0. Bridge probe (2026-09-26): question ↔
     /// matching fact 0.58, question ↔ unrelated fact 0.32, fact ↔ unrelated
     /// fact 0.45. Slider maps 0.3 → 0.28, 0.5 → 0.40, 0.7 → 0.52. Refined by
-    /// the harness run (see docs/AGENTIC_MEMORY.md §Embedding calibration).
+    /// the harness run (see docs/Memory/AGENTIC_MEMORY.md §Embedding calibration).
     static let embeddingGemma = EmbeddingCalibration(
         queryFloorOffset: 0.1, queryFloorScale: 0.6, semanticLinkFloor: 0.6, dedupThreshold: 0.9)
 

@@ -2,7 +2,7 @@
 //  MemoryUnit.swift
 //  NeuraLink
 //
-//  Domain models for the agentic memory layer (docs/AGENTIC_MEMORY.md).
+//  Domain models for the agentic memory layer (docs/Memory/AGENTIC_MEMORY.md).
 //  Modelled on Hindsight's memory network: every row in `memories` is a
 //  "memory unit" with a fact type, temporal fields, entity links and an
 //  evidence count. `MemoryItem` (the legacy vector-row shape) stays for the

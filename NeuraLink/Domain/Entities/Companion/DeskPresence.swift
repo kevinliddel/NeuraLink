@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  The desk-pod behaviours from Companion Evolution section 3
-//  (docs/LIVING_COMPANION.md): greet the user when they sit down after a
+//  (docs/Companion/LIVING_COMPANION.md): greet the user when they sit down after a
 //  while away, go "away" (a resting loop) when nobody has been there for a
 //  while, and come back when they return. Pure policy over "is a face in
 //  front of the phone right now"; the camera and Vision live in

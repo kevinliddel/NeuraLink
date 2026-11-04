@@ -2,7 +2,7 @@
 //  CompanionDepthTests.swift
 //  NeuraLinkTests
 //
-//  Follow-up planning/wording and photo-memory helpers (docs/COMPANION_DEPTH.md).
+//  Follow-up planning/wording and photo-memory helpers (docs/Companion/COMPANION_DEPTH.md).
 //
 
 import Foundation

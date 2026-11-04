@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  "Keepsakes" section of the companion's journal — Living Companion
-//  (docs/LIVING_COMPANION.md): the shared firsts the user and the character
+//  (docs/Companion/LIVING_COMPANION.md): the shared firsts the user and the character
 //  have collected, as badges; the ones still ahead are dimmed.
 //
 //  Created by Dedicatus on 12/10/2026.

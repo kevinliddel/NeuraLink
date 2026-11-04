@@ -2,7 +2,7 @@
 //  UsageDashboardModel.swift
 //  NeuraLink
 //
-//  Pure aggregation behind the Usage dashboard (docs/API_USAGE.md): one
+//  Pure aggregation behind the Usage dashboard (docs/AI/API_USAGE.md): one
 //  SQL read per range (current + previous window), then filtering, chart
 //  series and breakdowns in memory — the bucket count is small.
 //

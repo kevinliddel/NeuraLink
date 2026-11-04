@@ -2,7 +2,7 @@
 //  AgenticMemoryTests.swift
 //  NeuraLinkTests
 //
-//  Unit tests for the agentic memory layer (docs/AGENTIC_MEMORY.md):
+//  Unit tests for the agentic memory layer (docs/Memory/AGENTIC_MEMORY.md):
 //  tokeniser/BM25, temporal parsing, entity extraction, fact-extraction
 //  parsers, consolidation parsing, recall fusion/boosts, and end-to-end
 //  retain → recall → consolidate through the shared MemoryStore with a

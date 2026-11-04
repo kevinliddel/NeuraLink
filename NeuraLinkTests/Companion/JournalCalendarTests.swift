@@ -2,7 +2,7 @@
 //  JournalCalendarTests.swift
 //  NeuraLinkTests
 //
-//  Journal calendar (docs/LIVING_COMPANION.md): month-grid math, local-day
+//  Journal calendar (docs/Companion/LIVING_COMPANION.md): month-grid math, local-day
 //  grouping, month summaries, and the message-table reads behind them.
 //
 

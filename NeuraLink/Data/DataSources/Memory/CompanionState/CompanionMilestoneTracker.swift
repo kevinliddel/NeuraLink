@@ -2,7 +2,7 @@
 //  CompanionMilestoneTracker.swift
 //  NeuraLink
 //
-//  Records keepsake milestones — Living Companion (docs/LIVING_COMPANION.md).
+//  Records keepsake milestones — Living Companion (docs/Companion/LIVING_COMPANION.md).
 //  Event milestones are noted where they happen (song match, game start,
 //  photo shared, first diary); count-based ones are re-derived whenever the
 //  relationship meter refreshes. Stateless: the store serialises itself.

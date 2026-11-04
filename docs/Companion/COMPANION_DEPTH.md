@@ -168,24 +168,24 @@ flowchart TD
 | File | Role |
 |---|---|
 | `Data/DataSources/Memory/Agentic/FollowUpPlanner.swift` | `FollowUp`, the pure `FollowUpPlanner` (kinds, notification times), `FollowUpWording` (prompt + fallback), and `FollowUpCoordinator` (plan → word → deliver, pending mentions) |
-| `Data/DataSources/Memory/Agentic/MemoryStore+FollowUps.swift` | `follow_ups` (fired unit+kind) and `follow_up_mutes` tables |
-| `Data/DataSources/Memory/Agentic/MemoryStore+Timeline.swift` | `fetchUnits(occurringBetween:and:includeUndated:)`, the candidate query (shared with the Memory timeline) |
-| `Core/Utils/CompanionNotificationScheduler.swift` | `scheduleFollowUp`, the `NL_FOLLOWUP` category; `CompanionNotificationPresenter` handles "Not this" |
+| `Data/DataSources/Memory/Agentic/Store/MemoryStore+FollowUps.swift` | `follow_ups` (fired unit+kind) and `follow_up_mutes` tables |
+| `Data/DataSources/Memory/Agentic/Store/MemoryStore+Timeline.swift` | `fetchUnits(occurringBetween:and:includeUndated:)`, the candidate query (shared with the Memory timeline) |
+| `Core/Notifications/CompanionNotificationScheduler.swift` | `scheduleFollowUp`, the `NL_FOLLOWUP` category; `CompanionNotificationPresenter` handles "Not this" |
 | `App/NeuraLinkApp.swift` | Registers and re-submits the `com.dedicatus.NeuraLink.followups` background refresh |
-| `Data/DataSources/PresenceSettings.swift` | `followUpsEnabled` |
-| `Presentation/Views/AI/AutonomySettingsView.swift` | "Follow up on plans" toggle |
-| `Presentation/Views/AI/MemoryInsightsSection.swift` | "COMING UP" row on the hero card |
-| `Data/DataSources/OpenAI/OpenAIRealtimeManager+SessionConfig.swift` | Appends `mentionBlock()` to the session instructions |
+| `Data/DataSources/Companion/PresenceSettings.swift` | `followUpsEnabled` |
+| `Presentation/Views/Settings/AutonomySettingsView.swift` | "Follow up on plans" toggle |
+| `Presentation/Views/Memory/MemoryInsightsSection.swift` | "COMING UP" row on the hero card |
+| `Data/DataSources/OpenAI/Realtime/OpenAIRealtimeManager+SessionConfig.swift` | Appends `mentionBlock()` to the session instructions |
 | `Data/DataSources/LocalLLM/LocalLLMMemoryHierarchy.swift` | Appends `mentionBlock()` to the local Tier 3 block |
-| `Data/DataSources/PhotoMemoryService.swift` | Picker hand-off, describe, react, remember, thumbnails |
+| `Data/DataSources/Photos/PhotoMemoryService.swift` | Picker hand-off, describe, react, remember, thumbnails |
 | `Domain/Entities/Skills/ShowPhotoSkill.swift` | `show_photo` tool (opens the picker) |
-| `Data/DataSources/AppFunctionTool.swift` | `showPhotoTool` schema |
+| `Data/DataSources/FunctionCalling/AppFunctionTool.swift` | `showPhotoTool` schema |
 | `App/ContentView.swift` | Hosts `.photosPicker` and listens for `.photoMemoryPickerRequested` |
 | `Presentation/Components/ExpandableFABMenu.swift` | "Show a Photo" FAB button |
-| `Data/DataSources/VisionAnalyzer.swift` | Image → description via the configured text model |
+| `Data/DataSources/Vision/VisionAnalyzer.swift` | Image → description via the configured text model |
 | `Data/DataSources/Memory/Agentic/MemoryRecall.swift` | `(photo)` marker on recall bullets |
-| `Presentation/Views/AI/MemoryTimelineSection.swift` | Thumbnail in timeline rows |
-| `../NeuraLinkTests/CompanionDepthTests.swift` | Planner kinds / spans / mutes, fallback wording, photo fact, vision request body |
+| `Presentation/Views/Memory/MemoryTimelineSection.swift` | Thumbnail in timeline rows |
+| `NeuraLinkTests/Companion/CompanionDepthTests.swift` | Planner kinds / spans / mutes, fallback wording, photo fact, vision request body |
 
 ## Integration notes
 

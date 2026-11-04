@@ -2,7 +2,7 @@
 //  APIUsageTests.swift
 //  NeuraLinkTests
 //
-//  Usage metering + dashboard aggregation (docs/API_USAGE.md): payload
+//  Usage metering + dashboard aggregation (docs/AI/API_USAGE.md): payload
 //  parsing, spend estimate, SQL bucketing and the summary filters.
 //
 

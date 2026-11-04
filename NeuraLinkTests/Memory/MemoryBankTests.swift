@@ -3,7 +3,7 @@
 //  NeuraLinkTests
 //
 //  Per-character memory banks + disposition persistence
-//  (docs/CHAT_LLM.md).
+//  (docs/AI/CHAT_LLM.md).
 //
 
 import Foundation

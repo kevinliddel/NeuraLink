@@ -2,7 +2,7 @@
 //  CompanionNotificationCopy.swift
 //  NeuraLink
 //
-//  Text rules for companion notifications (docs/LIVING_COMPANION.md):
+//  Text rules for companion notifications (docs/Companion/LIVING_COMPANION.md):
 //  personalised facts, rejection of record-like lines, generic fallbacks.
 //
 //  Created by Dedicatus on 30/09/2026.

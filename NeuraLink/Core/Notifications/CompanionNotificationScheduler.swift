@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  Local "your companion has been thinking of you" notifications — Living
-//  Companion (docs/LIVING_COMPANION.md). Rules, enforced here:
+//  Companion (docs/Companion/LIVING_COMPANION.md). Rules, enforced here:
 //    • a return series: the first 1 h after the last exchange, then one
 //      every 2 h while the app stays closed, for at most 24 h — scheduled
 //      up front, because iOS cannot run the app to compose one later,

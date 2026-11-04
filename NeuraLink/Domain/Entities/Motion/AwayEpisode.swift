@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  The companion "away": nobody has been at the desk for a while, so the
-//  body loops a resting clip until a face is back (docs/LIVING_COMPANION.md,
+//  body loops a resting clip until a face is back (docs/Companion/LIVING_COMPANION.md,
 //  Desk presence). Lowest-priority episode: idles stop, but a pose, the
 //  phone and the listening loop all outrank it and it resumes after them.
 //

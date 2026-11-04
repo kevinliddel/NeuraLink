@@ -5,7 +5,7 @@
 //  Per-character disposition traits (skepticism, literalism, empathy on a
 //  1–5 scale) applied to the LLM-backed memory steps — consolidation,
 //  mental-model refresh and reflect — never to recall
-//  (docs/AGENTIC_MEMORY.md §Disposition). Numbers are verbalised because a
+//  (docs/Memory/AGENTIC_MEMORY.md §Disposition). Numbers are verbalised because a
 //  small model reads "skepticism=5" as metadata rather than an instruction.
 //
 //  Created by Dedicatus on 25/09/2026.

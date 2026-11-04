@@ -2,7 +2,7 @@
 //  UsageDashboardView.swift
 //  NeuraLink
 //
-//  Dedicated OpenAI usage page (docs/API_USAGE.md), pushed from AI
+//  Dedicated OpenAI usage page (docs/AI/API_USAGE.md), pushed from AI
 //  Settings: range tabs, spend hero, live session,
 //  source / model filters, the chart and per-model / per-feature
 //  breakdowns. Everything is metered on this device from the `usage`

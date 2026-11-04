@@ -9,7 +9,7 @@
 //  second formant above 1.5 kHz. Rough, and enough for the mouth to follow
 //  the words instead of cycling through shapes at random. One instance per
 //  audio thread; the level's peak carries between calls.
-//  See docs/LipSync.md.
+//  See docs/Engine/LipSync.md.
 //
 //  Created by Dedicatus on 02/11/2026.
 //

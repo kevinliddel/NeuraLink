@@ -3,7 +3,7 @@
 //  NeuraLinkTests
 //
 //  The "time apart" wording in the Companion State block
-//  (docs/LIVING_COMPANION.md).
+//  (docs/Companion/LIVING_COMPANION.md).
 //
 
 import Foundation

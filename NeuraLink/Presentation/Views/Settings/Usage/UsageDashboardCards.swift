@@ -2,7 +2,7 @@
 //  UsageDashboardCards.swift
 //  NeuraLink
 //
-//  Building blocks of the Usage dashboard (docs/API_USAGE.md): hero
+//  Building blocks of the Usage dashboard (docs/AI/API_USAGE.md): hero
 //  spend card, filter bar, the interactive chart, and breakdown lists.
 //
 //  Created by Dedicatus on 30/09/2026.

@@ -2,7 +2,7 @@
 //  MemoryOwnershipTests.swift
 //  NeuraLinkTests
 //
-//  Export, weekly recap and timeline (docs/MEMORY_OWNERSHIP.md).
+//  Export, weekly recap and timeline (docs/Memory/MEMORY_OWNERSHIP.md).
 //
 
 import Foundation

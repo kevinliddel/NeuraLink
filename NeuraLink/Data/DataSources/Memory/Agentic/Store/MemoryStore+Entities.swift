@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  Entity table, unit↔entity links and unit↔unit links for the graph arm
-//  of recall (docs/AGENTIC_MEMORY.md §Recall). Mirrors the prepared-
+//  of recall (docs/Memory/AGENTIC_MEMORY.md §Recall). Mirrors the prepared-
 //  statement + NSLock style of the other MemoryStore extensions.
 //
 //  Created by Dedicatus on 25/09/2026.

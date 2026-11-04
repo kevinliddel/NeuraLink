@@ -2,7 +2,7 @@
 //  EmbeddingBackend.swift
 //  NeuraLink
 //
-//  Pluggable sentence-embedding backends (docs/CHAT_LLM.md): Apple's
+//  Pluggable sentence-embedding backends (docs/AI/CHAT_LLM.md): Apple's
 //  NLEmbedding (always available, English-strong) and a GGUF
 //  encoder run through llama.cpp (multilingual, downloaded on demand). Each
 //  backend has an id that is stored next to every vector so recall only

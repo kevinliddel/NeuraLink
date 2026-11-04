@@ -2,7 +2,7 @@
 //  AcousticAffectTests.swift
 //  NeuraLinkTests
 //
-//  Acoustic affect (docs/LLM_VOICE.md): the feature extractor on synthetic
+//  Acoustic affect (docs/AI/LLM_VOICE.md): the feature extractor on synthetic
 //  audio, the WAV reader, the baseline-relative classification, and the
 //  state that feeds both engines.
 //

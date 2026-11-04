@@ -228,19 +228,19 @@ flowchart TD
 | `Data/DataSources/Memory/Agentic/MemoryMentalModels+WeeklyRecap.swift` | `weekly_recap` question, `recapParts`, `weekKey`, `isRecapDue`, `weeklyEvidence`, `askAboutRecap` |
 | `Data/DataSources/Memory/Agentic/MemoryMentalModels.swift` | Seeds the recap, runs the due check, sends the weekly notification, adds the "This week" prompt line |
 | `Data/DataSources/Memory/Agentic/MemoryReflect.swift` | "This week" label in the reflect ladder |
-| `Presentation/Views/AI/MemoryRecapCard.swift` | Card + per-week `Dismissal` |
-| `Presentation/Views/AI/MemoryTimelineView.swift` | Memory page: hosts the recap card, the timeline section and "Export memory…" |
+| `Presentation/Views/Memory/MemoryRecapCard.swift` | Card + per-week `Dismissal` |
+| `Presentation/Views/Memory/MemoryTimelineView.swift` | Memory page: hosts the recap card, the timeline section and "Export memory…" |
 | `Data/DataSources/Memory/Agentic/MemoryExporter.swift` | `MemoryExport` Codable payload + `MemoryExporter` (build, encode, temp file) |
-| `Presentation/Views/AI/MemoryExportSheet.swift` | Options, prepare, `ShareLink` |
-| `Presentation/Views/AI/ConversationTranscriptView.swift` | Transcript Share button, `transcriptText` |
+| `Presentation/Views/Memory/MemoryExportSheet.swift` | Options, prepare, `ShareLink` |
+| `Presentation/Views/Chat/ConversationTranscriptView.swift` | Transcript Share button, `transcriptText` |
 | `Domain/Entities/Skills/PhotoshootSkill.swift` | `pose_for_photo`: pose, hide UI, schedule the photo |
-| `Data/DataSources/PhotoshootShareController.swift` | Capture timing, capsule lifetime, Save to Photos |
-| `Presentation/Views/AI/PhotoshootShareCapsule.swift` | "Nice shot!" capsule (save / share / dismiss) |
+| `Data/DataSources/Photos/PhotoshootShareController.swift` | Capture timing, capsule lifetime, Save to Photos |
+| `Presentation/Views/Overlays/PhotoshootShareCapsule.swift` | "Nice shot!" capsule (save / share / dismiss) |
 | `Core/Engine/VRM/UI/VRMMetalState+Capture.swift` | `captureFrame`, background composite |
-| `Core/Engine/VRM/Rendering/VRMRenderer+Capture.swift` | One-shot drawable blit + `FrameImageConverter` |
-| `Data/DataSources/Memory/Agentic/MemoryStore+Timeline.swift` | Date-range query, `countDatedUnits`, pure `MemoryTimelineModel` |
-| `Presentation/Views/AI/MemoryTimelineSection.swift` | "When" section: on this day, month strip, day list, forget |
-| `../NeuraLinkTests/MemoryOwnershipTests.swift` | Export round-trip / no vectors / conversations toggle, recap parsing + weeks, timeline buckets, range query, BGRA capture conversion |
+| `Core/Engine/VRM/Rendering/Renderer/VRMRenderer+Capture.swift` | One-shot drawable blit + `FrameImageConverter` |
+| `Data/DataSources/Memory/Agentic/Store/MemoryStore+Timeline.swift` | Date-range query, `countDatedUnits`, pure `MemoryTimelineModel` |
+| `Presentation/Views/Memory/MemoryTimelineSection.swift` | "When" section: on this day, month strip, day list, forget |
+| `NeuraLinkTests/Memory/MemoryOwnershipTests.swift` | Export round-trip / no vectors / conversations toggle, recap parsing + weeks, timeline buckets, range query, BGRA capture conversion |
 
 ## Integration notes
 
@@ -252,7 +252,7 @@ flowchart TD
   `.none`, so no card appears). Export and the timeline need no LLM.
 - **Timeline and follow-ups share the query**:
   `fetchUnits(occurringBetween:…)` also feeds the follow-up planner
-  ([COMPANION_DEPTH.md](COMPANION_DEPTH.md)) and the recap evidence.
+  ([COMPANION_DEPTH.md](../Companion/COMPANION_DEPTH.md)) and the recap evidence.
 - **Capture is opt-in per frame**: the drawable is readable only for the
   captured frame. `framebufferOnly` returns to `true` straight after.
 

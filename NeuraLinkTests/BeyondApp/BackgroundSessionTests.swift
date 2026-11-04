@@ -2,7 +2,7 @@
 //  BackgroundSessionTests.swift
 //  NeuraLinkTests
 //
-//  Keep-alive policy for background voice sessions (docs/PRESENCE_BEYOND_APP.md).
+//  Keep-alive policy for background voice sessions (docs/Companion/PRESENCE_BEYOND_APP.md).
 //
 
 import Foundation

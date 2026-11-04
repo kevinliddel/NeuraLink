@@ -9,7 +9,7 @@
 //  graph names, so the two must sit together, as they do there. A
 //  hand-copied folder in Caches (the bench's) is accepted as a fallback for
 //  development. The download folders of the two earlier families are
-//  deleted once, at launch. See docs/GENERATIVE_MOTION.md.
+//  deleted once, at launch. See docs/Engine/GENERATIVE_MOTION.md.
 //
 //  Created by Dedicatus on 30/10/2026.
 //

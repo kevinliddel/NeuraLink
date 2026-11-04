@@ -4,7 +4,7 @@
 //
 //  Dedicated screen for the OpenAI model choices, pushed from AISettingsView
 //  (same pattern as AutonomySettingsView). One section per role, each with
-//  its curated catalog picker (docs/CHAT_LLM.md).
+//  its curated catalog picker (docs/AI/CHAT_LLM.md).
 //
 //  Created by Dedicatus on 26/09/2026.
 //

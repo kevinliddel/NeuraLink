@@ -7,7 +7,7 @@
 //  characters through the app's loader and writes one contact sheet per clip
 //  — each character at four moments — plus a report of what the loader made
 //  of every file. Generated-gesture quality is judged on these
-//  (docs/GENERATIVE_MOTION.md).
+//  (docs/Engine/GENERATIVE_MOTION.md).
 //
 //  NL_GEN_CLIP_DIR: folder of .vrma files (unset = skip).
 //  NL_GEN_CLIP_SNAPSHOT_DIR: output folder (default: <clip dir>/snapshots).

@@ -11,7 +11,7 @@
 //  model files load when the Realtime session starts with gestures
 //  available, behind a memory gate, and are dropped when the user leaves
 //  the OpenAI path, after idling, or on a memory warning.
-//  See docs/GENERATIVE_MOTION.md.
+//  See docs/Engine/GENERATIVE_MOTION.md.
 //
 //  Created by Dedicatus on 30/10/2026.
 //

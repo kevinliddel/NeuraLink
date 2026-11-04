@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  Pure month-grid math and per-day activity for the companion journal's
-//  calendar — Living Companion (docs/LIVING_COMPANION.md). Day keys are
+//  calendar — Living Companion (docs/Companion/LIVING_COMPANION.md). Day keys are
 //  `calendar.startOfDay` values in the calendar's time zone, so a late-night
 //  chat lands on the day the user experienced it, not the UTC day SQLite
 //  stored. Framework-free and unit-tested.

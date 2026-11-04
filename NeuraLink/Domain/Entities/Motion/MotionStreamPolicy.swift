@@ -8,7 +8,7 @@
 //  deserves, spend fewer diffusion steps when the phone is warm, and pace
 //  the steps to what the phone can generate ahead of playback. Pure and
 //  unit-tested; the coordinator in Data applies it.
-//  See docs/GENERATIVE_MOTION.md.
+//  See docs/Engine/GENERATIVE_MOTION.md.
 //
 //  Created by Dedicatus on 30/10/2026.
 //

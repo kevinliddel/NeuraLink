@@ -39,8 +39,8 @@ All under `NeuraLink/Data/DataSources/Memory/Agentic/` unless noted.
 | `MemoryDisposition.swift` | per-character skepticism / literalism / empathy, verbalised for prompts |
 | `../RAGManager.swift` | facade over retain + recall |
 | `Domain/Entities/Skills/SearchMemorySkill.swift` | the `search_memory` tool |
-| `Presentation/Views/AI/MemoryInsightsSection.swift` | "What X knows" + observations in the Memory sheet; the hero card shows the character's portrait (`CompanionPortrait`) when one exists |
-| `Presentation/Views/AI/MemoryModelTile.swift` | One "About you" / "Between you" summary on the hero card: clamped to 3 lines, tap to expand; "More" only when the text is really cut off |
+| `Presentation/Views/Memory/MemoryInsightsSection.swift` | "What X knows" + observations in the Memory sheet; the hero card shows the character's portrait (`CompanionPortrait`) when one exists |
+| `Presentation/Views/Memory/MemoryModelTile.swift` | One "About you" / "Between you" summary on the hero card: clamped to 3 lines, tap to expand; "More" only when the text is really cut off |
 
 ## Schema
 
@@ -217,7 +217,7 @@ Two standing questions: a global **user profile** and a per-character **relation
 ### Weekly recap, export and timeline
 
 Three user-facing surfaces on top of the memory layer
-(docs/MEMORY_OWNERSHIP.md): a **weekly recap** standing question
+(docs/Memory/MEMORY_OWNERSHIP.md): a **weekly recap** standing question
 (`weekly_recap`, refreshed when the ISO week changes, shown as a card with
 an "Ask about it" follow-up and injected as "This week" in the prompt block),
 a **JSON export** of everything remembered (`MemoryExporter`, vectors
@@ -259,15 +259,15 @@ character's observations into another's when sharing is off.
 | consolidation | 1 per batch (≤ 4 batches/run) | after extraction stored something |
 | mental-model refresh | 1 per stale model | after consolidation changed something |
 
-Local extraction goes through `runSilentGenerationOrNil`: it waits until the companion has been idle for 1.5 s, keeps the conversation's KV cache (snapshot and restore, see `docs/Local_SLM_Model.md`), and yields to a user turn at its next token. A run that gets no answer leaves its state for the next pass — retain advances its watermark only past finished chunks, consolidation leaves the batch unconsolidated, and a mental model keeps its summary. The larger local batch amortises the cost. The JP tier is excluded (`LiveMemoryLLM.tier`), matching the existing "no Tier 3 for LLM-jp" rule.
+Local extraction goes through `runSilentGenerationOrNil`: it waits until the companion has been idle for 1.5 s, keeps the conversation's KV cache (snapshot and restore, see `docs/AI/Local_SLM_Model.md`), and yields to a user turn at its next token. A run that gets no answer leaves its state for the next pass — retain advances its watermark only past finished chunks, consolidation leaves the batch unconsolidated, and a mental model keeps its summary. The larger local batch amortises the cost. The JP tier is excluded (`LiveMemoryLLM.tier`), matching the existing "no Tier 3 for LLM-jp" rule.
 
 ## Testing
 
-`NeuraLinkTests/AgenticMemoryTests.swift` covers the tokeniser/BM25, temporal parser, entity extractor, both extraction parsers, consolidation parsing/prompts, RRF/budget/observation-preference, keyword + temporal arms without vectors, and a store round trip (retain → links → recall → consolidate → mental model → reflect ladder) using a scripted `MemoryLLM` stub.
+`NeuraLinkTests/Memory/AgenticMemoryTests.swift` covers the tokeniser/BM25, temporal parser, entity extractor, both extraction parsers, consolidation parsing/prompts, RRF/budget/observation-preference, keyword + temporal arms without vectors, and a store round trip (retain → links → recall → consolidate → mental model → reflect ladder) using a scripted `MemoryLLM` stub.
 
 ### Evaluation harness
 
-`NeuraLinkTests/MemoryEvalTests.swift` runs `MemoryEvalRunner` over
+`NeuraLinkTests/Memory/MemoryEvalTests.swift` runs `MemoryEvalRunner` over
 `MemoryEvalFixture` (both in `Agentic/Eval/`, DEBUG-only in the app target so
 the device run shares them): 24 LongMemEval-style cases with dated sessions,
 the facts extraction should yield, optional consolidation actions, and

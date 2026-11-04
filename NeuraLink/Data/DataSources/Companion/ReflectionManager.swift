@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  End-of-session reflection — Living Companion
-//  (docs/LIVING_COMPANION.md). When a session boundary fires
+//  (docs/Companion/LIVING_COMPANION.md). When a session boundary fires
 //  (SessionLifecycle), the companion "thinks about" the conversation: one
 //  silent LLM pass produces a first-person diary entry, an opener for next
 //  time, and a push-notification line — stored in `companion_journal` and

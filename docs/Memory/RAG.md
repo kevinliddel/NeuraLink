@@ -3,7 +3,7 @@
 > **Superseded (2026-09-25).** Retrieval and ingestion now run through the agentic memory layer described in [AGENTIC_MEMORY.md](AGENTIC_MEMORY.md) (Hindsight-style fact types, entity graph, temporal + keyword arms, observations, mental models, `search_memory` tool). The `RAGManager` API below still exists as a facade, but the scoring formula and single-table model described here are historical.
 
 
-The NeuraLink RAG (Retrieval-Augmented Generation) system gives the AI a persistent "memory" of past interactions so the character remembers facts about the user, past topics, and shared context across app launches. The system supports both the OpenAI Realtime cloud path and the local LLM path; the local path additionally uses RAG as Tier 3 of its 3-tier memory hierarchy (see [local_llm_memory_plan.md](local_llm_memory_plan.md) §3.2 for the canonical spec).
+The NeuraLink RAG (Retrieval-Augmented Generation) system gives the AI a persistent "memory" of past interactions so the character remembers facts about the user, past topics, and shared context across app launches. The system supports both the OpenAI Realtime cloud path and the local LLM path; the local path additionally uses RAG as Tier 3 of its 3-tier memory hierarchy (see [AGENTIC_MEMORY.md](AGENTIC_MEMORY.md#prompt-integration) for how it is fed today).
 
 ## How it Works
 
@@ -16,7 +16,7 @@ The NeuraLink RAG (Retrieval-Augmented Generation) system gives the AI a persist
 | `storeFact(_:)` | Persists an atomic, user-stated fact tagged with `source: "fact"`. Same table, distinct tag — facts are retrieved separately from general dialogue chunks. | `LocalLLMFactExtractor.extractAndStore(...)` during background compaction; also any tool that wants to durably remember something (`remember_fact` tool ultimately calls into KnowledgeGraphManager — see Knowledge Graph section) |
 | `fetchFacts(relevantTo:limit:)` | Returns top-K facts most relevant to a query, filtered to `source = "fact"` only. Used to repopulate Tier 3 of the local LLM prompt on each turn. | `LocalLLMMemoryHierarchy.buildMessages` |
 
-All four use the **same scoring formula**: cosine similarity × recency weight × pin boost. Concretely (from [`RAGManager.rankedMemories`](../NeuraLink/Data/DataSources/Memory/RAGManager.swift)):
+All four use the **same scoring formula**: cosine similarity × recency weight × pin boost. Concretely (from [`RAGManager.rankedMemories`](../../NeuraLink/Data/DataSources/Memory/RAGManager.swift)):
 
 ```
 score = cosineSimilarity(queryVec, memoryVec)
@@ -27,7 +27,7 @@ candidates with sim ≤ similarityFloor are dropped as irrelevant
 ```
 
 The floor, half-life, and recency weight `w` are user-tunable via
-[`MemorySettings`](../NeuraLink/Data/DataSources/Memory/MemorySettings.swift)
+[`MemorySettings`](../../NeuraLink/Data/DataSources/Memory/MemorySettings.swift)
 (`similarityFloor` / `recencyHalfLifeDays` / `recencyWeight`, defaults 0.5 / 14 / 0.25 —
 the previously hard-coded values). The floor is surfaced in the UI as the
 **Memory Quality** slider in User Settings → Memory.
@@ -38,7 +38,7 @@ the previously hard-coded values). The floor is surfaced in the UI as the
 
 ### Background fact extraction (local LLM only)
 
-When a conversation grows past ~80% of the local LLM's `n_ctx`, the oldest 2 dialogue turns aren't simply dropped — they're handed to [`LocalLLMFactExtractor`](../NeuraLink/Data/DataSources/LocalLLM/LocalLLMFactExtractor.swift), which runs a small focused prompt against the local model:
+When a conversation grows past ~80% of the local LLM's `n_ctx`, the oldest 2 dialogue turns aren't simply dropped — they're handed to [`LocalLLMFactExtractor`](../../NeuraLink/Data/DataSources/LocalLLM/LocalLLMFactExtractor.swift), which runs a small focused prompt against the local model:
 
 > *"Summarise the user's stated facts from this exchange into 1–2 short statements. If none, output `NONE`."*
 
@@ -50,8 +50,8 @@ Result: a user who said "I live in Tokyo and I'm allergic to peanuts" at turn 1 
 
 In addition to vector-based memory, NeuraLink runs a structured Knowledge Graph for **exact** factual recall. RAG is great for fuzzy context ("we were talking about ramen"); the Knowledge Graph is for facts that must not drift ("user's cat is named Rex").
 
-- **Structure**: `(Subject, Predicate, Object)` triplets stored in SQLite via [`KnowledgeGraphManager`](../NeuraLink/Data/DataSources/Memory/KnowledgeGraphManager.swift).
-- **Ingestion**: The AI explicitly stores facts via the `remember_fact` tool (see [Function_Call.md](Function_Call.md)).
+- **Structure**: `(Subject, Predicate, Object)` triplets stored in SQLite via [`KnowledgeGraphManager`](../../NeuraLink/Data/DataSources/Memory/KnowledgeGraphManager.swift).
+- **Ingestion**: The AI explicitly stores facts via the `remember_fact` tool (see [Function_Call.md](../AI/Function_Call.md)).
 - **Recall**: All stored facts are formatted as a bulleted list and concatenated into the AI's system instructions at the start of every session — no retrieval ranking, the model sees them all.
 
 This dual-memory system provides both "fuzzy" situational context (RAG) and "perfect" factual recall (KG). RAG facts (from `LocalLLMFactExtractor`) and KG triplets (from the `remember_fact` tool) are distinct stores — they don't overwrite each other.
@@ -101,7 +101,7 @@ All memory data is stored **locally on-device**. Vector generation runs against 
 
 ### Encryption (opt-in)
 
-The memory database can be transparently encrypted at the page level via SQLCipher (AES‑CBC + per‑page HMAC) — see [`MemoryStore+SQLCipher.swift`](../NeuraLink/Data/DataSources/Memory/MemoryStore+SQLCipher.swift). The cipher key lives in the iOS Keychain. Off by default; users opt in through `MemorySettings.isSQLCipherEnabled`. First-time enable triggers a one-shot plaintext-to-encrypted migration on the next launch. See [APP_SECURITY.md](APP_SECURITY.md) for the full security model.
+The memory database can be transparently encrypted at the page level via SQLCipher (AES‑CBC + per‑page HMAC) — see [`MemoryStore+SQLCipher.swift`](../../NeuraLink/Data/DataSources/Memory/Store/MemoryStore+SQLCipher.swift). The cipher key lives in the iOS Keychain. Off by default; users opt in through `MemorySettings.isSQLCipherEnabled`. First-time enable triggers a one-shot plaintext-to-encrypted migration on the next launch. See [APP_SECURITY.md](../Security/APP_SECURITY.md) for the full security model.
 
 ## Technical Details
 
@@ -111,12 +111,12 @@ The memory database can be transparently encrypted at the page level via SQLCiph
 | Vector dimension | Depends on the per-language model (English sentence embedding is 512-dim; other languages may differ). Mismatched-dimension candidates are filtered out at retrieval time |
 | Similarity metric | Cosine similarity over `Double` vectors |
 | Ranking | `sim × ((1−w) + w × exp(-ageDays/halfLife)) × (pinned ? 1.15 : 1.0)`; candidates with `sim ≤ similarityFloor` dropped. Tunables in `MemorySettings` (defaults `w=0.25`, `halfLife=14`, `floor=0.5`) |
-| Database | SQLite via [`MemoryStore`](../NeuraLink/Data/DataSources/Memory/MemoryStore.swift); optional SQLCipher encryption |
+| Database | SQLite via [`MemoryStore`](../../NeuraLink/Data/DataSources/Memory/Store/MemoryStore.swift); optional SQLCipher encryption |
 | Auto-forget | Memories and chat messages older than `MemorySettings.autoForgetDays` are pruned on every store (0 disables) |
 | File-size compliance | Each file ≤500 lines per project rule; `MemoryStore` is split via `+SQLCipher.swift` and `+Queries.swift` extensions |
 
 ## Cross-references
 
-- [local_llm_memory_plan.md](local_llm_memory_plan.md) §3.2 — the canonical spec for the 3-tier memory hierarchy that consumes `fetchFacts`.
-- [Function_Call.md](Function_Call.md) §`remember_fact` — the tool that writes to the Knowledge Graph (distinct from `storeFact` which writes to RAG).
-- [APP_SECURITY.md](APP_SECURITY.md) — encryption model, Keychain key storage, threat model for the memory database.
+- [AGENTIC_MEMORY.md](AGENTIC_MEMORY.md#prompt-integration) — how the 3-tier local memory hierarchy (`LocalLLMMemoryHierarchy`) is fed today.
+- [Function_Call.md](../AI/Function_Call.md) §`remember_fact` — the tool that writes to the Knowledge Graph (distinct from `storeFact` which writes to RAG).
+- [APP_SECURITY.md](../Security/APP_SECURITY.md) — encryption model, Keychain key storage, threat model for the memory database.

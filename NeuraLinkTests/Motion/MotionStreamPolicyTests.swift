@@ -5,7 +5,7 @@
 //  The scheduling rules of a generated motion stream: a first window
 //  always, more while the lead is short and the character speaks or has
 //  just stopped, nothing past the reply's budget, and the end once the
-//  buffered motion has played out. See docs/GENERATIVE_MOTION.md.
+//  buffered motion has played out. See docs/Engine/GENERATIVE_MOTION.md.
 //
 //  Created by Dedicatus on 30/10/2026.
 //

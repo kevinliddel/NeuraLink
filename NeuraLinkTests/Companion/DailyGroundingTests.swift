@@ -2,7 +2,7 @@
 //  DailyGroundingTests.swift
 //  NeuraLinkTests
 //
-//  Daily grounding lines (docs/LIVING_COMPANION.md): the schedule line's
+//  Daily grounding lines (docs/Companion/LIVING_COMPANION.md): the schedule line's
 //  window, order and wording, and the sleep summary's interval union and
 //  thresholds.
 //

@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  How the user sounds, not just what they said — Companion Evolution
-//  pillar 1 (docs/LLM_VOICE.md). Per-utterance acoustic features are
+//  pillar 1 (docs/AI/LLM_VOICE.md). Per-utterance acoustic features are
 //  judged against the user's own running baseline, so a naturally quiet
 //  voice is not "subdued" and a naturally fast one is not "animated".
 //  Framework-free and unit-tested; the signal processing is in

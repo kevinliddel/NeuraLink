@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  Swift wrapper around the opaque C embedding handle in llama_embed_bridge.h
-//  (docs/CHAT_LLM.md). One instance per loaded
+//  (docs/AI/CHAT_LLM.md). One instance per loaded
 //  embedding model; thread-safe (the C side serialises calls).
 //
 //  Created by Dedicatus on 26/09/2026.

@@ -5,7 +5,7 @@
 //  The mouth cue: band energies name the vowel, the level follows the
 //  recent loudest and silence closes the mouth, a stale cue reads as
 //  silence, and the controller takes the analysed shape and holds it.
-//  See docs/LipSync.md.
+//  See docs/Engine/LipSync.md.
 //
 //  Created by Dedicatus on 02/11/2026.
 //

@@ -2,7 +2,7 @@
 //  KeepsakeUnlockController.swift
 //  NeuraLink
 //
-//  Drives the "Keepsake collected" capsule (docs/LIVING_COMPANION.md):
+//  Drives the "Keepsake collected" capsule (docs/Companion/LIVING_COMPANION.md):
 //  the tracker hands over each newly recorded keepsake, the capsule shows
 //  one at a time for a few seconds, and further unlocks wait their turn.
 //  Same shape as PhotoshootShareController.

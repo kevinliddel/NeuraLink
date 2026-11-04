@@ -61,8 +61,8 @@ companion_milestones (character, kind, achieved_at, celebrated_at)   -- PK (char
 the **reflection watermark** (see End-of-session reflection). When the column is added during an
 upgrade, it is backfilled to each conversation's current last message. This
 stops the upgrade from re-reflecting conversations that already have entries.
-Swift entities: `JournalEntry`, `PersonaTrait` (`Domain/Entities/CompanionJournal.swift`);
-`MilestoneKind`, `CompanionMilestone`, `MilestoneRules` (`Domain/Entities/CompanionMilestone.swift`).
+Swift entities: `JournalEntry`, `PersonaTrait` (`Domain/Entities/Companion/CompanionJournal.swift`);
+`MilestoneKind`, `CompanionMilestone`, `MilestoneRules` (`Domain/Entities/Companion/CompanionMilestone.swift`).
 
 ## One bond per character
 
@@ -78,7 +78,7 @@ today is "New", however long the user has known another one.
 
 What a character **knows** is a separate setting. Facts about the user live
 in the shared memory bank, and "Characters share memories" decides whether
-recall also reads other characters' banks (`MemoryBanks`, docs/CHAT_LLM.md).
+recall also reads other characters' banks (`MemoryBanks`, docs/AI/CHAT_LLM.md).
 So a new character can know the user's sister's name and still be at "New".
 The meter's depth only counts facts the user told **this** character.
 
@@ -266,7 +266,7 @@ time the notification toggle is switched on.
 and as a `LocalCue` through `LocalLLMManager.handleCue` otherwise — an
 instruction rather than the user's words, in Japanese for the LLM-jp model, and
 checked before it is spoken so the instruction itself is never read out
-(`docs/Local_SLM_Model.md`, "Lines the companion starts").
+(`docs/AI/Local_SLM_Model.md`, "Lines the companion starts").
 
 - **Guards on every tick**: the Proactive Engagement toggle is on, and the app
   is active (or PiP is active). `status == .ready`, and the UI isn't hidden.
@@ -384,7 +384,7 @@ app's. It decides which bundled clips the body draws on
 An idle plays once — never looped, since a short clip wrapping back to its
 first frame pops — and the blend back to the base loop starts a second
 before it ends. On the OpenAI path a generated gesture stream
-([GENERATIVE_MOTION.md](GENERATIVE_MOTION.md)) takes the talking gesture's
+([GENERATIVE_MOTION.md](../Engine/GENERATIVE_MOTION.md)) takes the talking gesture's
 place for one reply: idles stand down while it plays, a pose or an episode
 outranks it, and it crossfades home when the reply's motion has played out. The pose tool keeps offering the same four names to every
 character, and the body resolves a feminine pose when it plays. The male
@@ -644,48 +644,48 @@ flowchart TD
 
 | File | Role |
 |---|---|
-| `Data/DataSources/SessionLifecycle.swift` | Session boundaries; posts `sessionDidEnd` |
+| `Data/DataSources/Companion/SessionLifecycle.swift` | Session boundaries; posts `sessionDidEnd` |
 | `Core/Utils/InteractionClock.swift` | `lastUserSpeechAt` (per launch), persisted `lastSeenAt`, `foregroundAt` (visit start) |
-| `Domain/Entities/CompanionJournal.swift` | `JournalEntry` / `PersonaTrait` entities |
-| `Data/DataSources/Memory/MemoryStore+Journal.swift` | Journal + trait CRUD, `unreflectedUserTurns` watermark count |
-| `Data/DataSources/Memory/MemoryStore.swift` | Table DDL + `last_message_id` migration/backfill |
+| `Domain/Entities/Companion/CompanionJournal.swift` | `JournalEntry` / `PersonaTrait` entities |
+| `Data/DataSources/Memory/Store/MemoryStore+Journal.swift` | Journal + trait CRUD, `unreflectedUserTurns` watermark count |
+| `Data/DataSources/Memory/Store/MemoryStore.swift` | Table DDL + `last_message_id` migration/backfill |
 | `Data/DataSources/OpenAI/OpenAIChatClient.swift` | Shared one-shot Chat Completions client |
-| `Data/DataSources/ReflectionManager.swift` | Reflection pass, labelled-line parser, trait pool, launch catch-up |
-| `Core/Utils/CompanionNotificationScheduler.swift` | Scheduling, quiet hours, communication-style avatar, foreground presenter |
-| `Data/DataSources/PresenceSettings.swift` | All presence toggles/thresholds (explicit-backing `@Observable`) |
-| `Data/DataSources/Memory/CompanionAffinity.swift` | The single relationship curve + stage guidance, per character |
-| `Data/DataSources/Memory/MemoryStore+Affinity.swift` | Per-character meter inputs: turns, shared days, last seen, diary count, facts told |
-| `Data/DataSources/Memory/MemoryStore+CharacterBond.swift` | `character` columns, one-time attribution of older rows, per-character `lastExchange` |
-| `Data/DataSources/Memory/CompanionStateManager.swift` | `[Companion State]` prompt block; time-apart (frozen per visit), carry-over and keepsake lines |
-| `Presentation/Views/AI/CompanionJournalView.swift` | Journal sheet: relationship, calendar, day / month list, keepsakes, traits, reset |
-| `Domain/Entities/JournalCalendar.swift` | `JournalCalendarModel` month grid + local-day `JournalDayActivity` grouping |
-| `Domain/Entities/CompanionAbsence.swift` | Time-apart wording (pure) |
-| `Data/DataSources/Memory/MemoryStore+JournalCalendar.swift` | `userTurnStamps(between:and:character:)`, `lastUserMessageAt(before:character:)` |
-| `Domain/Entities/DailyGrounding.swift` | `GroundingEvent`, `SleepSummary`, schedule / sleep line wording, interval union |
+| `Data/DataSources/Companion/ReflectionManager.swift` | Reflection pass, labelled-line parser, trait pool, launch catch-up |
+| `Core/Notifications/CompanionNotificationScheduler.swift` | Scheduling, quiet hours, communication-style avatar, foreground presenter |
+| `Data/DataSources/Companion/PresenceSettings.swift` | All presence toggles/thresholds (explicit-backing `@Observable`) |
+| `Data/DataSources/Memory/CompanionState/CompanionAffinity.swift` | The single relationship curve + stage guidance, per character |
+| `Data/DataSources/Memory/Store/MemoryStore+Affinity.swift` | Per-character meter inputs: turns, shared days, last seen, diary count, facts told |
+| `Data/DataSources/Memory/Store/MemoryStore+CharacterBond.swift` | `character` columns, one-time attribution of older rows, per-character `lastExchange` |
+| `Data/DataSources/Memory/CompanionState/CompanionStateManager.swift` | `[Companion State]` prompt block; time-apart (frozen per visit), carry-over and keepsake lines |
+| `Presentation/Views/Journal/CompanionJournalView.swift` | Journal sheet: relationship, calendar, day / month list, keepsakes, traits, reset |
+| `Domain/Entities/Companion/JournalCalendar.swift` | `JournalCalendarModel` month grid + local-day `JournalDayActivity` grouping |
+| `Domain/Entities/Companion/CompanionAbsence.swift` | Time-apart wording (pure) |
+| `Data/DataSources/Memory/Store/MemoryStore+JournalCalendar.swift` | `userTurnStamps(between:and:character:)`, `lastUserMessageAt(before:character:)` |
+| `Domain/Entities/Companion/DailyGrounding.swift` | `GroundingEvent`, `SleepSummary`, schedule / sleep line wording, interval union |
 | `Data/DataSources/Grounding/GroundingSettings.swift` | The two opt-in toggles (explicit-backing `@Observable`) |
 | `Data/DataSources/Grounding/CalendarGrounding.swift` | EventKit full-access request + 12 h event read |
 | `Data/DataSources/Grounding/SleepGrounding.swift` | HealthKit sleep-analysis request + last-night read |
 | `Data/DataSources/Grounding/DailyGroundingProvider.swift` | Once-per-visit fetch held for the Companion State block |
-| `Data/DataSources/CompanionSceneCapture.swift` | Candid scene captures: the 30 s loop, `latest.jpg`, the journal copy, the notification attachment |
-| `Domain/Entities/DeskPresence.swift` | `DeskPresencePolicy` (arrival / away over face observations), greeting wording, `FaceGaze` |
-| `Domain/Entities/AwayEpisode.swift` | `AwayEpisodePolicy` + the app-wide `AwayEpisode` switch |
+| `Data/DataSources/Companion/CompanionSceneCapture.swift` | Candid scene captures: the 30 s loop, `latest.jpg`, the journal copy, the notification attachment |
+| `Domain/Entities/Companion/DeskPresence.swift` | `DeskPresencePolicy` (arrival / away over face observations), greeting wording, `FaceGaze` |
+| `Domain/Entities/Motion/AwayEpisode.swift` | `AwayEpisodePolicy` + the app-wide `AwayEpisode` switch |
 | `Data/DataSources/Vision/FacePresenceDetector.swift` | On-device Vision face presence on the camera's frames |
-| `Data/DataSources/DeskPresenceManager.swift` | Runs the policy once a second; greeting + away episode |
+| `Data/DataSources/Companion/DeskPresenceManager.swift` | Runs the policy once a second; greeting + away episode |
 | `Core/Engine/VRM/UI/VRMMetalState+AwayEpisode.swift` | Body side of the away loop + the face-following gaze |
-| `Presentation/Views/AI/JournalCalendarView.swift` | Month grid, activity dots, swipe / chevrons, Today |
-| `Presentation/Views/AI/JournalDaySection.swift` | Selected-day or month list under the calendar; opens transcripts as sheets |
-| `Data/DataSources/CompanionPortrait.swift` | Character face for the journal and Memory hero card (live portrait, else bundled thumbnail) |
-| `Data/DataSources/KeepsakeUnlockController.swift` | Queue + lifetime for the "Keepsake collected" capsule |
-| `Presentation/Views/AI/KeepsakeUnlockCapsule.swift` | The capsule itself: badge, title, haptic, tap or 5 s to dismiss |
-| `Domain/Entities/CompanionMilestone.swift` | `MilestoneKind` (titles, symbols, day thresholds), `CompanionMilestone`, pure `MilestoneRules` |
-| `Data/DataSources/Memory/MemoryStore+Milestones.swift` | `companion_milestones` CRUD (`INSERT OR IGNORE` record, oldest-first read, celebrated flag) |
-| `Data/DataSources/Memory/CompanionMilestoneTracker.swift` | `note` / `refreshDerived` / once-only `celebrationLine` |
-| `Presentation/Views/AI/CompanionKeepsakesSection.swift` | Badge grid in the journal; dims keepsakes not yet reached |
-| `Presentation/Views/AI/RelationshipMeterBarOverlay.swift` | Meter overlay; tap opens the Journal |
-| `Data/DataSources/ProactivePresenceManager.swift` | Absence greeting + silence small talk loop; shared `engage(with:)` |
-| `Presentation/Views/AI/AutonomySettingsView.swift` | Companion Presence / Proactive Engagement settings sections |
-| `Data/DataSources/SongRecognitionManager+Session.swift` | Co-listening loop |
-| `Data/DataSources/GameSessionManager.swift` | Mini-game state machine, secret, per-turn reminder |
+| `Presentation/Views/Journal/JournalCalendarView.swift` | Month grid, activity dots, swipe / chevrons, Today |
+| `Presentation/Views/Journal/JournalDaySection.swift` | Selected-day or month list under the calendar; opens transcripts as sheets |
+| `Data/DataSources/Companion/CompanionPortrait.swift` | Character face for the journal and Memory hero card (live portrait, else bundled thumbnail) |
+| `Data/DataSources/Companion/KeepsakeUnlockController.swift` | Queue + lifetime for the "Keepsake collected" capsule |
+| `Presentation/Views/Overlays/KeepsakeUnlockCapsule.swift` | The capsule itself: badge, title, haptic, tap or 5 s to dismiss |
+| `Domain/Entities/Companion/CompanionMilestone.swift` | `MilestoneKind` (titles, symbols, day thresholds), `CompanionMilestone`, pure `MilestoneRules` |
+| `Data/DataSources/Memory/Store/MemoryStore+Milestones.swift` | `companion_milestones` CRUD (`INSERT OR IGNORE` record, oldest-first read, celebrated flag) |
+| `Data/DataSources/Memory/CompanionState/CompanionMilestoneTracker.swift` | `note` / `refreshDerived` / once-only `celebrationLine` |
+| `Presentation/Views/Journal/CompanionKeepsakesSection.swift` | Badge grid in the journal; dims keepsakes not yet reached |
+| `Presentation/Views/Overlays/RelationshipMeterBarOverlay.swift` | Meter overlay; tap opens the Journal |
+| `Data/DataSources/Companion/ProactivePresenceManager.swift` | Absence greeting + silence small talk loop; shared `engage(with:)` |
+| `Presentation/Views/Settings/AutonomySettingsView.swift` | Companion Presence / Proactive Engagement settings sections |
+| `Data/DataSources/SongRecognition/SongRecognitionManager+Session.swift` | Co-listening loop |
+| `Data/DataSources/Companion/GameSessionManager.swift` | Mini-game state machine, secret, per-turn reminder |
 | `Domain/Entities/Skills/PlayGameSkill.swift` | `play_game` tool |
 | `App/NeuraLinkApp.swift` | Starts `SessionLifecycle`, `ReflectionManager`, `ProactivePresenceManager` |
 

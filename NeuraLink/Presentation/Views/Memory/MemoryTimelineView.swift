@@ -4,7 +4,7 @@
 //
 //  The Memory page: what the companion knows (hero card), memory
 //  controls, consolidated insights, saved facts, and privacy actions.
-//  Data comes from the agentic memory layer (docs/AGENTIC_MEMORY.md).
+//  Data comes from the agentic memory layer (docs/Memory/AGENTIC_MEMORY.md).
 //
 
 import SwiftUI

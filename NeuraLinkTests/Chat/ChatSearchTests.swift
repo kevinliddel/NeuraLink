@@ -2,7 +2,7 @@
 //  ChatSearchTests.swift
 //  NeuraLinkTests
 //
-//  Chat history search (docs/CHAT_LLM.md).
+//  Chat history search (docs/AI/CHAT_LLM.md).
 //
 
 import Foundation

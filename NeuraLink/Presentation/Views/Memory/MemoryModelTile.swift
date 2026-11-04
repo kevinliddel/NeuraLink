@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  One "About you" / "Between you" summary on the Memory page's hero card
-//  (docs/MEMORY_OWNERSHIP.md). A mental model can run to ninety words, and
+//  (docs/Memory/MEMORY_OWNERSHIP.md). A mental model can run to ninety words, and
 //  two of them turned the card into a wall of text: each now sits in its
 //  own tile, clamped to a few lines, and expands on tap. The "More"
 //  affordance only appears when the text really is cut off.

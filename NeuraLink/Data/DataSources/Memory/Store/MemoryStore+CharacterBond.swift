@@ -2,7 +2,7 @@
 //  MemoryStore+CharacterBond.swift
 //  NeuraLink
 //
-//  One bond per character (docs/LIVING_COMPANION.md). The relationship
+//  One bond per character (docs/Companion/LIVING_COMPANION.md). The relationship
 //  meter, the count-based keepsakes, "time apart" and the carry-over line
 //  describe the user and ONE character, so every message and every
 //  remembered fact records the character it was shared with. What a

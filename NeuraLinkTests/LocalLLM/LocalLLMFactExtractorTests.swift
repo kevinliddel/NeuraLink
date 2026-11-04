@@ -5,7 +5,7 @@
 //  Unit tests for the fact extractor. Uses a stubbed LLM generator so the
 //  tests are deterministic and don't require a model to be downloaded.
 //
-//  Background: docs/AGENTIC_MEMORY.md, Retain (the local-model fact gates).
+//  Background: docs/Memory/AGENTIC_MEMORY.md, Retain (the local-model fact gates).
 //
 //  Created by Dedicatus on 18/05/2026.
 //

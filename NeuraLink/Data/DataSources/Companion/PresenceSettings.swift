@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  Toggles for the Living Companion presence features (Phase 1,
-//  docs/LIVING_COMPANION.md). Engine-agnostic, so they live outside
+//  docs/Companion/LIVING_COMPANION.md). Engine-agnostic, so they live outside
 //  OpenAISettings — but they follow its storage idiom exactly: explicit
 //  `_x` backing + `access`/`withMutation`, NEVER `didSet` (under
 //  SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor + @Observable, `didSet` fires
@@ -58,7 +58,7 @@ final class PresenceSettings {
         _deskAwayMinutes = defaults.object(forKey: Self.deskAwayMinutesKey) as? Double ?? 10
     }
 
-    /// Character-initiated follow-ups on dated plans (docs/COMPANION_DEPTH.md).
+    /// Character-initiated follow-ups on dated plans (docs/Companion/COMPANION_DEPTH.md).
     var followUpsEnabled: Bool {
         get {
             access(keyPath: \.followUpsEnabled)
@@ -89,7 +89,7 @@ final class PresenceSettings {
     }
 
     /// Keep an active voice session running with the screen off / in other
-    /// apps (docs/PRESENCE_BEYOND_APP.md). Opt-in: the mic stays on.
+    /// apps (docs/Companion/PRESENCE_BEYOND_APP.md). Opt-in: the mic stays on.
     var keepTalkingInBackground: Bool {
         get {
             access(keyPath: \.keepTalkingInBackground)
@@ -202,7 +202,7 @@ final class PresenceSettings {
     }
 
     /// Camera-based desk presence: arrival greeting + away loop
-    /// (docs/LIVING_COMPANION.md, Desk presence). Works while the camera is on.
+    /// (docs/Companion/LIVING_COMPANION.md, Desk presence). Works while the camera is on.
     var isDeskPresenceEnabled: Bool {
         get {
             access(keyPath: \.isDeskPresenceEnabled)

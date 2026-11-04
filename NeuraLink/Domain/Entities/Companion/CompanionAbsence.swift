@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  How long the user has been away, worded for the `[Companion State]`
-//  block — Living Companion (docs/LIVING_COMPANION.md). Pure and
+//  block — Living Companion (docs/Companion/LIVING_COMPANION.md). Pure and
 //  unit-tested; `CompanionStateManager` freezes the inputs per foreground
 //  visit so the block reads the same on every turn of a session.
 //

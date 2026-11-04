@@ -66,7 +66,7 @@ final class MemorySettings {
     }
 
     /// When false, recall is limited to the shared bank plus the active
-    /// character's own bank (docs/CHAT_LLM.md).
+    /// character's own bank (docs/AI/CHAT_LLM.md).
     var charactersShareMemories: Bool {
         didSet { UserDefaults.standard.set(charactersShareMemories, forKey: Key.shareBetweenCharacters) }
     }

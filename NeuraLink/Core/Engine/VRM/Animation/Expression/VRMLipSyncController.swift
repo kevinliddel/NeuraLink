@@ -6,7 +6,7 @@
 //  mouth, and the shape is the vowel the audio analysis names when it
 //  names one, else a cycle weighted toward open vowels, paced like
 //  phonemes. Weights move by time-based lerps so the mouth never snaps.
-//  See docs/LipSync.md.
+//  See docs/Engine/LipSync.md.
 //
 //  Created by Dedicatus on 17/04/2026.
 //

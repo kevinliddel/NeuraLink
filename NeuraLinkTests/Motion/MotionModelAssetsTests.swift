@@ -6,7 +6,7 @@
 //  basename must never hit another model's tokenizer.json), one folder in
 //  the dataset, a pin on every file, each graph's weight sidecar named as
 //  the graph records it, and the download size the card shows.
-//  See docs/GENERATIVE_MOTION.md.
+//  See docs/Engine/GENERATIVE_MOTION.md.
 //
 //  Created by Dedicatus on 30/10/2026.
 //

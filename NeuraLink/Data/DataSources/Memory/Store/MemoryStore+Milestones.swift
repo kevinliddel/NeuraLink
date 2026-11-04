@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  CRUD for `companion_milestones` — keepsake milestones (Living Companion,
-//  docs/LIVING_COMPANION.md). One row per (character, kind); `INSERT OR
+//  docs/Companion/LIVING_COMPANION.md). One row per (character, kind); `INSERT OR
 //  IGNORE` makes "record" idempotent so every call site can fire freely.
 //  Prepared-statement + NSLock style, like the other MemoryStore extensions.
 //

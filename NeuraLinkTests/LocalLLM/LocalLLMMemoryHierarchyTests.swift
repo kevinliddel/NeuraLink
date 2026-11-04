@@ -7,7 +7,7 @@
 //    - `candidatesBeyondWindow(allRecent:windowMessages:lastCompactedID:)`
 //      — what to compact
 //
-//  Background: docs/Local_SLM_Model.md, Turn latency (the history window).
+//  Background: docs/AI/Local_SLM_Model.md, Turn latency (the history window).
 //
 //  Created by Dedicatus on 19/05/2026.
 //

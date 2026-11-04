@@ -64,7 +64,7 @@ nonisolated enum RemoteAssetRegistry: Hashable, Sendable {
     // WordPiece tokenizer. Hosted under `motion/ardy-mini-external/` in the
     // shared dataset (`motion/ardy-mini/` and `motion/ardy-mini-fp16/` hold
     // the single-file fp32 and float16 families for the bench); never
-    // bundled (docs/GENERATIVE_MOTION.md).
+    // bundled (docs/Engine/GENERATIVE_MOTION.md).
     case motionManifest
     case motionTextEncoder
     case motionTextEncoderWeights

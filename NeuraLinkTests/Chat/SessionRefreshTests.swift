@@ -3,7 +3,7 @@
 //  NeuraLinkTests
 //
 //  Debounce / defer state machine for the mid-session instruction refresh
-//  (docs/CHAT_LLM.md).
+//  (docs/AI/CHAT_LLM.md).
 //
 
 import Foundation

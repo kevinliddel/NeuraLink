@@ -1,14 +1,14 @@
 # NeuraLink
 
 <p align="center">
-    <img src="./docs/Models/Oz.png" alt="NeuraLink Model" width="200" style="margin:6px;" />
-    <img src="./docs/Models/Ekaterina.png" alt="NeuraLink Model" width="200" style="margin:6px;" />
-    <img src="./docs/Models/Sonya.png" alt="NeuraLink Model" width="200" style="margin:6px;" />
+    <img src="./docs/Assets/Models/Oz.png" alt="NeuraLink Model" width="280" style="margin:6px;" />
+    <img src="./docs/Assets/Models/Ekaterina.png" alt="NeuraLink Model" width="280" style="margin:6px;" />
+    <img src="./docs/Assets/Models/Sonya.png" alt="NeuraLink Model" width="280" style="margin:6px;" />
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/iOS-17.0%2B-blue?style=flat&logo=apple" alt="iOS" />
-  <img src="https://img.shields.io/badge/Swift-6.0-orange?style=flat&logo=swift" alt="Swift" />
+  <img src="https://img.shields.io/badge/iOS-26.2%2B-blue?style=flat&logo=apple" alt="iOS" />
+  <img src="https://img.shields.io/badge/Swift-6.2-orange?style=flat&logo=swift" alt="Swift" />
   <img src="https://img.shields.io/badge/Graphics-Metal-brightgreen?style=flat&logo=metal" alt="Metal" />
   <img src="https://custom-icon-badges.demolab.com/badge/ChatGPT-74aa9c?logo=openai&logoColor=white" alt="OpenAI" />
   <img src="https://img.shields.io/badge/Hugging%20Face-FFD21E?logo=huggingface&logoColor=fff" alt="Hugging Face" />
@@ -20,7 +20,7 @@
   <img src="https://custom-icon-badges.demolab.com/badge/Silero-VAD-red?style=flat&logo=silero" alt="Silero VAD" />
 </p>
 
-A high-performance, native iOS VRM character viewer and AI companion built from the ground up using **Metal** and **SwiftUI**. NeuraLink connects to the OpenAI Realtime API via **WebRTC** for ultra-low latency mic capture and AI audio playback.
+A high-performance, native iOS VRM character viewer and AI companion built from the ground up using **Metal** and **SwiftUI**. NeuraLink connects to the OpenAI Realtime API via **WebRTC** for ultra-low latency mic capture and AI audio playback, and can run fully offline with on-device speech recognition, language models and voices.
 
 ---
 
@@ -28,57 +28,93 @@ A high-performance, native iOS VRM character viewer and AI companion built from 
 
 <table>
   <tr>
-    <td><strong>Native Metal Engine</strong><br/>Custom MToon shaders and GPU-accelerated rendering.</td>
-    <td><strong>Spring-Bone Physics</strong><br/>Real-time GPU compute for hair and clothing movement.</td>
+    <td><strong>Native Metal Engine</strong><br/>Custom MToon shaders, GPU morph targets and skinning, MSAA and outline passes.</td>
+    <td><strong>Spring-Bone Physics</strong><br/>The VRMC_springBone solver for hair, skirts and accessories, with sphere and capsule colliders (VRM 0.x and 1.0).</td>
   </tr>
   <tr>
-    <td><strong>Procedural Rain System</strong><br/>Fully shader-driven 3D rain streaks with synchronized 2D lens splashing and realistic weather cycles.</td>
-    <td><strong>Realtime Sky System</strong><br/>Real-time sky with realistic lighting and dynamic sun and moon positioning. See <a href="./docs/Sky_System.md">Sky System Documentation</a></td>
+    <td><strong>Realtime Sky System</strong><br/>The real sun, moon phase and stars for the user's time and place, lighting the character. See <a href="./docs/Engine/Sky_System.md">Sky System</a></td>
+    <td><strong>Procedural Rain System</strong><br/>Shader-driven 3D rain streaks with synchronized 2D lens splashing and natural weather cycles.</td>
+  </tr>
+  <tr>
+    <td><strong>Agentic Memory</strong><br/>Fact types, an entity graph and hybrid recall, all on device, so the companion remembers what matters. See <a href="./docs/Memory/AGENTIC_MEMORY.md">Agentic Memory</a></td>
+    <td><strong>Lip-Sync</strong><br/>Mouth shapes read from the audio as it plays, on both the Realtime and the local voice path. See <a href="./docs/Engine/LipSync.md">Lip-Sync</a></td>
+  </tr>
+  <tr>
+    <td><strong>Living Companion</strong><br/>Diary reflections after each session, proactive greetings, keepsakes, mini-games and desk presence. See <a href="./docs/Companion/LIVING_COMPANION.md">Living Companion</a></td>
+    <td><strong>Presence Beyond the App</strong><br/>Voice chat with the screen off, home-screen widgets and a Live Activity. See <a href="./docs/Companion/PRESENCE_BEYOND_APP.md">Presence Beyond the App</a></td>
+  </tr>
+  <tr>
+    <td><strong>Generative Motion</strong><br/>Gestures generated on device from what the character says (ARDY via ONNX Runtime). See <a href="./docs/Engine/GENERATIVE_MOTION.md">Generative Motion</a></td>
+    <td><strong>Character Customization</strong><br/>Recolour hair, eyes and clothes, or swap whole parts between characters, live on the scene. See <a href="./docs/Engine/CHARACTER_CUSTOMIZATION.md">Character Customization</a></td>
   </tr>
   <tr>
     <td><strong>Proactive Vision</strong><br/>Periodically captures frames to "see" the user's world and comment on it autonomously.</td>
     <td><strong>Interactive Photoshoot</strong><br/>The AI can strike poses, look at the camera, and hide the UI for clean screenshots.</td>
   </tr>
   <tr>
-    <td><strong>Semantic Memory</strong><br/>Knowledge Graph remembers structured facts about the user (likes, names, job) to maintain long-term relationships. See <a href="./docs/RAG.md">RAG Documentation</a></td>
-    <td><strong>Neural Lip-Sync</strong><br/>Real-time audio amplitude analysis mapped to VRM blend shapes. See <a href="./docs/LipSync.md">Lip-Sync Documentation</a> and <a href="./docs/Openai_Realtime_Chat.md">Realtime Audio Documentation</a></td>
-  </tr>
-  <tr>
     <td><strong>"Eyes on You" System</strong><br/>Arknights: Endfield-inspired camera tracking — characters maintain eye contact by turning their heads toward the camera after 5 seconds.</td>
     <td><strong>Physical Interaction</strong><br/>Direct 3D raycasting lets the user "touch" or "pat" the character with haptic feedback.</td>
   </tr>
   <tr>
-    <td><strong>Advanced Camera</strong><br/>Orbit controls with look-at behavior following the viewing angle.</td>
+    <td><strong>Song Recognition</strong><br/>"What song is this?" — ShazamKit finds the track and the persona reacts in character. See <a href="./docs/Companion/SONG_RECOGNITION.md">Song Recognition</a></td>
     <td><strong>Dual-Layer VAD</strong><br/>Client-side Silero VAD (v5) alongside OpenAI's server VAD for instant local voice detection and immediate UI feedback.</td>
   </tr>
   <tr>
-    <td><strong>Per-Character Personas</strong><br/>Each character carries her own system prompt and voice model, hot-swapped on model selection.</td>
-    <td><strong>Fully Offline AI</strong><br/>On-device pipeline: whisper.cpp (STT) on CPU and Llama-3.2 / LLM-jp-3 (LLM) via llama.cpp on the Metal GPU or CPU. See <a href="./docs/Local_SLM_Model.md">On-Device LLM docs</a></td>
+    <td><strong>Per-Character Personas</strong><br/>Each character carries their own system prompt, voice and relationship bond, hot-swapped on model selection.</td>
+    <td><strong>Fully Offline AI</strong><br/>whisper.cpp (STT), Llama-3.2 / LLM-jp-3 (LLM) via llama.cpp on the Metal GPU or CPU, and OpenVoice / VOICEVOX voices. See <a href="./docs/AI/Local_SLM_Model.md">On-Device LLM</a></td>
   </tr>
 </table>
 
+---
+
+## 📚 Documentation
+
+Feature documentation lives in [`docs/`](./docs), one folder per area.
+
+| Area | Document | What it covers |
+| :--- | :--- | :--- |
+| **AI** | [Chat & LLM](./docs/AI/CHAT_LLM.md) | The conversation layer on both backends: tool calls, barge-in, reconnect, chat history |
+| | [On-Device LLM](./docs/AI/Local_SLM_Model.md) | llama.cpp engines, shipped models, memory residency on 4 GB phones, turn latency |
+| | [Voice Architecture](./docs/AI/LLM_VOICE.md) | The local TTS pipeline next to the OpenAI Realtime audio path |
+| | [Function Calling](./docs/AI/Function_Call.md) | The tools the companion can call and how each one runs |
+| | [OpenAI Realtime GA Migration](./docs/AI/openai_realtime_chat.md) | The Realtime API beta → GA changes, item by item |
+| | [API Usage Dashboard](./docs/AI/API_USAGE.md) | Estimated spend, tokens and requests per model |
+| **Memory** | [Agentic Memory](./docs/Memory/AGENTIC_MEMORY.md) | Retain, recall, reflect: the on-device Hindsight port |
+| | [Memory Ownership](./docs/Memory/MEMORY_OWNERSHIP.md) | Export, the weekly recap, the timeline and photoshoot sharing |
+| | [Long-Term Memory (RAG)](./docs/Memory/RAG.md) | The original RAG layer, now a facade over agentic memory (historical) |
+| **Companion** | [Living Companion](./docs/Companion/LIVING_COMPANION.md) | Reflection, personality evolution, proactive engagement, games, desk presence, keepsakes |
+| | [Companion Depth](./docs/Companion/COMPANION_DEPTH.md) | Follow-ups on plans the user mentioned, photo memories |
+| | [Presence Beyond the App](./docs/Companion/PRESENCE_BEYOND_APP.md) | Background voice sessions, widgets, the Live Activity, App Intents |
+| | [Song Recognition](./docs/Companion/SONG_RECOGNITION.md) | ShazamKit matching, persona reactions, co-listening |
+| **Engine** | [Sky System](./docs/Engine/Sky_System.md) | The procedural sky, sun, moon and stars, and the lighting they drive |
+| | [Lip-Sync](./docs/Engine/LipSync.md) | Visemes, the audio analysis and the timing on both voice paths |
+| | [Generative Motion](./docs/Engine/GENERATIVE_MOTION.md) | Text-to-motion with ARDY on device, streamed into the animation player |
+| | [Character Customization](./docs/Engine/CHARACTER_CUSTOMIZATION.md) | Recolouring, texture borrowing and part grafting between VRMs |
+| **Security** | [App Security](./docs/Security/APP_SECURITY.md) | Threat model, storage inventory, Keychain layout, download pinning, privacy manifest |
+
+Images used by the docs and this README are in [`docs/Assets/`](./docs/Assets). The code layout is described in [CONTRIBUTING.md](./CONTRIBUTING.md#project-structure).
 
 ---
 
 ## 🌤️ Realtime Sky System
 
-NeuraLink renders a fully procedural, physically-inspired sky backdrop that **automatically mirrors the user's local time of day** — from the cool darkness of midnight to the warm golden glow of an afternoon sun.
+NeuraLink renders a fully procedural, physically-inspired sky backdrop that **follows the user's real clock and place** — the sun rises and sets at the real times, the moon shows tonight's phase, and the real constellations turn through the night.
 
 <p align="center">
-  <img src="./docs/Environments/sunrise.png" alt="Sunrise" width="180" style="margin:4px;" />
-  <img src="./docs/Environments/afternoon-sun.png" alt="Afternoon sun" width="180" style="margin:4px;" />
-  <img src="./docs/Environments/sunset.png" alt="Sunset" width="180" style="margin:4px;" />
-  <img src="./docs/Environments/night.png" alt="Night" width="180" style="margin:4px;" />
+  <img src="./docs/Assets/Environments/sunrise.png" alt="Sunrise" width="180" style="margin:4px;" />
+  <img src="./docs/Assets/Environments/afternoon-sun.png" alt="Afternoon sun" width="180" style="margin:4px;" />
+  <img src="./docs/Assets/Environments/sunset.png" alt="Sunset" width="180" style="margin:4px;" />
+  <img src="./docs/Assets/Environments/night.png" alt="Night" width="180" style="margin:4px;" />
 </p>
 
 Key highlights:
 
 - **Clock-driven** — `SkyTimeProvider` reads the device's local calendar every frame; no manual configuration required.
-- **Procedural GPU shader** — a single fullscreen-triangle Metal draw call renders the gradient, star field, dual-layer dome clouds, sun disc with bloom, and a moon disc opposite the sun.
-- **Unified lighting** — the resolved `SkyEnvironment` drives a three-point key / fill / rim light rig that keeps the VRM character consistently lit against the sky at every hour.
-- **Zero textures** — all visual elements (clouds, stars, sun, moon) are generated procedurally via FBM noise and analytic functions.
+- **Procedural GPU shader** — a single fullscreen-triangle Metal draw renders the scattered-light gradient, star field, dome clouds, sun disc with bloom and the moon.
+- **Unified lighting** — the resolved sky drives a key / fill / rim light rig that keeps the VRM character consistently lit against the sky at every hour.
+- **Zero textures** — clouds, stars, sun and moon are generated procedurally via FBM noise and analytic functions.
 
-**[Full Sky System documentation](./docs/Sky_System.md)**
+**[Full Sky System documentation](./docs/Engine/Sky_System.md)**
 
 ---
 
@@ -89,19 +125,21 @@ NeuraLink features a high-performance 3D rain system that runs entirely on the G
 - **Synced Effects**: Environment rain streaks (3D) and lens splashing (2D) are perfectly synchronized.
 - **Weather Cycles**: Rain doesn't just "turn on"—it fades in and out based on a state-machine driven `RainController` that mimics natural weather patterns.
 - **Zero CPU overhead**: Particle positions and falling animations are computed procedurally in the vertex shader using high-resolution timing.
+- **Thermal-aware**: the rain budget drops with the device's thermal state and Low Power Mode.
 
 ---
 
 ## 🤖 Tool Calling
 
-The AI companion isn't just for chat—she can help you manage your day by interacting with native iOS applications.
+The AI companion isn't just for chat—it can help you manage your day by interacting with native iOS applications. Anything that opens another app waits for a tap on the in-app phone widget.
 
 - **Live Weather**: Get real-time weather reports powered by Open-Meteo.
 - **App Integration**: Open Maps, Camera, Photos, or Settings via voice command.
 - **Productivity**: Create reminders, take notes, and search the web without leaving the app.
-- **Entertainment**: Search and play music directly in Apple Music.
+- **Entertainment**: Search and play music directly in Apple Music, or identify the song that's playing.
+- **Memory**: Remember a fact on request, or search what it already remembers.
 
-**[Full Tool Calling documentation](./docs/Function_Call.md)**
+**[Full Tool Calling documentation](./docs/AI/Function_Call.md)**
 
 ---
 
@@ -145,9 +183,9 @@ graph TD
         WebRTC --> ServerVAD[OpenAI Server VAD\nCloud · Turn-taking]
     end
 
-    subgraph Memory [Persistent Recall]
-        API --> Facts[Knowledge Graph\nStructured Facts]
-        API --> Vectors[Vector RAG\nSemantic Context]
+    subgraph Memory [Agentic Memory]
+        API --> Facts[Facts + Entity Graph]
+        API --> Recall[Hybrid Recall\nsemantic · keyword · graph · time]
     end
 
     Silero --> VoiceEvent[voiceStarted / voiceEnded]
@@ -157,12 +195,12 @@ graph TD
 
     WebRTC --> API[OpenAI Realtime API\ngpt-realtime]
     API --> WebRTCLink[WebRTC]
-    WebRTCLink --> RTC(RTCAudioSession)
-    RTC --> Buffer[PCM Audio Buffer]
-    Buffer --> Output[Speakers]
-    Buffer --> Analyzer[Amplitude Analyzer]
-    Analyzer --> RMSEnergy[RMS Energy]
-    RMSEnergy --> Controller[LipSync Controller]
+    WebRTCLink --> RTC(Remote Audio Track)
+    RTC --> Output[Speakers]
+    RTC --> Renderer[RealtimeLipSyncRenderer\n10 ms playout buffers]
+    Renderer --> Analyzer[LipSyncAudioAnalyzer]
+    Analyzer --> Cue[RMS · bands · vowel]
+    Cue --> Controller[LipSync Controller]
     Controller --> MorphTargets[Morph Targets]
     MorphTargets --> Metal[Metal Render System]
     Metal --> Screen(Display)
@@ -178,13 +216,13 @@ graph TD
     style VoiceEvent fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
     style Commit fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
     style WebRTCLink fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
-    style RMSEnergy fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
+    style Cue fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
     style MorphTargets fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
 ```
 
 ### AI Voice & Persona System
 
-Each character model carries her own system prompt and OpenAI voice model, applied automatically on selection.
+Each character model carries their own system prompt and OpenAI voice model, applied automatically on selection.
 
 ```mermaid
 graph TD
@@ -203,7 +241,9 @@ graph TD
     Sonya --> SV[Voice: marin]
     Sonya --> SP[Persona: Dedicatus\nTsundere Queen · Sharp · Flustered]
 
-    EV --> Session[session.update]
+    OV --> Session[session.update]
+    OP --> Session
+    EV --> Session
     EP --> Session
     SV --> Session
     SP --> Session
@@ -223,16 +263,18 @@ graph TD
 sequenceDiagram
     participant App as SwiftUI View
     participant Loader as VRM Loader
-    participant GPU as Metal Compute
-    participant Render as MToon Shader
+    participant CPU as Animation + Spring Bones (CPU)
+    participant GPU as Metal (Morphs · Skinning · MToon)
 
     App->>Loader: Request .vrm / .glb
-    Loader->>Loader: Parse GLTF + VRM Extensions
-    Loader->>GPU: Upload Vertex & Spring-Bone Buffers
+    Loader->>Loader: Parse glTF + VRM extensions
+    Loader->>GPU: Upload meshes, textures and morph buffers
     loop Every Frame
-        GPU->>GPU: Calculate Physics (Spring-Bones)
-        GPU->>Render: Update Vertex Positions
-        Render->>App: Present Rendered Frame
+        CPU->>CPU: Sample clips, expressions and look-at
+        CPU->>CPU: Solve spring-bone chains against colliders
+        CPU->>GPU: Joint matrices + morph weights
+        GPU->>GPU: Accumulate morph targets, skin vertices
+        GPU->>App: Present rendered frame
     end
 ```
 
@@ -242,10 +284,10 @@ sequenceDiagram
 
 | Component | Minimum Version |
 | :--- | :--- |
-| **Operating System** | iOS 17.0+ |
-| **Development** | Xcode 16.0+ |
-| **Language** | Swift 6.0 |
-| **Hardware** | A12 Bionic or newer (for GPU Physics) |
+| **Operating System** | iOS 26.2+ |
+| **Development** | Xcode 26.2+ |
+| **Language** | Swift 6.2 toolchain |
+| **Hardware** | iPhone 11 (A13 Bionic) or newer |
 
 ---
 
@@ -256,7 +298,7 @@ sequenceDiagram
 git clone https://github.com/kevinliddel/NeuraLink.git
 cd NeuraLink
 
-# Initialize submodules (required for llama.cpp)
+# Initialize submodules (llama.cpp and DropDown)
 git submodule update --init --recursive
 
 # Open in Xcode
@@ -266,6 +308,8 @@ open NeuraLink.xcodeproj
 # If you intend to use the llama.cpp backend, ensure stale SPM references are purged:
 ruby purge_spm.rb
 ```
+
+Large assets (3D environments, voices, model weights) are not in the repository: the app downloads them on first use from Hugging Face and checks each one against a pinned SHA-256 hash.
 
 ---
 
@@ -281,8 +325,9 @@ NeuraLink features a high-performance local AI pipeline that runs **entirely on 
 - **llama.cpp**: Metal/CPU inference for Llama-3.2-1B (English) and LLM-jp-3 1.8B (Japanese), shipped as single-file GGUF.
 - **Memory-resident by design**: models are quantized to fit in RAM on 4 GB devices, so weights aren't streamed from flash.
 
-For the full architecture — engine selection, the shared C++ bridge, memory residency, and cold-start latency — see:
-- [On-Device LLM Architecture](./docs/Local_SLM_Model.md)
+For the full architecture — engine selection, the shared C++ bridge, memory residency, and turn latency — see:
+- [On-Device LLM Architecture](./docs/AI/Local_SLM_Model.md)
+- [Chat & LLM](./docs/AI/CHAT_LLM.md) — grammar-constrained tool calls and barge-in on the local path
 
 ---
 
@@ -293,7 +338,7 @@ When running in **Offline Mode** (Local LLM), the system selects a TTS engine pe
 ### 🗣️ Local SLMs voice
 The selector logic, per-persona voice picker, and end-to-end audio pipelines (LLM → text chunks → engine → PCM buffers → AVAudioPlayerNode) are documented separately:
 
-- [LLM_VOICE](./docs/LLM_VOICE.md) — full architecture with mermaid diagrams comparing the local-LLM TTS path against the OpenAI Realtime audio path.
+- [LLM_VOICE](./docs/AI/LLM_VOICE.md) — full architecture with mermaid diagrams comparing the local-LLM TTS path against the OpenAI Realtime audio path.
 
 #### Improving the AVSpeechSynthesizer fallback
 When the system falls through to the iOS speech synthesizer (no VOICEVOX model, no OpenVoice assets), iOS uses compact voices (`q=1`) which can sound robotic. To improve fidelity:
@@ -306,7 +351,7 @@ When the system falls through to the iOS speech synthesizer (no VOICEVOX model, 
 
 ### 🛠️ Implementation Details
 - [TTSEngineSelector.swift](./NeuraLink/Data/DataSources/TTS/TTSEngineSelector.swift) — engine resolution per persona + model (Japanese / LLM-jp-3 → VOICEVOX, else OpenVoice, System TTS fallback).
-- [LocalLLMManager+TTS.swift](./NeuraLink/Data/DataSources/LocalLLM/LocalLLMManager+TTS.swift) — chunked synthesis pipeline that pumps engine PCM buffers into the playback graph.
+- [LocalLLMManager+TTS.swift](./NeuraLink/Data/DataSources/LocalLLM/Manager/LocalLLMManager+TTS.swift) — chunked synthesis pipeline that pumps engine PCM buffers into the playback graph.
 
 ---
 
@@ -316,16 +361,19 @@ NeuraLink is designed for the realistic threat model of a **lost, stolen, or fil
 
 | Layer | What it protects | How |
 |---|---|---|
-| **Keychain (Secure Enclave-derived)** | OpenAI API key, SQLCipher page key, KV-cache encryption key | `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` — unreadable from a cold-boot extraction. Never iCloud-synced, never restored to a different device. |
-| **iOS Data Protection** | Conversation DB, personas, local-LLM prompts, transient audio | `.completeUntilFirstUserAuthentication` on `Application Support/private/` — unreadable until the user unlocks the device once after boot. |
+| **Keychain** | OpenAI API key, SQLCipher page key, KV-cache encryption key | `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` — unreadable from a cold-boot extraction. Never iCloud-synced, never restored to a different device. |
+| **iOS Data Protection** | Conversation DB, personas, local-LLM prompts, user profile, transient audio | `.completeUntilFirstUserAuthentication` on `Application Support/private/` (excluded from backups) — unreadable until the user unlocks the device once after boot. |
 | **SQLCipher (opt-in)** | Per-message page-level crypto on the conversation DB | AES-CBC + HMAC pages keyed from a 32-byte Keychain secret. Off by default; flag-gated as the foundation for a future passphrase mode. |
-| **KV-cache encryption** | Persistent KV cache blobs | AES-256-GCM sealed box (12-byte nonce + ciphertext + 16-byte tag), keyed from a 32-byte Keychain secret; the GCM tag also provides integrity. An undecryptable/tampered blob falls back to a cold prefill. (Legacy HMAC-signed plaintext blobs are migrated to AES-GCM on first load.) |
-| **Sensitive logging** | Chat transcripts, persona prompts, RAG memory bodies | `nlLogSensitive` marks payloads as `.private` so they're redacted in observer-readable Console.app captures (TestFlight testers, MDM log capture). Release builds compile out all `nlLog` calls entirely. |
-| **Transient files** | None for STT | whisper.cpp consumes in-memory 16 kHz float samples directly — no audio is written to disk (any legacy `whisper_<UUID>.wav` files are swept on upgrade). |
+| **KV-cache encryption** | Persistent KV cache blobs | AES-256-GCM sealed box (12-byte nonce + ciphertext + 16-byte tag), keyed from a 32-byte Keychain secret; the GCM tag also provides integrity. An undecryptable/tampered blob falls back to a cold prefill. |
+| **Download pinning** | Model weights, voices, 3D assets | Hugging Face downloads use commit-pinned URLs and must match a pinned size + SHA-256 before they are used. |
+| **Sensitive logging** | Chat transcripts, persona prompts, memory bodies | `nlLogSensitive` marks payloads as `.private` so they're redacted in observer-readable Console.app captures (TestFlight testers, MDM log capture). Release builds compile out all `nlLog` calls entirely. |
+| **Transient files** | None for STT | whisper.cpp consumes in-memory 16 kHz float samples directly — no audio is written to disk. |
+
+The app and the widget extension each ship a privacy manifest (`PrivacyInfo.xcprivacy`) that declares no tracking; the app's also gives the reason for each required-reason API it uses.
 
 **Explicitly out of scope** (closing these would require a different threat model): runtime debugger on a jailbroken device, server-side compromise at OpenAI, screen-recording leaks, side-channel attacks on the Apple Neural Engine.
 
-**[Full security architecture](./docs/APP_SECURITY.md)** — covers the storage inventory, Keychain layout, KV-cache encryption rationale, and the full threat model.
+**[Full security architecture](./docs/Security/APP_SECURITY.md)** — covers the storage inventory, Keychain layout, KV-cache encryption rationale, download pinning, and the full threat model.
 
 ---
 

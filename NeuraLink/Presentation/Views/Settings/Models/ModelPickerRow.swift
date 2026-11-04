@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  One row of AI Settings → Models: a dropdown over the curated catalog ids
-//  for a role (docs/CHAT_LLM.md).
+//  for a role (docs/AI/CHAT_LLM.md).
 //
 
 import SwiftUI

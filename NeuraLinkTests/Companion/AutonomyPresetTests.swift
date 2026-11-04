@@ -2,7 +2,7 @@
 //  AutonomyPresetTests.swift
 //  NeuraLinkTests
 //
-//  The Autonomy screen's presets (docs/LIVING_COMPANION.md).
+//  The Autonomy screen's presets (docs/Companion/LIVING_COMPANION.md).
 //
 
 import Foundation

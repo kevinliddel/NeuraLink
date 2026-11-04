@@ -41,7 +41,7 @@ enum AppFunctionTool {
             playGameTool, searchMemoryTool, showPhotoTool
         ]
         // Generated body motion needs its model files and the user's switch
-        // (docs/GENERATIVE_MOTION.md); without them the tool is not offered.
+        // (docs/Engine/GENERATIVE_MOTION.md); without them the tool is not offered.
         if MotionSettings.offersTool { tools.append(motionTool) }
         return tools
     }

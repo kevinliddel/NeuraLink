@@ -8,7 +8,7 @@
 //  tick reads it once a frame. A cue that is not refreshed goes stale and
 //  reads as silence, so a voice that stops mid-word (the connection
 //  dropped) closes the mouth instead of holding it open.
-//  See docs/LipSync.md.
+//  See docs/Engine/LipSync.md.
 //
 //  Created by Dedicatus on 02/11/2026.
 //

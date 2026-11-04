@@ -379,11 +379,11 @@ flowchart TD
 | `Core/Engine/VRM/Appearance/AppearanceTextureFactory.swift` | Straight-alpha texture upload for borrowed images |
 | `Core/Engine/VRM/Appearance/PNGStraightDecoder.swift` | Non-premultiplied PNG decode |
 | `Core/Engine/VRM/Appearance/UVCoverageMask.swift` | 64×64 UV coverage masks for the texture gate |
-| `Core/Engine/VRM/Appearance/VRMPartGrafter.swift` | Graft: pick, clone, bind, springs, hide, fit scale |
-| `Core/Engine/VRM/Appearance/VRMPartGrafter+Orientation.swift` | Geometry-based donor facing |
-| `Core/Engine/VRM/Appearance/VRMPartGrafter+SkinTrim.swift` | Shoe fit, grounding (`raiseFigure`/`lowerFigure`), host foot trim, `clippedClone` |
-| `Core/Engine/VRM/Appearance/VRMPartGrafter+Anchors.swift` | Re-binds a shoe's toe- and shin-weighted parts onto the foot |
-| `Core/Engine/VRM/Appearance/VRMPartGrafter+BareFoot.swift` | The donor's foot under a shoe, drawn in the host's skin |
+| `Core/Engine/VRM/Appearance/Grafting/VRMPartGrafter.swift` | Graft: pick, clone, bind, springs, hide, fit scale |
+| `Core/Engine/VRM/Appearance/Grafting/VRMPartGrafter+Orientation.swift` | Geometry-based donor facing |
+| `Core/Engine/VRM/Appearance/Grafting/VRMPartGrafter+SkinTrim.swift` | Shoe fit, grounding (`raiseFigure`/`lowerFigure`), host foot trim, `clippedClone` |
+| `Core/Engine/VRM/Appearance/Grafting/VRMPartGrafter+Anchors.swift` | Re-binds a shoe's toe- and shin-weighted parts onto the foot |
+| `Core/Engine/VRM/Appearance/Grafting/VRMPartGrafter+BareFoot.swift` | The donor's foot under a shoe, drawn in the host's skin |
 | `Core/Engine/VRM/Appearance/VRMModel+Composition.swift` | Base snapshot, restore + re-graft, `humanoidRole(ofNode:)` |
 | `Core/Engine/VRM/Appearance/VRMModel+SlotBounds.swift` | Index-following rest bounds, `bindPosition(of:)`, head/foot reference sizes |
 | `Core/Engine/VRM/Appearance/VRMModel+SlotNames.swift` | Material → slot lookup on a loaded model |
@@ -396,7 +396,7 @@ flowchart TD
 | `Data/DataSources/Characters/Appearance/PartsLibraryDownloader.swift` | Background download, 4xx cooldown |
 | `Data/DataSources/Characters/Appearance/PartThumbnailStore.swift` | Bundled tile lookup + runtime render cache |
 | `Data/DataSources/Assets/RemoteAssetRegistry+Parts.swift` | Part stems + size/SHA-256 pins |
-| `Data/DataSources/Memory/MemoryStore+Appearance.swift` | `character_appearance` table |
+| `Data/DataSources/Memory/Store/MemoryStore+Appearance.swift` | `character_appearance` table |
 | `Data/Repositories/AppearanceStore.swift` | `@Observable` facade over the table |
 | `Presentation/Views/Characters/Customization/CharacterCustomizationView.swift` | The sheet: rail, grid, colour, Reset/Save, donor list |
 | `Presentation/Views/Characters/Customization/CustomizationCategory.swift` | Tabs → part kind / texture slots / recolour slots |
@@ -404,9 +404,9 @@ flowchart TD
 | `Presentation/Views/Characters/Customization/CustomizationColorSection.swift` | Hue presets + sliders |
 | `Presentation/Views/Characters/Customization/CustomizationTheme.swift` | Sheet look and metrics |
 | `Presentation/Views/Characters/Customization/CharacterCustomizationCoordinator.swift` | Presentation flag |
-| `Presentation/Views/AI/PersonaSettingsView+Appearance.swift` | "Customize Appearance" in character settings |
+| `Presentation/Views/Settings/Persona/PersonaSettingsView+Appearance.swift` | "Customize Appearance" in character settings |
 | `Presentation/Views/Overlays/ModelSelectionOverlay.swift` | Long-press "Customize Appearance" |
-| `../scripts/extract_parts.py` | Cuts whole models into part VRMs |
+| `scripts/extract_parts.py` | Cuts whole models into part VRMs |
 
 ## Integration notes
 

@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  Co-listening ("listen together") session — Living Companion
-//  (docs/LIVING_COMPANION.md). The one-shot recognition becomes a
+//  (docs/Companion/LIVING_COMPANION.md). The one-shot recognition becomes a
 //  loop: re-arm ShazamKit periodically, keep the current track on the
 //  nav-bar capsule, and have the persona chime in when the track changes.
 //

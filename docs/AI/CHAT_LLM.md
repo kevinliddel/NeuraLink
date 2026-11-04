@@ -198,7 +198,7 @@ test run. Every unit it inserts is deleted afterwards. The DEBUG launch argument
   `MemorySettings.charactersShareMemories`, default on). On: recall reads every
   bank. Off: recall reads only the shared bank plus the active character's.
   This controls what a character knows, not how close you are: the
-  relationship meter is always per character (docs/LIVING_COMPANION.md,
+  relationship meter is always per character (docs/Companion/LIVING_COMPANION.md,
   One bond per character).
 
 ## Flow
@@ -311,33 +311,33 @@ flowchart TD
 | File | Role |
 |---|---|
 | `Core/Bridge/llama_bridge.h` / `.cpp` | `set/clear_tool_grammar`; lazy-grammar sampler chain; PLD bypass while a grammar is active |
-| `Data/DataSources/LocalLLM/ToolGrammarBuilder.swift` | Curated local tool set → GBNF grammar + prompt block |
+| `Data/DataSources/LocalLLM/Tools/ToolGrammarBuilder.swift` | Curated local tool set → GBNF grammar + prompt block |
 | `Data/DataSources/GGUF/Llama/GGUFLlamaEngine+ToolGrammar.swift` | Installs the tool grammar once per model load |
 | `Data/DataSources/GGUF/Llama/GGUFLlamaEngine+Generate.swift` | Stops generation at `</tool>` |
-| `Data/DataSources/LocalLLM/LocalLLMManager+Engine.swift` | Parses and dispatches local tool calls through `AppFunctionExecutor` |
-| `Data/DataSources/LocalLLMPromptStore.swift` | 1B default prompts embed the generated tool block; save posts an instruction refresh |
-| `Data/DataSources/LocalLLM/LocalLLMManager+BargeIn.swift` | `BargeInArbiter`, `BargeInEchoGuard`, interrupt sequence |
-| `Data/DataSources/LocalLLM/LocalLLMManager+Audio.swift` / `+VAD.swift` | Frames reach the VAD while speaking; voice-start and echo hooks |
-| `Presentation/Views/AI/AutonomySettingsView.swift` | "Interrupt while speaking (local)" toggle |
-| `Data/DataSources/OpenAI/OpenAIRealtimeManager+Reconnect.swift` | `ReconnectPolicy`, failure detection, `send(_:)`, context replay |
-| `Data/DataSources/OpenAI/OpenAIRealtimeManager+SessionRefresh.swift` | `SessionRefreshScheduler`, `.realtimeInstructionsDidChange`, refresh `session.update` |
+| `Data/DataSources/LocalLLM/Manager/LocalLLMManager+Engine.swift` | Parses and dispatches local tool calls through `AppFunctionExecutor` |
+| `Data/Repositories/LocalLLMPromptStore.swift` | 1B default prompts embed the generated tool block; save posts an instruction refresh |
+| `Data/DataSources/LocalLLM/Manager/LocalLLMManager+BargeIn.swift` | `BargeInArbiter`, `BargeInEchoGuard`, interrupt sequence |
+| `Data/DataSources/LocalLLM/Manager/LocalLLMManager+Audio.swift` / `+VAD.swift` | Frames reach the VAD while speaking; voice-start and echo hooks |
+| `Presentation/Views/Settings/AutonomySettingsView.swift` | "Interrupt while speaking (local)" toggle |
+| `Data/DataSources/OpenAI/Realtime/OpenAIRealtimeManager+Reconnect.swift` | `ReconnectPolicy`, failure detection, `send(_:)`, context replay |
+| `Data/DataSources/OpenAI/Realtime/OpenAIRealtimeManager+SessionRefresh.swift` | `SessionRefreshScheduler`, `.realtimeInstructionsDidChange`, refresh `session.update` |
 | `Data/DataSources/OpenAI/OpenAIModelCatalog.swift` | Curated per-role model lists, defaults, `reasoning_effort`, list prices; `RealtimeUsageMeter` |
 | `Data/DataSources/OpenAI/OpenAISettings.swift` | Model selection per role; `isLocalBargeInEnabled` |
 | `Data/DataSources/OpenAI/OpenAIChatClient.swift` | Background text calls on `textModel`, reasoning effort, `[Cost]` lines |
-| `Presentation/Views/AI/ModelsSettingsView.swift` / `ModelPickerRow.swift` | Models screen: per-role dropdowns |
-| `Presentation/Views/AI/AISettingsView.swift` | Reconnects on Done after a voice-model change |
-| `Presentation/Views/AI/ChatHistorySidebar.swift` | Search field, debounce, snippet rows, empty state |
-| `Data/DataSources/Memory/MemoryStore+Conversations.swift` | `firstMessage(conversationID:matching:)`, `snippet` |
+| `Presentation/Views/Settings/Models/ModelsSettingsView.swift` / `ModelPickerRow.swift` | Models screen: per-role dropdowns |
+| `Presentation/Views/Settings/AISettingsView.swift` | Reconnects on Done after a voice-model change |
+| `Presentation/Views/Chat/ChatHistorySidebar.swift` | Search field, debounce, snippet rows, empty state |
+| `Data/DataSources/Memory/Store/MemoryStore+Conversations.swift` | `firstMessage(conversationID:matching:)`, `snippet` |
 | `Core/Bridge/llama_embed_bridge.h` / `.cpp` | C embedding API over llama.cpp |
 | `Data/DataSources/GGUF/LlamaEmbedBridge.swift` | Swift wrapper for the embedding handle |
 | `Data/DataSources/Memory/EmbeddingService.swift` | Router to the active backend, probe-gated activation, launch restore |
-| `Data/DataSources/Memory/Agentic/EmbeddingBackend.swift` | `NLEmbeddingBackend`, `GGUFEmbeddingBackend` |
-| `Data/DataSources/Memory/Agentic/EmbeddingCalibration.swift` | Per-backend query floor, link floor, dedup threshold |
-| `Data/DataSources/Memory/Agentic/EmbeddingMigrator.swift` | Background re-embed of other-model rows |
+| `Data/DataSources/Memory/Agentic/Embedding/EmbeddingBackend.swift` | `NLEmbeddingBackend`, `GGUFEmbeddingBackend` |
+| `Data/DataSources/Memory/Agentic/Embedding/EmbeddingCalibration.swift` | Per-backend query floor, link floor, dedup threshold |
+| `Data/DataSources/Memory/Agentic/Embedding/EmbeddingMigrator.swift` | Background re-embed of other-model rows |
 | `Data/DataSources/Assets/RemoteAssetRegistry.swift` | `embeddingModel` asset + SHA-256 pin |
-| `Presentation/Views/AI/MemoryInsightsSection.swift` | `MemoryEmbeddingModelRow` "Multilingual recall" toggle |
+| `Presentation/Views/Memory/MemoryInsightsSection.swift` | `MemoryEmbeddingModelRow` "Multilingual recall" toggle |
 | `Data/DataSources/Memory/Agentic/Eval/MemoryEvalFixture.swift` / `MemoryEvalRunner.swift` | Evaluation fixture and runner, DEBUG only |
-| `Presentation/Views/AI/PersonaSettingsView+Disposition.swift` | Memory Personality sliders |
+| `Presentation/Views/Settings/Persona/PersonaSettingsView+Disposition.swift` | Memory Personality sliders |
 | `Data/DataSources/Memory/Agentic/MemoryRecall.swift` | `MemoryBanks` policy, bank-filtered recall |
 | `Data/DataSources/Memory/MemorySettings.swift` | `embeddingBackendID`, `charactersShareMemories` |
 

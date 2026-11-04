@@ -58,12 +58,12 @@ flowchart TD
 
 | File | Role |
 |---|---|
-| `Domain/Entities/RecognizedSong.swift` | Framework-free entity; builds Apple Music / YouTube links |
-| `Data/DataSources/SongRecognitionManager.swift` | `@Observable` singleton; ShazamKit session, phase machine, persona-reaction injection |
-| `Presentation/Views/AI/SongRecognitionOverlay.swift` | Nav-bar principal capsule: pulsing listening state → artwork + link pills |
-| `Domain/Entities/ListeningEpisode.swift` | App-wide switch: the body loops `listen_to_music.vrma` (Mixamo → VRMA via `scripts/fbx_to_vrma.py`) during a recognition and for a whole co-listening session; `VRMMetalState+ListeningEpisode.swift` is the scene side |
+| `Domain/Entities/Companion/RecognizedSong.swift` | Framework-free entity; builds Apple Music / YouTube links |
+| `Data/DataSources/SongRecognition/SongRecognitionManager.swift` | `@Observable` singleton; ShazamKit session, phase machine, persona-reaction injection |
+| `Presentation/Views/Overlays/SongRecognitionOverlay.swift` | Nav-bar principal capsule: pulsing listening state → artwork + link pills |
+| `Domain/Entities/Motion/ListeningEpisode.swift` | App-wide switch: the body loops `listen_to_music.vrma` (Mixamo → VRMA via `scripts/fbx_to_vrma.py`) during a recognition and for a whole co-listening session; `VRMMetalState+ListeningEpisode.swift` is the scene side |
 | `Domain/Entities/Skills/IdentifySongSkill.swift` | `identify_song` tool (awaits the result and returns it to the AI) |
-| `Data/DataSources/AppFunctionTool.swift` | `identifySongTool` schema |
+| `Data/DataSources/FunctionCalling/AppFunctionTool.swift` | `identifySongTool` schema |
 
 ## Integration notes
 

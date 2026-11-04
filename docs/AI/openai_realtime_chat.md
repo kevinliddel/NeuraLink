@@ -22,10 +22,10 @@ This doc records what was changed so a future reader can:
 | Migration point | Beta (was) | GA (now) | Code |
 |---|---|---|---|
 | Required header | `OpenAI-Beta: realtime=v1` (never set in this codebase) | _omitted_ | n/a |
-| Ephemeral credentials | _none — master key sent directly_ | `POST /v1/realtime/client_secrets` | [OpenAIRealtimeManager.swift](../NeuraLink/Data/DataSources/OpenAI/OpenAIRealtimeManager.swift) `requestEphemeralKey` |
-| WebRTC SDP endpoint | `POST /v1/realtime?model=...` with master key + SDP | `POST /v1/realtime/calls` with ephemeral key + SDP | [OpenAIRealtimeManager.swift](../NeuraLink/Data/DataSources/OpenAI/OpenAIRealtimeManager.swift) `postSDPOffer` |
-| `session.update` body | flat: `modalities: ["text", "audio"]`, `voice`, `input_audio_transcription`, `turn_detection` | nested under `session.audio.{input,output}`; `session.type = "realtime"` required; `output_modalities` accepts only `["text"]` *or* `["audio"]`; `noise_reduction: { type: "near_field" }` added | [+Handlers.swift](../NeuraLink/Data/DataSources/OpenAI/OpenAIRealtimeManager+Handlers.swift) `sendInitialSessionUpdate` |
-| Transcript delta event | `response.audio_transcript.delta` | `response.output_audio_transcript.delta` | [+Handlers.swift](../NeuraLink/Data/DataSources/OpenAI/OpenAIRealtimeManager+Handlers.swift) `handleIncomingJSON` |
+| Ephemeral credentials | _none — master key sent directly_ | `POST /v1/realtime/client_secrets` | [OpenAIRealtimeManager.swift](../../NeuraLink/Data/DataSources/OpenAI/Realtime/OpenAIRealtimeManager.swift) `requestEphemeralKey` |
+| WebRTC SDP endpoint | `POST /v1/realtime?model=...` with master key + SDP | `POST /v1/realtime/calls` with ephemeral key + SDP | [OpenAIRealtimeManager.swift](../../NeuraLink/Data/DataSources/OpenAI/Realtime/OpenAIRealtimeManager.swift) `postSDPOffer` |
+| `session.update` body | flat: `modalities: ["text", "audio"]`, `voice`, `input_audio_transcription`, `turn_detection` | nested under `session.audio.{input,output}`; `session.type = "realtime"` required; `output_modalities` accepts only `["text"]` *or* `["audio"]`; `noise_reduction: { type: "near_field" }` added | [+Handlers.swift](../../NeuraLink/Data/DataSources/OpenAI/Realtime/OpenAIRealtimeManager+Handlers.swift) `sendInitialSessionUpdate` |
+| Transcript delta event | `response.audio_transcript.delta` | `response.output_audio_transcript.delta` | [+Handlers.swift](../../NeuraLink/Data/DataSources/OpenAI/Realtime/OpenAIRealtimeManager+Handlers.swift) `handleIncomingJSON` |
 | Transcript done event | `response.audio_transcript.done` | `response.output_audio_transcript.done` | same |
 
 ---
@@ -158,7 +158,7 @@ If user transcripts stop arriving, function calling stops working, or response c
 
 ## 5. Audio session — a red herring we initially chased
 
-When the "Answer does NOT contain audio track" warning first appeared, the prime suspect was [LocalLLMManager+Audio.setupAudioEngine](../NeuraLink/Data/DataSources/LocalLLM/LocalLLMManager+Audio.swift) — specifically the `audioEngine.inputNode.setVoiceProcessingEnabled(true)` call added for the local LLM's hardware AEC. The reasoning at the time:
+When the "Answer does NOT contain audio track" warning first appeared, the prime suspect was [LocalLLMManager+Audio.setupAudioEngine](../../NeuraLink/Data/DataSources/LocalLLM/Manager/LocalLLMManager+Audio.swift) — specifically the `audioEngine.inputNode.setVoiceProcessingEnabled(true)` call added for the local LLM's hardware AEC. The reasoning at the time:
 
 - VPIO replaces the default `RemoteIO` audio unit on the device's mic.
 - WebRTC (via `RTCAudioSession`) shares the same hardware and constructs its SDP offer against whichever audio unit is currently active.
@@ -174,7 +174,7 @@ The gating was removed once the real fix landed; voice processing is enabled unc
 
 ## 6. Diagnostic — how we identified the migration in one round
 
-[OpenAIRealtimeManager.postSDPOffer](../NeuraLink/Data/DataSources/OpenAI/OpenAIRealtimeManager.swift) used to silently hand whatever bytes OpenAI returned to `RTCSessionDescription(type: .answer, sdp: ...)`, which then failed deep inside WebRTC with a generic "Failed to set remote desc" message. The actual server error was thrown away.
+[OpenAIRealtimeManager.postSDPOffer](../../NeuraLink/Data/DataSources/OpenAI/Realtime/OpenAIRealtimeManager.swift) used to silently hand whatever bytes OpenAI returned to `RTCSessionDescription(type: .answer, sdp: ...)`, which then failed deep inside WebRTC with a generic "Failed to set remote desc" message. The actual server error was thrown away.
 
 We now log:
 
@@ -210,7 +210,7 @@ Items the OpenAI docs mention. Updated 2026-05-21 — the `noise_reduction` entr
 
 - **`session.audio.input.noise_reduction`** — added with value `{"type": "near_field"}`. *(The first revision of §8 said this was "not directly applicable to the cloud path because that path doesn't go through VPIO" — that was wrong. `noise_reduction` is a server-side setting that cleans the user's WebRTC audio before OpenAI processes it, and is therefore exactly applicable to the cloud path. VPIO is the local LLM's hardware AEC and runs in a different process before any audio leaves the device — orthogonal concern.)*
 
-- **`output_modalities` value corrected to `["audio"]`.** First revision sent `["audio", "text"]` (matching the beta `modalities` array's two-value form). GA rejects this with `invalid_value` at `session.output_modalities`, message: *"Invalid modalities: ['audio', 'text']. Supported combinations are: ['text'] and ['audio']."* The error event was silently dropped before we added the `case "error":` handler in [+Handlers.swift](../NeuraLink/Data/DataSources/OpenAI/OpenAIRealtimeManager+Handlers.swift), which caused the entire session.update to be ignored and the model fell back to defaults — symptoms were "model speaks English instead of Japanese" and "user context isn't applied" because none of our persona/context instructions ever landed. Discovered on first device test after the diagnostic was added; one-line fix. Transcript events fire the same way under `["audio"]` so we don't lose anything.
+- **`output_modalities` value corrected to `["audio"]`.** First revision sent `["audio", "text"]` (matching the beta `modalities` array's two-value form). GA rejects this with `invalid_value` at `session.output_modalities`, message: *"Invalid modalities: ['audio', 'text']. Supported combinations are: ['text'] and ['audio']."* The error event was silently dropped before we added the `case "error":` handler in [+Handlers.swift](../../NeuraLink/Data/DataSources/OpenAI/Realtime/OpenAIRealtimeManager+Handlers.swift), which caused the entire session.update to be ignored and the model fell back to defaults — symptoms were "model speaks English instead of Japanese" and "user context isn't applied" because none of our persona/context instructions ever landed. Discovered on first device test after the diagnostic was added; one-line fix. Transcript events fire the same way under `["audio"]` so we don't lose anything.
 
 - **`error` event handler + `session.created`/`session.updated` echo.** Added as diagnostics (§6) but became load-bearing once they surfaced the `output_modalities` issue above. Worth keeping permanently — future OpenAI schema changes that reject our session.update will now fail loudly with the exact `param` and `message` from the server.
 

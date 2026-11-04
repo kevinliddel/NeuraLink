@@ -13,8 +13,8 @@
 //
 //  NL_SKY_SNAPSHOT_DIR: output folder (unset = skip).
 //  NL_SKY_SNAPSHOT_DAYS: only these of the days (yyyy-MM-dd, comma-separated).
-//  NL_SKY_DOC_DIR: writes the pictures in docs/Sky_System.md instead
-//  (docs/Sky, as an absolute path).
+//  NL_SKY_DOC_DIR: writes the pictures in docs/Engine/Sky_System.md instead
+//  (docs/Assets/Sky, as an absolute path).
 //
 //  Created by Dedicatus on 27/10/2026.
 //
@@ -86,7 +86,7 @@ struct SkySnapshots {
         renderer.clearModel()
     }
 
-    /// The pictures in docs/Sky_System.md, named for what they show rather
+    /// The pictures in docs/Engine/Sky_System.md, named for what they show rather
     /// than when, all over Antananarivo: a winter's day toward the sun, and
     /// Oz's face through it, the moon through the lunation that starts at
     /// the June new moon, and the Southern Cross on that moonless night.

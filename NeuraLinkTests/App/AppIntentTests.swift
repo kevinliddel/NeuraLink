@@ -2,7 +2,7 @@
 //  AppIntentTests.swift
 //  NeuraLinkTests
 //
-//  Pure helpers behind the Siri intents (docs/PRESENCE_BEYOND_APP.md).
+//  Pure helpers behind the Siri intents (docs/Companion/PRESENCE_BEYOND_APP.md).
 //
 
 import Foundation

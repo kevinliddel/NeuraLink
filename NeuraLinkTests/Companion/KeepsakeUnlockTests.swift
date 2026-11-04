@@ -2,7 +2,7 @@
 //  KeepsakeUnlockTests.swift
 //  NeuraLinkTests
 //
-//  The "Keepsake collected" capsule controller (docs/LIVING_COMPANION.md):
+//  The "Keepsake collected" capsule controller (docs/Companion/LIVING_COMPANION.md):
 //  one at a time, queued, and fed only by genuinely new keepsakes.
 //
 

@@ -4,7 +4,7 @@
 //
 //  CRUD for `mental_models` — standing answers to fixed questions that the
 //  prompt builders read without any retrieval or LLM call
-//  (docs/AGENTIC_MEMORY.md §Mental models).
+//  (docs/Memory/AGENTIC_MEMORY.md §Mental models).
 //
 //  Created by Dedicatus on 25/09/2026.
 //

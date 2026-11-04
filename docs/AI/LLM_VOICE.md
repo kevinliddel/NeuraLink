@@ -17,7 +17,7 @@ This doc explains how each pipeline turns a model's output into spoken audio, an
 
 ## Local SLM path
 
-When `OpenAISettings.isLocalLLMEnabled = true`, the LLM runs on-device via [`LocalLLMManager`](../NeuraLink/Data/DataSources/LocalLLM/LocalLLMManager.swift). Generated text is split into sentence chunks and handed to a TTS engine resolved by [`TTSEngineSelector`](../NeuraLink/Data/DataSources/TTS/TTSEngineSelector.swift) based on the active persona and model tier.
+When `OpenAISettings.isLocalLLMEnabled = true`, the LLM runs on-device via [`LocalLLMManager`](../../NeuraLink/Data/DataSources/LocalLLM/Manager/LocalLLMManager.swift). Generated text is split into sentence chunks and handed to a TTS engine resolved by [`TTSEngineSelector`](../../NeuraLink/Data/DataSources/TTS/TTSEngineSelector.swift) based on the active persona and model tier.
 
 ### Engine selection rules
 
@@ -47,7 +47,7 @@ flowchart TD
     class D3,D4,D5,D7 data
 ```
 
-Each engine conforms to [`TTSEngineProtocol`](../NeuraLink/Domain/Interfaces/TTSEngineProtocol.swift), which is a push-streaming contract: the engine calls back into `onBufferReady` with each PCM buffer as it's synthesised, so the iPhone can start playing before the full sentence has finished synthesising. That callback is what keeps first-audio latency low even when the LLM is producing text faster than the TTS can synthesise it.
+Each engine conforms to [`TTSEngineProtocol`](../../NeuraLink/Domain/Interfaces/TTSEngineProtocol.swift), which is a push-streaming contract: the engine calls back into `onBufferReady` with each PCM buffer as it's synthesised, so the iPhone can start playing before the full sentence has finished synthesising. That callback is what keeps first-audio latency low even when the LLM is producing text faster than the TTS can synthesise it.
 
 ### End-to-end flow
 
@@ -84,14 +84,14 @@ sequenceDiagram
 
 Notes on the flow:
 
-- **Chunking**: `LocalLLMManager+Engine.swift` accumulates tokens into sentence chunks. A chunk is flushed to `speakChunk` (in [`LocalLLMManager+TTS.swift`](../NeuraLink/Data/DataSources/LocalLLM/LocalLLMManager+TTS.swift)) on punctuation boundaries (`.`, `!`, `?`, `。`) or after `n_predict` tokens.
-- **Tool stripping**: Before the chunk reaches TTS, [`LocalToolCallParser.strippedText`](../NeuraLink/Data/DataSources/LocalToolCallParser.swift) removes any `<tool name="…">{…}</tool>` block so the model's tool-call syntax never gets spoken aloud. If a tool block is present, `AppFunctionExecutor.execute` runs in parallel and the spoken response is the tool's result.
-- **Persona voice resolution**: Each engine consults [`PersonaVoiceStore`](../NeuraLink/Data/DataSources/Memory/PersonaVoiceStore.swift) at synthesis time — now a thin facade over the `character_ai` SQL table (each engine's voice lives alongside that engine's prompt) — so changing the picker in `PersonaSettingsView` and saving immediately changes the voice for the next chunk without requiring an app restart.
-- **Buffer scheduling**: Each engine emits `AVAudioPCMBuffer`s in its native sample rate (OpenVoice at 22.05 kHz, VOICEVOX at 24 kHz, System at iOS-locale-dependent). [`scheduleBuffer`](../NeuraLink/Data/DataSources/LocalLLM/LocalLLMManager+TTS.swift) re-connects the player node with the right format on the fly when consecutive chunks have differing rates.
+- **Chunking**: `LocalLLMManager+Engine.swift` accumulates tokens into sentence chunks. A chunk is flushed to `speakChunk` (in [`LocalLLMManager+TTS.swift`](../../NeuraLink/Data/DataSources/LocalLLM/Manager/LocalLLMManager+TTS.swift)) on punctuation boundaries (`.`, `!`, `?`, `。`) or after `n_predict` tokens.
+- **Tool stripping**: Before the chunk reaches TTS, [`LocalToolCallParser.strippedText`](../../NeuraLink/Data/DataSources/LocalLLM/Tools/LocalToolCallParser.swift) removes any `<tool name="…">{…}</tool>` block so the model's tool-call syntax never gets spoken aloud. If a tool block is present, `AppFunctionExecutor.execute` runs in parallel and the spoken response is the tool's result.
+- **Persona voice resolution**: Each engine consults [`PersonaVoiceStore`](../../NeuraLink/Data/Repositories/PersonaVoiceStore.swift) at synthesis time — now a thin facade over the `character_ai` SQL table (each engine's voice lives alongside that engine's prompt) — so changing the picker in `PersonaSettingsView` and saving immediately changes the voice for the next chunk without requiring an app restart.
+- **Buffer scheduling**: Each engine emits `AVAudioPCMBuffer`s in its native sample rate (OpenVoice at 22.05 kHz, VOICEVOX at 24 kHz, System at iOS-locale-dependent). [`scheduleBuffer`](../../NeuraLink/Data/DataSources/LocalLLM/Manager/LocalLLMManager+TTS.swift) re-connects the player node with the right format on the fly when consecutive chunks have differing rates.
 
 ### English voices (OpenVoice)
 
-OpenVoice clones MeloTTS speech into a target voice from a 256-float speaker embedding bundled in `App/Resources` (`se_<name>.f32`). [`OpenVoiceVoicePreset`](../NeuraLink/Data/DataSources/TTS/OpenVoice/OpenVoiceVoicePreset.swift) lists four:
+OpenVoice clones MeloTTS speech into a target voice from a 256-float speaker embedding bundled in `App/Resources` (`se_<name>.f32`). [`OpenVoiceVoicePreset`](../../NeuraLink/Data/DataSources/TTS/OpenVoice/OpenVoiceVoicePreset.swift) lists four:
 
 | Voice | Gender | Embedding |
 |---|---|---|
@@ -105,10 +105,10 @@ A character with no saved voice gets one that matches its gender: Ayanokouji for
 ### Voice preview and transcript playback
 
 The persona settings preview and the chat-history play button speak a text that
-is already complete, so the only wait is rendering. [`LocalVoicePreview`](../NeuraLink/Presentation/Views/AI/LocalVoicePreview.swift)
+is already complete, so the only wait is rendering. [`LocalVoicePreview`](../../NeuraLink/Presentation/Views/Settings/Persona/LocalVoicePreview.swift)
 keeps that wait short:
 
-- **Chunked.** [`SpeechChunker`](../NeuraLink/Domain/Entities/SpeechChunker.swift) splits the text like the live chat does: a short first clause, then whole sentences. VOICEVOX renders a whole call before returning any audio, so playback now starts after the first clause and the rest renders while it plays.
+- **Chunked.** [`SpeechChunker`](../../NeuraLink/Domain/Entities/Chat/SpeechChunker.swift) splits the text like the live chat does: a short first clause, then whole sentences. VOICEVOX renders a whole call before returning any audio, so playback now starts after the first clause and the rest renders while it plays.
 - **Direct voice.** The picked voice goes straight to the engine (`VoiceVoxEngine.synthesize(text:speakerID:)`, `OpenVoiceEngine.speak(_:voiceName:deliver:)`). Trying an unsaved voice no longer rewrites the saved one or borrows the chat's `onBufferReady`.
 - **No CPU contention.** While it speaks, `LocalLLMManager.beginStandaloneSpeech` stops a running background memory generation and holds new ones, because they share the CPU cores VOICEVOX renders on.
 - **Warm voice.** The settings screen warms the picked voice shortly after it opens or changes (`VoiceVoxEngine.warmUp` loads the speaker and renders one mora). It never downloads a voice that isn't on disk.
@@ -116,7 +116,7 @@ keeps that wait short:
 
 ### Phantom transcripts from local Whisper
 
-Whisper was trained on subtitles. When the voice activity detector opens a turn on a breath, a desk thump or room noise, `ggml-base` writes what subtitles say there: "(笑)", "(音楽)", "(エンディング)", "[BLANK_AUDIO]", or a sign-off like "ご視聴ありがとうございました". [`PhantomTranscriptFilter`](../NeuraLink/Domain/Entities/PhantomTranscriptFilter.swift) drops a transcript that is only an annotation or a known filler, and `spokenText` cuts annotations out of real speech ("(笑) 本当に？" becomes "本当に？").
+Whisper was trained on subtitles. When the voice activity detector opens a turn on a breath, a desk thump or room noise, `ggml-base` writes what subtitles say there: "(笑)", "(音楽)", "(エンディング)", "[BLANK_AUDIO]", or a sign-off like "ご視聴ありがとうございました". [`PhantomTranscriptFilter`](../../NeuraLink/Domain/Entities/Chat/PhantomTranscriptFilter.swift) drops a transcript that is only an annotation or a known filler, and `spokenText` cuts annotations out of real speech ("(笑) 本当に？" becomes "本当に？").
 
 The decoder's non-speech token suppression stays **off** on purpose. `WhisperPhantomDiagnostic` runs the bundled model on noise, a breath, a thump and real speech both ways. With suppression on, the same noise comes out as believable words ("アイス", "I'm going to start the engine.") that no filter can catch, and real speech is unchanged. whisper.cpp's per-segment no-speech probability reads about zero with `no_timestamps`, so it is not used.
 
@@ -194,7 +194,7 @@ A few load-bearing details:
 
 - **No PCM round-trip on the iPhone side**: incoming RTP is decoded by `RTCAudioTrack` and routed straight to the playback `AVAudioSession`. NeuraLink never sees the floats. This is the opposite of the local path, where the app owns the entire PCM pipeline.
 - **`set_emotion` is synchronous**: the model emits `set_emotion` *before* speaking, so we trigger the avatar's expression on `response.function_call_arguments.done` instead of waiting for `response.done`. Every other tool defers until the response is complete, otherwise we'd interrupt the model mid-speech and confuse it.
-- **Deferred UI actions**: tools like `play_music`, `open_app`, `search_web`, and `create_note` store an `() -> Void` in `AppFunctionExecutor.pendingUIAction` rather than firing immediately. The `schedulePendingUIAction` task in [`OpenAIRealtimeManager+Handlers.swift`](../NeuraLink/Data/DataSources/OpenAI/OpenAIRealtimeManager+Handlers.swift) waits for the AI to finish speaking the *result* before opening the app, so the spoken "Opening Music for you" doesn't get cut off when iOS backgrounds the app.
+- **Deferred UI actions**: tools like `play_music`, `open_app`, `search_web`, and `create_note` store an `() -> Void` in `AppFunctionExecutor.pendingUIAction` rather than firing immediately. The `schedulePendingUIAction` task in [`OpenAIRealtimeManager+Handlers.swift`](../../NeuraLink/Data/DataSources/OpenAI/Realtime/OpenAIRealtimeManager+Handlers.swift) waits for the AI to finish speaking the *result* before opening the app, so the spoken "Opening Music for you" doesn't get cut off when iOS backgrounds the app.
 - **Tool-call observability**: every dispatch logs with the `֎` glyph (see "Logging" below).
 
 ## Where the two pipelines converge
@@ -222,12 +222,12 @@ For the local LLM path the equivalent log starts at `֎ [FunctionCall] LocalLLM 
 
 ## Implementation pointers
 
-- **Local STT**: [`LocalWhisperManager.swift`](../NeuraLink/Data/DataSources/LocalWhisperManager.swift) — whisper.cpp (`ggml-base`, multilingual, CPU), one-shot at voice-end.
-- **Local TTS engines**: [`TTSEngineProtocol.swift`](../NeuraLink/Domain/Interfaces/TTSEngineProtocol.swift), [`VoiceVoxEngine.swift`](../NeuraLink/Data/DataSources/TTS/VoiceVoxEngine.swift), [`OpenVoiceEngine.swift`](../NeuraLink/Data/DataSources/TTS/OpenVoice/OpenVoiceEngine.swift), [`SystemTTSEngine.swift`](../NeuraLink/Data/DataSources/TTS/SystemTTSEngine.swift).
-- **Engine selection & caching**: [`TTSEngineSelector.swift`](../NeuraLink/Data/DataSources/TTS/TTSEngineSelector.swift).
-- **Voice picker + preview**: [`PersonaSettingsView.swift`](../NeuraLink/Presentation/Views/AI/PersonaSettingsView.swift), [`LocalVoicePreview.swift`](../NeuraLink/Presentation/Views/AI/LocalVoicePreview.swift), [`SpeechChunker.swift`](../NeuraLink/Domain/Entities/SpeechChunker.swift).
-- **OpenAI handshake**: [`OpenAIRealtimeManager.swift`](../NeuraLink/Data/DataSources/OpenAI/OpenAIRealtimeManager.swift) (mint + SDP exchange), [`OpenAIRealtimeManager+Handlers.swift`](../NeuraLink/Data/DataSources/OpenAI/OpenAIRealtimeManager+Handlers.swift) (`sendInitialSessionUpdate`, data-channel event dispatch).
-- **Shared tool dispatch**: [`AppFunctionExecutor.swift`](../NeuraLink/Data/DataSources/AppFunctionExecutor.swift).
+- **Local STT**: [`LocalWhisperManager.swift`](../../NeuraLink/Data/DataSources/STT/LocalWhisperManager.swift) — whisper.cpp (`ggml-base`, multilingual, CPU), one-shot at voice-end.
+- **Local TTS engines**: [`TTSEngineProtocol.swift`](../../NeuraLink/Domain/Interfaces/TTSEngineProtocol.swift), [`VoiceVoxEngine.swift`](../../NeuraLink/Data/DataSources/TTS/VoiceVoxEngine.swift), [`OpenVoiceEngine.swift`](../../NeuraLink/Data/DataSources/TTS/OpenVoice/OpenVoiceEngine.swift), [`SystemTTSEngine.swift`](../../NeuraLink/Data/DataSources/TTS/SystemTTSEngine.swift).
+- **Engine selection & caching**: [`TTSEngineSelector.swift`](../../NeuraLink/Data/DataSources/TTS/TTSEngineSelector.swift).
+- **Voice picker + preview**: [`PersonaSettingsView.swift`](../../NeuraLink/Presentation/Views/Settings/Persona/PersonaSettingsView.swift), [`LocalVoicePreview.swift`](../../NeuraLink/Presentation/Views/Settings/Persona/LocalVoicePreview.swift), [`SpeechChunker.swift`](../../NeuraLink/Domain/Entities/Chat/SpeechChunker.swift).
+- **OpenAI handshake**: [`OpenAIRealtimeManager.swift`](../../NeuraLink/Data/DataSources/OpenAI/Realtime/OpenAIRealtimeManager.swift) (mint + SDP exchange), [`OpenAIRealtimeManager+Handlers.swift`](../../NeuraLink/Data/DataSources/OpenAI/Realtime/OpenAIRealtimeManager+Handlers.swift) (`sendInitialSessionUpdate`, data-channel event dispatch).
+- **Shared tool dispatch**: [`AppFunctionExecutor.swift`](../../NeuraLink/Data/DataSources/FunctionCalling/AppFunctionExecutor.swift).
 
 ## Barge-in on the local path (2026-09-26)
 

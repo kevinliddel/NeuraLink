@@ -2,7 +2,7 @@
 //  CompanionMilestoneTests.swift
 //  NeuraLinkTests
 //
-//  Keepsake milestones (docs/LIVING_COMPANION.md): the pure unlock rules,
+//  Keepsake milestones (docs/Companion/LIVING_COMPANION.md): the pure unlock rules,
 //  the once-only celebration line, and the store's idempotent record.
 //  Shares the app-host MemoryStore singleton under a throwaway character.
 //

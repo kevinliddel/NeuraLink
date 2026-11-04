@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  One metered OpenAI call and its aggregates, for the Usage dashboard
-//  (docs/API_USAGE.md). Token counts are exactly what OpenAI reported in
+//  (docs/AI/API_USAGE.md). Token counts are exactly what OpenAI reported in
 //  each response's `usage`; spend is an estimate from the list prices in
 //  OpenAIModelCatalog.
 //

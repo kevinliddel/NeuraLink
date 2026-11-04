@@ -4,7 +4,7 @@
 //
 //  Is someone in front of the phone, and where? On-device Vision face
 //  detection on the frames CameraManager already captures, a few times a
-//  second, nothing leaves the device (docs/LIVING_COMPANION.md, Desk
+//  second, nothing leaves the device (docs/Companion/LIVING_COMPANION.md, Desk
 //  presence). Feeds the desk-presence policy and the look-at.
 //
 //  Created by Dedicatus on 19/10/2026.

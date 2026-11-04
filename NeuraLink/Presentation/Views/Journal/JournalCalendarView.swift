@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  Month grid for the companion's journal — Living Companion
-//  (docs/LIVING_COMPANION.md). Dots mark days you talked (grey), diary
+//  (docs/Companion/LIVING_COMPANION.md). Dots mark days you talked (grey), diary
 //  entries (pink) and keepsakes (purple). Tap a day to filter the journal
 //  to it, tap it again to clear; swipe or use the chevrons to change month.
 //

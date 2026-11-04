@@ -2,7 +2,7 @@
 //  MemoryFactExtraction.swift
 //  NeuraLink
 //
-//  Prompts and parsers for the retain step (docs/AGENTIC_MEMORY.md
+//  Prompts and parsers for the retain step (docs/Memory/AGENTIC_MEMORY.md
 //  §Retain). Cloud models get Hindsight's structured five-field extraction
 //  (what / when / who / type / caused_by) as JSON; 1–2B local models get the
 //  proven line-per-fact prompt from LocalLLMFactExtractor with its strict

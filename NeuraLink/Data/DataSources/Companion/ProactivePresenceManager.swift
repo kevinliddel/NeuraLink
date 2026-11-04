@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  Time-based proactive engagement — Living Companion
-//  (docs/LIVING_COMPANION.md). The companion speaks first:
+//  (docs/Companion/LIVING_COMPANION.md). The companion speaks first:
 //    • Trigger A — absence greeting: back after ≥ N hours → greet, delivering
 //      the opener the reflection pipeline saved (Phase 1's payoff); falls
 //      back to a generic warm greeting when no opener exists.

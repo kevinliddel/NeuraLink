@@ -2,7 +2,7 @@
 //  PhantomTranscriptFilterTests.swift
 //  NeuraLinkTests
 //
-//  Phantom user transcripts (docs/openai_realtime_chat.md): prompt echoes,
+//  Phantom user transcripts (docs/AI/openai_realtime_chat.md): prompt echoes,
 //  fillers, fragments and segments too short or too dense to be speech are
 //  dropped; ordinary speech in any script passes.
 //

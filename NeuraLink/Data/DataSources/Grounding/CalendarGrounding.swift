@@ -2,7 +2,7 @@
 //  CalendarGrounding.swift
 //  NeuraLink
 //
-//  EventKit read behind the schedule line (docs/LIVING_COMPANION.md). Its
+//  EventKit read behind the schedule line (docs/Companion/LIVING_COMPANION.md). Its
 //  own store, separate from ReminderSkill's: that one asks for reminders,
 //  this one for calendar events.
 //

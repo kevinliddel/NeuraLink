@@ -25,7 +25,7 @@ final class EnvironmentLoadState {
     private(set) var environmentMeshReady = false
     /// The customization parts library has arrived, or has been given up on.
     /// Informational: the library comes down in the background and the
-    /// reveal never waits for it (docs/CHARACTER_CUSTOMIZATION.md).
+    /// reveal never waits for it (docs/Engine/CHARACTER_CUSTOMIZATION.md).
     private(set) var partsReady = false
 
     /// Parts downloaded so far, and how many there are in total. Shown

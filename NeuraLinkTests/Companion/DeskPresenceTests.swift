@@ -2,7 +2,7 @@
 //  DeskPresenceTests.swift
 //  NeuraLinkTests
 //
-//  Desk presence (docs/LIVING_COMPANION.md): the arrival / away policy
+//  Desk presence (docs/Companion/LIVING_COMPANION.md): the arrival / away policy
 //  over a fake clock, the greeting wording, the gaze mapping, and the away
 //  episode's hold. Mutating calls are evaluated into lets first: the
 //  `#expect` macro cannot mutate a captured `var`.

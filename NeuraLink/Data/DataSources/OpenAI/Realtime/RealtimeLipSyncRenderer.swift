@@ -10,7 +10,7 @@
 //  thread, 10 ms at a time, as 16-bit PCM; the renderer converts the first
 //  channel into a buffer of its own, runs the analyzer (RMS, three bands,
 //  a vowel) and publishes to LipSyncFeed, which the render tick reads once
-//  a frame. See docs/LipSync.md.
+//  a frame. See docs/Engine/LipSync.md.
 //
 //  Created by Dedicatus on 03/11/2026.
 //

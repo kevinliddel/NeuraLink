@@ -2,7 +2,7 @@
 //  BargeInTests.swift
 //  NeuraLinkTests
 //
-//  Pure-logic tests for local barge-in (docs/CHAT_LLM.md).
+//  Pure-logic tests for local barge-in (docs/AI/CHAT_LLM.md).
 //
 
 import Foundation

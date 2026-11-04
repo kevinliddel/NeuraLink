@@ -110,7 +110,7 @@ flowchart TB
 
 ### 3.1 `SecureStore` — Keychain wrapper
 
-**File:** [NeuraLink/Core/Security/SecureStore.swift](../NeuraLink/Core/Security/SecureStore.swift)
+**File:** [NeuraLink/Core/Security/SecureStore.swift](../../NeuraLink/Core/Security/SecureStore.swift)
 
 Stateless `enum` namespace wrapping `kSecClassGenericPassword`. Every item is bound to:
 
@@ -134,7 +134,7 @@ try SecureStore.getOrCreateRandom(.memoryDBPageKey, bytes: 32)  // CSPRNG on fir
 
 ### 3.2 `ProtectedStorage` — file Data Protection helper
 
-**File:** [NeuraLink/Core/Security/ProtectedStorage.swift](../NeuraLink/Core/Security/ProtectedStorage.swift)
+**File:** [NeuraLink/Core/Security/ProtectedStorage.swift](../../NeuraLink/Core/Security/ProtectedStorage.swift)
 
 Stateless `enum`. Owns the `Application Support/private/` directory and the API for applying `.completeUntilFirstUserAuthentication` to any file.
 
@@ -157,22 +157,22 @@ Every piece of on-disk state, where it lives, how it's protected, who reads it.
 
 | Asset | Location | Protection | Encryption | Backup-eligible? | Code |
 |---|---|---|---|---|---|
-| OpenAI API key | Keychain | `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` | n/a (Keychain native) | No | [OpenAISettings.swift](../NeuraLink/Data/DataSources/OpenAI/OpenAISettings.swift) |
-| Conversation DB | `Application Support/private/neuralink_memory.sqlite` | `.completeUntilFirstUserAuthentication` | Optional SQLCipher (off by default) | **No** (excluded) | [MemoryStore.swift](../NeuraLink/Data/DataSources/Memory/MemoryStore.swift) |
-| Persona / local-LLM prompts + voices | `Application Support/private/neuralink_memory.sqlite` → `character_ai` table | `.completeUntilFirstUserAuthentication` | Optional SQLCipher (off by default) | **No** (excluded) | [PersonaStore.swift](../NeuraLink/Data/Repositories/PersonaStore.swift), [LocalLLMPromptStore.swift](../NeuraLink/Data/DataSources/LocalLLMPromptStore.swift), [PersonaVoiceStore.swift](../NeuraLink/Data/DataSources/Memory/PersonaVoiceStore.swift) |
+| OpenAI API key | Keychain | `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` | n/a (Keychain native) | No | [OpenAISettings.swift](../../NeuraLink/Data/DataSources/OpenAI/OpenAISettings.swift) |
+| Conversation DB | `Application Support/private/neuralink_memory.sqlite` | `.completeUntilFirstUserAuthentication` | Optional SQLCipher (off by default) | **No** (excluded) | [MemoryStore.swift](../../NeuraLink/Data/DataSources/Memory/Store/MemoryStore.swift) |
+| Persona / local-LLM prompts + voices | `Application Support/private/neuralink_memory.sqlite` → `character_ai` table | `.completeUntilFirstUserAuthentication` | Optional SQLCipher (off by default) | **No** (excluded) | [PersonaStore.swift](../../NeuraLink/Data/Repositories/PersonaStore.swift), [LocalLLMPromptStore.swift](../../NeuraLink/Data/Repositories/LocalLLMPromptStore.swift), [PersonaVoiceStore.swift](../../NeuraLink/Data/Repositories/PersonaVoiceStore.swift) |
 | Legacy persona / prompt JSON (dormant backup) | `Application Support/private/personas.json`, `…/local_llm_prompts.json` | `.completeUntilFirstUserAuthentication` | n/a | **No** (excluded) | left in place after migration; no longer read |
-| KV cache | `Application Support/llm_kv/<config>_<persona>.kv` | `.completeUntilFirstUserAuthentication` | AES-256-GCM encryption (32-byte Keychain key); GCM tag also provides integrity | Yes (no isExcludedFromBackup) | [LocalLLMKVCache.swift](../NeuraLink/Data/DataSources/LocalLLM/LocalLLMKVCache.swift) |
-| Whisper transcription input | in memory only (float samples fed straight to whisper.cpp) | n/a | n/a | n/a — never written; a one-shot sweep removes `Documents/whisper_*.wav` left by old builds | [LocalWhisperManager.swift](../NeuraLink/Data/DataSources/LocalWhisperManager.swift) |
-| User profile (name, gender, birthday) | `Application Support/private/user_profile.json` | `.completeUntilFirstUserAuthentication` | n/a | **No** (excluded) | [UserProfileStore.swift](../NeuraLink/Data/Repositories/UserProfileStore.swift) |
-| User profile photo | `Application Support/private/user_profile.jpg` | `.completeUntilFirstUserAuthentication` | n/a | **No** (excluded) | [UserProfileStore.swift](../NeuraLink/Data/Repositories/UserProfileStore.swift) |
-| Local LLM weights (GGUF) | `Application Support/hub/<slug>/direct/<file>.gguf` | default class | n/a — integrity, not confidentiality: pinned commit + size + SHA-256 verified before the file is moved into place | **No** (per-file exclusion) | [GGUFDirectDownloader.swift](../NeuraLink/Data/DataSources/GGUF/GGUFDirectDownloader.swift) |
-| Widget / Live Activity snapshot | App Group `group.com.dedicatus.NeuraLink` → `companion-snapshot.json`, `thumbnails/` | `.completeUntilFirstUserAuthentication` (explicit on write) | n/a | **No** (per-file exclusion, re-applied on every write) | [CompanionSnapshot.swift](../NeuraLinkShared/CompanionSnapshot.swift) |
-| Imported VRM characters | `Application Support/private/characters/<slug>.vrm` (+ `<slug>.png` thumbnail) | `.completeUntilFirstUserAuthentication` | Size + SHA-256 pin stored in the encrypted DB (`imported_characters`), re-verified on every load; mismatch quarantines the row | **No** (parent dir excluded) | [VRMImportService.swift](../NeuraLink/Data/DataSources/Characters/VRMImportService.swift), [VRMIntegrityCheck.swift](../NeuraLink/Data/DataSources/Characters/VRMIntegrityCheck.swift), [MemoryStore+ImportedCharacters.swift](../NeuraLink/Data/DataSources/Memory/MemoryStore+ImportedCharacters.swift) |
-| VRM import staging | `tmpDirectory/vrm_import/<UUID>.vrm/.png` | tmp default | n/a (moved into protected dir on confirm; discarded on cancel; swept on launch) | **No** (tmp is auto-excluded) | [VRMImportService.swift](../NeuraLink/Data/DataSources/Characters/VRMImportService.swift) |
+| KV cache | `Application Support/llm_kv/<config>_<persona>.kv` | `.completeUntilFirstUserAuthentication` | AES-256-GCM encryption (32-byte Keychain key); GCM tag also provides integrity | Yes (no isExcludedFromBackup) | [LocalLLMKVCache.swift](../../NeuraLink/Data/DataSources/LocalLLM/LocalLLMKVCache.swift) |
+| Whisper transcription input | in memory only (float samples fed straight to whisper.cpp) | n/a | n/a | n/a — never written; a one-shot sweep removes `Documents/whisper_*.wav` left by old builds | [LocalWhisperManager.swift](../../NeuraLink/Data/DataSources/STT/LocalWhisperManager.swift) |
+| User profile (name, gender, birthday) | `Application Support/private/user_profile.json` | `.completeUntilFirstUserAuthentication` | n/a | **No** (excluded) | [UserProfileStore.swift](../../NeuraLink/Data/Repositories/UserProfileStore.swift) |
+| User profile photo | `Application Support/private/user_profile.jpg` | `.completeUntilFirstUserAuthentication` | n/a | **No** (excluded) | [UserProfileStore.swift](../../NeuraLink/Data/Repositories/UserProfileStore.swift) |
+| Local LLM weights (GGUF) | `Application Support/hub/<slug>/direct/<file>.gguf` | default class | n/a — integrity, not confidentiality: pinned commit + size + SHA-256 verified before the file is moved into place | **No** (per-file exclusion) | [GGUFDirectDownloader.swift](../../NeuraLink/Data/DataSources/GGUF/GGUFDirectDownloader.swift) |
+| Widget / Live Activity snapshot | App Group `group.com.dedicatus.NeuraLink` → `companion-snapshot.json`, `thumbnails/` | `.completeUntilFirstUserAuthentication` (explicit on write) | n/a | **No** (per-file exclusion, re-applied on every write) | [CompanionSnapshot.swift](../../NeuraLinkShared/CompanionSnapshot.swift) |
+| Imported VRM characters | `Application Support/private/characters/<slug>.vrm` (+ `<slug>.png` thumbnail) | `.completeUntilFirstUserAuthentication` | Size + SHA-256 pin stored in the encrypted DB (`imported_characters`), re-verified on every load; mismatch quarantines the row | **No** (parent dir excluded) | [VRMImportService.swift](../../NeuraLink/Data/DataSources/Characters/VRMImportService.swift), [VRMIntegrityCheck.swift](../../NeuraLink/Data/DataSources/Characters/VRMIntegrityCheck.swift), [MemoryStore+ImportedCharacters.swift](../../NeuraLink/Data/DataSources/Memory/Store/MemoryStore+ImportedCharacters.swift) |
+| VRM import staging | `tmpDirectory/vrm_import/<UUID>.vrm/.png` | tmp default | n/a (moved into protected dir on confirm; discarded on cancel; swept on launch) | **No** (tmp is auto-excluded) | [VRMImportService.swift](../../NeuraLink/Data/DataSources/Characters/VRMImportService.swift) |
 
 **On the KV cache location:** it lives at `Application Support/llm_kv/` rather than `Application Support/private/` so legacy blobs from older installs don't need a relocation migration (KV blobs are regenerable; a failed decrypt just triggers a cold prefill on the next launch). The Data Protection class is still applied to the directory.
 
-**On imported VRM characters:** the `.vrm` file itself is user-supplied content, not a secret — the security goal is *integrity*, not confidentiality. The size + SHA-256 pin lives inside the Data-Protected (optionally SQLCipher-encrypted) DB while the model sits as a plain (protected-class) file, so an attacker who can swap the file can't fix up the pin without also defeating the DB layer. [VRMIntegrityCheck](../NeuraLink/Data/DataSources/Characters/VRMIntegrityCheck.swift) re-verifies before every load; a mismatch quarantines the row (`quarantined = 1`) and the scene falls back to the default bundled model. Prompt/voice for imported characters live in the same `character_ai` table as bundled personas and inherit its protections.
+**On imported VRM characters:** the `.vrm` file itself is user-supplied content, not a secret — the security goal is *integrity*, not confidentiality. The size + SHA-256 pin lives inside the Data-Protected (optionally SQLCipher-encrypted) DB while the model sits as a plain (protected-class) file, so an attacker who can swap the file can't fix up the pin without also defeating the DB layer. [VRMIntegrityCheck](../../NeuraLink/Data/DataSources/Characters/VRMIntegrityCheck.swift) re-verifies before every load; a mismatch quarantines the row (`quarantined = 1`) and the scene falls back to the default bundled model. Prompt/voice for imported characters live in the same `character_ai` table as bundled personas and inherit its protections.
 
 **On persona prompts/voices:** per-character AI prompts and voices (VoiceVox + OpenVoice prefs) now live in the encrypted conversation DB (the `character_ai (character, engine, prompt, voice, name)` table, engines `openai`/`gemma_jp`/`local`) instead of plaintext JSON + `UserDefaults`. `PersonaStore` and `LocalLLMPromptStore` are now thin facades over that table; `PersonaVoiceStore` is SQL-backed for VoiceVox/OpenVoice prefs. This means these prompts/voices inherit the DB's Data Protection class **and** the optional SQLCipher page encryption — strictly stronger at rest than the previous plaintext JSON-in-protected-dir + `UserDefaults` backup. A one-shot migration imports the legacy data on first launch; the old JSON files are left in place as a dormant backup and are no longer read.
 
@@ -223,7 +223,7 @@ Next app launch performs the one-shot conversion. Verify with: a hex dump of the
 
 ## 7. Conversation DB — the two layers
 
-The conversation DB ([neuralink_memory.sqlite](../NeuraLink/Data/DataSources/Memory/MemoryStore.swift)) gets two independent layers of protection:
+The conversation DB ([neuralink_memory.sqlite](../../NeuraLink/Data/DataSources/Memory/Store/MemoryStore.swift)) gets two independent layers of protection:
 
 ### Layer A (always on) — iOS Data Protection
 - Path: `Application Support/private/neuralink_memory.sqlite`
@@ -234,7 +234,7 @@ The conversation DB ([neuralink_memory.sqlite](../NeuraLink/Data/DataSources/Mem
 ### Layer B (opt-in) — SQLCipher page-level encryption
 - Built on the **prebuilt SQLCipher.swift v4.16.0 xcframework** via SPM (`https://github.com/sqlcipher/SQLCipher.swift.git`)
 - Build setting: `SQLITE_HAS_CODEC=1` in `GCC_PREPROCESSOR_DEFINITIONS` (Debug + Release at project level)
-- Source: `import SQLCipher` replaces `import SQLite3` in [MemoryStore.swift](../NeuraLink/Data/DataSources/Memory/MemoryStore.swift) + [MemoryStore+Queries.swift](../NeuraLink/Data/DataSources/Memory/MemoryStore+Queries.swift)
+- Source: `import SQLCipher` replaces `import SQLite3` in [MemoryStore.swift](../../NeuraLink/Data/DataSources/Memory/Store/MemoryStore.swift) + [MemoryStore+Queries.swift](../../NeuraLink/Data/DataSources/Memory/Store/MemoryStore+Queries.swift)
 - Keying: `sqlite3_key(db, key, 32)` immediately after `sqlite3_open`, with `key` = `SecureStore.getOrCreateRandom(.memoryDBPageKey, bytes: 32)`
 - Sanity check after keying: `PRAGMA cipher_version` must return a non-empty string — proves we linked against SQLCipher and not the system SQLite
 - Defeats Layer A scenarios + a bypass of iOS Data Protection itself (e.g. hypothetical class-key leak)
@@ -245,7 +245,7 @@ The two-flag state machine (`sqlcipherEnabled` = intent, `sqlcipherActive.v1` = 
 
 ## 8. KV cache integrity & encryption
 
-**File:** the KV cache lives in [LocalLLMKVCache.swift](../NeuraLink/Data/DataSources/LocalLLM/LocalLLMKVCache.swift) (the DB's page crypto is [MemoryStore+SQLCipher.swift](../NeuraLink/Data/DataSources/Memory/MemoryStore+SQLCipher.swift)).
+**File:** the KV cache lives in [LocalLLMKVCache.swift](../../NeuraLink/Data/DataSources/LocalLLM/LocalLLMKVCache.swift) (the DB's page crypto is [MemoryStore+SQLCipher.swift](../../NeuraLink/Data/DataSources/Memory/Store/MemoryStore+SQLCipher.swift)).
 
 Every `.kv` blob saved to `Application Support/llm_kv/` is **encrypted with AES-256-GCM** before it touches disk — a single self-contained file, no sidecar:
 
@@ -255,7 +255,7 @@ sealed box = 12-byte nonce ‖ ciphertext ‖ 16-byte GCM tag
 
 where the key is `SecureStore.getOrCreateRandom(.kvCacheEncryptionKey, bytes: 32)`. The GCM authentication tag provides integrity coverage equivalent to (and stronger than) the previous HMAC-SHA256 sidecar: a tampered or truncated blob fails `AES.GCM.open` and is discarded, so an attacker can't substitute a blob across personas / model configs.
 
-**Load path** ([LocalLLMManager.tryRestoreKVCache](../NeuraLink/Data/DataSources/LocalLLM/LocalLLMManager.swift)):
+**Load path** ([LocalLLMManager.tryRestoreKVCache](../../NeuraLink/Data/DataSources/LocalLLM/Manager/LocalLLMManager.swift)):
 
 1. If no `.kv` exists → nothing to load (fresh install).
 2. `LocalLLMKVCache.decryptBlob(at:)` opens the sealed box with the Keychain key. On success → `llmEngine.loadKVCache(from:)` runs and warmup is fast.
@@ -267,7 +267,7 @@ where the key is `SecureStore.getOrCreateRandom(.kvCacheEncryptionKey, bytes: 32
 
 ## 9. Logging
 
-**File:** [NeuraLinkLogger.swift](../NeuraLink/Core/Utils/NeuraLinkLogger.swift)
+**File:** [NeuraLinkLogger.swift](../../NeuraLink/Core/Utils/Logging/NeuraLinkLogger.swift)
 
 Two functions, identical signatures, different privacy:
 
@@ -278,7 +278,7 @@ Two functions, identical signatures, different privacy:
 
 Both are **no-ops in Release** via `#if DEBUG`, so no transcript content can land in production logs even if a `nlLog` is mistakenly used for sensitive content. The `.private` qualifier is the second line of defense — it ensures that in DEBUG, TestFlight, or Ad-hoc builds, `Console.app` shows `<private>` for the body unless the device is paired with a developer profile that has the "Enable Private Data" entitlement (which Xcode itself does, so step-debugging still works).
 
-**Pattern for log lines that mix metadata and content:** split into two calls, metadata public, content private. Example from [RAGManager.swift](../NeuraLink/Data/DataSources/Memory/RAGManager.swift):
+**Pattern for log lines that mix metadata and content:** split into two calls, metadata public, content private. Example from [RAGManager.swift](../../NeuraLink/Data/DataSources/Memory/RAGManager.swift):
 
 ```swift
 nlLog("[RAGManager] Stored new memory (source=\(source), \(text.count) chars)", level: .info)
@@ -295,8 +295,8 @@ A Console.app reader sees the metadata ("did we store anything?") without the co
 
 - All OpenAI endpoints use HTTPS (`api.openai.com`).
 - WebRTC media uses DTLS-SRTP (mandatory in libwebrtc).
-- ATS defaults apply — no `NSAllowsArbitraryLoads` in [Info.plist](../Info.plist), TLS ≥1.2 required.
-- The OpenAI `sk-…` key only ever goes to `https://api.openai.com`, as a `Bearer` header over HTTPS. For voice sessions it is sent once to `/v1/realtime/client_secrets` to mint an ephemeral token, and WebRTC and the data channel use that token from then on. The REST calls send the key directly: chat completions ([OpenAIChatClient.swift](../NeuraLink/Data/DataSources/OpenAI/OpenAIChatClient.swift)), vision ([VisionAnalyzer.swift](../NeuraLink/Data/DataSources/VisionAnalyzer.swift)) and speech previews ([PersonaSettingsView.swift](../NeuraLink/Presentation/Views/AI/PersonaSettingsView.swift), [TranscriptSpeechPlayer.swift](../NeuraLink/Presentation/Views/AI/TranscriptSpeechPlayer.swift)). That is the normal pattern for a user-supplied key.
+- ATS defaults apply — no `NSAllowsArbitraryLoads` in [Info.plist](../../Info.plist), TLS ≥1.2 required.
+- The OpenAI `sk-…` key only ever goes to `https://api.openai.com`, as a `Bearer` header over HTTPS. For voice sessions it is sent once to `/v1/realtime/client_secrets` to mint an ephemeral token, and WebRTC and the data channel use that token from then on. The REST calls send the key directly: chat completions ([OpenAIChatClient.swift](../../NeuraLink/Data/DataSources/OpenAI/OpenAIChatClient.swift)), vision ([VisionAnalyzer.swift](../../NeuraLink/Data/DataSources/Vision/VisionAnalyzer.swift)) and speech previews ([PersonaSettingsView.swift](../../NeuraLink/Presentation/Views/Settings/Persona/PersonaSettingsView.swift), [TranscriptSpeechPlayer.swift](../../NeuraLink/Presentation/Views/Chat/TranscriptSpeechPlayer.swift)). That is the normal pattern for a user-supplied key.
 - WebRTC peer connection uses Google STUN servers for NAT traversal; standard practice, exposes only the public IP that any HTTP request to a third party would also expose.
 
 **No certificate pinning today.** Adding it would protect against compromised root CAs in the device's trust store but has ops risk (OpenAI cert rotation). Not in v1; revisit if the threat model expands.
@@ -305,8 +305,8 @@ A Console.app reader sees the metadata ("did we store anything?") without the co
 
 Every file fetched from Hugging Face is checked against a size + SHA-256 pin before it is used. Files from repos we don't own also name the commit in the URL (`resolve/<commit>/…`, never `resolve/main/…`), so a re-upload upstream can neither swap the bytes nor break the download:
 
-- **Local LLM weights**: `GGUFModelAccess` / `GGUFLLMjp3ModelAccess` hold `revision` + `integrity`. [GGUFDirectDownloader](../NeuraLink/Data/DataSources/GGUF/GGUFDirectDownloader.swift) downloads to a `.part` file, hashes it off the main actor, and only then moves it into place. On a mismatch the `.part` file is deleted, so it can't be resumed from. This matters because llama.cpp's C loader parses these files.
-- **Everything else**: pins live in [RemoteAssetRegistry](../NeuraLink/Data/DataSources/Assets/RemoteAssetRegistry.swift). Our own dataset is served from `main`, because we control it and the hashes still catch a bad upload. The one third-party file there (the embedding model) is commit-pinned.
+- **Local LLM weights**: `GGUFModelAccess` / `GGUFLLMjp3ModelAccess` hold `revision` + `integrity`. [GGUFDirectDownloader](../../NeuraLink/Data/DataSources/GGUF/GGUFDirectDownloader.swift) downloads to a `.part` file, hashes it off the main actor, and only then moves it into place. On a mismatch the `.part` file is deleted, so it can't be resumed from. This matters because llama.cpp's C loader parses these files.
+- **Everything else**: pins live in [RemoteAssetRegistry](../../NeuraLink/Data/DataSources/Assets/RemoteAssetRegistry.swift). Our own dataset is served from `main`, because we control it and the hashes still catch a bad upload. The one third-party file there (the embedding model) is commit-pinned.
 
 **Changing a model or quant** means capturing the new commit, size and SHA-256 from the Hub API: `GET https://huggingface.co/api/models/<repo>/revision/main?blobs=true` returns `sha` (the commit) and each file's `lfs.size` + `lfs.sha256`. `ModelDownloadPinTests` fails if any pin is missing or malformed.
 
@@ -318,13 +318,13 @@ Swift packages are pinned to versions or exact revisions. The `argmax-oss-swift`
 
 | Suite | File | What it validates |
 |---|---|---|
-| `AITests` | [AITests.swift](../NeuraLinkTests/AITests.swift) | OpenAISettings round-trip → Keychain |
-| `MemoryTests` | [MemoryTests.swift](../NeuraLinkTests/MemoryTests.swift) | MemoryStore insert/fetch through the new protected path |
-| `SQLCipherTests` | [SQLCipherTests.swift](../NeuraLinkTests/SQLCipherTests.swift) | Round-trip with the keychain key; unkeyed open fails; on-disk header is not the plaintext SQLite magic |
-| `LocalLLMKVCacheTests` | [LocalLLMKVCacheTests.swift](../NeuraLinkTests/LocalLLMKVCacheTests.swift) | AES-GCM encrypt/decrypt round-trip; tampered blob fails the GCM tag; legacy HMAC-sidecar blobs migrate or purge; purge idempotent |
-| `RemoteAssetIntegrityTests` | [RemoteAssetIntegrityTests.swift](../NeuraLinkTests/RemoteAssetIntegrityTests.swift) | SHA-256 helper; verify rejects wrong size / hash; every registry asset has a pin |
-| `ModelDownloadPinTests` | [ModelDownloadPinTests.swift](../NeuraLinkTests/ModelDownloadPinTests.swift) | GGUF models and third-party registry assets name a commit and carry a well-formed size + SHA-256 pin |
-| `UserProfileStoreTests` | [UserProfileStoreTests.swift](../NeuraLinkTests/UserProfileStoreTests.swift) | Profile migration out of `UserDefaults` (runs once, never rolls back newer edits); single-field writes keep the other fields |
+| `AITests` | [AITests.swift](../../NeuraLinkTests/App/AITests.swift) | OpenAISettings round-trip → Keychain |
+| `MemoryTests` | [MemoryTests.swift](../../NeuraLinkTests/Memory/MemoryTests.swift) | MemoryStore insert/fetch through the new protected path |
+| `SQLCipherTests` | [SQLCipherTests.swift](../../NeuraLinkTests/Security/SQLCipherTests.swift) | Round-trip with the keychain key; unkeyed open fails; on-disk header is not the plaintext SQLite magic |
+| `LocalLLMKVCacheTests` | [LocalLLMKVCacheTests.swift](../../NeuraLinkTests/LocalLLM/LocalLLMKVCacheTests.swift) | AES-GCM encrypt/decrypt round-trip; tampered blob fails the GCM tag; legacy HMAC-sidecar blobs migrate or purge; purge idempotent |
+| `RemoteAssetIntegrityTests` | [RemoteAssetIntegrityTests.swift](../../NeuraLinkTests/Security/RemoteAssetIntegrityTests.swift) | SHA-256 helper; verify rejects wrong size / hash; every registry asset has a pin |
+| `ModelDownloadPinTests` | [ModelDownloadPinTests.swift](../../NeuraLinkTests/Security/ModelDownloadPinTests.swift) | GGUF models and third-party registry assets name a commit and carry a well-formed size + SHA-256 pin |
+| `UserProfileStoreTests` | [UserProfileStoreTests.swift](../../NeuraLinkTests/Security/UserProfileStoreTests.swift) | Profile migration out of `UserDefaults` (runs once, never rolls back newer edits); single-field writes keep the other fields |
 
 **Two test patterns to know:**
 
@@ -337,7 +337,7 @@ Swift packages are pinned to versions or exact revisions. The `argmax-oss-swift`
 
 ### Adding a new Keychain secret
 
-1. Add a case to `SecureKey` in [SecureStore.swift](../NeuraLink/Core/Security/SecureStore.swift) with a stable `service` + `account` mapping.
+1. Add a case to `SecureKey` in [SecureStore.swift](../../NeuraLink/Core/Security/SecureStore.swift) with a stable `service` + `account` mapping.
 2. Use `SecureStore.set/get/delete` (String) or `set/getData/getOrCreateRandom` (Data) at the call site.
 3. Never store the same secret in `UserDefaults` "as a backup" — that defeats the whole point.
 
@@ -371,25 +371,25 @@ Other things deferred to future work:
 
 | Path | Role |
 |---|---|
-| [NeuraLink/Core/Security/SecureStore.swift](../NeuraLink/Core/Security/SecureStore.swift) | Keychain wrapper |
-| [NeuraLink/Core/Security/ProtectedStorage.swift](../NeuraLink/Core/Security/ProtectedStorage.swift) | iOS Data Protection helper |
-| [NeuraLink/Core/Utils/NeuraLinkLogger.swift](../NeuraLink/Core/Utils/NeuraLinkLogger.swift) | `nlLog` + `nlLogSensitive` |
-| [NeuraLink/Data/DataSources/Memory/MemoryStore.swift](../NeuraLink/Data/DataSources/Memory/MemoryStore.swift) | Conversation DB path + relocation migration |
-| [NeuraLink/Data/DataSources/Memory/MemoryStore+SQLCipher.swift](../NeuraLink/Data/DataSources/Memory/MemoryStore+SQLCipher.swift) | SQLCipher feature flag + keying + conversion |
-| [NeuraLink/Data/DataSources/Memory/MemoryStore+Queries.swift](../NeuraLink/Data/DataSources/Memory/MemoryStore+Queries.swift) | `import SQLCipher` |
-| [NeuraLink/Data/DataSources/Memory/RAGManager.swift](../NeuraLink/Data/DataSources/Memory/RAGManager.swift) | Split metadata/content logging |
-| [NeuraLink/Data/Repositories/PersonaStore.swift](../NeuraLink/Data/Repositories/PersonaStore.swift) | Personas → facade over encrypted DB (`character_ai`) |
-| [NeuraLink/Data/DataSources/LocalLLMPromptStore.swift](../NeuraLink/Data/DataSources/LocalLLMPromptStore.swift) | Local LLM prompts → encrypted DB (`character_ai`) |
-| [NeuraLink/Data/DataSources/Memory/PersonaVoiceStore.swift](../NeuraLink/Data/DataSources/Memory/PersonaVoiceStore.swift) | VoiceVox/OpenVoice prefs → encrypted DB (`character_ai`); legacy Kokoro map still `UserDefaults` |
-| [NeuraLink/Data/DataSources/LocalWhisperManager.swift](../NeuraLink/Data/DataSources/LocalWhisperManager.swift) | whisper.cpp feeds in-memory float samples (no temp WAV); legacy `whisper_*.wav` sweep + private logs |
-| [NeuraLink/Data/DataSources/LocalLLM/LocalLLMKVCache.swift](../NeuraLink/Data/DataSources/LocalLLM/LocalLLMKVCache.swift) | KV cache path + AES-GCM encrypt/decrypt/purge + legacy HMAC migration |
-| [NeuraLink/Data/Repositories/UserProfileStore.swift](../NeuraLink/Data/Repositories/UserProfileStore.swift) | User profile + photo in `private/` + one-shot `UserDefaults` migration |
-| [NeuraLink/Data/DataSources/GGUF/GGUFDirectDownloader.swift](../NeuraLink/Data/DataSources/GGUF/GGUFDirectDownloader.swift) | Commit-pinned, SHA-256-verified GGUF downloads |
-| [NeuraLink/Data/DataSources/Assets/RemoteAssetCache.swift](../NeuraLink/Data/DataSources/Assets/RemoteAssetCache.swift) | Resumable download + size/SHA-256 verify gate shared by all remote assets |
-| [NeuraLink/PrivacyInfo.xcprivacy](../NeuraLink/PrivacyInfo.xcprivacy), [NeuraLinkWidgets/PrivacyInfo.xcprivacy](../NeuraLinkWidgets/PrivacyInfo.xcprivacy) | Privacy manifests (app + widget extension) |
-| [NeuraLink/Data/DataSources/LocalLLM/LocalLLMManager.swift](../NeuraLink/Data/DataSources/LocalLLM/LocalLLMManager.swift) | KV cache load/save with integrity check |
-| [NeuraLink/Data/DataSources/OpenAI/OpenAISettings.swift](../NeuraLink/Data/DataSources/OpenAI/OpenAISettings.swift) | API key → Keychain + one-shot migration |
-| [NeuraLink/Data/DataSources/OpenAI/OpenAIRealtimeManager+Handlers.swift](../NeuraLink/Data/DataSources/OpenAI/OpenAIRealtimeManager+Handlers.swift) | Transcript log sites → `nlLogSensitive` |
+| [NeuraLink/Core/Security/SecureStore.swift](../../NeuraLink/Core/Security/SecureStore.swift) | Keychain wrapper |
+| [NeuraLink/Core/Security/ProtectedStorage.swift](../../NeuraLink/Core/Security/ProtectedStorage.swift) | iOS Data Protection helper |
+| [NeuraLink/Core/Utils/Logging/NeuraLinkLogger.swift](../../NeuraLink/Core/Utils/Logging/NeuraLinkLogger.swift) | `nlLog` + `nlLogSensitive` |
+| [NeuraLink/Data/DataSources/Memory/Store/MemoryStore.swift](../../NeuraLink/Data/DataSources/Memory/Store/MemoryStore.swift) | Conversation DB path + relocation migration |
+| [NeuraLink/Data/DataSources/Memory/Store/MemoryStore+SQLCipher.swift](../../NeuraLink/Data/DataSources/Memory/Store/MemoryStore+SQLCipher.swift) | SQLCipher feature flag + keying + conversion |
+| [NeuraLink/Data/DataSources/Memory/Store/MemoryStore+Queries.swift](../../NeuraLink/Data/DataSources/Memory/Store/MemoryStore+Queries.swift) | `import SQLCipher` |
+| [NeuraLink/Data/DataSources/Memory/RAGManager.swift](../../NeuraLink/Data/DataSources/Memory/RAGManager.swift) | Split metadata/content logging |
+| [NeuraLink/Data/Repositories/PersonaStore.swift](../../NeuraLink/Data/Repositories/PersonaStore.swift) | Personas → facade over encrypted DB (`character_ai`) |
+| [NeuraLink/Data/Repositories/LocalLLMPromptStore.swift](../../NeuraLink/Data/Repositories/LocalLLMPromptStore.swift) | Local LLM prompts → encrypted DB (`character_ai`) |
+| [NeuraLink/Data/Repositories/PersonaVoiceStore.swift](../../NeuraLink/Data/Repositories/PersonaVoiceStore.swift) | VoiceVox/OpenVoice prefs → encrypted DB (`character_ai`); legacy Kokoro map still `UserDefaults` |
+| [NeuraLink/Data/DataSources/STT/LocalWhisperManager.swift](../../NeuraLink/Data/DataSources/STT/LocalWhisperManager.swift) | whisper.cpp feeds in-memory float samples (no temp WAV); legacy `whisper_*.wav` sweep + private logs |
+| [NeuraLink/Data/DataSources/LocalLLM/LocalLLMKVCache.swift](../../NeuraLink/Data/DataSources/LocalLLM/LocalLLMKVCache.swift) | KV cache path + AES-GCM encrypt/decrypt/purge + legacy HMAC migration |
+| [NeuraLink/Data/Repositories/UserProfileStore.swift](../../NeuraLink/Data/Repositories/UserProfileStore.swift) | User profile + photo in `private/` + one-shot `UserDefaults` migration |
+| [NeuraLink/Data/DataSources/GGUF/GGUFDirectDownloader.swift](../../NeuraLink/Data/DataSources/GGUF/GGUFDirectDownloader.swift) | Commit-pinned, SHA-256-verified GGUF downloads |
+| [NeuraLink/Data/DataSources/Assets/RemoteAssetCache.swift](../../NeuraLink/Data/DataSources/Assets/RemoteAssetCache.swift) | Resumable download + size/SHA-256 verify gate shared by all remote assets |
+| [NeuraLink/PrivacyInfo.xcprivacy](../../NeuraLink/PrivacyInfo.xcprivacy), [NeuraLinkWidgets/PrivacyInfo.xcprivacy](../../NeuraLinkWidgets/PrivacyInfo.xcprivacy) | Privacy manifests (app + widget extension) |
+| [NeuraLink/Data/DataSources/LocalLLM/Manager/LocalLLMManager.swift](../../NeuraLink/Data/DataSources/LocalLLM/Manager/LocalLLMManager.swift) | KV cache load/save with integrity check |
+| [NeuraLink/Data/DataSources/OpenAI/OpenAISettings.swift](../../NeuraLink/Data/DataSources/OpenAI/OpenAISettings.swift) | API key → Keychain + one-shot migration |
+| [NeuraLink/Data/DataSources/OpenAI/Realtime/OpenAIRealtimeManager+Handlers.swift](../../NeuraLink/Data/DataSources/OpenAI/Realtime/OpenAIRealtimeManager+Handlers.swift) | Transcript log sites → `nlLogSensitive` |
 
 ## Data outside the protected sandbox (2026-09-27)
 
@@ -409,7 +409,7 @@ The `createNote` tool puts the note on the clipboard so it can be pasted into
 Notes. With Notes installed it writes only when the user taps the phone
 widget (otherwise straight away, as the only way to hand the note over). The
 item is always local-only (no Universal Clipboard hop to other devices) and
-expires after 10 minutes ([NotesSkill.swift](../NeuraLink/Domain/Entities/Skills/NotesSkill.swift)).
+expires after 10 minutes ([NotesSkill.swift](../../NeuraLink/Domain/Entities/Skills/NotesSkill.swift)).
 
 Background audio (`UIBackgroundModes = audio`) is opt-in ("Keep talking in
 background"); while active the microphone stays open and iOS shows the
@@ -423,7 +423,7 @@ cloud model is enabled and is never stored by the app.
 
 ## Privacy manifest
 
-[NeuraLink/PrivacyInfo.xcprivacy](../NeuraLink/PrivacyInfo.xcprivacy) declares no tracking and the required-reason APIs the app binary uses:
+[NeuraLink/PrivacyInfo.xcprivacy](../../NeuraLink/PrivacyInfo.xcprivacy) declares no tracking and the required-reason APIs the app binary uses:
 
 | API category | Reason | Where |
 |---|---|---|

@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  Re-embeds stored memories whose vectors came from a different backend
-//  than the active one (docs/CHAT_LLM.md). Runs in
+//  than the active one (docs/AI/CHAT_LLM.md). Runs in
 //  small batches at background priority and is resumable: it simply asks
 //  the store for rows whose `vector_model` differs.
 //

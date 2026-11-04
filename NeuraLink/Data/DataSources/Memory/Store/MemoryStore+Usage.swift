@@ -2,7 +2,7 @@
 //  MemoryStore+Usage.swift
 //  NeuraLink
 //
-//  `api_usage` — one row per metered OpenAI call (docs/API_USAGE.md).
+//  `api_usage` — one row per metered OpenAI call (docs/AI/API_USAGE.md).
 //  `created_at` is Unix seconds so range filters are plain comparisons and
 //  bucketing can use SQLite's 'localtime' modifier.
 //

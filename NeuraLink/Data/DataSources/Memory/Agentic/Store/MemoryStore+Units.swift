@@ -2,7 +2,7 @@
 //  MemoryStore+Units.swift
 //  NeuraLink
 //
-//  Schema migration + CRUD for agentic memory units (docs/AGENTIC_MEMORY.md).
+//  Schema migration + CRUD for agentic memory units (docs/Memory/AGENTIC_MEMORY.md).
 //  Extends the legacy `memories` table in place so existing rows keep
 //  working: they are back-filled as `fact_type = 'raw'` (dialogue) or
 //  `'world'` (legacy `source = 'fact'` rows) with tokens for the BM25 arm.

@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  Domain entities for the companion's between-session life — Living
-//  Companion (docs/LIVING_COMPANION.md). Rows are written
+//  Companion (docs/Companion/LIVING_COMPANION.md). Rows are written
 //  by the end-of-session reflection (Phase 1) and read by the proactive
 //  greeting (Phase 3), the prompt block (Phase 2), and the Journal UI.
 //

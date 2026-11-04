@@ -95,17 +95,17 @@ flowchart TD
 
 | File | Role |
 |---|---|
-| `Domain/Entities/APIUsage.swift` | `UsageSource`, `UsageRecord` (payload parsing + spend estimate), `UsageBucket` |
-| `Data/DataSources/Memory/MemoryStore+Usage.swift` | `api_usage` insert, bucketed reads, prune/clear; `UsageRecorder` |
-| `Data/DataSources/Memory/MemoryStore.swift` | `api_usage` schema + time index |
+| `Domain/Entities/Chat/APIUsage.swift` | `UsageSource`, `UsageRecord` (payload parsing + spend estimate), `UsageBucket` |
+| `Data/DataSources/Memory/Store/MemoryStore+Usage.swift` | `api_usage` insert, bucketed reads, prune/clear; `UsageRecorder` |
+| `Data/DataSources/Memory/Store/MemoryStore.swift` | `api_usage` schema + time index |
 | `Data/DataSources/OpenAI/OpenAIModelCatalog.swift` | `Pricing` per model, `pricing(for:)` |
-| `Data/DataSources/OpenAI/OpenAIRealtimeManager+Handlers.swift` | Voice and transcription capture |
+| `Data/DataSources/OpenAI/Realtime/OpenAIRealtimeManager+Handlers.swift` | Voice and transcription capture |
 | `Data/DataSources/OpenAI/OpenAIChatClient.swift` | Background capture, `purpose:` tag |
-| `Data/DataSources/VisionAnalyzer.swift` | Vision capture |
-| `Presentation/Views/AI/Usage/UsageDashboardModel.swift` | Ranges, filters, `UsageSummary` aggregation, formatting |
-| `Presentation/Views/AI/Usage/UsageDashboardView.swift` | The page + `UsageNavigationRow` settings entry |
-| `Presentation/Views/AI/Usage/UsageChartCard.swift` | Swift Charts stacked bars with drag selection |
-| `Presentation/Views/AI/Usage/UsageDashboardCards.swift` | Hero, stat tiles, filter bar, breakdowns, live session card |
+| `Data/DataSources/Vision/VisionAnalyzer.swift` | Vision capture |
+| `Presentation/Views/Settings/Usage/UsageDashboardModel.swift` | Ranges, filters, `UsageSummary` aggregation, formatting |
+| `Presentation/Views/Settings/Usage/UsageDashboardView.swift` | The page + `UsageNavigationRow` settings entry |
+| `Presentation/Views/Settings/Usage/UsageChartCard.swift` | Swift Charts stacked bars with drag selection |
+| `Presentation/Views/Settings/Usage/UsageDashboardCards.swift` | Hero, stat tiles, filter bar, breakdowns, live session card |
 
 ## Integration notes
 

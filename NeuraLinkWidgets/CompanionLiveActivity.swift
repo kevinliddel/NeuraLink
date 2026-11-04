@@ -3,7 +3,7 @@
 //  NeuraLinkWidgets
 //
 //  Lock-screen banner + Dynamic Island for an active voice session
-//  (docs/PRESENCE_BEYOND_APP.md).
+//  (docs/Companion/PRESENCE_BEYOND_APP.md).
 //
 
 import ActivityKit

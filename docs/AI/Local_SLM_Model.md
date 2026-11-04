@@ -211,12 +211,12 @@ showed on screen as if the user had said it.
 
 ## Key source files
 
-- **Orchestrator** — `Data/DataSources/LocalLLM/LocalLLMManager.swift` (+ extensions)
+- **Orchestrator** — `Data/DataSources/LocalLLM/Manager/LocalLLMManager.swift` (+ extensions)
 - **Engines** — `Data/DataSources/GGUF/Llama/GGUFLlamaEngine.swift`,
   `Data/DataSources/GGUF/LLMjp3/GGUFLLMjp3Engine.swift`
 - **C++ bridge** — `Core/Bridge/llama_bridge.{h,cpp}` (over the prebuilt
   `llama.xcframework`)
 - **Runtime profile** — `Data/DataSources/LocalLLM/LLMRuntimeProfile.swift`
-- **STT** — `Data/DataSources/LocalWhisperManager.swift` (whisper.cpp)
-- **Download + voice bundling** — `Data/DataSources/LocalModelDownloadManager.swift`
+- **STT** — `Data/DataSources/STT/LocalWhisperManager.swift` (whisper.cpp)
+- **Download + voice bundling** — `Data/DataSources/GGUF/LocalModelDownloadManager.swift`
 - **TTS routing** — see [LLM_VOICE.md](./LLM_VOICE.md)

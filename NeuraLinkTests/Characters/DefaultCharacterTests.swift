@@ -4,7 +4,7 @@
 //
 //  Oz is the factory character: the registry falls back to him, every
 //  engine has a built-in prompt and voice for him, and the parts library
-//  lists the donors that arrived with him (docs/CHARACTER_CUSTOMIZATION.md).
+//  lists the donors that arrived with him (docs/Engine/CHARACTER_CUSTOMIZATION.md).
 //
 //  Created by Dedicatus on 20/10/2026.
 //

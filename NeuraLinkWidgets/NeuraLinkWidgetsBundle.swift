@@ -2,7 +2,7 @@
 //  NeuraLinkWidgetsBundle.swift
 //  NeuraLinkWidgets
 //
-//  Widget extension entry point (docs/PRESENCE_BEYOND_APP.md).
+//  Widget extension entry point (docs/Companion/PRESENCE_BEYOND_APP.md).
 //
 
 import SwiftUI

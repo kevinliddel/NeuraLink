@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  Message-table reads behind the journal calendar and the "time apart"
-//  prompt line — Living Companion (docs/LIVING_COMPANION.md). Timestamps
+//  prompt line — Living Companion (docs/Companion/LIVING_COMPANION.md). Timestamps
 //  are the UTC strings SQLite wrote; callers group them into local days.
 //  Both are per character: the calendar shows the days you spent with the
 //  character whose journal it is, and "time apart" is time apart from them.

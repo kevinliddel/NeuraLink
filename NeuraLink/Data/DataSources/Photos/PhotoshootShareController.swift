@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  Holds the picture taken by `pose_for_photo` and drives the save/share
-//  capsule (docs/MEMORY_OWNERSHIP.md).
+//  capsule (docs/Memory/MEMORY_OWNERSHIP.md).
 //
 //  Created by Dedicatus on 27/09/2026.
 //

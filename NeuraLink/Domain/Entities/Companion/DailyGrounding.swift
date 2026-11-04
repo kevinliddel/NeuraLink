@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  Passive, real-world context for the Companion State block — Living
-//  Companion (docs/LIVING_COMPANION.md): what is on the user's calendar in
+//  Companion (docs/Companion/LIVING_COMPANION.md): what is on the user's calendar in
 //  the next hours, and how last night's sleep went. Pure formatting and
 //  arithmetic; the EventKit and HealthKit reads live in Data/Grounding.
 //

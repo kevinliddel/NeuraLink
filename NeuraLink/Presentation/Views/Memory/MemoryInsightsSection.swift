@@ -4,7 +4,7 @@
 //
 //  Building blocks for the Memory page: the hero card (relationship,
 //  counts, what the companion currently knows) and the observations list
-//  fed by the agentic memory layer (docs/AGENTIC_MEMORY.md).
+//  fed by the agentic memory layer (docs/Memory/AGENTIC_MEMORY.md).
 //
 //  Created by Dedicatus on 25/09/2026.
 //

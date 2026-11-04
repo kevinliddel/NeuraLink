@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Write the two data tables the sky reads (docs/Sky_System.md):
+"""Write the two data tables the sky reads (docs/Engine/Sky_System.md):
 
     NeuraLink/App/Resources/sky_zones.txt         time zone -> latitude longitude
     NeuraLink/App/Resources/sky_bright_stars.txt  the bright stars, J2000

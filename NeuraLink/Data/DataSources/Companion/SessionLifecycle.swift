@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  Marks chat-session boundaries — Living Companion
-//  (docs/LIVING_COMPANION.md). The app previously had no lifecycle
+//  (docs/Companion/LIVING_COMPANION.md). The app previously had no lifecycle
 //  seam at all: ConversationStore only knows `startNewChat()`, and nothing
 //  observed backgrounding except the Metal render-loop pause.
 //

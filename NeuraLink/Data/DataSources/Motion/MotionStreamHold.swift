@@ -6,7 +6,7 @@
 //  phone is short of memory for the motion model, or it generated too
 //  slowly to keep up with speech. Set by MotionStreamCoordinator, cleared
 //  when the models load or a stream keeps pace again.
-//  See docs/GENERATIVE_MOTION.md.
+//  See docs/Engine/GENERATIVE_MOTION.md.
 //
 //  Created by Dedicatus on 30/10/2026.
 //

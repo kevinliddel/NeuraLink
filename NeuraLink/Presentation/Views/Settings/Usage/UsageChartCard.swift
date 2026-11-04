@@ -4,7 +4,7 @@
 //
 //  Stacked bar chart of spend or tokens per hour (Today) or per day, one
 //  colour per source. Drag across the bars to inspect a column
-//  (docs/API_USAGE.md).
+//  (docs/AI/API_USAGE.md).
 //
 //  Created by Dedicatus on 30/09/2026.
 //

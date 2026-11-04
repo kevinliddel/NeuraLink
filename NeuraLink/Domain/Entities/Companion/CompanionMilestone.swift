@@ -2,7 +2,7 @@
 //  CompanionMilestone.swift
 //  NeuraLink
 //
-//  Keepsake milestones — Living Companion (docs/LIVING_COMPANION.md).
+//  Keepsake milestones — Living Companion (docs/Companion/LIVING_COMPANION.md).
 //  Small shared "firsts" the companion and the user collect together: the
 //  first hello, a week / a month / a hundred days of talking, the first
 //  shared song, game, photo and diary entry. Framework-free so the rules

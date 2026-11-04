@@ -2,7 +2,7 @@
 //  CompanionSceneCaptureTests.swift
 //  NeuraLinkTests
 //
-//  Diary pictures (docs/LIVING_COMPANION.md): freshness, the journal copy,
+//  Diary pictures (docs/Companion/LIVING_COMPANION.md): freshness, the journal copy,
 //  the notification attachment's copy semantics, and the journal column.
 //
 

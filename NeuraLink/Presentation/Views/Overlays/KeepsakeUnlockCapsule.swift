@@ -2,7 +2,7 @@
 //  KeepsakeUnlockCapsule.swift
 //  NeuraLink
 //
-//  The moment a keepsake is collected (docs/LIVING_COMPANION.md): a card
+//  The moment a keepsake is collected (docs/Companion/LIVING_COMPANION.md): a card
 //  rises from the bottom of the scene with the badge, the title and one
 //  line of meaning, plays a success haptic, and leaves on its own or on
 //  tap. Same placement and glass as the photoshoot capsule.

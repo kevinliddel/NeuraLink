@@ -2,7 +2,7 @@
 //  CompanionJournalView.swift
 //  NeuraLink
 //
-//  The companion's journal — Living Companion (docs/LIVING_COMPANION.md).
+//  The companion's journal — Living Companion (docs/Companion/LIVING_COMPANION.md).
 //  Everything the character "remembers and becomes" is visible and
 //  deletable here (trust + App Store safety): the relationship stage, a
 //  calendar of the days you talked with the diary and keepsakes on them,

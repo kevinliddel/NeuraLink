@@ -80,7 +80,7 @@ struct AISettingsView: View {
     }
 
     /// One card for everything cloud: the switch, the key, then the models
-    /// and the usage it drives (docs/API_USAGE.md).
+    /// and the usage it drives (docs/AI/API_USAGE.md).
     private var openAISection: some View {
         Section {
             Toggle("Enable OpenAI", isOn: $settings.isEnabled)

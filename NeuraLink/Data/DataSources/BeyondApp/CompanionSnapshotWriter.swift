@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  Builds the widget snapshot from app state and writes it to the App
-//  Group (docs/PRESENCE_BEYOND_APP.md). Kept in sync with the live app:
+//  Group (docs/Companion/PRESENCE_BEYOND_APP.md). Kept in sync with the live app:
 //    • relationship meter — every logged message (CompanionStateStore),
 //    • memory — reflections and memory-summary (mental model) updates,
 //    • the character — a switch or a customization re-renders a portrait

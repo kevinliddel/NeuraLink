@@ -2,7 +2,7 @@
 //  MemoryMentalModels.swift
 //  NeuraLink
 //
-//  Mental models (docs/AGENTIC_MEMORY.md §Mental models): standing answers
+//  Mental models (docs/Memory/AGENTIC_MEMORY.md §Mental models): standing answers
 //  to fixed questions — a global user profile and a per-character
 //  relationship note. Prompt builders read them straight from SQLite (no
 //  retrieval, no LLM). They are refreshed in delta mode after

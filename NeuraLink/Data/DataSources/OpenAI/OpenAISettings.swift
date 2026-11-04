@@ -111,7 +111,7 @@ final class OpenAISettings {
     }
 
     /// Local path: let the user interrupt the assistant mid-reply
-    /// (docs/CHAT_LLM.md).
+    /// (docs/AI/CHAT_LLM.md).
     var isLocalBargeInEnabled: Bool {
         get { access(keyPath: \.isLocalBargeInEnabled); return _isLocalBargeInEnabled }
         set {
@@ -122,7 +122,7 @@ final class OpenAISettings {
         }
     }
 
-    // MARK: - Model selection (docs/CHAT_LLM.md)
+    // MARK: - Model selection (docs/AI/CHAT_LLM.md)
 
     /// Realtime (voice) model minted into the session; a change applies on
     /// the next connect.

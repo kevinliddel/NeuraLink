@@ -4,7 +4,7 @@
 //
 //  Three ready-made levels of initiative for the Autonomy screen, so the
 //  companion's behaviour is a choice before it is a wall of switches
-//  (docs/LIVING_COMPANION.md). A preset governs the switches that need no
+//  (docs/Companion/LIVING_COMPANION.md). A preset governs the switches that need no
 //  permission; camera, calendar, Health and the desk stay as the user set
 //  them. Pure and unit-tested; the settings bridge lives in Data.
 //

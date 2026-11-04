@@ -50,7 +50,7 @@ nonisolated enum AnimationCatalogue {
         }
     }
 
-    /// The loop the away episode rests in (docs/LIVING_COMPANION.md). His
+    /// The loop the away episode rests in (docs/Companion/LIVING_COMPANION.md). His
     /// base loop is already a quiet breathing stand, so he rests in it.
     static func awayClipName(for gender: CharacterGender) -> String {
         switch gender {

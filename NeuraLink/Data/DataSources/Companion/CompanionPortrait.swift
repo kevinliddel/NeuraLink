@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  The character's face for the pages that are "theirs" — the journal and
-//  the Memory hero card (docs/LIVING_COMPANION.md). Prefers the live
+//  the Memory hero card (docs/Companion/LIVING_COMPANION.md). Prefers the live
 //  portrait the widget pipeline renders from the loaded model (current
 //  look, idle pose), and falls back to the thumbnail PNG shipped next to
 //  the model file, which every character has.

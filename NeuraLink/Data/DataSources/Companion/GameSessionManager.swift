@@ -3,7 +3,7 @@
 //  NeuraLink
 //
 //  Mini-games state machine — Living Companion
-//  (docs/LIVING_COMPANION.md). The rules live HERE, not in the
+//  (docs/Companion/LIVING_COMPANION.md). The rules live HERE, not in the
 //  model: the manager owns which game is running, the turn count, the
 //  turn-cap wrap-up nudge, and — critically for 20 Questions — the secret
 //  answer. A conversational LLM has no hidden state (everything it "thinks"

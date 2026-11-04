@@ -2,7 +2,7 @@
 //  ToolGrammarBuilderTests.swift
 //  NeuraLinkTests
 //
-//  GBNF + prompt generation for local tool calls (docs/CHAT_LLM.md).
+//  GBNF + prompt generation for local tool calls (docs/AI/CHAT_LLM.md).
 //
 
 import Foundation
