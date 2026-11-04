@@ -121,7 +121,6 @@ struct NeuraLinkTests {
         state.clearTranscripts()
         #expect(state.userTranscript == "")
         #expect(state.aiTranscript == "")
-        #expect(state.audioLevel == 0.0)
     }
 
     @Test("Character Personas")

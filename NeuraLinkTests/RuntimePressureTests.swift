@@ -2,7 +2,7 @@
 //  RuntimePressureTests.swift
 //  NeuraLinkTests
 //
-//  Thermal / Low Power tiering (docs/OPT.md item 7).
+//  Thermal / Low Power tiering.
 //
 
 import Foundation

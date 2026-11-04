@@ -29,15 +29,52 @@ enum AppFunctionTool {
     static let playGame = "play_game"
     static let searchMemory = "search_memory"
     static let showPhoto = "show_photo"
+    static let performMotion = "perform_motion"
 
     // MARK: - OpenAI tool schema array
 
     /// Returns the full `tools` array ready to embed in a session.update payload.
     static var all: [[String: Any]] {
-        [
+        var tools: [[String: Any]] = [
             emotionTool, weatherTool, searchTool, musicTool, reminderTool,
             noteTool, openAppTool, cameraTool, factTool, photoTool, identifySongTool,
             playGameTool, searchMemoryTool, showPhotoTool
+        ]
+        // Generated body motion needs its model files and the user's switch
+        // (docs/GENERATIVE_MOTION.md); without them the tool is not offered.
+        if MotionSettings.offersTool { tools.append(motionTool) }
+        return tools
+    }
+
+    /// Body motion for the reply: a short physical caption the motion model
+    /// turns into a gesture stream while the character speaks.
+    static var motionTool: [String: Any] {
+        [
+            "type": "function",
+            "name": performMotion,
+            "description": "Move your body while you speak this reply. Call it right after set_emotion, before speaking. "
+                + "Describe ONE physical movement in plain English as a motion caption starting with \"A person\": "
+                + "name the body parts and the movement, not the mood (e.g. \"A person nods the head up and down several times\", "
+                + "\"A person shrugs with both shoulders and open palms\", \"A person waves with the right hand\", "
+                + "\"A person talks, gesturing with both hands\"). Stay in place; no walking.",
+            "parameters": [
+                "type": "object",
+                "properties": [
+                    "caption": [
+                        "type": "string",
+                        "description": "The motion caption, e.g. \"A person waves with the right hand.\""
+                    ],
+                    "seconds": [
+                        "type": "number",
+                        "description": "How long the movement should last, 2 to 12 seconds (default 6)."
+                    ],
+                    "continuous": [
+                        "type": "boolean",
+                        "description": "True for a movement that repeats for the whole reply (talking with the hands); false for a single gesture."
+                    ]
+                ],
+                "required": ["caption"]
+            ]
         ]
     }
 

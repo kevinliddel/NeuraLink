@@ -9,7 +9,7 @@
 //
 
 import Foundation
-import WebRTC
+import LiveKitWebRTC
 
 extension OpenAIRealtimeManager {
 
@@ -70,14 +70,22 @@ extension OpenAIRealtimeManager {
               from the results. If it returns nothing, say you don't recall.
             """
 
+        // Only while perform_motion is offered (docs/GENERATIVE_MOTION.md).
+        let motionInstruction = MotionSettings.offersTool ? CharacterPersona.motionInstructions : ""
         return persona.instructions + "\n"
             + userContext + mentalModels + memoryContext + kgFacts + companion
             + FollowUpCoordinator.shared.mentionBlock()
-            + factsTriggerInstruction
+            + factsTriggerInstruction + motionInstruction
     }
 
     func sendInitialSessionUpdate() {
         Task {
+            // Decides whether perform_motion is offered, and starts loading the
+            // motion model now so the first reply's gesture is not late; only
+            // when gestures can run (`request` loads on demand if the switch
+            // is turned on later).
+            MotionStreamCoordinator.shared.refreshAvailability()
+            if MotionStreamCoordinator.shared.isAvailable { MotionStreamCoordinator.shared.prepareIfNeeded() }
             let finalInstructions = await buildSessionInstructions()
 
             // GA session shape. Key differences from the beta body:

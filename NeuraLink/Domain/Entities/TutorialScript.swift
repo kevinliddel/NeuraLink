@@ -14,8 +14,9 @@ import Foundation
 enum TutorialScript {
 
     /// Bumping this replays the tour once for everyone on next launch.
-    /// v2 added the "bring your own brain" and profile/memory beats.
-    static let version = 2
+    /// v2 added the "bring your own brain" and profile/memory beats; v3 the
+    /// generated-gestures beat, which opens Settings › Autonomy.
+    static let version = 3
 
     static let steps: [TutorialStep] = [
         TutorialStep(
@@ -88,6 +89,17 @@ enum TutorialScript {
                 "Choose the AI brain, write the persona and pick its voice, and decide how autonomous your companion is allowed to be.",
             anchor: .fabSettings,
             menu: .primary),
+
+        TutorialStep(
+            id: "gestures",
+            icon: "figure.wave",
+            title: "Gestures, Improvised",
+            body:
+                "With OpenAI voice mode, your companion can act out what they say: a motion model on this device turns each reply into body language on the spot, instead of replaying a stock clip. "
+                + "This is the switch — Settings › Autonomy › Gesture while speaking.",
+            tip:
+                "Flip it on after the tour; the card under it fetches the motion model once (about 775 MB, Wi-Fi is wise). It sits out under Reduce Motion or when the phone runs hot.",
+            anchor: .gestureToggle),
 
         TutorialStep(
             id: "relationship",

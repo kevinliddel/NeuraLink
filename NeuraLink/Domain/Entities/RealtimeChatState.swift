@@ -44,7 +44,6 @@ final class RealtimeChatState {
     var status: AIConnectionStatus = .disconnected
     var userTranscript: String = ""
     var aiTranscript: String = ""
-    var audioLevel: Float = 0.0  // 0.0 to 1.0
     /// Identity key: the model's file stem. Memory banks, mental models and
     /// saved looks are filed under it, so it must stay stable.
     var selectedCharacterName: String = ""
@@ -119,7 +118,6 @@ final class RealtimeChatState {
     func clearTranscripts() {
         userTranscript = ""
         aiTranscript = ""
-        audioLevel = 0.0
         currentEmotion = "neutral"
         emotionDuration = 0
         lastParsedIndex = 0

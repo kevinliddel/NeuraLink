@@ -2,7 +2,7 @@
 //  RuntimePressure.swift
 //  NeuraLink
 //
-//  Thermal / Low Power Mode tiering (docs/OPT.md item 7): one policy that
+//  Thermal / Low Power Mode tiering: one policy that
 //  says how hard the app may push when the phone is hot or saving power.
 //  Pure and unit-tested; `RuntimePressureMonitor` feeds it from
 //  ProcessInfo, and the renderer, the rain and the LLM profile read it.

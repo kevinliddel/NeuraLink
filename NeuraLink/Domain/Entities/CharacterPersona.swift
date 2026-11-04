@@ -27,6 +27,18 @@ struct CharacterPersona: Codable {
       - Do NOT use [emotion:duration] text tags — use the function call only.
     """
 
+    /// Appended to the session instructions only while `perform_motion` is
+    /// offered (docs/GENERATIVE_MOTION.md). Physical captions move the
+    /// body; moods do not.
+    static let motionInstructions = """
+
+    BODY MOTION: Right after set_emotion(), call perform_motion() with a short English motion caption \
+    for this reply, then speak. The caption starts with "A person" and names body parts and movement, \
+    never the mood: "A person nods the head up and down several times", "A person waves with the right hand", \
+    "A person talks, gesturing with both hands". One movement per call, in place, no walking. \
+    Use continuous=true for a movement that should last the whole reply. Never mention the motion aloud.
+    """
+
     static let ekaterina = CharacterPersona(
         name: "Ekaterina",
         instructions: emotionInstructions + """

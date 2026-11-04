@@ -2,7 +2,7 @@
 //  VRMRenderer+AvatarShadow.swift
 //  NeuraLink
 //
-//  Received shadows on the avatar (docs/VRM_RENDERING_PLAN.md phase 4).
+//  Received shadows on the avatar.
 //  The terrain's shadow maps span metres for the ground; a self-shadow
 //  needs millimetres (hair on a forehead, a chin on a neck), so the avatar
 //  gets a map of its own: 2048², a light frustum fitted around the

@@ -9,7 +9,7 @@
 //
 
 import Foundation
-import WebRTC
+import LiveKitWebRTC
 
 // MARK: - Message Handling
 
@@ -156,6 +156,19 @@ extension OpenAIRealtimeManager {
                         )
                     }
                     sendFunctionResult(callId: pendingFunctionCallId, result: "ok")
+                } else if pendingFunctionName == AppFunctionTool.performMotion {
+                    // Also pre-speech and synchronous: the motion stream starts
+                    // decoding while the audio is still being produced.
+                    let args =
+                        (try? JSONSerialization.jsonObject(
+                            with: Data(pendingFunctionArgsJSON.utf8)) as? [String: Any]) ?? [:]
+                    let caption = (args["caption"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                    let seconds = (args["seconds"] as? Double).map(Float.init)
+                    let continuous = args["continuous"] as? Bool ?? false
+                    let started = !caption.isEmpty
+                        && MotionStreamCoordinator.shared.request(MotionStreamRequest(caption: caption, seconds: seconds, continuous: continuous))
+                    nlLog("֎ [FunctionCall] perform_motion → \"\(caption)\" \(started ? "started" : "unavailable")", level: .info)
+                    sendFunctionResult(callId: pendingFunctionCallId, result: started ? "ok" : "unavailable")
                 } else if !pendingFunctionName.isEmpty {
                     deferredFunctionCall = (
                         id: pendingFunctionCallId,
@@ -351,40 +364,43 @@ extension OpenAIRealtimeManager {
     /// Sends a physical interaction event (e.g. head pat) to the AI.
 }
 
-// MARK: - RTCPeerConnectionDelegate
+// MARK: - LKRTCPeerConnectionDelegate
 
-extension OpenAIRealtimeManager: RTCPeerConnectionDelegate {
+extension OpenAIRealtimeManager: LKRTCPeerConnectionDelegate {
     func peerConnection(
-        _ peerConnection: RTCPeerConnection, didChange stateChanged: RTCSignalingState
+        _ peerConnection: LKRTCPeerConnection, didChange stateChanged: LKRTCSignalingState
     ) {
         nlLog("[AI]: Signaling state changed: \(stateChanged.rawValue)", level: .info)
     }
 
-    func peerConnection(_ peerConnection: RTCPeerConnection, didAdd stream: RTCMediaStream) {
+    func peerConnection(_ peerConnection: LKRTCPeerConnection, didAdd stream: LKRTCMediaStream) {
         nlLog("[AI]: Stream added with \(stream.audioTracks.count) audio tracks", level: .info)
         for track in stream.audioTracks {
             track.isEnabled = true
             nlLog("[AI]: Audio track \(track.trackId) enabled", level: .info)
         }
+        // The receiver callback below is the one that fires under unified
+        // plan; this legacy one is the fallback for the mouth.
+        if let track = stream.audioTracks.first { lipSync.attach(to: track) }
     }
 
-    func peerConnection(_ peerConnection: RTCPeerConnection, didRemove stream: RTCMediaStream) {
+    func peerConnection(_ peerConnection: LKRTCPeerConnection, didRemove stream: LKRTCMediaStream) {
         nlLog("[AI]: Stream removed", level: .info)
     }
 
-    func peerConnectionShouldNegotiate(_ peerConnection: RTCPeerConnection) {
+    func peerConnectionShouldNegotiate(_ peerConnection: LKRTCPeerConnection) {
         nlLog("[AI]: PeerConnection should negotiate", level: .info)
     }
 
     func peerConnection(
-        _ peerConnection: RTCPeerConnection, didChange newState: RTCIceConnectionState
+        _ peerConnection: LKRTCPeerConnection, didChange newState: LKRTCIceConnectionState
     ) {
         nlLog("[AI]: ICE connection state changed: \(newState.rawValue)", level: .info)
         Task { @MainActor in self.handleICEStateChange(newState) }
     }
 
     func peerConnection(
-        _ peerConnection: RTCPeerConnection, didChange newState: RTCIceGatheringState
+        _ peerConnection: LKRTCPeerConnection, didChange newState: LKRTCIceGatheringState
     ) {
         nlLog("[AI]: ICE gathering state changed: \(newState.rawValue)", level: .info)
         if newState == .complete {
@@ -393,37 +409,41 @@ extension OpenAIRealtimeManager: RTCPeerConnectionDelegate {
         }
     }
 
-    func peerConnection(_ peerConnection: RTCPeerConnection, didGenerate candidate: RTCIceCandidate) {
+    func peerConnection(_ peerConnection: LKRTCPeerConnection, didGenerate candidate: LKRTCIceCandidate) {
         nlLog("[AI]: Generated ICE candidate: \(candidate.sdpMid ?? "none")", level: .info)
     }
 
     func peerConnection(
-        _ peerConnection: RTCPeerConnection, didRemove candidates: [RTCIceCandidate]
+        _ peerConnection: LKRTCPeerConnection, didRemove candidates: [LKRTCIceCandidate]
     ) {
         nlLog("[AI]: Removed ICE candidates", level: .info)
     }
 
-    func peerConnection(_ peerConnection: RTCPeerConnection, didOpen dataChannel: RTCDataChannel) {
+    func peerConnection(_ peerConnection: LKRTCPeerConnection, didOpen dataChannel: LKRTCDataChannel) {
         nlLog("[AI]: Data channel opened", level: .info)
     }
 
     func peerConnection(
-        _ peerConnection: RTCPeerConnection, didChange newState: RTCPeerConnectionState
+        _ peerConnection: LKRTCPeerConnection, didChange newState: LKRTCPeerConnectionState
     ) {
         nlLog("[AI]: PeerConnection state changed: \(newState.rawValue)", level: .info)
         Task { @MainActor in self.handlePeerStateChange(newState) }
     }
 
+    /// `didAddReceiver:streams:`, the callback for a remote track under
+    /// unified plan. (Until 2026-11-03 this was declared as
+    /// `didStartReceiver`, a selector no delegate has, so it never ran.)
     func peerConnection(
-        _ peerConnection: RTCPeerConnection, didStartReceiver receiver: RTCRtpReceiver,
-        streams: [RTCMediaStream]
+        _ peerConnection: LKRTCPeerConnection, didAdd rtpReceiver: LKRTCRtpReceiver,
+        streams mediaStreams: [LKRTCMediaStream]
     ) {
-        let kind = receiver.track?.kind ?? "unknown"
-        nlLog("[AI]: Started receiver for \(kind) track", level: .info)
-        if let audioTrack = receiver.track as? RTCAudioTrack {
+        let kind = rtpReceiver.track?.kind ?? "unknown"
+        nlLog("[AI]: Receiver added for \(kind) track", level: .info)
+        if let audioTrack = rtpReceiver.track as? LKRTCAudioTrack {
             audioTrack.isEnabled = true
+            lipSync.attach(to: audioTrack)
             nlLog("[AI]: Remote audio track enabled: \(audioTrack.trackId)", level: .info)
-            let rtcSession = RTCAudioSession.sharedInstance()
+            let rtcSession = LKRTCAudioSession.sharedInstance()
             rtcSession.lockForConfiguration()
             try? rtcSession.setActive(true)
             rtcSession.isAudioEnabled = true
@@ -432,10 +452,10 @@ extension OpenAIRealtimeManager: RTCPeerConnectionDelegate {
     }
 }
 
-// MARK: - RTCDataChannelDelegate
+// MARK: - LKRTCDataChannelDelegate
 
-extension OpenAIRealtimeManager: RTCDataChannelDelegate {
-    func dataChannelDidChangeState(_ dataChannel: RTCDataChannel) {
+extension OpenAIRealtimeManager: LKRTCDataChannelDelegate {
+    func dataChannelDidChangeState(_ dataChannel: LKRTCDataChannel) {
         nlLog("[AI]: Data channel state changed: \(dataChannel.readyState.rawValue)", level: .info)
         if dataChannel.readyState == .open {
             nlLog("[AI]: Data channel is officially OPEN", level: .info)
@@ -447,7 +467,7 @@ extension OpenAIRealtimeManager: RTCDataChannelDelegate {
         }
     }
 
-    func dataChannel(_ dataChannel: RTCDataChannel, didReceiveMessageWith buffer: RTCDataBuffer) {
+    func dataChannel(_ dataChannel: LKRTCDataChannel, didReceiveMessageWith buffer: LKRTCDataBuffer) {
         guard let data = String(data: buffer.data, encoding: .utf8)?.data(using: .utf8),
             let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { return }

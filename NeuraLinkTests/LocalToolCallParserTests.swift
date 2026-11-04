@@ -2,7 +2,7 @@
 //  LocalToolCallParserTests.swift
 //  NeuraLinkTests
 //
-//  The local SLM tool-call format (docs/OPT.md item 4): well-formed calls
+//  The local SLM tool-call format: well-formed calls
 //  parse, and malformed, partial or non-object payloads never crash and
 //  never execute.
 //

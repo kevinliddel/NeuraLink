@@ -26,6 +26,11 @@ public class VRMLookAtController {
     public var smoothing: Float = 0.1
     public var saccadeEnabled: Bool = true
     public var cameraPosition: SIMD3<Float> = [0, 1.6, 2.5]
+    /// While a live motion stream drives the neck and head, the gaze composes
+    /// on the stream's rotations instead of the bind pose, so a generated nod
+    /// survives the look-at. Nil = bind pose, as for every other clip.
+    public var neckBaseRotation: simd_quatf?
+    public var headBaseRotation: simd_quatf?
     public var userPosition: SIMD3<Float> = [0, 1.6, 2.0]
 
     public enum State { case idle, listening, thinking, speaking }
@@ -247,7 +252,7 @@ public class VRMLookAtController {
             let yaw = clamp(currentYaw * neckWeight, min: -neckLimitYaw, max: neckLimitYaw)
             let pitch = currentPitch * neckWeight * 0.5 
             let rotation = simd_quatf(angle: yaw, axis: [0, 1, 0]) * simd_quatf(angle: pitch, axis: [1, 0, 0])
-            neck.rotation = neck.initialRotation * rotation
+            neck.rotation = (neckBaseRotation ?? neck.initialRotation) * rotation
             neck.updateLocalMatrix()
             neck.updateWorldTransform()
         }
@@ -258,7 +263,7 @@ public class VRMLookAtController {
             let yaw = clamp(currentYaw * headWeight, min: -headLimitYaw, max: headLimitYaw)
             let pitch = clamp(currentPitch * headWeight, min: -headLimitPitch, max: headLimitPitch)
             let rotation = simd_quatf(angle: yaw, axis: [0, 1, 0]) * simd_quatf(angle: pitch, axis: [1, 0, 0])
-            head.rotation = head.initialRotation * rotation
+            head.rotation = (headBaseRotation ?? head.initialRotation) * rotation
             head.updateLocalMatrix()
             head.updateWorldTransform()
         }

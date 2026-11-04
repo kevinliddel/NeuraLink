@@ -50,6 +50,33 @@ struct TutorialTests {
         }
     }
 
+    @Test("The gestures beat spotlights the switch inside Settings › Autonomy")
+    func gesturesBeatPointsIntoSettings() {
+        let ids = TutorialScript.steps.map(\.id)
+        let step = TutorialScript.steps.first { $0.id == "gestures" }
+        #expect(step?.anchor == .gestureToggle)
+        #expect(TutorialAnchor.gestureToggle.requiredScreen == .autonomySettings)
+        // A sheet target can't have the FAB menu fanned out under the sheet.
+        #expect(TutorialAnchor.gestureToggle.requiredMenu == .collapsed)
+        // It follows the Settings beat, which is the button that opens the sheet.
+        #expect(ids.firstIndex(of: "gestures") == (ids.firstIndex(of: "settings") ?? -2) + 1)
+
+        let copy = ((step?.body ?? "") + (step?.tip ?? "")).lowercased()
+        #expect(copy.contains("gesture while speaking"))
+        #expect(copy.contains("autonomy"))
+        #expect(copy.contains("openai"))
+    }
+
+    @Test("Only a target inside Settings asks for the sheet; every other beat stays on the scene")
+    func screensFollowTargets() {
+        for step in TutorialScript.steps {
+            let wanted = step.anchor?.requiredScreen ?? step.screen
+            #expect(
+                wanted == .scene || step.anchor == .gestureToggle,
+                "\(step.id) opens a screen without a target there")
+        }
+    }
+
     // MARK: - Menu posing
 
     @Test("menuState never under-poses, even if a step declares too little")
@@ -79,6 +106,21 @@ struct TutorialTests {
         #expect(!tutorial.isActive)
         #expect(tutorial.step == nil)
         #expect(tutorial.menuState == .collapsed)
+        #expect(tutorial.screen == .scene)
+    }
+
+    // MARK: - Screen posing
+
+    @Test("screen follows each step's target, and is the scene again once the tour ends")
+    func screenFollowsStep() {
+        withTour { tutorial in
+            for step in TutorialScript.steps {
+                #expect(tutorial.step?.id == step.id)
+                #expect(tutorial.screen == (step.anchor?.requiredScreen ?? step.screen))
+                if !tutorial.isLastStep { tutorial.advance() }
+            }
+        }
+        #expect(TutorialCoordinator.shared.screen == .scene)
     }
 
     // MARK: - Coordinator lifecycle

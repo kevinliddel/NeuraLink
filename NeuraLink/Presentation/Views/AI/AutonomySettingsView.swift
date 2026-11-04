@@ -18,18 +18,41 @@ struct AutonomySettingsView: View {
     @Bindable var presence = PresenceSettings.shared
     @Bindable var grounding = GroundingSettings.shared
     @Bindable var affect = AffectSettings.shared
+    @Bindable var motion = MotionSettings.shared
+    @State private var tutorial = TutorialCoordinator.shared
+
+    /// Row id the onboarding tour scrolls to: the gesture switch is the one
+    /// control on this screen the tour spotlights.
+    private static let gestureRowID = "gestureToggle"
 
     var body: some View {
-        Form {
-            presetSection
-            talkingSection
-            seeingSection
-            betweenSessionsSection
-            daySection
+        ScrollViewReader { proxy in
+            Form {
+                presetSection
+                talkingSection
+                seeingSection
+                betweenSessionsSection
+                daySection
+            }
+            .scrollIndicators(.hidden)
+            .navigationTitle("Autonomy")
+            .navigationBarTitleDisplayMode(.inline)
+            .onAppear { revealTourTarget(with: proxy) }
+            .onChange(of: tutorial.step?.anchor) { _, _ in revealTourTarget(with: proxy) }
         }
-        .scrollIndicators(.hidden)
-        .navigationTitle("Autonomy")
-        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    /// Brings the gesture switch into view while the tour points at it, once
+    /// the push animation has settled, so the spotlight has a frame to cut.
+    private func revealTourTarget(with proxy: ScrollViewProxy) {
+        guard tutorial.step?.anchor == .gestureToggle else { return }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(350))
+            guard tutorial.step?.anchor == .gestureToggle else { return }
+            withAnimation(.easeInOut(duration: 0.3)) {
+                proxy.scrollTo(Self.gestureRowID, anchor: .center)
+            }
+        }
     }
 
     // MARK: - Presets
@@ -112,6 +135,17 @@ struct AutonomySettingsView: View {
                 title: "Sense my tone", subtitle: "Hears quiet, lively or hesitant and adapts its own.",
                 info: "The character notices how you sound — quiet and slow, lively, or hesitant — against your own usual voice, and adapts its tone and, on the local voices, its pace. Measured on this device from your speech; only a one-line mood note reaches the model.",
                 isOn: $affect.isEnabled)
+            FeatureToggleRow(
+                symbol: "figure.wave", tint: .mint,
+                title: "Gesture while speaking", subtitle: "Generates body motion for each reply. OpenAI voice mode.",
+                info: "The character moves its body to match what it says: a motion model on this device turns a one-line description from the reply into a short gesture stream. "
+                    + "Needs the motion model files and OpenAI voice mode; off under Reduce Motion or when the phone is hot.",
+                isOn: $motion.isEnabled, disabled: !settings.isEnabled
+            ) {
+                MotionModelCard()
+            }
+            .tutorialAnchor(.gestureToggle)
+            .id(Self.gestureRowID)
             FeatureToggleRow(
                 symbol: "headphones", tint: .indigo,
                 title: "Keep talking in background", subtitle: "The conversation survives the screen going off.",

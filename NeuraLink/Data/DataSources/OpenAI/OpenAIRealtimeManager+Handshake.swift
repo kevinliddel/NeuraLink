@@ -9,11 +9,11 @@
 //
 
 import Foundation
-import WebRTC
+import LiveKitWebRTC
 
 extension OpenAIRealtimeManager {
 
-    func sendOfferToOpenAI(_ offer: RTCSessionDescription) {
+    func sendOfferToOpenAI(_ offer: LKRTCSessionDescription) {
         // GA two-step handshake (replaces the deprecated direct-key SDP POST,
         // which now returns `beta_api_shape_disabled`):
         //   1. POST /v1/realtime/client_secrets with master API key →
@@ -117,7 +117,7 @@ extension OpenAIRealtimeManager {
     /// minted in step 1; the master API key never touches this endpoint.
     /// The model isn't passed in the URL anymore — it's already fixed by
     /// the session config sent to `/client_secrets` above.
-    func postSDPOffer(_ offer: RTCSessionDescription, ephemeralKey: String) {
+    func postSDPOffer(_ offer: LKRTCSessionDescription, ephemeralKey: String) {
         let url = URL(
             string: "https://api.openai.com/v1/realtime/calls")!
         var request = URLRequest(url: url)
@@ -165,7 +165,7 @@ extension OpenAIRealtimeManager {
                 nlLog("[AI]: WARNING - Answer does NOT contain audio track", level: .warning)
             }
 
-            let answer = RTCSessionDescription(type: .answer, sdp: sdpAnswer)
+            let answer = LKRTCSessionDescription(type: .answer, sdp: sdpAnswer)
             nlLog("[AI]: Received SDP answer from OpenAI", level: .info)
             self.peerConnection?.setRemoteDescription(answer) { error in
                 Task { @MainActor in
@@ -176,7 +176,6 @@ extension OpenAIRealtimeManager {
                         nlLog("[AI]: Connection established and ready", level: .info)
                         self.state.status = .ready
                         self.forceAudioToSpeaker()
-                        self.startStatsPolling()
                         self.startSileroVADIfEnabled()
                     }
                 }

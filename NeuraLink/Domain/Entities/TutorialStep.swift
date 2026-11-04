@@ -33,6 +33,9 @@ enum TutorialAnchor: String, CaseIterable, Sendable {
     case fabPiP
     /// The bottom status capsule ("Start talking", "Listening", …).
     case statusHint
+    /// Inside the Settings sheet, on the Autonomy screen: the "Gesture while
+    /// speaking" switch. The one target that lives on another screen.
+    case gestureToggle
 
     /// Navigation-bar items are hosted by UIKit's bar, outside the content
     /// view's own hierarchy, so a measured frame for them can't be trusted
@@ -50,9 +53,15 @@ enum TutorialAnchor: String, CaseIterable, Sendable {
             return .primary
         case .fabModels, .fabCamera, .fabPhoto, .fabSong, .fabPiP:
             return .secondary
-        case .chatHistory, .menuToggle, .statusHint:
+        case .chatHistory, .menuToggle, .statusHint, .gestureToggle:
             return .collapsed
         }
+    }
+
+    /// The screen this control lives on. The tour brings that screen up
+    /// before spotlighting, the same way it unfolds the menu.
+    var requiredScreen: TutorialStep.Screen {
+        self == .gestureToggle ? .autonomySettings : .scene
     }
 }
 
@@ -80,6 +89,16 @@ struct TutorialStep: Identifiable, Equatable, Sendable {
         }
     }
 
+    /// Which screen must be up for this step. The host presents and later
+    /// dismisses it, so a step can never point at a control on a screen
+    /// that isn't showing.
+    enum Screen: Equatable, Sendable {
+        /// The live scene with its toolbar and FAB menu.
+        case scene
+        /// The Settings sheet, pushed to the Autonomy screen.
+        case autonomySettings
+    }
+
     let id: String
     /// SF Symbol shown on the card, echoing the real control's glyph.
     let icon: String
@@ -91,6 +110,7 @@ struct TutorialStep: Identifiable, Equatable, Sendable {
     /// for beats about the scene itself or UI that only appears on demand.
     let anchor: TutorialAnchor?
     let menu: MenuState
+    let screen: Screen
 
     init(
         id: String,
@@ -99,7 +119,8 @@ struct TutorialStep: Identifiable, Equatable, Sendable {
         body: String,
         tip: String? = nil,
         anchor: TutorialAnchor? = nil,
-        menu: MenuState = .collapsed
+        menu: MenuState = .collapsed,
+        screen: Screen = .scene
     ) {
         self.id = id
         self.icon = icon
@@ -108,5 +129,6 @@ struct TutorialStep: Identifiable, Equatable, Sendable {
         self.tip = tip
         self.anchor = anchor
         self.menu = menu
+        self.screen = screen
     }
 }

@@ -21,7 +21,7 @@
 
 import Foundation
 import UIKit
-import WebRTC
+import LiveKitWebRTC
 
 final class ProactivePresenceManager {
     static let shared = ProactivePresenceManager()

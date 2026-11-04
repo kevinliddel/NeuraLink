@@ -383,7 +383,10 @@ app's. It decides which bundled clips the body draws on
 
 An idle plays once — never looped, since a short clip wrapping back to its
 first frame pops — and the blend back to the base loop starts a second
-before it ends. The pose tool keeps offering the same four names to every
+before it ends. On the OpenAI path a generated gesture stream
+([GENERATIVE_MOTION.md](GENERATIVE_MOTION.md)) takes the talking gesture's
+place for one reply: idles stand down while it plays, a pose or an episode
+outranks it, and it crossfades home when the reply's motion has played out. The pose tool keeps offering the same four names to every
 character, and the body resolves a feminine pose when it plays. The male
 clips came from the Sonya project's male set, plus Mixamo FBX clips
 converted with `scripts/fbx_to_vrma.py` (`male_breathing`,

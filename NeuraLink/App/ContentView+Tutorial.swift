@@ -3,8 +3,9 @@
 //  NeuraLink
 //
 //  Hosts the onboarding tour on top of the live scene: renders the spotlight
-//  overlay, and poses the FAB menu so whichever control the current beat
-//  explains is actually on screen while it's explained.
+//  overlay, poses the FAB menu so whichever control the current beat
+//  explains is actually on screen while it's explained, and opens (and
+//  later closes) the Settings sheet for the beat whose target lives there.
 //
 //  Created by Dedicatus on 15/09/2026.
 //
@@ -13,84 +14,50 @@ import SwiftUI
 
 extension View {
     /// Adds the onboarding tour layer, driven by `TutorialCoordinator.shared`.
-    /// The two bindings are the host's FAB menu state, which the tour poses.
+    /// The first two bindings are the host's FAB menu state, the third its
+    /// Settings sheet; the tour poses all three.
     func tutorialLayer(
         isMenuExpanded: Binding<Bool>,
-        isSecondaryExpanded: Binding<Bool>
+        isSecondaryExpanded: Binding<Bool>,
+        isSettingsPresented: Binding<Bool>
     ) -> some View {
         modifier(
             TutorialLayer(
                 isMenuExpanded: isMenuExpanded,
-                isSecondaryExpanded: isSecondaryExpanded))
+                isSecondaryExpanded: isSecondaryExpanded,
+                isSettingsPresented: isSettingsPresented))
     }
 }
 
 private struct TutorialLayer: ViewModifier {
     @Binding var isMenuExpanded: Bool
     @Binding var isSecondaryExpanded: Bool
+    @Binding var isSettingsPresented: Bool
 
     @State private var tutorial = TutorialCoordinator.shared
-    @State private var anchors = TutorialAnchorRegistry.shared
+    /// True while the sheet is up because the tour opened it — only then is
+    /// it the tour's to close again.
+    @State private var didPresentSettings = false
 
     func body(content: Content) -> some View {
         content
-            .overlay { overlay }
-            .onChange(of: tutorial.menuState) { _, state in pose(state) }
+            .overlay { TutorialOverlayHost(screen: .scene) }
+            .onChange(of: tutorial.menuState) { _, state in poseMenu(state) }
+            .onChange(of: tutorial.screen) { _, screen in poseScreen(screen) }
             .onChange(of: tutorial.isActive) { _, active in
                 if active {
-                    pose(tutorial.menuState)
+                    poseMenu(tutorial.menuState)
+                    poseScreen(tutorial.screen)
                 } else {
-                    pose(.collapsed)
+                    poseMenu(.collapsed)
+                    poseScreen(.scene)
                 }
             }
     }
 
-    @ViewBuilder
-    private var overlay: some View {
-        GeometryReader { proxy in
-            if let step = tutorial.step {
-                TutorialOverlay(
-                    step: step,
-                    index: tutorial.stepIndex,
-                    total: tutorial.stepCount,
-                    isFirst: tutorial.isFirstStep,
-                    isLast: tutorial.isLastStep,
-                    spotlight: spotlight(for: step, in: proxy),
-                    size: proxy.size,
-                    onBack: { tutorial.rewind() },
-                    onNext: { tutorial.advance() },
-                    onSkip: { tutorial.skip() })
-                .transition(.opacity)
-            }
-        }
-        .ignoresSafeArea()
-        .animation(.easeInOut(duration: 0.25), value: tutorial.isActive)
-    }
-
-    // MARK: - Geometry
-
-    /// Anchored frames are reported globally; the overlay draws in its own
-    /// space, so shift them by the overlay's origin before the resolver
-    /// decides whether to trust them.
-    private func spotlight(for step: TutorialStep, in proxy: GeometryProxy) -> CGRect? {
-        guard let anchor = step.anchor else { return nil }
-        let origin = proxy.frame(in: .global).origin
-        let measured = anchors.frames[anchor]?.offsetBy(dx: -origin.x, dy: -origin.y)
-        // NOT `proxy.safeAreaInsets`: this reader ignores the safe area, so it
-        // reports zero — which put the navigation-bar spotlight up in the
-        // status bar. The window knows the real insets.
-        let insets = WindowSafeArea.insets
-        let resolver = TutorialSpotlightResolver(
-            size: proxy.size,
-            safeAreaTop: insets.top,
-            safeAreaLeading: insets.left,
-            safeAreaTrailing: insets.right)
-        return resolver.resolve(anchor: anchor, measured: measured)
-    }
-
     // MARK: - Menu posing
 
-    private func pose(_ state: TutorialStep.MenuState) {
+    private func poseMenu(_ state: TutorialStep.MenuState) {
         withAnimation(.spring(response: 0.34, dampingFraction: 0.78)) {
             switch state {
             case .collapsed:
@@ -103,6 +70,25 @@ private struct TutorialLayer: ViewModifier {
                 isMenuExpanded = true
                 isSecondaryExpanded = true
             }
+        }
+    }
+
+    // MARK: - Screen posing
+
+    /// Presents the Settings sheet for a beat that lives inside it, and
+    /// dismisses it again when the tour moves on or ends — but only a sheet
+    /// the tour itself opened; one the user already had up is left alone.
+    /// The sheet pushes the Autonomy screen on its own (AISettingsView).
+    private func poseScreen(_ screen: TutorialStep.Screen) {
+        switch screen {
+        case .autonomySettings:
+            guard !isSettingsPresented else { return }
+            didPresentSettings = true
+            isSettingsPresented = true
+        case .scene:
+            guard didPresentSettings else { return }
+            didPresentSettings = false
+            isSettingsPresented = false
         }
     }
 }

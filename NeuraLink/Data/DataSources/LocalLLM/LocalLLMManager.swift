@@ -109,6 +109,8 @@ final class LocalLLMManager: NSObject, @unchecked Sendable {
     internal var bargeInArbiter = BargeInArbiter()
     internal var speakingStartedUptime: TimeInterval?
     internal var lastPlaybackRMS: Float = 0
+    /// Mouth cues from the playback tap (that thread only; see LipSyncAudioAnalyzer).
+    internal let lipSyncAnalyzer = LipSyncAudioAnalyzer()
     internal var bargeInInterrupted = false
     internal var lastSpokenAssistantText = ""
 

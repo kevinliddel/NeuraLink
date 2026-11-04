@@ -78,7 +78,6 @@ final class AITests: XCTestCase {
         state.clearTranscripts()
         XCTAssertEqual(state.userTranscript, "")
         XCTAssertEqual(state.aiTranscript, "")
-        XCTAssertEqual(state.audioLevel, 0.0)
     }
 
     // MARK: - CharacterPersona Tests

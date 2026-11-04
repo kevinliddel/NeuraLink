@@ -68,6 +68,13 @@ final class TutorialCoordinator {
         return step.menu.rank >= required.rank ? step.menu : required
     }
 
+    /// Which screen the host must have up right now: the step's own, unless
+    /// its target lives elsewhere — a switch inside Settings opens Settings.
+    var screen: TutorialStep.Screen {
+        guard let step else { return .scene }
+        return step.anchor?.requiredScreen ?? step.screen
+    }
+
     var stepCount: Int { TutorialScript.steps.count }
     var isFirstStep: Bool { stepIndex == 0 }
     var isLastStep: Bool { stepIndex >= stepCount - 1 }

@@ -11,7 +11,7 @@
 //
 
 import Foundation
-import WebRTC
+import LiveKitWebRTC
 
 extension OpenAIRealtimeManager {
     /// Cancels any in-flight assistant response. Song recognition calls
