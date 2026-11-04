@@ -8,7 +8,9 @@ for the user as three things beyond a list of facts:
 - **ownership**: memory exports as one JSON file, and transcripts and
   photoshoot pictures go to the share sheet.
 
-Nothing leaves the device unless the user exports or shares it.
+Export files, transcripts and pictures stay on the device until the user
+shares them. The recap is written by the active memory LLM, cloud or local
+([AGENTIC_MEMORY.md](AGENTIC_MEMORY.md#privacy-and-storage)).
 
 ## Weekly recap
 
@@ -31,27 +33,32 @@ ask.
 - **Refresh**: on a weekend, `refreshStale` treats the recap as due when
   this week has none yet (`weekKey`, e.g. `2026-W39`, differs from
   `lastRefreshed`'s). It is also due under the usual rule: stale, with
-  memories newer than `lastMemoryID`. It
-  runs with the other mental models, after consolidation and at launch. It
-  needs an LLM tier other than `.none`.
-- **Notification**: on the first weekend refresh that changes the content, with Presence → Notifications on, the user gets "<Name> wrote up
-  your week" through `CompanionNotificationScheduler.schedule`.
+  memories newer than `lastMemoryID`. It runs with the other mental
+  models: after a consolidation run that changed an observation, and when
+  the user taps **Update** on the Memory page's hero card. It needs an LLM
+  tier other than `.none`.
+- **Notification**: with Presence → Notifications on, the user gets "<Name>
+  wrote up your week." through `CompanionNotificationScheduler.schedule`.
+  This happens when a refresh writes a new, non-empty recap and the previous
+  refresh fell in an earlier ISO week, so at most once a week.
 - **Card** (`MemoryRecapCard`): "This week with <character>" sits above the
   hero card on the Memory page, on the weekend only. It shows the summary, an **Ask about it**
   button when an `ASK:` line exists, and a close button that dismisses it for
   the current ISO week (`UserDefaults`).
-- **Ask about it** (`askAboutRecap`): during a live session
-  (`ready/listening/thinking/speaking`), the question goes in through
-  `ProactivePresenceManager.engage`. Otherwise it is saved as a journal entry
-  whose `opener` is the question, so the next session's greeting uses it.
+- **Ask about it** (`askAboutRecap`): the Memory page closes. During a live
+  session (`ready/listening/thinking/speaking`), the question goes in
+  through `ProactivePresenceManager.engage`. Otherwise, or when `engage`
+  declines, it is saved as a journal entry whose `opener` is the question,
+  so the next session's greeting uses it.
 - **Prompt**: while visible, `promptBlock` adds the summary as
-  `- This week: …` (≤ 240 chars), and the reflect ladder labels it "This week".
+  `- This week: …` (≤ 240 chars), so the companion can bring it up in
+  conversation, and the reflect ladder labels it "This week".
 - **Names**: the standing questions embed the character's display name and
   are rewritten when it changes (`refreshMentalModelQuestion`, which forces
   a regeneration). Text written under an old name is healed on display and
-  in prompts by `RealtimeChatState.humanizingCharacterNames`. The companion can
-  therefore refer to it in conversation. The Insights list leaves the recap
-  out, because the card shows it.
+  in prompts by `RealtimeChatState.humanizingCharacterNames`. The hero
+  card's "About you" / "Between you" tiles leave the recap out, because the
+  card shows it.
 
 ## Export and share
 
@@ -73,18 +80,19 @@ prepared file. The `MemoryExport` payload (`formatVersion` 1) contains:
 - `facts`: knowledge-graph triplets
 - `memories` / `observations`: units with type, bank, dates, entities,
   source, proof count and source ids. **No vectors.**
-- `mentalModels` for the active character
-- `journal`: up to 200 entries per character
+- `mentalModels`: the global user profile plus the active character's models
+- `journal`: up to 200 entries for each character that has a bank or a model
 - `conversations`: optional, see the options above
 
 **Transcript share**: the read-only transcript screen
 (`ConversationTranscriptView`) has a toolbar **Share** button. It shares
 plain text: the title, then `[date] You: …` / `[date] <Character>: …`, with
-tool rows left out (`transcriptText`).
+tool rows left out (`transcriptText`). The speaker name is the currently
+selected character's.
 
-**Photoshoot share**: `pose_for_photo` (`PhotoshootSkill`) strikes the pose
-and hides the UI for 5 s, as before. It now also calls
-`PhotoshootShareController.schedulePhoto()`, and the following happens:
+**Photoshoot share**: `pose_for_photo` (`PhotoshootSkill`) strikes the pose,
+hides the UI for 5 s and calls `PhotoshootShareController.schedulePhoto()`.
+Then:
 
 1. **2 s** into the pose, the controller posts `.photoshootCaptureRequested`.
    The scene owner answers it with `VRMMetalState.captureFrame`.
@@ -115,7 +123,9 @@ day" hit exists.
   occurred date, placed by `mentioned_at`.
 - **Query**: `MemoryStore.fetchUnits(occurringBetween:and:includeUndated:)`
   returns `world`/`experience`/`observation` units whose occurred span
-  overlaps the range, plus undated units mentioned in the range when asked.
+  overlaps the range. When asked, it adds undated units mentioned in the
+  range; that branch is not filtered by type, so raw dialogue ("moments")
+  shows up too.
   `countDatedUnits` drives visibility. The pure `MemoryTimelineModel` buckets
   months and days on the ISO calendar, and places each unit by
   `occurredStart ?? mentionedAt`.
@@ -126,7 +136,7 @@ day" hit exists.
 
 ```mermaid
 flowchart TD
-    CONS["🧠 consolidation / launch<br/>refreshStale(character:)"] --> WKND{"Saturday or Sunday?"}
+    CONS["🧠 consolidation / Update button<br/>refreshStale(character:)"] --> WKND{"Saturday or Sunday?"}
     WKND --> D7["no"] --> KEEP
     WKND --> D8["yes"] --> DUE{"no recap this week<br/>or stale + new memories?"}
     DUE --> D1["no"] --> KEEP["keep current recap"]
@@ -138,7 +148,7 @@ flowchart TD
 
     LLM --> STORE["mental_models<br/>weekly_recap"]
     STORE --> PROMPT["promptBlock()<br/>- This week: …"]
-    STORE --> NOTIF["first weekend refresh<br/>'wrote up your week'"]
+    STORE --> NOTIF["first new recap this week<br/>'wrote up your week'"]
     STORE --> CARD["MemoryRecapCard<br/>This week with … (weekend)"]
 
     CARD --> ASK["👆 Ask about it<br/>askAboutRecap()"]
@@ -240,7 +250,7 @@ flowchart TD
 | `Core/Engine/VRM/Rendering/Renderer/VRMRenderer+Capture.swift` | One-shot drawable blit + `FrameImageConverter` |
 | `Data/DataSources/Memory/Agentic/Store/MemoryStore+Timeline.swift` | Date-range query, `countDatedUnits`, pure `MemoryTimelineModel` |
 | `Presentation/Views/Memory/MemoryTimelineSection.swift` | "When" section: on this day, month strip, day list, forget |
-| `NeuraLinkTests/Memory/MemoryOwnershipTests.swift` | Export round-trip / no vectors / conversations toggle, recap parsing + weeks, timeline buckets, range query, BGRA capture conversion |
+| `NeuraLinkTests/Memory/MemoryOwnershipTests.swift` | Export round-trip / no vectors / conversations toggle, recap parsing + weeks, timeline buckets, range query, BGRA capture conversion, renamed-character healing and question rewrite |
 
 ## Integration notes
 

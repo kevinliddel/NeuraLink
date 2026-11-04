@@ -7,7 +7,8 @@
 //  model then hallucinates: it echoes its own vocabulary prompt back as if
 //  spoken, emits a lone "ね。" or "you", or trails off with "That's...".
 //  Those turns must not reach the chat history, the memory store or the
-//  model's context (docs/AI/openai_realtime_chat.md). Pure and unit-tested.
+//  model's context (docs/AI/OPENAI_REALTIME.md, Phantom transcripts).
+//  Pure and unit-tested.
 //
 //  Local whisper adds its subtitle habits: on noise it writes "(笑)",
 //  "(音楽)" or "ご視聴ありがとうございました". A transcript that is only an

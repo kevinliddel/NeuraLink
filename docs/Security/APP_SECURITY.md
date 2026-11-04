@@ -12,6 +12,7 @@ Secondary threats covered:
 
 - A malicious tester or third party hooking up Console.app to a TestFlight / Ad-hoc build to scrape transcripts from system logs.
 - Tampering with on-disk state (KV cache substitution) to inject hidden behavior into the next session.
+- A swapped or re-uploaded model download, or a swapped imported VRM file, reaching the file parsers (llama.cpp's C loader, the VRM/glTF loader).
 
 **Out of scope** (intentionally — closing these would require very different mitigations):
 
@@ -26,50 +27,44 @@ Secondary threats covered:
 
 ```mermaid
 flowchart TB
-    %% Boundary
-    subgraph Boundary["Device Security Boundary"]
+    subgraph Boundary["Device security boundary"]
         direction LR
-        SE["Secure Enclave\n(class keys)"]
-        KC["Keychain\n(secrets)"]
-        APP["App Sandbox\n(files)"]
+        SE["Secure Enclave<br/>(class keys)"]
+        KC["Keychain<br/>(secrets)"]
+        APP["App sandbox<br/>(files)"]
 
-        SE --> D1["Derived Keys"] --> KC
-        SE --> D1 --> APP
+        SE --> D1["derived keys"]
+        D1 --> KC
+        D1 --> APP
     end
 
-    %% Layer 1
-    subgraph SecureStore["Layer 1 — Secrets (Keychain)"]
+    subgraph Secrets["Layer 1 — Secrets (Keychain, ThisDeviceOnly)"]
         direction TB
-        K1["openAIAPIKey\nOpenAI sk-…"]
-        K2["memoryDBPageKey\n32-byte SQLCipher key"]
-        K3["kvCacheEncryptionKey\n32-byte AES-256-GCM"]
+        K1["openAIAPIKey<br/>OpenAI sk-…"]
+        K2["memoryDBPageKey<br/>32-byte SQLCipher key"]
+        K3["kvCacheEncryptionKey<br/>32-byte AES-256-GCM key"]
     end
 
-    %% Layer 2
-    subgraph ProtectedStorage["Layer 2 — Files (Data Protection + no backup)"]
+    subgraph Files["Layer 2 — Files (Data Protection)"]
         direction TB
-        F1["personas.json\nlocal_llm_prompts.json\n(dormant legacy backup)"]
-        F2["neuralink_memory.sqlite\n(+wal / shm / journal)"]
-        F3["llm_kv/*.kv (AES-GCM)"]
+        F1["private/neuralink_memory.sqlite<br/>(+ wal / shm / journal)<br/>no backup"]
+        F2["private/ user_profile, characters/,<br/>photo-memories/, legacy persona JSON<br/>no backup"]
+        F3["llm_kv/*.kv<br/>(AES-GCM sealed)"]
     end
 
-    %% Layer 3
-    subgraph Optional["Layer 3 (opt-in) — Page Crypto"]
-        SQLCipher["SQLCipher AES-CBC + HMAC\nflag: sqlcipherEnabled"]
+    subgraph Cipher["Layer 3 (opt-in) — Page crypto"]
+        SQLC{"SQLCipher<br/>flag: sqlcipherEnabled"}
     end
 
-    %% Layer 4
     subgraph Transient["Layer 4 — Transient"]
-        T1["tmp/whisper_*.wav\n(deleted after use)"]
+        T1["tmp/vrm_import/ staging<br/>tmp/kvcache_load_*.kv<br/>(removed after use)"]
     end
 
-    %% Layer 5
-    subgraph Logs["Layer 5 — Logging"]
-        L1["nlLog (.public)\nnon-PII"]
-        L2["nlLogSensitive (.private)\ntranscripts / memory"]
+    subgraph Logs["Layer 5 — Logging (DEBUG builds only)"]
+        L1["nlLog (.public)<br/>non-PII"]
+        L2["nlLogSensitive (.private)<br/>transcripts / memory"]
     end
 
-    %% Flows
     KC --> K1
     KC --> K2
     KC --> K3
@@ -79,30 +74,24 @@ flowchart TB
     APP --> F3
     APP --> T1
 
-    K2 --> D2["sqlite3_key"] --> SQLCipher
-    SQLCipher --> D3["Encrypted Pages"] --> F2
+    K2 --> D2["sqlite3_key"] --> SQLC
+    SQLC --> D3["encrypted pages"] --> F1
 
     K3 --> D4["AES-256-GCM sealed box"] --> F3
 
     %% Styles
-    classDef secure fill:#1f5a3a,stroke:#69db7c,color:#ffffff
-    classDef store fill:#2a2a2a,stroke:#adb5bd,color:#ffffff
-    classDef optional fill:#1f4a7a,stroke:#74c0fc,color:#ffffff,stroke-dasharray:5 5
-    classDef transient fill:#5a5a1f,stroke:#ffd43b,color:#ffffff
-    classDef logs fill:#7a4a1f,stroke:#ffa94d,color:#ffffff
+    classDef core fill:#0f172a,stroke:#7c3aed,color:#a78bfa
+    classDef decision fill:#1e293b,stroke:#94a3b8,color:#e2e8f0
 
-    class SE,KC,APP secure
-    class K1,K2,K3,F1,F2,F3 store
-    class SQLCipher optional
-    class T1 transient
-    class L1,L2 logs
+    class SE,KC,APP,K1,K2,K3,F1,F2,F3,T1,L1,L2 core
+    class SQLC decision
 
-    %% Data flow styling (consistent across your diagrams)
+    %% Data nodes (consistent system-wide)
     classDef data fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
     class D1,D2,D3,D4 data
 ```
 
-**Reading the diagram:** every secret traces back to either the Secure Enclave (Keychain items) or the app sandbox (files protected by iOS Data Protection). Files inherit class keys from the Secure Enclave; secrets in the Keychain *are* derived via the Secure Enclave. The opt-in SQLCipher layer adds page-level crypto on top of file-level protection for the conversation DB — useful as a precondition for the future passphrase mode.
+**Reading the diagram:** every secret traces back to either the Secure Enclave (Keychain items) or the app sandbox (files protected by iOS Data Protection). Files inherit class keys from the Secure Enclave; secrets in the Keychain *are* derived via the Secure Enclave. The opt-in SQLCipher layer adds page-level crypto on top of file-level protection for the conversation DB, and is the precondition for a passphrase mode (section 13). Transient plaintext is short-lived: VRM imports are staged in `tmp/` until confirmed, and a KV blob is decrypted into a `tmp/` file only for the moment the bridge loads it.
 
 ---
 
@@ -161,11 +150,15 @@ Every piece of on-disk state, where it lives, how it's protected, who reads it.
 | Conversation DB | `Application Support/private/neuralink_memory.sqlite` | `.completeUntilFirstUserAuthentication` | Optional SQLCipher (off by default) | **No** (excluded) | [MemoryStore.swift](../../NeuraLink/Data/DataSources/Memory/Store/MemoryStore.swift) |
 | Persona / local-LLM prompts + voices | `Application Support/private/neuralink_memory.sqlite` → `character_ai` table | `.completeUntilFirstUserAuthentication` | Optional SQLCipher (off by default) | **No** (excluded) | [PersonaStore.swift](../../NeuraLink/Data/Repositories/PersonaStore.swift), [LocalLLMPromptStore.swift](../../NeuraLink/Data/Repositories/LocalLLMPromptStore.swift), [PersonaVoiceStore.swift](../../NeuraLink/Data/Repositories/PersonaVoiceStore.swift) |
 | Legacy persona / prompt JSON (dormant backup) | `Application Support/private/personas.json`, `…/local_llm_prompts.json` | `.completeUntilFirstUserAuthentication` | n/a | **No** (excluded) | left in place after migration; no longer read |
-| KV cache | `Application Support/llm_kv/<config>_<persona>.kv` | `.completeUntilFirstUserAuthentication` | AES-256-GCM encryption (32-byte Keychain key); GCM tag also provides integrity | Yes (no isExcludedFromBackup) | [LocalLLMKVCache.swift](../../NeuraLink/Data/DataSources/LocalLLM/LocalLLMKVCache.swift) |
+| KV cache | `Application Support/llm_kv/<config>_v<stateVersion>_<persona>.kv` | `.completeUntilFirstUserAuthentication` | AES-256-GCM encryption (32-byte Keychain key); GCM tag also provides integrity | Yes (no isExcludedFromBackup) | [LocalLLMKVCache.swift](../../NeuraLink/Data/DataSources/LocalLLM/LocalLLMKVCache.swift) |
 | Whisper transcription input | in memory only (float samples fed straight to whisper.cpp) | n/a | n/a | n/a — never written; a one-shot sweep removes `Documents/whisper_*.wav` left by old builds | [LocalWhisperManager.swift](../../NeuraLink/Data/DataSources/STT/LocalWhisperManager.swift) |
 | User profile (name, gender, birthday) | `Application Support/private/user_profile.json` | `.completeUntilFirstUserAuthentication` | n/a | **No** (excluded) | [UserProfileStore.swift](../../NeuraLink/Data/Repositories/UserProfileStore.swift) |
 | User profile photo | `Application Support/private/user_profile.jpg` | `.completeUntilFirstUserAuthentication` | n/a | **No** (excluded) | [UserProfileStore.swift](../../NeuraLink/Data/Repositories/UserProfileStore.swift) |
 | Local LLM weights (GGUF) | `Application Support/hub/<slug>/direct/<file>.gguf` | default class | n/a — integrity, not confidentiality: pinned commit + size + SHA-256 verified before the file is moved into place | **No** (per-file exclusion) | [GGUFDirectDownloader.swift](../../NeuraLink/Data/DataSources/GGUF/GGUFDirectDownloader.swift) |
+| Photo memories (thumbnails of photos the user showed) | `Application Support/private/photo-memories/` | `.completeUntilFirstUserAuthentication` (directory + each file) | n/a | **No** (excluded) | [PhotoMemoryService.swift](../../NeuraLink/Data/DataSources/Photos/PhotoMemoryService.swift) |
+| Diary scene pictures | `Application Support/private/scene-captures/` | `.completeUntilFirstUserAuthentication` (directory + each file) | n/a | **No** (excluded) | [CompanionSceneCapture.swift](../../NeuraLink/Data/DataSources/Companion/CompanionSceneCapture.swift) |
+| Downloaded assets (scenes, voices, Whisper, motion models, parts) | `Application Support/hf-assets/<pathInRepo>` | default class | n/a — integrity: pinned size + SHA-256 verified before use | **Yes** — not excluded; re-downloadable content | [RemoteAssetCache.swift](../../NeuraLink/Data/DataSources/Assets/RemoteAssetCache.swift) |
+| DEBUG log file | `Application Support/logs/YYYY-MM-DD.log` (DEBUG builds only, ~10 MB cap) | default class | n/a | Yes | [PersistentLogSink.swift](../../NeuraLink/Core/Utils/Logging/PersistentLogSink.swift) |
 | Widget / Live Activity snapshot | App Group `group.com.dedicatus.NeuraLink` → `companion-snapshot.json`, `thumbnails/` | `.completeUntilFirstUserAuthentication` (explicit on write) | n/a | **No** (per-file exclusion, re-applied on every write) | [CompanionSnapshot.swift](../../NeuraLinkShared/CompanionSnapshot.swift) |
 | Imported VRM characters | `Application Support/private/characters/<slug>.vrm` (+ `<slug>.png` thumbnail) | `.completeUntilFirstUserAuthentication` | Size + SHA-256 pin stored in the encrypted DB (`imported_characters`), re-verified on every load; mismatch quarantines the row | **No** (parent dir excluded) | [VRMImportService.swift](../../NeuraLink/Data/DataSources/Characters/VRMImportService.swift), [VRMIntegrityCheck.swift](../../NeuraLink/Data/DataSources/Characters/VRMIntegrityCheck.swift), [MemoryStore+ImportedCharacters.swift](../../NeuraLink/Data/DataSources/Memory/Store/MemoryStore+ImportedCharacters.swift) |
 | VRM import staging | `tmpDirectory/vrm_import/<UUID>.vrm/.png` | tmp default | n/a (moved into protected dir on confirm; discarded on cancel; swept on launch) | **No** (tmp is auto-excluded) | [VRMImportService.swift](../../NeuraLink/Data/DataSources/Characters/VRMImportService.swift) |
@@ -182,7 +175,7 @@ Every piece of on-disk state, where it lives, how it's protected, who reads it.
 
 | `SecureKey` case | Service | Account | Bytes | Created when | Consumer |
 |---|---|---|---|---|---|
-| `.openAIAPIKey` | `com.neuralink.openai` | `apiKey` | variable (user-supplied `sk-…`) | User pastes in Settings | `OpenAISettings.apiKey`, `OpenAIRealtimeManager`, `VisionAnalyzer`, `PersonaSettingsView` |
+| `.openAIAPIKey` | `com.neuralink.openai` | `apiKey` | variable (user-supplied `sk-…`) | User pastes in Settings | `OpenAISettings.apiKey` → `OpenAIRealtimeManager` (key mint), `OpenAIChatClient`, `VisionAnalyzer`, `PersonaSettingsView` + `TranscriptSpeechPlayer` (speech) |
 | `.memoryDBPageKey` | `com.neuralink.memory` | `dbPageKey` | 32 (CSPRNG) | First SQLCipher conversion or first encrypted-DB open | `MemoryStore+SQLCipher.keyDatabase`, `MemoryStore+SQLCipher.convertPlaintextToSQLCipher` |
 | `.kvCacheEncryptionKey` | `com.neuralink.localllm.enc` | `kvCacheEncKey` | 32 (CSPRNG) | First `encryptBlob` call | `LocalLLMKVCache.encryptBlob`, `LocalLLMKVCache.decryptBlob` |
 | `.kvCacheHMACKey` (legacy) | `com.neuralink.localllm` | `kvCacheHMACKey` | 32 (CSPRNG) | pre-encryption installs only | `LocalLLMKVCache.verifyLegacyHMAC` — one-time migration of old plaintext blobs |
@@ -190,7 +183,7 @@ Every piece of on-disk state, where it lives, how it's protected, who reads it.
 Two design decisions worth knowing:
 
 - **Distinct `service` per consumer** so future per-attribute access policies can evolve independently (e.g. if we ever want `memoryDBPageKey` to require biometric unlock, we don't have to migrate `openAIAPIKey`).
-- **`…ThisDeviceOnly`** ensures a new phone doesn't inherit secrets via iCloud Keychain. The user re-enters the API key on new device by design; the SQLCipher and KV-cache keys are regenerated and the dependent data is rebuilt from scratch (chat DB stays encrypted-but-unreadable until cleared; KV cache cold-prefills on next launch).
+- **`…ThisDeviceOnly`** ensures a new phone doesn't inherit secrets via iCloud Keychain. The user re-enters the API key on new device by design; the SQLCipher and KV-cache keys are regenerated. The conversation DB is excluded from backup, so it never reaches the new phone; KV blobs are backup-eligible but fail to decrypt there, are purged, and the model cold-prefills on the first turn.
 
 ---
 
@@ -198,22 +191,22 @@ Two design decisions worth knowing:
 
 We use one-shot `UserDefaults` flags for one-time upgrade tasks. Each flag is set only after the corresponding migration succeeds, so a failure causes the migration to retry on the next launch instead of silently dropping data.
 
-| Flag | Phase | What it gates |
-|---|---|---|
-| `com.neuralink.migration.apiKeyKeychain.v1` | 1 | Copy legacy `UserDefaults` API key to Keychain, then delete the `UserDefaults` entry |
-| `com.neuralink.migration.dbRelocate.v1` | 2a | Atomic move of `Documents/neuralink_memory.sqlite` (+ siblings) → `Application Support/private/` with rollback on partial failure |
-| `com.neuralink.security.sqlcipherActive.v1` | 2b | Realised state of the SQLCipher conversion. Distinct from the user-intent flag below |
-| `com.neuralink.migration.whisperDocsCleanup.v1` | 4 | Sweep legacy `Documents/whisper_*.wav` files left by pre-Phase-4 builds |
-| `com.neuralink.migration.personaStoresToSQL.v1` | — | Import legacy persona/local-LLM prompts (JSON + `UserDefaults` backups) and VoiceVox/OpenVoice voice prefs into the encrypted DB's `character_ai` table; legacy JSON files are left in place as a dormant backup |
-| `com.neuralink.migration.userProfileProtected.v1` | — | Move name/gender/birthday out of `UserDefaults` into `private/user_profile.json` and the photo from the Application Support root into `private/`, then delete the originals. Never overwrites a profile that already exists at the new location, so a retry can't roll back newer edits |
+| Flag | What it gates |
+|---|---|
+| `com.neuralink.migration.apiKeyKeychain.v1` | Copy legacy `UserDefaults` API key to Keychain, then delete the `UserDefaults` entry |
+| `com.neuralink.migration.dbRelocate.v1` | Atomic move of `Documents/neuralink_memory.sqlite` (+ siblings) → `Application Support/private/` with rollback on partial failure |
+| `com.neuralink.security.sqlcipherActive.v1` | Realised state of the SQLCipher conversion. Distinct from the user-intent flag below |
+| `com.neuralink.migration.whisperDocsCleanup.v1` | Sweep legacy `Documents/whisper_*.wav` files left by older builds |
+| `com.neuralink.migration.personaStoresToSQL.v1` | Import legacy persona/local-LLM prompts (JSON + `UserDefaults` backups) and VoiceVox/OpenVoice voice prefs into the encrypted DB's `character_ai` table; legacy JSON files are left in place as a dormant backup |
+| `com.neuralink.migration.userProfileProtected.v1` | Move name/gender/birthday out of `UserDefaults` into `private/user_profile.json` and the photo from the Application Support root into `private/`, then delete the originals. Never overwrites a profile that already exists at the new location, so a retry can't roll back newer edits |
 
-There are also two **user-intent feature flags**, separate from migration flags:
+There is also one **user-intent feature flag**, separate from migration flags:
 
 | Flag | Default | Effect when set |
 |---|---|---|
 | `com.neuralink.security.sqlcipherEnabled` | `false` | On next launch, convert the plaintext conversation DB into a SQLCipher-encrypted DB via `sqlcipher_export`. Once the realised flag (`sqlcipherActive.v1`) is set, `sqlite3_key` is called after every `sqlite3_open` |
 
-**To opt into SQLCipher today** (no UI yet — Phase 7 work):
+**To opt into SQLCipher** (there is no in-app switch):
 ```bash
 xcrun simctl spawn booted defaults write <bundle-id> com.neuralink.security.sqlcipherEnabled -bool YES
 ```
@@ -234,7 +227,7 @@ The conversation DB ([neuralink_memory.sqlite](../../NeuraLink/Data/DataSources/
 ### Layer B (opt-in) — SQLCipher page-level encryption
 - Built on the **prebuilt SQLCipher.swift v4.16.0 xcframework** via SPM (`https://github.com/sqlcipher/SQLCipher.swift.git`)
 - Build setting: `SQLITE_HAS_CODEC=1` in `GCC_PREPROCESSOR_DEFINITIONS` (Debug + Release at project level)
-- Source: `import SQLCipher` replaces `import SQLite3` in [MemoryStore.swift](../../NeuraLink/Data/DataSources/Memory/Store/MemoryStore.swift) + [MemoryStore+Queries.swift](../../NeuraLink/Data/DataSources/Memory/Store/MemoryStore+Queries.swift)
+- Source: every `MemoryStore` file ([MemoryStore.swift](../../NeuraLink/Data/DataSources/Memory/Store/MemoryStore.swift) and its `MemoryStore+*.swift` extensions) imports `SQLCipher`; nothing in the app imports the system `SQLite3`
 - Keying: `sqlite3_key(db, key, 32)` immediately after `sqlite3_open`, with `key` = `SecureStore.getOrCreateRandom(.memoryDBPageKey, bytes: 32)`
 - Sanity check after keying: `PRAGMA cipher_version` must return a non-empty string — proves we linked against SQLCipher and not the system SQLite
 - Defeats Layer A scenarios + a bypass of iOS Data Protection itself (e.g. hypothetical class-key leak)
@@ -255,10 +248,14 @@ sealed box = 12-byte nonce ‖ ciphertext ‖ 16-byte GCM tag
 
 where the key is `SecureStore.getOrCreateRandom(.kvCacheEncryptionKey, bytes: 32)`. The GCM authentication tag provides integrity coverage equivalent to (and stronger than) the previous HMAC-SHA256 sidecar: a tampered or truncated blob fails `AES.GCM.open` and is discarded, so an attacker can't substitute a blob across personas / model configs.
 
-**Load path** ([LocalLLMManager.tryRestoreKVCache](../../NeuraLink/Data/DataSources/LocalLLM/Manager/LocalLLMManager.swift)):
+The file name is `<config>_v<stateVersion>_<persona>.kv`, where `<persona>` is a SHA-256 prefix of the system prompt, so a persona edit or a new llama.cpp state format simply misses the old blob.
+
+**Save path** (`LocalLLMManager.persistKVCacheIfNeeded`, once per session): the bridge writes the plaintext state, and `LocalLLMKVCache.encryptBlob(at:)` overwrites it in place with the sealed box straight after.
+
+**Load path** ([LocalLLMManager.tryRestoreKVCache](../../NeuraLink/Data/DataSources/LocalLLM/Manager/LocalLLMManager+KVCache.swift)):
 
 1. If no `.kv` exists → nothing to load (fresh install).
-2. `LocalLLMKVCache.decryptBlob(at:)` opens the sealed box with the Keychain key. On success → `llmEngine.loadKVCache(from:)` runs and warmup is fast.
+2. `LocalLLMKVCache.decryptBlob(at:)` opens the sealed box with the Keychain key. On success the plaintext is written to a `tmp/kvcache_load_<UUID>.kv` file, `llmEngine.loadKVCache(from:)` reads it, and the temp file is deleted; warmup is fast.
 3. On failure (tampered, wrong/missing key, read error) → `LocalLLMKVCache.purge(at:)` removes the file; warmup falls through to a cold prefill (correct, just slower).
 
 **Legacy migration:** blobs from pre-encryption builds are plaintext `.kv` with a `.kv.hmac` sidecar. `decryptBlob` fails on them; if `verifyLegacyHMAC` still vouches for the blob (HMAC-SHA256 over `blob ‖ filename`, key `.kvCacheHMACKey`) it is salvaged and **re-encrypted in place**, preserving the warm start across the upgrade — otherwise it's purged. The `.kv.hmac` sidecar is swept on either path; `.kvCacheHMACKey` is retained solely for this one-time migration.
@@ -274,14 +271,16 @@ Two functions, identical signatures, different privacy:
 | Function | `privacy:` qualifier on body | Use for |
 |---|---|---|
 | `nlLog(...)` | `.public` | Operational diagnostics: timestamps, status codes, file paths, counts, durations |
-| `nlLogSensitive(...)` | `.private` | Conversation transcripts, persona system prompts, RAG memory bodies, user-supplied text |
+| `nlLogSensitive(...)` | `.private` | Conversation transcripts, persona system prompts, memory bodies, user-supplied text |
 
-Both are **no-ops in Release** via `#if DEBUG`, so no transcript content can land in production logs even if a `nlLog` is mistakenly used for sensitive content. The `.private` qualifier is the second line of defense — it ensures that in DEBUG, TestFlight, or Ad-hoc builds, `Console.app` shows `<private>` for the body unless the device is paired with a developer profile that has the "Enable Private Data" entitlement (which Xcode itself does, so step-debugging still works).
+Both are **no-ops in Release** via `#if DEBUG`, so no transcript content can land in production logs even if a `nlLog` is mistakenly used for sensitive content. The `.private` qualifier is the second line of defense — it ensures that in DEBUG builds `Console.app` shows `<private>` for the body unless the device is paired with a developer profile that has the "Enable Private Data" entitlement (which Xcode itself does, so step-debugging still works).
 
-**Pattern for log lines that mix metadata and content:** split into two calls, metadata public, content private. Example from [RAGManager.swift](../../NeuraLink/Data/DataSources/Memory/RAGManager.swift):
+**Persistent DEBUG log file.** In DEBUG builds `nlLog` lines (never `nlLogSensitive` ones) are also teed by [PersistentLogSink.swift](../../NeuraLink/Core/Utils/Logging/PersistentLogSink.swift) into `Application Support/logs/YYYY-MM-DD.log`, capped at ~10 MB oldest-first, so bench and error lines survive a disconnect. The sink compiles out of Release with the rest of `nlLog`. It is a second reason to keep content out of `nlLog`: in DEBUG it lands on disk, not just in the unified log.
+
+**Pattern for log lines that mix metadata and content:** split into two calls, metadata public, content private. Example from [RAGManager.swift](../../NeuraLink/Data/DataSources/Memory/RAGManager.swift) (the facade over the agentic memory layer):
 
 ```swift
-nlLog("[RAGManager] Stored new memory (source=\(source), \(text.count) chars)", level: .info)
+nlLog("[RAGManager] Stored raw memory (source=\(source), \(text.count) chars)", level: .info)
 nlLogSensitive("[RAGManager] Memory body: \(text)", level: .info)
 ```
 
@@ -387,16 +386,17 @@ Other things deferred to future work:
 | [NeuraLink/Data/DataSources/GGUF/GGUFDirectDownloader.swift](../../NeuraLink/Data/DataSources/GGUF/GGUFDirectDownloader.swift) | Commit-pinned, SHA-256-verified GGUF downloads |
 | [NeuraLink/Data/DataSources/Assets/RemoteAssetCache.swift](../../NeuraLink/Data/DataSources/Assets/RemoteAssetCache.swift) | Resumable download + size/SHA-256 verify gate shared by all remote assets |
 | [NeuraLink/PrivacyInfo.xcprivacy](../../NeuraLink/PrivacyInfo.xcprivacy), [NeuraLinkWidgets/PrivacyInfo.xcprivacy](../../NeuraLinkWidgets/PrivacyInfo.xcprivacy) | Privacy manifests (app + widget extension) |
-| [NeuraLink/Data/DataSources/LocalLLM/Manager/LocalLLMManager.swift](../../NeuraLink/Data/DataSources/LocalLLM/Manager/LocalLLMManager.swift) | KV cache load/save with integrity check |
+| [NeuraLink/Data/DataSources/LocalLLM/Manager/LocalLLMManager+KVCache.swift](../../NeuraLink/Data/DataSources/LocalLLM/Manager/LocalLLMManager+KVCache.swift) | KV cache load/save with integrity check |
 | [NeuraLink/Data/DataSources/OpenAI/OpenAISettings.swift](../../NeuraLink/Data/DataSources/OpenAI/OpenAISettings.swift) | API key → Keychain + one-shot migration |
 | [NeuraLink/Data/DataSources/OpenAI/Realtime/OpenAIRealtimeManager+Handlers.swift](../../NeuraLink/Data/DataSources/OpenAI/Realtime/OpenAIRealtimeManager+Handlers.swift) | Transcript log sites → `nlLogSensitive` |
 
-## Data outside the protected sandbox (2026-09-27)
+## Data outside the protected sandbox
 
 Widgets and the session Live Activity run in a separate extension and read a
 small JSON snapshot in the App Group container `group.com.dedicatus.NeuraLink`
 (`NeuraLinkShared/CompanionSnapshot.swift`): character name, relationship
-label and score, the prepared greeting, one short remembered line, the last
+label and score, the prepared greeting, one short remembered line (with its
+source label), the number of remembered things and days together, the last
 chat time and a character thumbnail. It never contains transcripts, facts or
 observations beyond that single line, is rewritten by the app (not the
 extension), and is deleted when "Companion widgets" is switched off. The
@@ -417,9 +417,9 @@ system indicator. The session ends automatically after the configured idle
 time, on Low Power Mode, a serious thermal state or a memory warning.
 
 Photo memories keep only a 256 px JPEG thumbnail and a text description under
-the protected App Support directory (`photo-memories/`, Data Protection
-applied); the original photo is sent to OpenAI once for description when the
-cloud model is enabled and is never stored by the app.
+the protected App Support directory (`private/photo-memories/`, Data Protection
+applied, no backup); the original photo is sent to OpenAI once for description
+when the cloud model is enabled and is never stored by the app.
 
 ## Privacy manifest
 

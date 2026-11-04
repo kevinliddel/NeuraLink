@@ -33,7 +33,7 @@ A high-performance, native iOS VRM character viewer and AI companion built from 
   </tr>
   <tr>
     <td><strong>Realtime Sky System</strong><br/>The real sun, moon phase and stars for the user's time and place, lighting the character. See <a href="./docs/Engine/Sky_System.md">Sky System</a></td>
-    <td><strong>Procedural Rain System</strong><br/>Shader-driven 3D rain streaks with synchronized 2D lens splashing and natural weather cycles.</td>
+    <td><strong>Procedural Rain System</strong><br/>World-space rain streaks and liquid-glass drops on the lens, on a natural weather cycle.</td>
   </tr>
   <tr>
     <td><strong>Agentic Memory</strong><br/>Fact types, an entity graph and hybrid recall, all on device, so the companion remembers what matters. See <a href="./docs/Memory/AGENTIC_MEMORY.md">Agentic Memory</a></td>
@@ -77,11 +77,10 @@ Feature documentation lives in [`docs/`](./docs), one folder per area.
 | | [On-Device LLM](./docs/AI/Local_SLM_Model.md) | llama.cpp engines, shipped models, memory residency on 4 GB phones, turn latency |
 | | [Voice Architecture](./docs/AI/LLM_VOICE.md) | The local TTS pipeline next to the OpenAI Realtime audio path |
 | | [Function Calling](./docs/AI/Function_Call.md) | The tools the companion can call and how each one runs |
-| | [OpenAI Realtime GA Migration](./docs/AI/openai_realtime_chat.md) | The Realtime API beta → GA changes, item by item |
+| | [OpenAI Realtime](./docs/AI/OPENAI_REALTIME.md) | The cloud voice path: handshake, session config, events, mic gating, phantom transcripts |
 | | [API Usage Dashboard](./docs/AI/API_USAGE.md) | Estimated spend, tokens and requests per model |
 | **Memory** | [Agentic Memory](./docs/Memory/AGENTIC_MEMORY.md) | Retain, recall, reflect: the on-device Hindsight port |
 | | [Memory Ownership](./docs/Memory/MEMORY_OWNERSHIP.md) | Export, the weekly recap, the timeline and photoshoot sharing |
-| | [Long-Term Memory (RAG)](./docs/Memory/RAG.md) | The original RAG layer, now a facade over agentic memory (historical) |
 | **Companion** | [Living Companion](./docs/Companion/LIVING_COMPANION.md) | Reflection, personality evolution, proactive engagement, games, desk presence, keepsakes |
 | | [Companion Depth](./docs/Companion/COMPANION_DEPTH.md) | Follow-ups on plans the user mentioned, photo memories |
 | | [Presence Beyond the App](./docs/Companion/PRESENCE_BEYOND_APP.md) | Background voice sessions, widgets, the Live Activity, App Intents |
@@ -110,9 +109,9 @@ NeuraLink renders a fully procedural, physically-inspired sky backdrop that **fo
 Key highlights:
 
 - **Clock-driven** — `SkyTimeProvider` reads the device's local calendar every frame; no manual configuration required.
-- **Procedural GPU shader** — a single fullscreen-triangle Metal draw renders the scattered-light gradient, star field, dome clouds, sun disc with bloom and the moon.
+- **Physically based atmosphere** — Rayleigh, Mie and ozone scattering through GPU look-up tables, with two procedural cloud layers, the sun disc with bloom and the moon in one fullscreen draw, and a bright-star catalogue drawn on top.
 - **Unified lighting** — the resolved sky drives a key / fill / rim light rig that keeps the VRM character consistently lit against the sky at every hour.
-- **Zero textures** — clouds, stars, sun and moon are generated procedurally via FBM noise and analytic functions.
+- **No image assets** — the atmosphere tables and the cloud noise are computed on the GPU at runtime.
 
 **[Full Sky System documentation](./docs/Engine/Sky_System.md)**
 
@@ -120,12 +119,13 @@ Key highlights:
 
 ## 🌧️ Procedural Rain System
 
-NeuraLink features a high-performance 3D rain system that runs entirely on the GPU, providing atmospheric depth without sacrificing frame rate.
+NeuraLink's rain falls in the world, runs down the lens and darkens the sky, all from one shared intensity.
 
-- **Synced Effects**: Environment rain streaks (3D) and lens splashing (2D) are perfectly synchronized.
-- **Weather Cycles**: Rain doesn't just "turn on"—it fades in and out based on a state-machine driven `RainController` that mimics natural weather patterns.
-- **Zero CPU overhead**: Particle positions and falling animations are computed procedurally in the vertex shader using high-resolution timing.
-- **Thermal-aware**: the rain budget drops with the device's thermal state and Low Power Mode.
+- **Weather Cycles**: Rain doesn't just "turn on"—a `RainController` state machine fades it in, holds it for a few minutes, fades it out and waits before the next shower.
+- **In the world**: 1,500 streaks animated entirely in the vertex shader from spawn points uploaded once, skipped indoors.
+- **On the lens**: drops simulated on the CPU are written into a water map and drawn as a liquid-glass overlay over the finished frame.
+- **In the sky**: cloud coverage closes into a full low deck while it rains.
+- **Thermal-aware**: the intensity is scaled down on the reduced pressure tier and to zero on the minimal one.
 
 ---
 
@@ -179,25 +179,25 @@ graph TD
     Interact --> API
 
     subgraph VAD [Dual VAD Layer]
-        Tap --> Silero[Silero VAD v5\nClient-side · Local]
-        WebRTC --> ServerVAD[OpenAI Server VAD\nCloud · Turn-taking]
+        Tap --> Silero[Silero VAD v5<br/>Client-side · Local]
+        WebRTC --> ServerVAD[OpenAI Server VAD<br/>Cloud · Turn-taking]
     end
 
     subgraph Memory [Agentic Memory]
         API --> Facts[Facts + Entity Graph]
-        API --> Recall[Hybrid Recall\nsemantic · keyword · graph · time]
+        API --> Recall[Hybrid Recall<br/>semantic · keyword · graph · time]
     end
 
     Silero --> VoiceEvent[voiceStarted / voiceEnded]
-    VoiceEvent --> UIState[UI State\nlistening ↔ ready]
+    VoiceEvent --> UIState[UI State<br/>listening ↔ ready]
     ServerVAD --> Commit[commit]
     Commit --> API
 
-    WebRTC --> API[OpenAI Realtime API\ngpt-realtime]
+    WebRTC --> API[OpenAI Realtime API<br/>gpt-realtime]
     API --> WebRTCLink[WebRTC]
     WebRTCLink --> RTC(Remote Audio Track)
     RTC --> Output[Speakers]
-    RTC --> Renderer[RealtimeLipSyncRenderer\n10 ms playout buffers]
+    RTC --> Renderer[RealtimeLipSyncRenderer<br/>10 ms playout buffers]
     Renderer --> Analyzer[LipSyncAudioAnalyzer]
     Analyzer --> Cue[RMS · bands · vowel]
     Cue --> Controller[LipSync Controller]
@@ -233,13 +233,13 @@ graph TD
     Select --> Sonya[Sonya]
 
     Oz --> OV[Voice: ballad]
-    Oz --> OP[Persona: Butler\nCourteous · Erudite · Capable]
+    Oz --> OP[Persona: Butler<br/>Courteous · Erudite · Capable]
 
     Ekaterina --> EV[Voice: shimmer]
-    Ekaterina --> EP[Persona: Onee-san\nGentle · Caring · Japanese]
+    Ekaterina --> EP[Persona: Onee-san<br/>Gentle · Caring · Japanese]
 
     Sonya --> SV[Voice: marin]
-    Sonya --> SP[Persona: Dedicatus\nTsundere Queen · Sharp · Flustered]
+    Sonya --> SP[Persona: Dedicatus<br/>Tsundere Queen · Sharp · Flustered]
 
     OV --> Session[session.update]
     OP --> Session

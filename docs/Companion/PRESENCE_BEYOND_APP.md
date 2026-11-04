@@ -4,14 +4,14 @@ The companion stays with the user outside the app screen:
 
 - the voice conversation keeps running with the screen off or in other apps,
 - a Live Activity mirrors the session on the lock screen and Dynamic Island,
-- home and lock-screen widgets show the greeting and how long since the last
-  chat,
+- home and lock-screen widgets show the character as it looks now, the bond,
+  one remembered line and how long since the last chat,
 - Siri can start a conversation, answer a memory question, or store a fact
   without opening the app.
 
 ## Keep talking in the background
 
-**Autonomy → "Keep talking in background"**
+**Autonomy → Talking → "Keep talking in background"**
 (`PresenceSettings.keepTalkingInBackground`, default **off**) lets a live
 voice session survive backgrounding. `UIBackgroundModes` includes `audio`,
 which keeps the active audio session alive. `BackgroundSessionKeeper` decides
@@ -27,9 +27,11 @@ whether it should stay alive.
   - thermal state is below `.serious`.
 
   When the session is kept alive, `sessionDidEnd` is **not** posted, so
-  reflection waits for the real end. Otherwise the boundary fires as usual.
-- **Visible state**: a local notification, "<Name> is still listening",
-  appears on background. It is removed on return.
+  reflection waits for the real end. Otherwise the boundary fires as usual
+  (`sessionEnded(reason: "background")`).
+- **Visible state**: a local notification, "<Name> is still listening"
+  (`com.neuralink.presence.backgroundListening`), appears on background. It
+  is removed on return.
 - **Watchdog**: every **30 s**, `shouldEnd` checks the time since the user
   last spoke (`InteractionClock.secondsSinceUserSpoke`, or time since
   backgrounding if they never spoke). The idle limit is **"End after
@@ -46,7 +48,8 @@ whether it should stay alive.
   If the keeper had disconnected, the session reconnects
   (`startListening()` / `connect()`).
 - **Bluetooth**: the local audio session includes `.allowBluetoothHFP`, so
-  AirPods' microphone is used. The Realtime session already had it.
+  AirPods' microphone is used. The Realtime WebRTC session configuration
+  carries it too.
 
 ## Live Activity and Dynamic Island
 
@@ -57,12 +60,14 @@ It is started once from `NeuraLinkApp.autoConnectAI`, and polls
 - **Start**: the activity starts on the first live status, and only while
   "Keep talking in background" is on and Live Activities are enabled. That is
   the only case where a session exists with the app hidden. The character's
-  thumbnail is copied into the App Group for the extension.
+  stock thumbnail is copied into the App Group for the extension.
 - **Content** (`CompanionActivityAttributes`):
-  - static: character, display name, thumbnail file, start time.
+  - static: character, display name, thumbnail file, start time (the lock
+    screen shows the elapsed timer).
   - dynamic: `phase` (listening / thinking / speaking / reconnecting, each
-    with a label and SF Symbol) and `lastLine`, the last assistant line,
-    flattened and trimmed to 80 characters.
+    with a label and SF Symbol) and `lastLine`, the last completed assistant
+    line (taken when the status returns to ready/listening), flattened and
+    trimmed to 80 characters.
 - **Updates**: debounced **500 ms** and skipped when the state is unchanged.
   They are local only (`pushType: nil`).
 - **End**: any non-live status (disconnect, error) ends the activity with
@@ -74,7 +79,8 @@ It is started once from `NeuraLinkApp.autoConnectAI`, and polls
 ## Home and lock-screen widgets
 
 The widget extension cannot open the protected, possibly encrypted memory
-database. It reads a **snapshot** instead: a small JSON file in the App Group
+database. It reads a **snapshot** instead: a small JSON file
+(`companion-snapshot.json`, plus a `thumbnails/` folder) in the App Group
 `group.com.dedicatus.NeuraLink`.
 
 - **Snapshot** (`CompanionSnapshot`, version 1): character + display name,
@@ -86,40 +92,41 @@ database. It reads a **snapshot** instead: a small JSON file in the App Group
   - The memory line is one **whole** sentence of the memory summary
     ("Between you", then "About you" mental model): the first sentence that
     fits 100 characters and stands on its own (one opening with "also",
-    "and", "but", "she also"… is passed over for the next), so the widget
-    shows a complete thought. Only when no sentence fits is the first one
-    cut at a word boundary. Without a summary it falls back to an
-    observation of ≤ 100 characters rotated by day index ("Remembered").
-    The medium widget keeps its name row and badge compact so the quote
-    card gets three lines of footnote; both widgets scale the quote down
-    (to 75 %) before truncating.
+    "and", "but", "so"…, or with "also"/"too" as its second word, is passed
+    over for the next), so the widget shows a complete thought. Only when no
+    sentence fits is the first one cut at a word boundary. Without a summary
+    it falls back to an observation of ≤ 100 characters rotated by day index
+    ("Remembered").
   - The last chat date is the last user speech, else `lastSeenAt`.
 - **Live portrait**: after a character loads (and its saved look is
   applied) and after every customization change or reset,
-  `refreshPortrait(from:)` waits for the model to settle into its idle,
-  then `VRMPartThumbnailRenderer.renderPortrait` draws the live model head
-  and shoulders, with its grafted parts, texture overrides and the scene's
-  recolours, into `<character>_live.png`. The stock thumbnail is the
-  fallback until then.
+  `refreshPortrait(from:)` waits for the model to settle into its idle (up
+  to ~20 s for the entrance, then 1 s), then
+  `VRMPartThumbnailRenderer.renderPortrait` draws the live model head and
+  shoulders, with its grafted parts, texture overrides and the scene's
+  recolours, into `<character>_live.png` and writes the snapshot at once.
+  The stock thumbnail is the fallback until then.
 - **Writes** (`CompanionSnapshotWriter`, **5 s** debounce) are triggered by:
   - every logged message (`CompanionStateStore.refresh()`),
   - each reflection,
   - each memory-summary (mental model) update,
-  - a character switch or look change (immediately, with the new portrait),
+  - a rename of the character on screen (`VRMModelRegistry`),
+  - a character load or look change (through `refreshPortrait`, written at
+    once with the new portrait),
   - the widgets toggle.
 
   A pending write is flushed when the app backgrounds; otherwise the
   debounce task would be suspended with the app and never land. Every
   write calls `WidgetCenter.reloadAllTimelines()`.
-- **Privacy switch**: **Autonomy → Presence → "Companion widgets"**
-  (`PresenceSettings.showWidgets`). Turning it off deletes the snapshot and
-  thumbnails, and the widgets fall back to an empty state.
+- **Privacy switch**: **Autonomy → Between sessions → "Companion widgets"**
+  (`PresenceSettings.showWidgets`, default on). Turning it off deletes the
+  snapshot and thumbnails, and the widgets fall back to an empty state.
 - **Widgets** (`NeuraLinkWidgets` extension):
 
-  | Widget | Families | Shows |
+  | Widget (kind) | Families | Shows |
   |---|---|---|
-  | **Companion** | `systemSmall`, `systemMedium` | Live portrait on a clear-sky blue gradient (`WidgetPalette`, the same blues as the Memory page's hero card), heart-ring relationship meter, the **featured line**, chips for last chat · memories · days together. The featured line is the memory sentence whenever one exists, else the opener ("Coming up next time"); the medium widget quotes it in a frosted card, the small widget in two lines under the meter, so every widget carries one sentence of memory |
-  | **Come back** | `accessoryCircular`, `accessoryRectangular`, `accessoryInline` | Relationship gauge, name · stage, time since last chat, the featured line |
+  | **Companion** (`com.neuralink.widget.companion`) | `systemSmall`, `systemMedium` | Live portrait on a clear-sky blue gradient (`WidgetPalette`, the same blues as `AppTheme.Gradient.memory` on the Memory page's hero card), heart-ring relationship meter and the **featured line**: the memory sentence whenever one exists, else the opener ("Coming up next time"). The medium widget quotes it in a frosted card with chips for last chat · memories · days together; the small widget puts it in up to three lines under the meter, with the last-chat chip. Both scale the quote down (to 75 %) before truncating |
+  | **Come back** (`com.neuralink.widget.comeback`) | `accessoryCircular`, `accessoryRectangular`, `accessoryInline` | Relationship gauge, name · stage, time since last chat, the featured line |
 
   On a tinted home screen (accented / vibrant rendering) the gradient is
   dropped and the heart ring and gauge are marked `widgetAccentable`.
@@ -148,8 +155,10 @@ extension. It provides:
 - **Remember something** (`RememberIntent`): `normalise` rewrites first-person
   dictation into a third-person fact ("my dentist is on Friday" → "User's
   dentist is on Friday."). The fact is stored with `MemoryRetain.retainFact`
-  (source `siri`), the instructions are refreshed, and Siri confirms in the
-  second person.
+  (source `siri`) as an undated `world` fact, the instructions are
+  refreshed, and Siri confirms in the second person. With Memory off it
+  answers as Ask memory does; a fact that `retainFact` rejects gets "That was
+  too short to remember."
 - **Phrases** (`NeuraLinkShortcuts`): "Talk to <character> in NeuraLink",
   "Ask NeuraLink what I said", "Remember this in NeuraLink", plus variants.
 
@@ -159,20 +168,19 @@ extension. It provides:
 
 ```mermaid
 flowchart TD
-    BG["📱 app backgrounded<br/>SessionLifecycle"] --> POLICY{"keep talking on · live status<br/>· no Low Power · not hot?"}
+    BG["📱 app backgrounded<br/>SessionLifecycle"] --> BEGIN["BackgroundSessionKeeper<br/>beginBackgroundIfAllowed()"]
+    BEGIN --> POLICY{"keep talking on · live status<br/>· no Low Power · not hot?"}
     POLICY --> D1["no"] --> ENDED["sessionEnded('background')<br/>reflection runs"]
-    POLICY --> D2["yes"] --> KEEP["BackgroundSessionKeeper<br/>beginBackgroundIfAllowed()"]
+    POLICY --> D2["yes"] --> NOTICE["still listening notification"]
+    D2 --> WATCH["watchdog every 30 s"]
 
-    KEEP --> NOTICE["still listening notification"]
-    KEEP --> ACT["Live Activity<br/>(CompanionActivityController)"]
-    KEEP --> WATCH["watchdog every 30 s"]
-
+    GUARD["⚠️ memory warning · thermal<br/>· power-state change"] --> CHECK
     WATCH --> CHECK{"idle ≥ limit · Low Power<br/>· thermal · memory warning?"}
     CHECK --> D3["no"] --> WATCH
     CHECK --> D4["yes"] --> STOP["endBackgroundSession()<br/>sessionEnded(reason)"]
     STOP --> ENGINE["OpenAI disconnect()<br/>or local suspendForBackground()"]
 
-    FG["↩️ app foregrounded"] --> BACK["didEnterForeground()<br/>clear notice"]
+    FG["↩️ app foregrounded"] --> BACK["didEnterForeground()<br/>stop watchdog · clear notice"]
     BACK --> WAS{"keeper disconnected?"}
     WAS --> D5["yes"] --> RECON["connect() / startListening()"]
     WAS --> D6["no"] --> SAME["session continues"]
@@ -181,7 +189,7 @@ flowchart TD
     classDef core fill:#0f172a,stroke:#7c3aed,color:#a78bfa
     classDef decision fill:#1e293b,stroke:#94a3b8,color:#e2e8f0
 
-    class KEEP,NOTICE,ACT,WATCH,STOP,ENGINE,BACK,RECON,ENDED core
+    class BEGIN,NOTICE,WATCH,STOP,ENGINE,BACK,RECON,ENDED core
     class POLICY,CHECK,WAS decision
 
     %% Data nodes (consistent system-wide)
@@ -197,20 +205,20 @@ flowchart TD
     POLL --> LIVE{"live status?"}
     LIVE --> D1["no"] --> ENDACT["activity.end(.immediate)"]
     LIVE --> D2["yes"] --> EXISTS{"activity running?"}
-    EXISTS --> D3["no · background talk on"] --> START["Activity.request()<br/>phase + last line"]
+    EXISTS --> D3["no · background talk on<br/>· activities enabled"] --> START["Activity.request()<br/>phase + last line"]
     EXISTS --> D4["yes"] --> UPDATE["debounced update (500 ms)"]
     START --> ISLAND["Lock screen + Dynamic Island"]
     UPDATE --> ISLAND
 
-    REFL["🧠 message · reflection · memory summary<br/>· widgets toggle"] --> WRITER["CompanionSnapshotWriter<br/>5 s debounce · flush on background"]
-    MODEL["🧍 character switch · look change"] --> PORTRAIT["refreshPortrait<br/>idle pose → live portrait PNG"]
+    REFL["🧠 message · reflection · memory summary<br/>· rename · widgets toggle"] --> WRITER["CompanionSnapshotWriter<br/>5 s debounce · flush on background"]
+    MODEL["🧍 character load · look change"] --> PORTRAIT["refreshPortrait<br/>idle pose → live portrait PNG"]
     PORTRAIT --> WRITER
     WRITER --> TOGGLE{"Companion widgets on?"}
     TOGGLE --> D5["no"] --> CLEAR["CompanionSnapshotStore.clear()"]
     TOGGLE --> D6["yes"] --> SNAP["companion-snapshot.json<br/>+ thumbnails (App Group)"]
     SNAP --> RELOAD["WidgetCenter.reloadAllTimelines()"]
     CLEAR --> RELOAD
-    RELOAD --> WIDGETS["Companion · Come back widgets<br/>hourly → 6-hourly timeline"]
+    RELOAD --> WIDGETS["Companion · Come back widgets<br/>timeline +0 … 24 h"]
 
     %% Styles
     classDef core fill:#0f172a,stroke:#7c3aed,color:#a78bfa
@@ -261,10 +269,10 @@ flowchart TD
 | `Data/DataSources/Companion/SessionLifecycle.swift` | Defers `sessionDidEnd` while the keeper holds the session |
 | `Data/DataSources/LocalLLM/Manager/LocalLLMManager+Audio.swift` | `.allowBluetoothHFP`, `suspendForBackground()` |
 | `Data/DataSources/Companion/PresenceSettings.swift` | `keepTalkingInBackground`, `backgroundIdleMinutes`, `showWidgets` |
-| `Presentation/Views/Settings/AutonomySettingsView.swift` | Background audio section, "Companion widgets" toggle |
+| `Presentation/Views/Settings/AutonomySettingsView.swift` | "Keep talking in background" + "End after silence" (Talking), "Companion widgets" (Between sessions) |
 | `Data/DataSources/BeyondApp/CompanionActivityController.swift` | Starts, updates and ends the Live Activity |
 | `NeuraLinkShared/CompanionActivityAttributes.swift` | Activity payload (app + extension) |
-| `NeuraLinkShared/CompanionSnapshot.swift` | `CompanionSnapshot` + `CompanionSnapshotStore` (App Group JSON, thumbnails) |
+| `NeuraLinkShared/CompanionSnapshot.swift` | `CompanionSnapshot` + `CompanionSnapshotStore` (App Group JSON, thumbnails, protected writes) |
 | `Data/DataSources/BeyondApp/CompanionSnapshotWriter.swift` | Builds and writes the snapshot (memory-summary line, stats, live portrait), background flush, reloads widgets |
 | `Core/Engine/VRM/Appearance/VRMPartThumbnailRenderer.swift` | `.portrait` subject + `renderPortrait(of:recolorsFrom:)` for the widget picture |
 | `NeuraLinkWidgets/NeuraLinkWidgetsBundle.swift` | Extension entry point |
@@ -273,7 +281,7 @@ flowchart TD
 | `App/AppIntents/CompanionIntents.swift` | Intents, `CharacterEntity`, `IntentTimeout`, `NeuraLinkShortcuts` |
 | `App/ContentView.swift` | Consumes `AppIntentRequests.pendingCharacter` |
 | `NeuraLinkTests/BeyondApp/BackgroundSessionTests.swift` | Keep-alive policy |
-| `NeuraLinkTests/BeyondApp/CompanionSnapshotTests.swift` | Snapshot model |
+| `NeuraLinkTests/BeyondApp/CompanionSnapshotTests.swift` | Snapshot model, memory line, live portrait |
 | `NeuraLinkTests/App/AppIntentTests.swift` | Character matching, first → third person normalisation, timeout |
 
 ## Integration notes
@@ -282,25 +290,29 @@ flowchart TD
   `NSSupportsLiveActivities = YES`.
 - **Targets**: `NeuraLinkWidgets` (`com.dedicatus.NeuraLink.Widgets`) is
   embedded through "Embed Foundation Extensions". It shares
-  `NeuraLinkShared/` with the app and has no llama or WebRTC dependencies.
-  Both entitlements files carry the App Group
+  `NeuraLinkShared/` with the app and has no package dependencies (no llama
+  or WebRTC). Both entitlements files carry the App Group
   `group.com.dedicatus.NeuraLink`.
-- **Data protection**: the App Group snapshot is the only companion data
-  outside the protected sandbox. It is plaintext by design, so it holds only
-  labels, the opener and one short observation.
+- **Data protection**: the App Group snapshot and thumbnails are the only
+  companion data outside the protected sandbox. They are written with
+  `.completeFileProtectionUntilFirstUserAuthentication` (so lock-screen
+  widgets and the Live Activity still render) and excluded from backup on
+  every write, because an atomic write replaces the file and drops the flag.
+  The content holds only labels, the opener, one short memory line and
+  counts ([APP_SECURITY.md](../Security/APP_SECURITY.md)).
 - **App Review honesty**: background audio is opt-in, and it ends on
   silence, Low Power Mode, heat or memory pressure. It is never left
   running idle.
 - **Reflection boundary**: a kept-alive session still gets exactly one
-  `sessionDidEnd`, when the keeper ends it or the next foreground/new-chat
-  boundary fires.
+  `sessionDidEnd`: when the keeper ends it, or at the next ordinary boundary
+  (a backgrounding that is not kept alive, a new chat, a character switch).
 
 ## Known device-test items
 
 - Lock the screen mid-conversation with AirPods, on both engines. Confirm the
   orange indicator, continued replies, the idle disconnect, and reconnect on
   return. Confirm that a phone call pauses and resumes cleanly.
-- The local 1B model on a 4 GB device may be jetsammed in the background. A
+- The local model on a 4 GB device may be jetsammed in the background. A
   memory warning ends the session, but check how often it happens.
 - Live Activity: it appears on lock, phase changes show within about a
   second, "Reconnecting…" shows during a reconnect, and the activity ends on
