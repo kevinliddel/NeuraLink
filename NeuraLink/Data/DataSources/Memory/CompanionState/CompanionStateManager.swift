@@ -44,10 +44,14 @@ final class CompanionStateManager {
         // Fresh keepsakes: the first build stamps them celebrated and the line
         // holds for the session (stable block), then it disappears for good.
         let keepsake = CompanionMilestoneTracker.celebrationLine(character: characterName, store: store)
+        // The character's own side (Inner life): mood, what it did while
+        // apart, a story it may share — held for the visit like the absence.
+        let inner = CompanionInnerLife.shared.lines(
+            character: characterName, stage: affinity.label, absent: absence != nil, compact: compact)
 
         // If nothing meaningful is known, don't inject noise.
         if preferenceLines.isEmpty && relationship == nil && tone == nil && absence == nil
-            && grounding.isEmpty && traits.isEmpty && carryOver == nil && keepsake == nil {
+            && grounding.isEmpty && traits.isEmpty && carryOver == nil && keepsake == nil && inner.isEmpty {
             return ""
         }
 
@@ -71,12 +75,13 @@ final class CompanionStateManager {
         }
         if let carryOver { out += "- \(carryOver)\n" }
         if let keepsake { out += "- \(keepsake)\n" }
-        out += """
-        - Behavior guidance: Keep personality consistent across turns. Use known preferences naturally when relevant. \
-        Pick up threads from your last conversation naturally when relevant — never act like a stranger. \
-        Avoid mentioning that you have a "relationship meter" or internal state.
-        [End Companion State]\n
-        """
+        for line in inner { out += "- \(line)\n" }
+        out += "- Behavior guidance: Keep personality consistent across turns. Use known preferences naturally when relevant. "
+            + "Pick up threads from your last conversation naturally when relevant — never act like a stranger. "
+        if CompanionInnerLife.shared.sharesInReturn(stage: affinity.label) {
+            out += LoreRules.mutualSharingGuidance + " "
+        }
+        out += "Avoid mentioning that you have a \"relationship meter\" or internal state.\n[End Companion State]\n"
         return out
     }
 

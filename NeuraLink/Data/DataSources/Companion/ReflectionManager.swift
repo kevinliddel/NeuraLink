@@ -42,6 +42,12 @@ final class ReflectionManager: @unchecked Sendable {
         /// Optional distilled personality note (Phase 2). Empty when the
         /// conversation revealed nothing new.
         let trait: String
+        /// AWAY: — one thing the companion did or dreamed while apart
+        /// (Inner life).
+        var awayLine: String = ""
+        /// MOOD: — how the talk left it (`CompanionMood` raw value, "" if
+        /// none was recognised).
+        var mood: String = ""
     }
 
     /// Trait pool bounds (Phase 2): at most this many per character; the
@@ -178,7 +184,9 @@ final class ReflectionManager: @unchecked Sendable {
             diary: reflection.diary,
             opener: reflection.opener,
             notificationLine: reflection.notificationLine,
-            lastMessageID: messages.map(\.id).max() ?? 0
+            lastMessageID: messages.map(\.id).max() ?? 0,
+            awayLine: reflection.awayLine,
+            mood: reflection.mood
         )
         guard journalID > 0 else { return }
         CompanionMilestoneTracker.note(.firstDiary, character: character)
@@ -283,6 +291,9 @@ final class ReflectionManager: @unchecked Sendable {
         NOTIFY2: a different notification for two hours later if they still haven't come back — \
         same rules, new angle, never repeating NOTIFY.
         NOTIFY3: another one for later still — same rules, different again.
+        AWAY: one short first-person sentence about something small you did, thought about or dreamed \
+        between now and the next time you see \(who) — in character, nothing about \(who) that isn't in the conversation.
+        MOOD: one word for how this conversation left you: \(CompanionMood.promptVocabulary).
         TRAIT: one short note about the user's habits or your dynamic with them — ONLY if the \
         conversation clearly revealed something new; otherwise omit this line entirely.
         Mention only things that are actually in the conversation. Never invent facts.
@@ -313,6 +324,7 @@ final class ReflectionManager: @unchecked Sendable {
     /// Returns nil when no usable diary was produced.
     static func parse(_ raw: String) -> Reflection? {
         var diary = "", opener = "", notify = "", notify2 = "", notify3 = "", trait = "", head = ""
+        var away = "", mood = ""
         var current = ""
 
         for rawLine in raw.split(whereSeparator: \.isNewline) {
@@ -327,6 +339,10 @@ final class ReflectionManager: @unchecked Sendable {
                 current = "n3"; notify3 = rest
             } else if let rest = strip(label: "NOTIFY:", from: line) {
                 current = "n"; notify = rest
+            } else if let rest = strip(label: "AWAY:", from: line) {
+                current = "a"; away = rest
+            } else if let rest = strip(label: "MOOD:", from: line) {
+                current = "m"; mood = rest
             } else if let rest = strip(label: "TRAIT:", from: line) {
                 current = "t"; trait = rest
             } else {
@@ -336,6 +352,8 @@ final class ReflectionManager: @unchecked Sendable {
                 case "n": notify += " " + line
                 case "n2": notify2 += " " + line
                 case "n3": notify3 += " " + line
+                case "a": away += " " + line
+                case "m": mood += " " + line
                 case "t": trait += " " + line
                 default: head += (head.isEmpty ? "" : " ") + line
                 }
@@ -349,9 +367,13 @@ final class ReflectionManager: @unchecked Sendable {
         notify = clean(notify, cap: notifyCap)
         let extras = [clean(notify2, cap: notifyCap), clean(notify3, cap: notifyCap)].filter { !$0.isEmpty }
         trait = clean(trait, cap: 100)
+        away = clean(away, cap: 160)
+        // Only the six moods the body and the prompt know; anything else is "none".
+        let moodKey = CompanionMood.parse(mood)?.rawValue ?? ""
         guard !diary.isEmpty else { return nil }
         return Reflection(
-            diary: diary, opener: opener, notificationLine: notify, extraNotificationLines: extras, trait: trait)
+            diary: diary, opener: opener, notificationLine: notify, extraNotificationLines: extras, trait: trait,
+            awayLine: away, mood: moodKey)
     }
 
     // MARK: - Trait pool (Phase 2)

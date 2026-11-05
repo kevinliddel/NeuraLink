@@ -130,15 +130,18 @@ final class ProactivePresenceManager {
 
         let character = RealtimeChatState.shared.selectedCharacterName
         let entry = MemoryStore.shared.latestUnusedOpener(character: character)
+        // What the character did while apart (Inner life), told once.
+        let awayLine = CompanionInnerLife.shared.awayLineForGreeting(character: character)
         let hour = Calendar.current.component(.hour, from: Date())
         let event = Self.greetingEvent(
             opener: entry?.opener,
             hoursAway: hours,
-            timeOfDay: Self.timeOfDayDescriptor(hour: hour)
+            timeOfDay: Self.timeOfDayDescriptor(hour: hour),
+            awayLine: awayLine
         )
         let japanese = Self.greetingEventJapanese(
             name: Self.japaneseCueName(), opener: entry?.opener,
-            hoursAway: hours, timeOfDay: Self.timeOfDayJapanese(hour: hour))
+            hoursAway: hours, timeOfDay: Self.timeOfDayJapanese(hour: hour), awayLine: awayLine)
 
         guard engage(with: event, japanese: japanese) else { return false }
         hasGreetedSinceForeground = true
@@ -230,17 +233,27 @@ final class ProactivePresenceManager {
         }
     }
 
-    nonisolated static func greetingEvent(opener: String?, hoursAway: Double, timeOfDay: String) -> String {
+    /// `awayLine`: what the character did while apart (Inner life), worked
+    /// in after the saved thought.
+    nonisolated static func greetingEvent(
+        opener: String?, hoursAway: Double, timeOfDay: String, awayLine: String? = nil
+    ) -> String {
         let away = hoursAway >= 48
             ? "\(Int(hoursAway / 24)) days"
             : "\(Int(hoursAway)) hours"
+        var event: String
         if let opener, !opener.isEmpty {
-            return "*The user has returned after about \(away) away. It's \(timeOfDay). "
+            event = "*The user has returned after about \(away) away. It's \(timeOfDay). "
                 + "Greet them warmly back in character, working in this thought you'd saved "
-                + "for them: \"\(opener)\"*"
+                + "for them: \"\(opener)\""
+        } else {
+            event = "*The user has returned after about \(away) away. It's \(timeOfDay). "
+                + "Greet them warmly back in character and ask what they've been up to."
         }
-        return "*The user has returned after about \(away) away. It's \(timeOfDay). "
-            + "Greet them warmly back in character and ask what they've been up to.*"
+        if let awayLine, !awayLine.isEmpty {
+            event += " On your side, while you were apart: \"\(awayLine)\" — mention it in a few words if it fits."
+        }
+        return event + "*"
     }
 
     nonisolated static func timeOfDayJapanese(hour: Int) -> String {
@@ -259,11 +272,13 @@ final class ProactivePresenceManager {
     /// line for a scene, it writes one. The saved opener only rides along when
     /// it is itself Japanese.
     nonisolated static func greetingEventJapanese(
-        name: String, opener: String?, hoursAway: Double, timeOfDay: String
+        name: String, opener: String?, hoursAway: Double, timeOfDay: String, awayLine: String? = nil
     ) -> String {
         let away = hoursAway >= 48 ? "\(Int(hoursAway / 24))日" : "\(Int(hoursAway))時間"
         var task = "温かく迎えて、最近どうしていたか尋ねる。"
         if let opener, isJapanese(opener) { task = "温かく迎えて、「\(opener.prefix(60))」という話を自然に入れる。" }
+        // The away line rides along only when it is itself Japanese.
+        if let awayLine, isJapanese(awayLine) { task += "自分の近況「\(awayLine.prefix(60))」にも軽く触れる。" }
         return lineTask(name: name, scene: "相手が約\(away)ぶりに戻ってきた。今は\(timeOfDay)。", task: task, avoid: nil)
     }
 

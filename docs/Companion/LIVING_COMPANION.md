@@ -140,6 +140,8 @@ OPENER:  one short, warm line to greet the user with next time
 NOTIFY:  one or two short sentences (25 words max) inviting the user back
 NOTIFY2: a different one for two hours later, never repeating NOTIFY
 NOTIFY3: another one, different again
+AWAY:    one short first-person line about something it did or dreamed while apart
+MOOD:    one word: bright, playful, calm, tender, wistful or weary
 TRAIT:   optional — a new habit/dynamic note, only if clearly revealed
 ```
 
@@ -147,8 +149,9 @@ Replies are parsed as labelled lines, not JSON, because 1–2B local models
 can't be trusted to produce valid JSON. Content can wrap onto the next lines.
 Unlabelled leading text counts as the diary, because the local prompt ends
 with `DIARY:`. Each field is trimmed and capped (diary 300, opener 200, each
-notify line 220, trait 100 chars). If no diary comes back, nothing is stored.
-The prompt forbids inventing facts.
+notify line 220, away line 160, trait 100 chars); a mood outside the six
+words is dropped. If no diary comes back, nothing is stored. The prompt
+forbids inventing facts.
 
 - **Routing**: if OpenAI is enabled and has a valid key, the call goes to
   `OpenAIChatClient` (240 tokens, temperature 0.6 where the model allows
@@ -271,10 +274,12 @@ preset.
   - known preferences (up to 6),
   - up to 3 traits,
   - the carry-over line (see Cross-session carry-over),
-  - the keepsake celebration line (see Keepsake milestones).
+  - the keepsake celebration line (see Keepsake milestones),
+  - the inner-life lines: the mood, the away line and a story to share
+    (see Inner life).
 
-  On `.llama1b` it is compact: 3 preferences, 2 traits and the short forms
-  of the time-apart and grounding lines. The LLM-jp (`llmJp3`) path leaves it
+  On `.llama1b` it is compact: 3 preferences, 2 traits, the short forms
+  of the time-apart and grounding lines, and no story line. The LLM-jp (`llmJp3`) path leaves it
   out. When nothing is known, it returns `""`. It sits in the system prompt
   rather than in `LocalLLMPromptStore.effectivePrompt`, so it never
   overwrites a prompt the user has saved.
@@ -526,6 +531,48 @@ at a time; a repeat record never shows anything, because only the first
 the chat log, not a learned trait. Nothing in the app deletes them;
 `deleteMilestones(character:)` is used by tests only.
 
+## Inner life
+
+The companion has a side of its own, so the relationship is not one-way.
+The switch is AI Settings → Autonomy → Between sessions → **Inner life**
+(on in Balanced and Lively, off in Quiet). Three things, chosen once per
+foreground visit and held like the time-apart line so the prompt block
+stays stable for the session (`CompanionInnerLife`):
+
+- **Stories the stage unlocks.** Each bundled character has nine authored
+  fragments in its own voice (`CharacterLoreCatalogue`): three *Quirks and
+  stories* that open at Friends, three *Worries and hopes* at Good Friends
+  and three of *The harder things* at Close (`LoreTier`). One is offered
+  per visit as a Companion State line ("Something of your own you may
+  share this session, when there is a natural opening…"): an untold one
+  from the highest open tier first, so a new stage is felt on its first
+  visit, else the story told longest ago once it has rested for three days
+  (`LoreRules.offer`). Offering stamps `companion_lore_reveals`, and the
+  journal lists what has been shared under **Their stories**. Once stories
+  are open, the guidance also asks the persona to answer a vulnerable
+  moment with something real of its own rather than generic sympathy.
+  Imported characters have no catalogue and never open up this way, and
+  the `.llama1b` tier skips the story line.
+- **While you were apart.** The reflection writes an `AWAY:` line, one
+  small thing the character did, thought about or dreamed, in character
+  and never about the user. It is told once: the absence greeting works it
+  in after the saved opener, and the Companion State block carries it for
+  a visit that began an hour or more after the last turn (the gap the
+  time-apart line needs). Whichever runs first stamps `away_told`.
+- **Mood in the body.** The reflection also names a `MOOD:`: bright,
+  playful, calm, tender, wistful or weary (`CompanionMood`; near-synonyms
+  such as "happy" or "tired" map onto them). For 24 hours it does three
+  things: a Companion State line ("Your mood coming into this session:
+  wistful — quieter, thoughtful…"), a weighting of the idle pool (quiet
+  moods favour `relax` and `waiting`, lively ones the energetic male
+  clips) and a resting face, low `happy` / `relaxed` / `sad` weights under
+  the emotion system while no emotion plays, fading out over the first
+  ten minutes after the character loads (`VRMMetalState+Mood`). The mood
+  is read once, when the character is shown (`carryMood`).
+
+Reset Personality clears the reveal history along with the diary, so the
+stories can be told again.
+
 ## Cross-session carry-over
 
 `CompanionStateManager.carryOverLine` adds one line to the Companion State
@@ -618,10 +665,12 @@ flowchart TD
     LC --> D1["sessionDidEnd(conversationID)"] --> REFL["ReflectionManager"]
     HTTP["OpenAIChatClient /<br/>runSilentGeneration"] --> REFL
 
-    REFL --> D2["diary + opener + trait"] --> SQL["companion_journal<br/>persona_traits"]
+    REFL --> D2["diary + opener + trait<br/>away line + mood"] --> SQL["companion_journal<br/>persona_traits<br/>companion_lore_reveals"]
     REFL --> D3["NOTIFY lines<br/>or generic"] --> NOTIF["CompanionNotificationScheduler"]
 
-    SQL --> D4["traits + diary"] --> CSM["CompanionStateManager<br/>[Companion State] block"]
+    SQL --> D4["traits + diary<br/>mood · away line"] --> CSM["CompanionStateManager<br/>[Companion State] block"]
+    LORE["CharacterLoreCatalogue"] --> D12["stage-gated story"] --> CSM
+    SQL --> D13["mood"] --> BODY["VRMMetalState+Mood<br/>idle weights · resting face"]
     CLK --> D10["visit start"] --> CSM
     SQL --> D5["unused opener"] --> PPM["ProactivePresenceManager"]
     CLK --> D6["time signals"] --> PPM
@@ -635,11 +684,11 @@ flowchart TD
     classDef core fill:#0f172a,stroke:#7c3aed,color:#a78bfa
     classDef decision fill:#1e293b,stroke:#94a3b8,color:#e2e8f0
 
-    class LC,CLK,REFL,HTTP,SQL,NOTIF,CSM,PPM,DESK,JUI,ENG core
+    class LC,CLK,REFL,HTTP,SQL,NOTIF,CSM,PPM,DESK,JUI,ENG,LORE,BODY core
 
     %% Data nodes (consistent system-wide)
     classDef data fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
-    class D1,D2,D3,D4,D5,D6,D7,D8,D9,D10,D11 data
+    class D1,D2,D3,D4,D5,D6,D7,D8,D9,D10,D11,D12,D13 data
 ```
 
 ### Reflection and notification
@@ -691,7 +740,7 @@ flowchart TD
     GUARD --> D2["yes"] --> GREETED{"greeted this<br/>foreground stretch?"}
 
     GREETED --> D3["no"] --> AWAY{"away ≥ threshold and<br/>user hasn't spoken?"}
-    AWAY --> D4["yes"] --> GREET["greetingEvent<br/>(opener or generic)"]
+    AWAY --> D4["yes"] --> GREET["greetingEvent<br/>(opener or generic,<br/>+ away line once)"]
     AWAY --> D5["no (latch)"] --> SMALL
     GREETED --> D6["yes"] --> SMALL{"< 2 small talks this launch<br/>and silence ≥ base × 3ⁿ?"}
 
@@ -760,6 +809,13 @@ flowchart TD
 | `Data/DataSources/Memory/Store/MemoryStore+Milestones.swift` | `companion_milestones` CRUD (`INSERT OR IGNORE` record, oldest-first read, celebrated flag) |
 | `Data/DataSources/Memory/CompanionState/CompanionMilestoneTracker.swift` | `note` / `refreshDerived` / once-only `celebrationLine` |
 | `Presentation/Views/Journal/CompanionKeepsakesSection.swift` | Badge grid in the journal; dims keepsakes not yet reached |
+| `Domain/Entities/Companion/CompanionLore.swift` | `LoreTier`, `LoreFragment`, `LoreReveal` and pure `LoreRules` (offer order, rest, prompt line) |
+| `Domain/Entities/Companion/CharacterLoreCatalogue.swift` | The authored fragments of the bundled characters, nine each |
+| `Domain/Entities/Companion/CompanionMood.swift` | The six moods: parsing, prompt line, idle weights, resting face, fade |
+| `Data/DataSources/Memory/CompanionState/CompanionInnerLife.swift` | Per-visit hold of the story, the away line and the mood; the greeting and body hooks |
+| `Data/DataSources/Memory/Store/MemoryStore+Lore.swift` | `companion_lore_reveals` CRUD |
+| `Core/Engine/VRM/UI/VRMMetalState+Mood.swift` | Mood-weighted idle pick and the fading resting face |
+| `Presentation/Views/Journal/CompanionLoreSection.swift` | "Their stories" in the journal |
 | `Presentation/Views/Overlays/RelationshipMeterBarOverlay.swift` | Meter overlay; tap opens the Journal |
 | `Data/DataSources/Companion/ProactivePresenceManager.swift` | Absence greeting + silence small talk loop; shared `engage(with:)` |
 | `Presentation/Views/Settings/AutonomySettingsView.swift` | Autonomy screen: preset header + the Talking / Seeing / Between sessions / Knowing your day cards |
@@ -875,3 +931,9 @@ shows the permission status, the pending count and the next fire date.
   after 10+ min away greets once, that leaving for the away threshold starts
   the resting loop and coming back ends it, and that a pose or the phone
   still win over the loop.
+- Inner life: after a session that ends wistful, check the next load reads
+  quieter (the resting face for the first minutes, more `relax` /
+  `waiting` idles) and the first lines carry it; that the away line is
+  heard once, in the greeting or the first reply, never both; and that a
+  story offered at Friends is told once in the session and then listed
+  under Their stories.

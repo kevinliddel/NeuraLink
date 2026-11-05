@@ -218,6 +218,16 @@ struct AutonomySettingsView: View {
                 }
             }
             FeatureToggleRow(
+                symbol: "moon.stars.fill", tint: .indigo,
+                title: "Inner life", subtitle: "Opens up about itself as you grow close, and carries its mood between chats.",
+                info: "As the friendship deepens the character shares things about itself — quirks and stories first, "
+                    + "then worries and hopes, then the harder things — and answers what you share with something of its own. "
+                    + "After a chat it decides how it felt and what it did while you were away, and carries that into the next one: "
+                    + "in its first lines, in how it stands, and in its face for the first few minutes. "
+                    + "The between-sessions part needs Companion Presence. "
+                    + "What it has shared is listed in the journal under \"Their stories\".",
+                isOn: $presence.innerLifeEnabled)
+            FeatureToggleRow(
                 symbol: "calendar.badge.clock", tint: .orange,
                 title: "Follow up on plans", subtitle: "Brings up a date you mentioned, before and after.",
                 info: "When you mention something with a date — a trip, an appointment, a birthday — the character brings it up the day before and asks how it went afterwards. Notifications need the toggle above; \"Not this\" on a notification silences that plan.",

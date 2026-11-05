@@ -27,7 +27,8 @@ extension AutonomyPreset {
             followUps: presence.followUpsEnabled,
             widgets: presence.showWidgets,
             engagement: presence.isProactiveEngagementEnabled,
-            gestures: MotionSettings.shared.isEnabled)
+            gestures: MotionSettings.shared.isEnabled,
+            innerLife: presence.innerLifeEnabled)
     }
 
     /// The preset the current switches match, or nil for a custom mix.
@@ -53,6 +54,7 @@ extension AutonomyPreset {
             presence.isProactiveEngagementEnabled = flags.engagement
         }
         if MotionSettings.shared.isEnabled != flags.gestures { MotionSettings.shared.isEnabled = flags.gestures }
+        if presence.innerLifeEnabled != flags.innerLife { presence.innerLifeEnabled = flags.innerLife }
         nlLog("[Autonomy] preset applied: \(rawValue)", level: .info)
     }
 }
