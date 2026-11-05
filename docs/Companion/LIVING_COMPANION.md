@@ -295,11 +295,12 @@ preset.
     journal closes, then the read-only transcript opens in ContentView's
     full-screen cover), its diary entries (swipe to delete; an entry shows
     the picture of the character's world adopted by that reflection, when
-    there is one) and the keepsakes reached; "Nothing on this day." or "Not
-    yet." otherwise. With no day selected, the month's diary entries and
-    keepsakes newest first. Day grouping uses the device calendar and time
-    zone (`JournalCalendarModel`), so a late-night chat lands on the day you
-    lived it, not the UTC day SQLite stored.
+    there is one, and tapping the picture opens it full screen in
+    `ZoomableImageViewer`) and the keepsakes reached; "Nothing on this
+    day." or "Not yet." otherwise. With no day selected, the month's diary
+    entries and keepsakes newest first. Day grouping uses the device
+    calendar and time zone (`JournalCalendarModel`), so a late-night chat
+    lands on the day you lived it, not the UTC day SQLite stored.
   - **Keepsakes**: the badge grid (see Keepsake milestones).
   - **Personality**: traits, swipe to delete.
   - **Reset Personality**: after a confirmation, deletes the diary (with its
@@ -473,7 +474,10 @@ directory:
 A reflection adopts the latest capture if it is under three hours old:
 the file is copied to `journal-<id>.jpg` and its name stored in
 `companion_journal.snapshot_file`. The journal shows it under the entry
-and deletes it with the entry (and on Reset Personality); the first return
+(a tap opens it full screen, growing out of the thumbnail's rectangle
+and shrinking back into it on close; pinch or double-tap to zoom, drag to
+pan while zoomed, pull up or down to close, and a Share button) and
+deletes it with the entry (and on Reset Personality); the first return
 notification attaches it. No capture is ever posed: it is whatever the
 character was doing, which is the point.
 
@@ -748,6 +752,7 @@ flowchart TD
 | `Domain/Entities/Character/AnimationCatalogue.swift` | Per-gender base loop, idles, resting loop and pose mapping |
 | `Presentation/Views/Journal/JournalCalendarView.swift` | Month grid, activity dots, swipe / chevrons, Today |
 | `Presentation/Views/Journal/JournalDaySection.swift` | Selected-day or month list under the calendar; hands transcripts to ContentView's full-screen cover |
+| `Presentation/Components/ZoomableImageViewer.swift` | Full-screen picture viewer for diary pictures: zooms out of the tapped thumbnail (`WindowFrameProbe` reads its window rectangle) and back into it, pinch / double-tap zoom around the fingers, edge-clamped pan, pull to close |
 | `Data/DataSources/Companion/CompanionPortrait.swift` | Character face for the journal and Memory hero card (live portrait, else bundled thumbnail) |
 | `Data/DataSources/Companion/KeepsakeUnlockController.swift` | Queue + lifetime for the "Keepsake collected" capsule |
 | `Presentation/Views/Overlays/KeepsakeUnlockCapsule.swift` | The capsule itself: badge, title, haptic, tap or 5 s to dismiss |
@@ -859,7 +864,12 @@ shows the permission status, the pending count and the next fire date.
 - Diary pictures: confirm a capture is written while idle (log
   `[SceneCapture]`), that a diary entry made after a session shows it in
   the journal, and that the first return notification carries the image.
-  Check the capture on the way to the background actually lands.
+  Check the capture on the way to the background actually lands. Tap a
+  diary picture: it should grow out of its thumbnail with no slide-up or
+  flash, zoom around the pinch, pan without opening an empty band at an
+  edge, and shrink back into the thumbnail when closed by the button or a
+  pull, also for a picture further down a scrolled journal; tapping the
+  entry's text must not open it.
 - Desk presence: with the camera on, confirm the gaze follows your head
   the right way (if it mirrors, flip `FaceGaze.mirrorX`), that sitting down
   after 10+ min away greets once, that leaving for the away threshold starts

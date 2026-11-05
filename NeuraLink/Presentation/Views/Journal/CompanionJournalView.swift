@@ -5,9 +5,10 @@
 //  The companion's journal — Living Companion (docs/Companion/LIVING_COMPANION.md).
 //  Everything the character "remembers and becomes" is visible and
 //  deletable here (trust + App Store safety): the relationship stage, a
-//  calendar of the days you talked with the diary and keepsakes on them,
-//  distilled personality traits, and a reset. Opened by tapping the
-//  relationship meter capsule.
+//  calendar of the days you talked with the diary and keepsakes on them
+//  (diary pictures open full screen in ZoomableImageViewer), distilled
+//  personality traits, and a reset. Opened by tapping the relationship
+//  meter capsule.
 //
 //  Created by Dedicatus on 08/09/2026. Calendar redesign 13/10/2026.
 //
@@ -29,6 +30,7 @@ struct CompanionJournalView: View {
     @State private var portrait: UIImage?
     @State private var daysTogether = 0
     @State private var confirmReset = false
+    @State private var viewedPicture: ViewedPicture?
 
     private let calendar = Calendar.current
 
@@ -49,6 +51,9 @@ struct CompanionJournalView: View {
                     calendar: calendar,
                     onClear: { withAnimation(.snappy) { selectedDay = nil } },
                     onOpenConversation: openTranscript,
+                    onOpenPicture: { picture in
+                        ZoomableImageViewer.withoutCoverSlide { viewedPicture = picture }
+                    },
                     onDelete: deleteEntry
                 )
                 CompanionKeepsakesSection(character: character)
@@ -73,6 +78,7 @@ struct CompanionJournalView: View {
             } message: {
                 Text("Deletes the diary and every learned personality note. Chat history, keepsakes and remembered facts are kept.")
             }
+            .zoomableImageViewer($viewedPicture)
             .onAppear { reload() }
             .onChange(of: month) { _, _ in reloadMonth() }
         }

@@ -4,8 +4,9 @@
 //
 //  What the journal shows under the calendar — Living Companion
 //  (docs/Companion/LIVING_COMPANION.md): the selected day's conversations (opening
-//  their read-only transcripts), diary entries and keepsakes, or, with no
-//  day selected, the month's diary and keepsakes newest first.
+//  their read-only transcripts), diary entries (a tap on a diary picture
+//  opens it full screen) and keepsakes, or, with no day selected, the
+//  month's diary and keepsakes newest first.
 //
 //  Created by Dedicatus on 13/10/2026.
 //
@@ -21,6 +22,7 @@ struct JournalDaySection: View {
     var now = Date()
     let onClear: () -> Void
     let onOpenConversation: (Int64) -> Void
+    let onOpenPicture: (ViewedPicture) -> Void
     let onDelete: (JournalEntry) -> Void
 
     var body: some View {
@@ -138,14 +140,11 @@ struct JournalDaySection: View {
                 .font(.subheadline)
             if let url = CompanionSceneCapture.journalURL(named: entry.snapshotFile),
                let picture = UIImage(contentsOfFile: url.path) {
-                Image(uiImage: picture)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 150)
-                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous))
-                    .padding(.top, 4)
-                    .accessibilityLabel("A picture of your companion's world that day")
+                DiaryPictureButton(
+                    picture: picture,
+                    caption: entry.createdAt.formatted(.dateTime.weekday(.abbreviated).day().month().hour().minute()),
+                    onOpen: onOpenPicture)
+                .padding(.top, 4)
             }
         }
         .padding(.vertical, 2)
@@ -166,12 +165,50 @@ struct JournalDaySection: View {
         }
     }
 
-    static func dayTitle(_ day: Date) -> String {
+    nonisolated static func dayTitle(_ day: Date) -> String {
         day.formatted(.dateTime.weekday(.wide).day().month(.wide))
     }
 
     static func title(of conversation: Conversation?) -> String {
         let title = conversation?.title.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return title.isEmpty ? "Untitled chat" : title
+    }
+}
+
+/// A diary picture under its entry. A tap opens the full-screen viewer,
+/// which grows out of exactly this rectangle and shrinks back into it.
+private struct DiaryPictureButton: View {
+    let picture: UIImage
+    let caption: String
+    let onOpen: (ViewedPicture) -> Void
+
+    @State private var probe = WindowFrameProbe()
+
+    private static let label = "A picture of your companion's world that day"
+    private static let shape = RoundedRectangle(cornerRadius: AppTheme.Radius.medium, style: .continuous)
+
+    var body: some View {
+        // Borderless, so only the picture opens the viewer, not the whole
+        // row (a List row with a button otherwise fires on any tap).
+        Button {
+            onOpen(ViewedPicture(
+                image: picture,
+                label: Self.label,
+                caption: caption,
+                sourceFrame: probe.frame,
+                sourceCornerRadius: AppTheme.Radius.medium))
+        } label: {
+            Image(uiImage: picture)
+                .resizable()
+                .scaledToFill()
+                .frame(maxWidth: .infinity)
+                .frame(height: 150)
+                .clipShape(Self.shape)
+                .contentShape(Self.shape)
+                .windowFrameProbe(probe)
+        }
+        .buttonStyle(.borderless)
+        .accessibilityLabel(Self.label)
+        .accessibilityHint("Shows the whole picture")
     }
 }
