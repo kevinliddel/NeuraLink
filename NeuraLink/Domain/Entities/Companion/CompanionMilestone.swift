@@ -85,6 +85,9 @@ struct CompanionMilestone: Identifiable, Equatable, Sendable {
     let achievedAt: Date
     /// When the persona first brought it up; nil until then.
     let celebratedAt: Date?
+    /// What the keepsake's object in the room shows (KeepsakeRoomRules):
+    /// the song "Title — Artist", a picture file name, or nothing.
+    var note = ""
 
     var id: String { kind.rawValue }
     var celebrated: Bool { celebratedAt != nil }

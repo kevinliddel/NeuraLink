@@ -32,6 +32,9 @@ struct EnvironmentOption: Identifiable, Hashable {
     /// See `EnvironmentRenderer.resolvesDuplicateFaces`: for exports that
     /// carry a back-face shell or coplanar copies (pool, modern apartment).
     var resolvesDuplicateFaces = false
+    /// Where the keepsake table stands in this scene (world metres, yaw);
+    /// nil takes `KeepsakeRoomRules.defaultTable`, beside the character.
+    var keepsakeTable: RoomSpot?
 
     static func == (lhs: EnvironmentOption, rhs: EnvironmentOption) -> Bool { lhs.id == rhs.id }
     func hash(into hasher: inout Hasher) { hasher.combine(id) }

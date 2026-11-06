@@ -92,6 +92,12 @@ public class VRMMaterial {
         return isTransparent && zWriteEnabled
     }
 
+    /// A runtime material (procedural props): a name, every factor at its
+    /// default — the caller sets what it needs.
+    public init(name: String?) {
+        self.name = name
+    }
+
     /// Field-for-field copy (part grafts re-home a donor material under new
     /// texture indices). Texture objects are shared, not duplicated.
     public init(copying other: VRMMaterial) {

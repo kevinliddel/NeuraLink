@@ -113,6 +113,9 @@ public class VRMModel: @unchecked Sendable {
     /// Rigid props hanging off humanoid bones (see VRMModel+Props).
     public var props: [VRMPropAttachment] = []
 
+    /// Rigid props standing in the world (see VRMModel+SceneProps).
+    public var sceneProps: [VRMScenePlacement] = []
+
     // MARK: - Runtime State
 
     /// Base URL for resolving relative resource paths (set during loading).

@@ -46,7 +46,8 @@ struct UserSettingsView: View {
                 
                 Section(header: Text("Environment Settings")) {
                     Toggle("Show 3D Environment", isOn: Bindable(settings).showEnvironment)
-                    
+                    Toggle("Keepsakes on the table", isOn: Bindable(settings).showKeepsakes)
+
                     if settings.showEnvironment {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 12) {

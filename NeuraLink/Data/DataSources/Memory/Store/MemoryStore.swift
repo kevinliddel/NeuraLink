@@ -292,6 +292,12 @@ final class MemoryStore {
             celebrated_at DATETIME,
             PRIMARY KEY (character, kind)
         );
+        CREATE TABLE IF NOT EXISTS companion_lore_reveals (
+            character TEXT NOT NULL,
+            fragment TEXT NOT NULL,
+            revealed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (character, fragment)
+        );
         CREATE TABLE IF NOT EXISTS api_usage (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             created_at REAL NOT NULL,
@@ -354,6 +360,24 @@ final class MemoryStore {
         // reflection adopted. Nullable, no backfill.
         if !columnExists(table: "companion_journal", column: "snapshot_file") {
             _ = sqlite3_exec(db, "ALTER TABLE companion_journal ADD COLUMN snapshot_file TEXT;", nil, nil, nil)
+        }
+        // Inner life: what the companion did while apart, whether it has
+        // been told, and the mood the session left. No backfill.
+        if !columnExists(table: "companion_journal", column: "away_line") {
+            _ = sqlite3_exec(
+                db,
+                """
+                ALTER TABLE companion_journal ADD COLUMN away_line TEXT NOT NULL DEFAULT '';
+                ALTER TABLE companion_journal ADD COLUMN away_told INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE companion_journal ADD COLUMN mood TEXT NOT NULL DEFAULT '';
+                """,
+                nil, nil, nil)
+        }
+        // A room that remembers: what a keepsake's object shows (song
+        // title, picture file). Older rows show their fallbacks.
+        if !columnExists(table: "companion_milestones", column: "note") {
+            _ = sqlite3_exec(
+                db, "ALTER TABLE companion_milestones ADD COLUMN note TEXT NOT NULL DEFAULT '';", nil, nil, nil)
         }
         // Gender label for imported characters (CharacterGender); rows
         // from before the column keep the female clip pools they had.
