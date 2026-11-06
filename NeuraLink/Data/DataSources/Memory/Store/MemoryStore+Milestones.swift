@@ -15,17 +15,19 @@ import SQLCipher
 
 extension MemoryStore {
 
-    /// Records a milestone for a character. Returns true only the first time.
+    /// Records a milestone for a character, with what its object in the
+    /// room shows (`note`). Returns true only the first time.
     @discardableResult
-    func recordMilestone(character: String, kind: MilestoneKind) -> Bool {
+    func recordMilestone(character: String, kind: MilestoneKind, note: String = "") -> Bool {
         lock.lock()
         defer { lock.unlock() }
-        let query = "INSERT OR IGNORE INTO companion_milestones (character, kind) VALUES (?, ?);"
+        let query = "INSERT OR IGNORE INTO companion_milestones (character, kind, note) VALUES (?, ?, ?);"
         var statement: OpaquePointer?
         var inserted = false
         if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
             sqlite3_bind_text(statement, 1, (character as NSString).utf8String, -1, nil)
             sqlite3_bind_text(statement, 2, (kind.rawValue as NSString).utf8String, -1, nil)
+            sqlite3_bind_text(statement, 3, (note as NSString).utf8String, -1, nil)
             if sqlite3_step(statement) == SQLITE_DONE {
                 inserted = sqlite3_changes(db) > 0
             } else {
@@ -43,7 +45,7 @@ extension MemoryStore {
         lock.lock()
         defer { lock.unlock() }
         let query = """
-        SELECT kind, achieved_at, celebrated_at FROM companion_milestones
+        SELECT kind, achieved_at, celebrated_at, note FROM companion_milestones
         WHERE character = ? ORDER BY achieved_at ASC, kind ASC;
         """
         var statement: OpaquePointer?
@@ -60,7 +62,8 @@ extension MemoryStore {
                         kind: kind,
                         character: character,
                         achievedAt: Self.parseSQLiteTimestamp(achievedRaw) ?? Date(),
-                        celebratedAt: celebratedRaw.flatMap(Self.parseSQLiteTimestamp)
+                        celebratedAt: celebratedRaw.flatMap(Self.parseSQLiteTimestamp),
+                        note: sqlite3_column_text(statement, 3).map { String(cString: $0) } ?? ""
                     ))
             }
         }

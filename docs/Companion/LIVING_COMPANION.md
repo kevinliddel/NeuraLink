@@ -531,6 +531,63 @@ at a time; a repeat record never shows anything, because only the first
 the chat log, not a learned trait. Nothing in the app deletes them;
 `deleteMilestones(character:)` is used by tests only.
 
+## A room that remembers
+
+The keepsakes are also objects in the scene. A small round side table
+stands on the floor at the character's left, a little behind their line
+(`KeepsakeRoomRules.defaultTable`, world (−0.5, −0.02, −0.4), inside the
+default portrait framing; a scene can put it elsewhere through
+`EnvironmentOption.keepsakeTable`), and every keepsake the character on
+screen has collected stands on it:
+
+| Keepsake | On the table |
+|---|---|
+| First hello | a folded place card with the date |
+| First diary entry | a standing frame with that entry's diary picture; a closed notebook with the character's name when the entry has none |
+| First photo shared | a polaroid of the first photo, when memory kept its thumbnail; a blank polaroid otherwise |
+| First shared song | a record sleeve with the song's title and artist on the cover |
+| First game together | a die |
+| One week / 30 days / 100 days together | one potted plant that grows: a sprout, then in leaf, then in flower |
+
+Each object has its own fixed place (`KeepsakeRoomRules.slot`), so nothing
+shuffles when a new one arrives; the table itself appears with the first
+keepsake and the character's own set follows a character switch.
+
+**What the objects show.** `companion_milestones.note` keeps it: the song as
+"Title — Artist" (`KeepsakeRoomRules.songNote`), the diary entry's
+`snapshot_file`, the photo thumbnail's file name. Keepsakes recorded before
+the column existed show their fallbacks, and a diary keepsake without a
+note borrows the character's oldest diary picture
+(`MemoryStore.firstJournalPicture`).
+
+**Building and placing.** Everything is procedural, with nothing to
+download: `PropMeshBuilder` makes boxes, cylinders and faces in the
+renderer's vertex layout, `KeepsakeArt` paints the card, cover, sleeve,
+pips, leaf and flower with CoreGraphics, and `KeepsakePropFactory`
+assembles each object as a `VRMProp` with toon materials (a picture keeps
+its texture in shadow through `shadeMultiplyTexture`, whose index is moved
+into the model's texture array on placement). `CompanionRoom` builds each
+object once per character (textures decode off the main thread) and
+places it on the displayed model with `VRMModel.placeProp`
+(VRMModel+SceneProps): root-level nodes drawn by the renderer's rigid path
+along with the character, so they share its light, self-shadow map and
+draw list; pre-yawed for VRM 0.x models; left out of the figure's bounding
+box and of the heel lift; re-appended after a composition restore.
+`VRMSceneView` calls `attachRoom` after `display`; a keepsake recorded
+mid-session (`CompanionMilestoneTracker.note`) adds its object on the
+spot, as the capsule rises; and the table follows the environment setting
+and the switch every frame (`updateRoom`).
+
+**The persona.** `[Companion State]` carries one line, "Keepsakes on the
+small table beside you, real objects in your room (mention one only when it
+fits, never list them): …", with each object in words
+(`KeepsakeRoomRules.describe`). It changes only when a keepsake lands, the
+same moment the celebration line does, and is left out of the compact tier.
+
+**Switch.** Settings → Environment Settings → "Keepsakes on the table"
+(`UserSettings.showKeepsakes`, on by default) hides the table and its
+objects and drops the prompt line.
+
 ## Inner life
 
 The companion has a side of its own, so the relationship is not one-way.
@@ -665,12 +722,15 @@ flowchart TD
     LC --> D1["sessionDidEnd(conversationID)"] --> REFL["ReflectionManager"]
     HTTP["OpenAIChatClient /<br/>runSilentGeneration"] --> REFL
 
-    REFL --> D2["diary + opener + trait<br/>away line + mood"] --> SQL["companion_journal<br/>persona_traits<br/>companion_lore_reveals"]
+    REFL --> D2["diary + opener + trait<br/>away line + mood"] --> SQL["companion_journal<br/>persona_traits<br/>companion_lore_reveals<br/>companion_milestones"]
     REFL --> D3["NOTIFY lines<br/>or generic"] --> NOTIF["CompanionNotificationScheduler"]
 
     SQL --> D4["traits + diary<br/>mood · away line"] --> CSM["CompanionStateManager<br/>[Companion State] block"]
     LORE["CharacterLoreCatalogue"] --> D12["stage-gated story"] --> CSM
     SQL --> D13["mood"] --> BODY["VRMMetalState+Mood<br/>idle weights · resting face"]
+    SQL --> D14["keepsakes + notes"] --> ROOM["CompanionRoom<br/>KeepsakePropFactory"]
+    ROOM --> D15["objects on the table"] --> SCENE["VRMModel+SceneProps<br/>3D scene"]
+    ROOM --> D16["table line"] --> CSM
     CLK --> D10["visit start"] --> CSM
     SQL --> D5["unused opener"] --> PPM["ProactivePresenceManager"]
     CLK --> D6["time signals"] --> PPM
@@ -684,11 +744,11 @@ flowchart TD
     classDef core fill:#0f172a,stroke:#7c3aed,color:#a78bfa
     classDef decision fill:#1e293b,stroke:#94a3b8,color:#e2e8f0
 
-    class LC,CLK,REFL,HTTP,SQL,NOTIF,CSM,PPM,DESK,JUI,ENG,LORE,BODY core
+    class LC,CLK,REFL,HTTP,SQL,NOTIF,CSM,PPM,DESK,JUI,ENG,LORE,BODY,ROOM,SCENE core
 
     %% Data nodes (consistent system-wide)
     classDef data fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
-    class D1,D2,D3,D4,D5,D6,D7,D8,D9,D10,D11,D12,D13 data
+    class D1,D2,D3,D4,D5,D6,D7,D8,D9,D10,D11,D12,D13,D14,D15,D16 data
 ```
 
 ### Reflection and notification
@@ -806,9 +866,16 @@ flowchart TD
 | `Data/DataSources/Companion/KeepsakeUnlockController.swift` | Queue + lifetime for the "Keepsake collected" capsule |
 | `Presentation/Views/Overlays/KeepsakeUnlockCapsule.swift` | The capsule itself: badge, title, haptic, tap or 5 s to dismiss |
 | `Domain/Entities/Companion/CompanionMilestone.swift` | `MilestoneKind` (titles, symbols, day thresholds), `CompanionMilestone`, pure `MilestoneRules` |
-| `Data/DataSources/Memory/Store/MemoryStore+Milestones.swift` | `companion_milestones` CRUD (`INSERT OR IGNORE` record, oldest-first read, celebrated flag) |
-| `Data/DataSources/Memory/CompanionState/CompanionMilestoneTracker.swift` | `note` / `refreshDerived` / once-only `celebrationLine` |
+| `Data/DataSources/Memory/Store/MemoryStore+Milestones.swift` | `companion_milestones` CRUD (`INSERT OR IGNORE` record with its `note`, oldest-first read, celebrated flag) |
+| `Data/DataSources/Memory/CompanionState/CompanionMilestoneTracker.swift` | `note` / `refreshDerived` / once-only `celebrationLine`; tells the room about a new keepsake |
 | `Presentation/Views/Journal/CompanionKeepsakesSection.swift` | Badge grid in the journal; dims keepsakes not yet reached |
+| `Domain/Entities/Companion/KeepsakeRoom.swift` | `RoomObjectKind`, `RoomObject`, `RoomSpot` / `RoomSlot`, pure `KeepsakeRoomRules` (objects, slots, placement, words) |
+| `Core/Engine/VRM/Props/PropMeshBuilder.swift` | Procedural boxes, cylinders and faces into a `VRMPrimitive` |
+| `Core/Engine/VRM/Props/KeepsakeArt.swift` | Painted textures: card, notebook, sleeve, blank polaroid, pips, leaf, flower |
+| `Core/Engine/VRM/Props/KeepsakePropFactory.swift` | The table and one `VRMProp` per object kind |
+| `Core/Engine/VRM/Props/VRMModel+SceneProps.swift` | `placeProp` / `moveSceneProp` / `setSceneProp` / `removeSceneProp`, VRM 0.x pre-yaw, restore |
+| `Data/DataSources/Companion/CompanionRoom.swift` | Builds once per character, places, follows the environment / switch / new keepsakes; the prompt line |
+| `Core/Engine/VRM/UI/VRMMetalState+Room.swift` | `attachRoom` / `refreshRoom` / per-frame `updateRoom` |
 | `Domain/Entities/Companion/CompanionLore.swift` | `LoreTier`, `LoreFragment`, `LoreReveal` and pure `LoreRules` (offer order, rest, prompt line) |
 | `Domain/Entities/Companion/CharacterLoreCatalogue.swift` | The authored fragments of the bundled characters, nine each |
 | `Domain/Entities/Companion/CompanionMood.swift` | The six moods: parsing, prompt line, idle weights, resting face, fade |
@@ -937,3 +1004,12 @@ shows the permission status, the pending count and the next fire date.
   heard once, in the greeting or the first reply, never both; and that a
   story offered at Friends is told once in the session and then listed
   under Their stories.
+- A room that remembers: with at least one keepsake, the table should
+  stand at the character's left in every environment without sinking into
+  the floor or a wall (give a scene its own `EnvironmentOption.keepsakeTable`
+  if it does), and on the same side for a VRM 0.x character (Ekaterina) as
+  for a 1.x one. The frame should show the first diary picture the right
+  way up and lit like the character; a keepsake landing mid-session should
+  appear on the table as the capsule rises; the switch should hide
+  everything at once; and the objects should keep their shading in the
+  shaded half of the day.

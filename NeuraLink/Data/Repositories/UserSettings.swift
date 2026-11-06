@@ -22,8 +22,15 @@ final class UserSettings {
     private let selectedCharacterKey = "com.neuralink.user.selectedCharacter"
     private let windKey = "com.neuralink.user.wind"
     private let windForImportedKey = "com.neuralink.user.windForImported"
+    private let showKeepsakesKey = "com.neuralink.user.showKeepsakes"
     var showEnvironment: Bool {
         didSet { UserDefaults.standard.set(showEnvironment, forKey: showEnvironmentKey) }
+    }
+
+    /// The keepsake table beside the character (a room that remembers,
+    /// docs/Companion/LIVING_COMPANION.md). On by default.
+    var showKeepsakes: Bool {
+        didSet { UserDefaults.standard.set(showKeepsakes, forKey: showKeepsakesKey) }
     }
     
     var selectedEnvironment: String {
@@ -102,6 +109,7 @@ final class UserSettings {
         }
         
         self.selectedEnvironment = UserDefaults.standard.string(forKey: selectedEnvironmentKey) ?? "city"
+        self.showKeepsakes = UserDefaults.standard.object(forKey: showKeepsakesKey) as? Bool ?? true
         self.wind = UserDefaults.standard.object(forKey: windKey) as? Bool ?? true
         self.windForImported = UserDefaults.standard.bool(forKey: windForImportedKey)
         self.selectedCharacter = UserDefaults.standard.string(forKey: selectedCharacterKey)

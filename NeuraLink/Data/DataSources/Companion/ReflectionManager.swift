@@ -189,12 +189,13 @@ final class ReflectionManager: @unchecked Sendable {
             mood: reflection.mood
         )
         guard journalID > 0 else { return }
-        CompanionMilestoneTracker.note(.firstDiary, character: character)
         nlLogSensitive("[Reflection] \(character) diary: \(reflection.diary)", level: .info)
         // The picture of her world that goes with this entry: the latest
         // candid capture of the scene, if this session produced one.
         let snapshotFile = CompanionSceneCapture.keepForJournal(entryID: journalID)
         if let snapshotFile { MemoryStore.shared.setJournalSnapshot(id: journalID, file: snapshotFile) }
+        // The first entry's picture goes into the frame on the keepsake table.
+        CompanionMilestoneTracker.note(.firstDiary, character: character, note: snapshotFile ?? "")
         await MainActor.run { CompanionSnapshotWriter.shared.scheduleRefresh() }
 
         recordTrait(character: character, trait: reflection.trait)

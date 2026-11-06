@@ -48,10 +48,14 @@ final class CompanionStateManager {
         // apart, a story it may share — held for the visit like the absence.
         let inner = CompanionInnerLife.shared.lines(
             character: characterName, stage: affinity.label, absent: absence != nil, compact: compact)
+        // What stands on the keepsake table in the scene (a room that
+        // remembers); it only changes when a keepsake lands. Not for the
+        // smallest tier.
+        let room = compact ? nil : CompanionRoom.shared.promptLine(character: characterName)
 
         // If nothing meaningful is known, don't inject noise.
         if preferenceLines.isEmpty && relationship == nil && tone == nil && absence == nil
-            && grounding.isEmpty && traits.isEmpty && carryOver == nil && keepsake == nil && inner.isEmpty {
+            && grounding.isEmpty && traits.isEmpty && carryOver == nil && keepsake == nil && inner.isEmpty && room == nil {
             return ""
         }
 
@@ -75,6 +79,7 @@ final class CompanionStateManager {
         }
         if let carryOver { out += "- \(carryOver)\n" }
         if let keepsake { out += "- \(keepsake)\n" }
+        if let room { out += "- \(room)\n" }
         for line in inner { out += "- \(line)\n" }
         out += "- Behavior guidance: Keep personality consistent across turns. Use known preferences naturally when relevant. "
             + "Pick up threads from your last conversation naturally when relevant — never act like a stranger. "

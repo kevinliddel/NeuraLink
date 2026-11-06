@@ -310,7 +310,9 @@ final class SongRecognitionManager {
     func presentMatch(_ song: RecognizedSong, emotion: String = "surprised") {
         phase = .matched(song)
         RealtimeChatState.shared.triggerEmotion(emotion, duration: 2.5)
-        CompanionMilestoneTracker.note(.firstSharedSong)
+        // The first match becomes a sleeve on the keepsake table, with this song on it.
+        CompanionMilestoneTracker.note(
+            .firstSharedSong, note: KeepsakeRoomRules.songNote(title: song.title, artist: song.artist))
     }
 
     /// Setter seam for the +Session extension (`phase` stays `private(set)`

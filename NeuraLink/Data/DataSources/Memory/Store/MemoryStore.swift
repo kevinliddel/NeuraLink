@@ -373,6 +373,12 @@ final class MemoryStore {
                 """,
                 nil, nil, nil)
         }
+        // A room that remembers: what a keepsake's object shows (song
+        // title, picture file). Older rows show their fallbacks.
+        if !columnExists(table: "companion_milestones", column: "note") {
+            _ = sqlite3_exec(
+                db, "ALTER TABLE companion_milestones ADD COLUMN note TEXT NOT NULL DEFAULT '';", nil, nil, nil)
+        }
         // Gender label for imported characters (CharacterGender); rows
         // from before the column keep the female clip pools they had.
         if !columnExists(table: "imported_characters", column: "gender") {

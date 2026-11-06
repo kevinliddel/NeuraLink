@@ -136,11 +136,13 @@ extension VRMModel {
     /// would inflate the figure's box to tens of metres.
     var propMeshIDs: Set<ObjectIdentifier> {
         Set(props.flatMap { $0.meshes.map { ObjectIdentifier($0) } })
+            .union(sceneProps.flatMap { $0.meshes.map { ObjectIdentifier($0) } })
     }
 
     /// After `restoreBaseComposition`: props attached after the snapshot
     /// were truncated away with the grafts; put them back as they were.
     func reattachProps() {
+        reattachSceneProps()
         for attachment in props {
             let stillAttached = !attachment.nodes.isEmpty
                 && attachment.nodes.allSatisfy { node in nodes.contains { $0 === node } }

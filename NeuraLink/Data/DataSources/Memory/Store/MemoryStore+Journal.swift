@@ -138,6 +138,28 @@ extension MemoryStore {
         fetchJournal(where: "character = ?", bindText: character, limit: 1).first
     }
 
+    /// The oldest diary picture a character has — the frame on the
+    /// keepsake table, for a "first diary" keepsake noted before pictures
+    /// were kept with it.
+    func firstJournalPicture(character: String) -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        let query = """
+        SELECT snapshot_file FROM companion_journal
+        WHERE character = ? AND snapshot_file IS NOT NULL AND snapshot_file != '' ORDER BY id ASC LIMIT 1;
+        """
+        var statement: OpaquePointer?
+        var file: String?
+        if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
+            sqlite3_bind_text(statement, 1, (character as NSString).utf8String, -1, nil)
+            if sqlite3_step(statement) == SQLITE_ROW {
+                file = sqlite3_column_text(statement, 0).map { String(cString: $0) }
+            }
+        }
+        sqlite3_finalize(statement)
+        return file
+    }
+
     /// Spoken user turns added since the conversation's latest reflection
     /// (all of them when it has none) — reflection's ≥N-new-turns guard. A
     /// session boundary never resets the active conversation, so a plain

@@ -36,8 +36,8 @@ struct CompanionKeepsakesSection: View {
 
     private var footerLine: String {
         collected.isEmpty
-            ? "Shared firsts you collect together appear here."
-            : "\(collected.count) of \(MilestoneKind.allCases.count) collected."
+            ? "Shared firsts you collect together appear here — and on the small table beside them in the scene."
+            : "\(collected.count) of \(MilestoneKind.allCases.count) collected. Each one stands on the table beside them in the scene."
     }
 
     private func reload() {

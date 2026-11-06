@@ -185,6 +185,7 @@ extension VRMMetalState {
         updatePhoneEpisode(dt: dt)
         updateListeningEpisode(dt: dt)
         updateAwayEpisode(dt: dt)
+        updateRoom()
 
         if !isPlayingAppear {
             updateTalkingGesture(dt: dt, model: model)
