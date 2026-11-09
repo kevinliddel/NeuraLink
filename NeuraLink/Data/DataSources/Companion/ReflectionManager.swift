@@ -29,7 +29,10 @@ final class ReflectionManager: @unchecked Sendable {
     private static let transcriptTurns = 16
     /// Small on purpose: jetsam-safe on 4 GB devices, fits the ~30 s
     /// backgrounding window.
-    private static let maxTokens = 240
+    /// Room for every label at its cap; AWAY and MOOD sit before the
+    /// optional second and third notification lines (which have a generic
+    /// fallback) so a reply cut short still carries them.
+    private static let maxTokens = 280
     /// Catch-up ignores conversations older than this.
     private static let catchUpWindow: TimeInterval = 7 * 86_400
 
@@ -194,9 +197,13 @@ final class ReflectionManager: @unchecked Sendable {
         // candid capture of the scene, if this session produced one.
         let snapshotFile = CompanionSceneCapture.keepForJournal(entryID: journalID)
         if let snapshotFile { MemoryStore.shared.setJournalSnapshot(id: journalID, file: snapshotFile) }
-        // The first entry's picture goes into the frame on the keepsake table.
-        CompanionMilestoneTracker.note(.firstDiary, character: character, note: snapshotFile ?? "")
-        await MainActor.run { CompanionSnapshotWriter.shared.scheduleRefresh() }
+        // The first entry's picture goes into the frame on the keepsake
+        // table; the tracker reaches the capsule and the scene, so it runs
+        // on the main actor like the widget refresh.
+        await MainActor.run {
+            CompanionMilestoneTracker.note(.firstDiary, character: character, note: snapshotFile ?? "")
+            CompanionSnapshotWriter.shared.scheduleRefresh()
+        }
 
         recordTrait(character: character, trait: reflection.trait)
 
@@ -289,12 +296,12 @@ final class ReflectionManager: @unchecked Sendable {
         NOTIFY: one or two short sentences (25 words max) sent to \(who) as a phone notification — \
         a warm, conversational message in your own voice that picks up something specific from the \
         conversation and invites them back. Address them directly, never as "the user".
-        NOTIFY2: a different notification for two hours later if they still haven't come back — \
-        same rules, new angle, never repeating NOTIFY.
-        NOTIFY3: another one for later still — same rules, different again.
         AWAY: one short first-person sentence about something small you did, thought about or dreamed \
         between now and the next time you see \(who) — in character, nothing about \(who) that isn't in the conversation.
         MOOD: one word for how this conversation left you: \(CompanionMood.promptVocabulary).
+        NOTIFY2: a different notification for two hours later if they still haven't come back — \
+        same rules, new angle, never repeating NOTIFY.
+        NOTIFY3: another one for later still — same rules, different again.
         TRAIT: one short note about the user's habits or your dynamic with them — ONLY if the \
         conversation clearly revealed something new; otherwise omit this line entirely.
         Mention only things that are actually in the conversation. Never invent facts.

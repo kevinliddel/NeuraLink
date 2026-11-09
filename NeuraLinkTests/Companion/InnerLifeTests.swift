@@ -214,7 +214,8 @@ struct InnerLifeTests {
         // Same visit, same lines; the away line was stamped told on the first build.
         #expect(inner.lines(character: character, stage: "Friends", absent: true, compact: false) == lines)
         #expect(MemoryStore.shared.latestJournalEntry(character: character)?.awayTold == true)
-        #expect(inner.awayLineForGreeting(character: character) == "I watched the rain for a while.")
+        // The block carries it now, so a greeting in the same visit must not repeat it.
+        #expect(inner.awayLineForGreeting(character: character) == nil)
         // No lore for a character without a catalogue, so the compact tier reads the same.
         #expect(inner.lines(character: character, stage: "Friends", absent: true, compact: true) == lines)
         #expect(inner.sharesInReturn(stage: "Friends"))
@@ -232,6 +233,58 @@ struct InnerLifeTests {
         #expect(withAway.hasSuffix("*"))
         #expect(ProactivePresenceManager.greetingEvent(opener: nil, hoursAway: 7, timeOfDay: "morning", awayLine: "")
             == ProactivePresenceManager.greetingEvent(opener: nil, hoursAway: 7, timeOfDay: "morning"))
+    }
+
+    @Test("The greeting peeks at the away line; it is stamped told only once a greeting carried it")
+    func greetingAwayLineStampedWhenTold() {
+        let character = "innerlife-test-greeting"
+        cleanup(character)
+        defer { cleanup(character) }
+        let wasEnabled = PresenceSettings.shared.innerLifeEnabled
+        PresenceSettings.shared.innerLifeEnabled = true
+        defer { PresenceSettings.shared.innerLifeEnabled = wasEnabled }
+
+        _ = MemoryStore.shared.insertJournalEntry(
+            character: character, conversationID: 0, diary: "d", opener: "", notificationLine: "",
+            awayLine: "I fed the ducks.", mood: "")
+        let inner = CompanionInnerLife(store: .shared)
+
+        // A rejected cue leaves the line untold, and the next tick sees the same one.
+        #expect(inner.awayLineForGreeting(character: character) == "I fed the ducks.")
+        #expect(MemoryStore.shared.latestJournalEntry(character: character)?.awayTold == false)
+        #expect(inner.awayLineForGreeting(character: character) == "I fed the ducks.")
+        // Only the line that was actually carried stamps the entry.
+        inner.awayLineTold(character: character, line: "Something else.")
+        #expect(MemoryStore.shared.latestJournalEntry(character: character)?.awayTold == false)
+        inner.awayLineTold(character: character, line: "I fed the ducks.")
+        #expect(MemoryStore.shared.latestJournalEntry(character: character)?.awayTold == true)
+        #expect(inner.awayLineForGreeting(character: character) == nil)
+        // The prompt block built afterwards no longer carries it.
+        let lines = inner.lines(character: character, stage: "New", absent: true, compact: false)
+        #expect(!lines.contains { $0.contains("I fed the ducks.") })
+    }
+
+    @Test("A story is stamped shared only when a full prompt carries it; the compact tier leaves it for later")
+    func loreStampedOnlyWhenOffered() {
+        let character = "innerlife-test-offer"
+        cleanup(character)
+        defer { cleanup(character) }
+        let wasEnabled = PresenceSettings.shared.innerLifeEnabled
+        PresenceSettings.shared.innerLifeEnabled = true
+        defer { PresenceSettings.shared.innerLifeEnabled = wasEnabled }
+
+        let story = LoreFragment(id: "test.friends.1", tier: .friends, text: "I keep a jar of odd buttons, sorted by mood.")
+        let inner = CompanionInnerLife(store: .shared) { _ in [story] }
+
+        let compact = inner.lines(character: character, stage: "Friends", absent: false, compact: true)
+        #expect(!compact.contains { $0.contains("odd buttons") })
+        #expect(MemoryStore.shared.loreReveals(character: character).isEmpty)
+        let full = inner.lines(character: character, stage: "Friends", absent: false, compact: false)
+        #expect(full.contains { $0.contains("odd buttons") })
+        #expect(MemoryStore.shared.loreReveals(character: character).count == 1)
+        // Rebuilding the same visit's prompt does not stamp it again.
+        _ = inner.lines(character: character, stage: "Friends", absent: false, compact: false)
+        #expect(MemoryStore.shared.loreReveals(character: character).count == 1)
     }
 
     @Test("Inner life is on in Balanced and Lively, off in Quiet")

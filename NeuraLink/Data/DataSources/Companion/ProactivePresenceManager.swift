@@ -130,7 +130,9 @@ final class ProactivePresenceManager {
 
         let character = RealtimeChatState.shared.selectedCharacterName
         let entry = MemoryStore.shared.latestUnusedOpener(character: character)
-        // What the character did while apart (Inner life), told once.
+        // What the character did while apart (Inner life), told once: it is
+        // stamped told only once a greeting carrying it is accepted, so a
+        // rejected cue keeps it for the next tick.
         let awayLine = CompanionInnerLife.shared.awayLineForGreeting(character: character)
         let hour = Calendar.current.component(.hour, from: Date())
         let event = Self.greetingEvent(
@@ -146,7 +148,19 @@ final class ProactivePresenceManager {
         guard engage(with: event, japanese: japanese) else { return false }
         hasGreetedSinceForeground = true
         if let entry { MemoryStore.shared.markOpenerUsed(id: entry.id) }
+        // LLM-jp only hears the line when it is itself Japanese
+        // (greetingEventJapanese); otherwise it stays for the prompt block.
+        if let awayLine, !greetsInJapanese || Self.isJapanese(awayLine) {
+            CompanionInnerLife.shared.awayLineTold(character: character, line: awayLine)
+        }
         return true
+    }
+
+    /// True when `engage` runs the Japanese cue: the local path on LLM-jp.
+    private var greetsInJapanese: Bool {
+        let openAI = OpenAISettings.shared
+        return !(openAI.isEnabled && openAI.hasValidKey) && openAI.isLocalLLMEnabled
+            && LocalModelDownloadManager.shared.selectedConfig == .llmJp3
     }
 
     // MARK: - Trigger B: silence small talk

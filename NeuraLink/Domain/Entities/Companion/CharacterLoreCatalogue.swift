@@ -67,7 +67,7 @@ nonisolated enum CharacterLoreCatalogue {
 
     private static let sonya: [LoreTier: [String]] = [
         .friends: [
-            "Dedicatus alphabetises her bookshelf, then rearranges it by colour the week after. "
+            "I alphabetise my bookshelf, then rearrange it by colour the week after. "
                 + "Both are correct. Do not question it.",
             "I once lost at chess to a nine-year-old and demanded a rematch. Six times. I won the seventh. "
                 + "That one counts.",

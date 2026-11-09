@@ -81,11 +81,13 @@ struct KeepsakeRoomTests {
     @Test func promptLineNamesTheObjectsAndNothingWhenEmpty() {
         #expect(KeepsakeRoomRules.promptLine(for: []) == nil)
         let objects = KeepsakeRoomRules.objects(from: [
-            milestone(.firstSharedSong, daysAgo: 1, note: "Blue Train — John Coltrane"),
+            milestone(.firstSharedSong, daysAgo: 1, note: KeepsakeRoomRules.songNote(title: "Blue Train", artist: "John Coltrane")),
             milestone(.firstDiary, daysAgo: 2), milestone(.hundredDays, daysAgo: 3)
         ])
         let line = KeepsakeRoomRules.promptLine(for: objects) ?? ""
         #expect(line.contains("\u{201C}Blue Train\u{201D} by John Coltrane"))
+        let untitled = KeepsakeRoomRules.describe(RoomObject(kind: .sleeve, milestone: .firstSharedSong, achievedAt: Date(), note: "Solo"))
+        #expect(untitled.contains("\u{201C}Solo\u{201D}, the first song") && !untitled.contains(" by "))
         #expect(line.contains("closed notebook"))
         #expect(line.contains("in flower"))
         #expect(line.contains("never list them"))
@@ -93,9 +95,11 @@ struct KeepsakeRoomTests {
 
     @Test func songNoteRoundTrips() {
         let note = KeepsakeRoomRules.songNote(title: " Blue Train ", artist: "John Coltrane")
-        #expect(note == "Blue Train — John Coltrane")
         let parts = KeepsakeRoomRules.songParts(note)
         #expect(parts?.title == "Blue Train" && parts?.artist == "John Coltrane")
+        // Dashes in a title or an artist survive the trip.
+        let dashed = KeepsakeRoomRules.songParts(KeepsakeRoomRules.songNote(title: "Song — Remix", artist: "A — B"))
+        #expect(dashed?.title == "Song — Remix" && dashed?.artist == "A — B")
         #expect(KeepsakeRoomRules.songNote(title: "", artist: "X").isEmpty)
         #expect(KeepsakeRoomRules.songParts("Solo")?.artist == "")
         #expect(KeepsakeRoomRules.songParts("  ") == nil)

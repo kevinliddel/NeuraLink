@@ -222,6 +222,8 @@ struct CompanionJournalView: View {
         CompanionSceneCapture.removeJournalFile(named: entry.snapshotFile)
         MemoryStore.shared.deleteJournalEntry(id: entry.id)
         reload()
+        // The frame on the keepsake table may have shown this picture.
+        CompanionRoom.shared.refresh()
     }
 
     private func deleteTraits(at offsets: IndexSet) {
@@ -237,6 +239,7 @@ struct CompanionJournalView: View {
         MemoryStore.shared.deleteAllTraits(character: character)
         MemoryStore.shared.deleteLoreReveals(character: character)
         reload()
+        CompanionRoom.shared.refresh()
     }
 }
 

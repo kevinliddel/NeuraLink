@@ -138,12 +138,16 @@ answers with labelled lines:
 DIARY:   one or two first-person sentences about the talk and how it felt
 OPENER:  one short, warm line to greet the user with next time
 NOTIFY:  one or two short sentences (25 words max) inviting the user back
-NOTIFY2: a different one for two hours later, never repeating NOTIFY
-NOTIFY3: another one, different again
 AWAY:    one short first-person line about something it did or dreamed while apart
 MOOD:    one word: bright, playful, calm, tender, wistful or weary
+NOTIFY2: a different one for two hours later, never repeating NOTIFY
+NOTIFY3: another one, different again
 TRAIT:   optional — a new habit/dynamic note, only if clearly revealed
 ```
+
+The short `AWAY` and `MOOD` lines come before the optional second and third
+notifications, which have a generic fallback, so a reply that runs out of
+tokens still carries them.
 
 Replies are parsed as labelled lines, not JSON, because 1–2B local models
 can't be trusted to produce valid JSON. Content can wrap onto the next lines.
@@ -154,8 +158,8 @@ words is dropped. If no diary comes back, nothing is stored. The prompt
 forbids inventing facts.
 
 - **Routing**: if OpenAI is enabled and has a valid key, the call goes to
-  `OpenAIChatClient` (240 tokens, temperature 0.6 where the model allows
-  it). Otherwise it goes to `LocalLLMManager.runSilentGeneration` (240
+  `OpenAIChatClient` (280 tokens, temperature 0.6 where the model allows
+  it). Otherwise it goes to `LocalLLMManager.runSilentGeneration` (280
   tokens), and is skipped if the local model isn't loaded. That path writes
   nothing to the transcript or TTS and leaves the conversation's KV cache as
   it was. It starts only once the companion has been idle for 1.5 s (giving
@@ -553,12 +557,15 @@ Each object has its own fixed place (`KeepsakeRoomRules.slot`), so nothing
 shuffles when a new one arrives; the table itself appears with the first
 keepsake and the character's own set follows a character switch.
 
-**What the objects show.** `companion_milestones.note` keeps it: the song as
-"Title — Artist" (`KeepsakeRoomRules.songNote`), the diary entry's
-`snapshot_file`, the photo thumbnail's file name. Keepsakes recorded before
-the column existed show their fallbacks, and a diary keepsake without a
-note borrows the character's oldest diary picture
-(`MemoryStore.firstJournalPicture`).
+**What the objects show.** `companion_milestones.note` keeps it: the song's
+title and artist on two lines (`KeepsakeRoomRules.songNote`), the diary
+entry's `snapshot_file`, the photo thumbnail's file name. Keepsakes
+recorded before the column existed show their fallbacks. The frame shows
+its picture only while the file is still there: deleting the entry from the
+journal (or Reset Personality) removes it and asks the room to rebuild, so
+the frame borrows the character's oldest remaining diary picture
+(`MemoryStore.firstJournalPicture`) or becomes the notebook, and the prompt
+line says the same.
 
 **Building and placing.** Everything is procedural, with nothing to
 download: `PropMeshBuilder` makes boxes, cylinders and faces in the
@@ -604,8 +611,10 @@ stays stable for the session (`CompanionInnerLife`):
   share this session, when there is a natural opening…"): an untold one
   from the highest open tier first, so a new stage is felt on its first
   visit, else the story told longest ago once it has rested for three days
-  (`LoreRules.offer`). Offering stamps `companion_lore_reveals`, and the
-  journal lists what has been shared under **Their stories**. Once stories
+  (`LoreRules.offer`). The first full prompt of the visit that carries the
+  story stamps `companion_lore_reveals`, and the journal lists what has
+  been shared under **Their stories**; a visit whose prompts never carried
+  it (the compact tier) leaves it eligible. Once stories
   are open, the guidance also asks the persona to answer a vulnerable
   moment with something real of its own rather than generic sympathy.
   Imported characters have no catalogue and never open up this way, and
@@ -615,7 +624,11 @@ stays stable for the session (`CompanionInnerLife`):
   and never about the user. It is told once: the absence greeting works it
   in after the saved opener, and the Companion State block carries it for
   a visit that began an hour or more after the last turn (the gap the
-  time-apart line needs). Whichever runs first stamps `away_told`.
+  time-apart line needs). Whichever runs first stamps `away_told`, the
+  greeting only once its cue is accepted (a closed data channel or a busy
+  local model keeps the line for the next tick) and, on LLM-jp, only when
+  the line is Japanese and rode along; once the block has been built for
+  the visit, the greeting leaves the line to it.
 - **Mood in the body.** The reflection also names a `MOOD:`: bright,
   playful, calm, tender, wistful or weary (`CompanionMood`; near-synonyms
   such as "happy" or "tired" map onto them). For 24 hours it does three
@@ -764,8 +777,8 @@ flowchart TD
     TURNS --> D4["yes"] --> BGT["beginBackgroundTask<br/>detached .background"]
 
     BGT --> ENG{"OpenAI enabled<br/>+ valid key?"}
-    ENG --> D5["yes"] --> OAI["OpenAIChatClient<br/>240 tok, catalog reasoning_effort"]
-    ENG --> D6["no"] --> LOCAL["runSilentGeneration<br/>240 tok, model must be loaded"]
+    ENG --> D5["yes"] --> OAI["OpenAIChatClient<br/>280 tok, catalog reasoning_effort"]
+    ENG --> D6["no"] --> LOCAL["runSilentGeneration<br/>280 tok, model must be loaded"]
 
     OAI --> PARSE{"DIARY parsed?"}
     LOCAL --> PARSE
@@ -932,7 +945,7 @@ flowchart TD
   is held for 2 h, and the diary and traits only change at a session
   boundary. The game reminder rides after the history, so it never touches
   the prefix.
-- **4 GB devices**: reflection is one ≤ 240-token call made after the session
+- **4 GB devices**: reflection is one ≤ 280-token call made after the session
   has ended. It never loads a cold model in the background. If the engine
   isn't loaded, launch catch-up handles the conversation instead.
 - **Trust**: reflection prompts forbid invented facts. Everything the

@@ -25,7 +25,7 @@ enum CompanionMilestoneTracker {
             nlLog("[Milestone] \(key) collected \(kind.rawValue)", level: .info)
             KeepsakeUnlockController.shared.present(
                 CompanionMilestone(kind: kind, character: key, achievedAt: Date(), celebratedAt: nil, note: note))
-            CompanionRoom.shared.keepsakeRecorded()
+            CompanionRoom.shared.refresh()
         }
     }
 

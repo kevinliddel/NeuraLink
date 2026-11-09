@@ -47,14 +47,17 @@ final class CompanionRoom {
         EnvironmentCatalog.option(for: environment).keepsakeTable ?? KeepsakeRoomRules.defaultTable
     }
 
-    /// The objects a character's keepsakes make. A diary keepsake noted
-    /// before pictures were kept with it borrows the oldest diary picture.
+    /// The objects a character's keepsakes make. The frame shows its
+    /// picture only while the file is still there (deleting the entry from
+    /// the journal removes it); a diary keepsake without one borrows the
+    /// oldest diary picture that remains, else it is the notebook.
     func objects(character: String) -> [RoomObject] {
         KeepsakeRoomRules.objects(from: store.milestones(character: character)).map { object in
-            guard object.kind == .frame, object.note.isEmpty,
-                  let file = store.firstJournalPicture(character: character)
-            else { return object }
-            return RoomObject(kind: .frame, milestone: object.milestone, achievedAt: object.achievedAt, note: file)
+            guard object.kind == .frame else { return object }
+            if !object.note.isEmpty, CompanionSceneCapture.journalURL(named: object.note) != nil { return object }
+            let fallback = store.firstJournalPicture(character: character)
+                .flatMap { CompanionSceneCapture.journalURL(named: $0) != nil ? $0 : nil } ?? ""
+            return RoomObject(kind: .frame, milestone: object.milestone, achievedAt: object.achievedAt, note: fallback)
         }
     }
 
@@ -154,8 +157,9 @@ final class CompanionRoom {
         return changed
     }
 
-    /// A keepsake was just recorded: its object joins the table.
-    func keepsakeRecorded() {
+    /// Something the table shows changed — a keepsake was recorded, a diary
+    /// picture was deleted: the scene brings the table up to date.
+    func refresh() {
         VRMMetalState.active?.refreshRoom()
     }
 

@@ -49,7 +49,10 @@ enum KeepsakeArt {
     /// A record sleeve: a hue from the title, a faint note, title and artist.
     static func sleeve(title: String, artist: String) -> Data {
         paint(size: CGSize(width: side, height: side)) { context, bounds in
-            let hue = CGFloat(abs(title.hashValue % 360)) / 360
+            // FNV-1a over the title: `hashValue` is seeded per launch and
+            // would recolour the sleeve every time the app starts.
+            let hash = title.utf8.reduce(UInt64(2_166_136_261)) { ($0 ^ UInt64($1)) &* 16_777_619 }
+            let hue = CGFloat(hash % 360) / 360
             let top = UIColor(hue: hue, saturation: 0.55, brightness: 0.85, alpha: 1)
             let bottom = UIColor(hue: (hue + 0.08).truncatingRemainder(dividingBy: 1), saturation: 0.7, brightness: 0.45, alpha: 1)
             if let gradient = CGGradient(

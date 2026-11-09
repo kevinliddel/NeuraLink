@@ -156,11 +156,11 @@ enum KeepsakeRoomRules {
         case .polaroid:
             return "a polaroid of the first photo they showed you (\(day))"
         case .sleeve:
-            let song = songParts(object.note)
-            if let song {
-                return "the sleeve of \u{201C}\(song.title)\u{201D} by \(song.artist), the first song you identified together (\(day))"
+            guard let song = songParts(object.note) else {
+                return "the sleeve of the first song you identified together (\(day))"
             }
-            return "the sleeve of the first song you identified together (\(day))"
+            let credit = song.artist.isEmpty ? "" : " by \(song.artist)"
+            return "the sleeve of \u{201C}\(song.title)\u{201D}\(credit), the first song you identified together (\(day))"
         case .die:
             return "a die from your first game together (\(day))"
         case .plant:
@@ -181,19 +181,24 @@ enum KeepsakeRoomRules {
             + objects.map(describe).joined(separator: "; ") + "."
     }
 
-    /// "Title — Artist" as stored by the song keepsake.
+    /// The song keepsake's note: the title and the artist on their own
+    /// lines — a separator neither can contain, unlike a dash.
     static func songNote(title: String, artist: String) -> String {
-        let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let cleanArtist = artist.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanTitle = singleLine(title)
+        let cleanArtist = singleLine(artist)
         guard !cleanTitle.isEmpty else { return "" }
-        return cleanArtist.isEmpty ? cleanTitle : "\(cleanTitle) — \(cleanArtist)"
+        return cleanArtist.isEmpty ? cleanTitle : "\(cleanTitle)\n\(cleanArtist)"
     }
 
     static func songParts(_ note: String) -> (title: String, artist: String)? {
         let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
-        guard let range = trimmed.range(of: " — ") else { return (trimmed, "") }
-        return (String(trimmed[..<range.lowerBound]), String(trimmed[range.upperBound...]))
+        guard let range = trimmed.range(of: "\n") else { return (trimmed, "") }
+        return (singleLine(String(trimmed[..<range.lowerBound])), singleLine(String(trimmed[range.upperBound...])))
+    }
+
+    private static func singleLine(_ text: String) -> String {
+        text.replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private static func radians(_ degrees: Float) -> Float { degrees * .pi / 180 }
