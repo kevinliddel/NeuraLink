@@ -2,11 +2,12 @@
 //  KeepsakePropFactory.swift
 //  NeuraLink
 //
-//  Builds the keepsake props — the table and one object per RoomObjectKind
-//  — as VRMProps: procedural geometry (PropMeshBuilder), toon materials
-//  and painted (KeepsakeArt) or photographed textures. Every prop's local
-//  frame has its base at the origin, +Y up and +Z toward the viewer;
-//  KeepsakeRoomRules says where each one stands.
+//  Builds the keepsake props — one surface per KeepsakeSurface and one
+//  object per RoomObjectKind — as VRMProps: procedural geometry
+//  (PropMeshBuilder), toon materials and painted (KeepsakeArt) or
+//  photographed textures. Every prop's local frame has its base at the
+//  origin, +Y up and +Z toward the viewer; KeepsakeRoomRules says where
+//  each one stands.
 //
 //  Created by Dedicatus on 05/11/2026.
 //
@@ -20,18 +21,106 @@ enum KeepsakePropFactory {
     /// Painted images and photographs are decoded no larger than this.
     static let textureCap = 512
 
-    // MARK: - The table
+    // MARK: - The surfaces
 
-    /// A small round side table: top, stem and foot, in warm wood.
-    static func table(device: MTLDevice) -> VRMProp? {
-        var builder = PropMeshBuilder()
-        let height = KeepsakeRoomRules.tableHeight
-        builder.addCylinder(bottom: height - 0.025, top: height, bottomRadius: KeepsakeRoomRules.tableRadius,
-                            topRadius: KeepsakeRoomRules.tableRadius, segments: 32)
-        builder.addCylinder(bottom: 0.015, top: height - 0.025, bottomRadius: 0.022, topRadius: 0.022, segments: 16)
-        builder.addCylinder(bottom: 0, top: 0.015, bottomRadius: 0.13, topRadius: 0.13, segments: 24)
-        let wood = material("keepsake_table", colour: SIMD3<Float>(0.42, 0.27, 0.16))
-        return assemble("keepsake_table", device: device, materials: [wood], textures: [], meshes: [(builder, 0)])
+    /// What the keepsakes stand on; its slot origin is on the top, above
+    /// the prop's origin.
+    static func surface(_ surface: KeepsakeSurface, device: MTLDevice) -> VRMProp? {
+        switch surface {
+        case .table: return table(device: device)
+        case .suitcase: return suitcases(device: device)
+        case .chest: return chest(device: device)
+        }
+    }
+
+    /// A pedestal side table: a round top with chamfered edges in honey
+    /// wood, on a turned walnut stem — a collar under the top, a brass
+    /// ring, a long neck swelling into a baluster — over a domed foot.
+    private static func table(device: MTLDevice) -> VRMProp? {
+        let height = KeepsakeSurface.table.topHeight
+        let radius = KeepsakeRoomRules.tableRadius
+        var top = PropMeshBuilder()
+        turn([(height - 0.025, radius - 0.010), (height - 0.017, radius), (height - 0.007, radius), (height, radius - 0.007)],
+             segments: 40, into: &top)
+        var walnut = PropMeshBuilder()
+        turn([(0, 0.150), (0.012, 0.150), (0.040, 0.090), (0.060, 0.050), (0.080, 0.038), (0.200, 0.026),
+              (0.230, 0.044), (0.290, 0.044), (0.330, 0.024), (0.600, 0.030), (0.620, 0.034)],
+             segments: 28, into: &walnut)
+        turn([(0.630, 0.052), (height - 0.025, 0.064)], segments: 28, into: &walnut)
+        var brass = PropMeshBuilder()
+        turn([(0.620, 0.037), (0.630, 0.037)], segments: 28, into: &brass)
+        let honey = material("keepsake_table_top", colour: SIMD3<Float>(0.58, 0.40, 0.22))
+        let dark = material("keepsake_table_stem", colour: SIMD3<Float>(0.34, 0.21, 0.12))
+        let ring = material("keepsake_table_brass", colour: SIMD3<Float>(0.74, 0.60, 0.30))
+        return assemble("keepsake_table", device: device, materials: [honey, dark, ring], textures: [],
+                        meshes: [(top, 0), (walnut, 1), (brass, 2)])
+    }
+
+    /// Two vintage suitcases set down flat and stacked, the smaller on
+    /// top: leather bodies with overhanging lids, corner guards, two
+    /// straps each, brass latches at the seam and a handle on the lower
+    /// one's front. The keepsakes stand on the upper lid.
+    private static func suitcases(device: MTLDevice) -> VRMProp? {
+        var lower = PropMeshBuilder(), upper = PropMeshBuilder(), trim = PropMeshBuilder(), brass = PropMeshBuilder()
+        addSuitcase(size: [0.62, 0.20, 0.42], base: 0, handle: true, body: &lower, trim: &trim, brass: &brass)
+        addSuitcase(size: [0.50, 0.16, 0.34], base: 0.20, handle: false, body: &upper, trim: &trim, brass: &brass)
+        let brown = material("keepsake_suitcase_lower", colour: SIMD3<Float>(0.46, 0.28, 0.16))
+        let green = material("keepsake_suitcase_upper", colour: SIMD3<Float>(0.24, 0.36, 0.33))
+        let leather = material("keepsake_suitcase_trim", colour: SIMD3<Float>(0.22, 0.14, 0.09))
+        let fittings = material("keepsake_suitcase_brass", colour: SIMD3<Float>(0.74, 0.60, 0.30))
+        return assemble("keepsake_suitcases", device: device, materials: [brown, green, leather, fittings], textures: [],
+                        meshes: [(lower, 0), (upper, 1), (trim, 2), (brass, 3)])
+    }
+
+    /// One suitcase lying flat, its base at `base`, lid on top.
+    private static func addSuitcase(
+        size: SIMD3<Float>, base: Float, handle: Bool,
+        body: inout PropMeshBuilder, trim: inout PropMeshBuilder, brass: inout PropMeshBuilder
+    ) {
+        let half = size * 0.5
+        let seam = base + size.y * 0.6
+        let top = base + size.y
+        body.addBox(centre: [0, (base + seam) / 2, 0], size: [size.x, seam - base, size.z])
+        body.addBox(centre: [0, (seam + top) / 2, 0], size: [size.x + 0.008, top - seam, size.z + 0.008])
+        for sx: Float in [-1, 1] {
+            for sz: Float in [-1, 1] {
+                for y in [base + 0.02, top - 0.02] {
+                    trim.addBox(centre: [sx * (half.x - 0.012), y, sz * (half.z - 0.012)], size: [0.04, 0.04, 0.04])
+                }
+            }
+            trim.addBox(centre: [sx * half.x * 0.72, (base + top + 0.004) / 2, 0], size: [0.03, size.y + 0.004, size.z + 0.016])
+            brass.addBox(centre: [sx * half.x * 0.45, seam, half.z + 0.008], size: [0.03, 0.024, 0.008])
+        }
+        guard handle else { return }
+        trim.addBox(centre: [0, seam - 0.03, half.z + 0.010], size: [0.14, 0.022, 0.016])
+        for sx: Float in [-1, 1] {
+            brass.addBox(centre: [sx * 0.075, seam - 0.03, half.z + 0.005], size: [0.022, 0.03, 0.010])
+        }
+    }
+
+    /// A turned piece: frustums through `profile` (height, radius), bottom up.
+    private static func turn(_ profile: [(Float, Float)], segments: Int, into builder: inout PropMeshBuilder) {
+        for (lower, upper) in zip(profile, profile.dropFirst()) where upper.0 > lower.0 {
+            builder.addCylinder(bottom: lower.0, top: upper.0, bottomRadius: lower.1, topRadius: upper.1, segments: segments)
+        }
+    }
+
+    /// A closed wooden chest with two iron straps and a hasp, the
+    /// keepsakes on its lid.
+    private static func chest(device: MTLDevice) -> VRMProp? {
+        let lid = KeepsakeSurface.chest.topHeight
+        var wood = PropMeshBuilder()
+        wood.addBox(centre: [0, 0.20, 0], size: [0.50, 0.40, 0.36])
+        wood.addBox(centre: [0, lid - 0.03, 0], size: [0.52, 0.06, 0.38])
+        var iron = PropMeshBuilder()
+        for x: Float in [-0.20, 0.20] {
+            iron.addBox(centre: [x, (lid + 0.005) / 2, 0], size: [0.03, lid + 0.005, 0.39])
+        }
+        iron.addBox(centre: [0, 0.40, 0.19], size: [0.05, 0.06, 0.012])
+        let planks = material("keepsake_chest_wood", colour: SIMD3<Float>(0.40, 0.26, 0.15))
+        let straps = material("keepsake_chest_iron", colour: SIMD3<Float>(0.16, 0.15, 0.14))
+        return assemble("keepsake_chest", device: device, materials: [planks, straps], textures: [],
+                        meshes: [(wood, 0), (iron, 1)])
     }
 
     // MARK: - The objects

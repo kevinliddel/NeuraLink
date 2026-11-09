@@ -2,9 +2,9 @@
 //  VRMMetalState+Room.swift
 //  NeuraLink
 //
-//  Scene side of "a room that remembers" (CompanionRoom): the keepsake
-//  table goes up with the character and follows the environment and the
-//  keepsakes switch.
+//  Scene side of "a room that remembers" (CompanionRoom): the keepsakes
+//  and their surface go up with the character and follow the environment
+//  (table, suitcases or chest) and the keepsakes switch.
 //
 //  Created by Dedicatus on 05/11/2026.
 //
@@ -14,12 +14,12 @@ import MetalKit
 
 extension VRMMetalState {
 
-    /// Puts this character's keepsakes on the table (VRMSceneView, once
+    /// Puts this character's keepsakes beside them (VRMSceneView, once
     /// the model is displayed). Harmless to call again.
     func attachRoom(for character: String) {
         guard let model = currentModel, let device = mtkView.device, !character.isEmpty else { return }
         CompanionRoom.shared.place(
-            character: character, on: model, device: device, environment: UserSettings.shared.selectedEnvironment
+            character: character, on: model, device: device, environment: CompanionRoom.environmentKey
         ) { [weak self] in
             self?.renderer?.invalidateRenderItems()
         }
@@ -30,11 +30,11 @@ extension VRMMetalState {
         attachRoom(for: aiState.selectedCharacterName)
     }
 
-    /// Per frame: the table follows the environment and the switch.
+    /// Per frame: the surface follows the environment and the switch.
     func updateRoom() {
         guard let model = currentModel else { return }
         if CompanionRoom.shared.follow(
-            environment: UserSettings.shared.selectedEnvironment, visible: UserSettings.shared.showKeepsakes, on: model) {
+            environment: CompanionRoom.environmentKey, visible: UserSettings.shared.showKeepsakes, on: model) {
             renderer?.invalidateRenderItems()
         }
     }

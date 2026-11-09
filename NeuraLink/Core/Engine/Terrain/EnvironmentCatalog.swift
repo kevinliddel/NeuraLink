@@ -32,9 +32,18 @@ struct EnvironmentOption: Identifiable, Hashable {
     /// See `EnvironmentRenderer.resolvesDuplicateFaces`: for exports that
     /// carry a back-face shell or coplanar copies (pool, modern apartment).
     var resolvesDuplicateFaces = false
-    /// Where the keepsake table stands in this scene (world metres, yaw);
-    /// nil takes `KeepsakeRoomRules.defaultTable`, beside the character.
-    var keepsakeTable: RoomSpot?
+    /// What the keepsakes stand on in this scene; nil takes the surface
+    /// for its kind (`isInterior`: a side table indoors, stacked suitcases
+    /// outdoors).
+    var keepsakeSurface: KeepsakeSurface?
+    /// Where that surface stands (world metres, yaw); nil takes the
+    /// surface's default spot, beside the character.
+    var keepsakeSpot: RoomSpot?
+
+    /// The keepsake surface in this scene and where it stands.
+    var roomScene: RoomScene {
+        RoomScene(surface: keepsakeSurface ?? (isInterior ? .table : .suitcase), spot: keepsakeSpot)
+    }
 
     static func == (lhs: EnvironmentOption, rhs: EnvironmentOption) -> Bool { lhs.id == rhs.id }
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
@@ -127,4 +136,12 @@ enum EnvironmentCatalog {
     /// True for enclosed interior environments where outdoor 3D world rain must
     /// not fall inside. Keyed by the persisted selection id.
     static func isInterior(_ id: String) -> Bool { option(for: id).isInterior }
+
+    /// What the keepsakes stand on in `environment` — nil being the 3D
+    /// environment switched off, when the terrain's open ground shows and
+    /// a wooden chest stands in for furniture.
+    static func roomScene(for environment: String?) -> RoomScene {
+        guard let environment else { return RoomScene(surface: .chest) }
+        return option(for: environment).roomScene
+    }
 }

@@ -537,14 +537,21 @@ the chat log, not a learned trait. Nothing in the app deletes them;
 
 ## A room that remembers
 
-The keepsakes are also objects in the scene. A small round side table
-stands on the floor at the character's left, a little behind their line
-(`KeepsakeRoomRules.defaultTable`, world (−0.5, −0.02, −0.4), inside the
-default portrait framing; a scene can put it elsewhere through
-`EnvironmentOption.keepsakeTable`), and every keepsake the character on
-screen has collected stands on it:
+The keepsakes are also objects in the scene, on a surface beside the
+character that suits the kind of scene (`KeepsakeSurface`): a pedestal
+side table in an interior (apartment, gallery, pool, cathedral), two
+vintage suitcases set down and stacked on a street or a campus, and a
+closed wooden chest on the open ground the terrain shows when the 3D
+environment is off. Each stands
+on the floor at the character's left, a little behind their line, inside
+the default portrait framing (`KeepsakeSurface.defaultSpot`; the table at
+world (−0.5, −0.02, −0.4)). The environment catalogue chooses by
+`isInterior`, and a scene can pick its own surface and spot through
+`EnvironmentOption.keepsakeSurface` / `keepsakeSpot`
+(`EnvironmentCatalog.roomScene`). Every keepsake the character on screen
+has collected stands on it:
 
-| Keepsake | On the table |
+| Keepsake | Object |
 |---|---|
 | First hello | a folded place card with the date |
 | First diary entry | a standing frame with that entry's diary picture; a closed notebook with the character's name when the entry has none |
@@ -553,9 +560,11 @@ screen has collected stands on it:
 | First game together | a die |
 | One week / 30 days / 100 days together | one potted plant that grows: a sprout, then in leaf, then in flower |
 
-Each object has its own fixed place (`KeepsakeRoomRules.slot`), so nothing
-shuffles when a new one arrives; the table itself appears with the first
-keepsake and the character's own set follows a character switch.
+Each object has its own fixed place (`KeepsakeRoomRules.slot`, the same
+on every surface), so nothing shuffles when a new one arrives; the surface
+itself appears with the first keepsake, swaps with the environment (the
+objects move to the new top) and the character's own set follows a
+character switch.
 
 **What the objects show.** `companion_milestones.note` keeps it: the song's
 title and artist on two lines (`KeepsakeRoomRules.songNote`), the diary
@@ -582,17 +591,20 @@ draw list; pre-yawed for VRM 0.x models; left out of the figure's bounding
 box and of the heel lift; re-appended after a composition restore.
 `VRMSceneView` calls `attachRoom` after `display`; a keepsake recorded
 mid-session (`CompanionMilestoneTracker.note`) adds its object on the
-spot, as the capsule rises; and the table follows the environment setting
-and the switch every frame (`updateRoom`).
+spot, as the capsule rises; and the surface follows the environment
+setting and the switch every frame (`updateRoom`).
 
 **The persona.** `[Companion State]` carries one line, "Keepsakes on the
-small table beside you, real objects in your room (mention one only when it
-fits, never list them): …", with each object in words
-(`KeepsakeRoomRules.describe`). It changes only when a keepsake lands, the
-same moment the celebration line does, and is left out of the compact tier.
+small table beside you, real objects in the scene with you (mention one
+only when it fits, never list them): …", naming the surface the scene has
+now (`KeepsakeSurface.phrase`: the stacked suitcases, the old wooden
+chest) and each
+object in words (`KeepsakeRoomRules.describe`). It changes only when a
+keepsake lands, the same moment the celebration line does, or when the
+environment changes, and is left out of the compact tier.
 
-**Switch.** Settings → Environment Settings → "Keepsakes on the table"
-(`UserSettings.showKeepsakes`, on by default) hides the table and its
+**Switch.** Settings → Environment Settings → "Keepsakes in the scene"
+(`UserSettings.showKeepsakes`, on by default) hides the surface and its
 objects and drops the prompt line.
 
 ## Inner life
@@ -742,8 +754,8 @@ flowchart TD
     LORE["CharacterLoreCatalogue"] --> D12["stage-gated story"] --> CSM
     SQL --> D13["mood"] --> BODY["VRMMetalState+Mood<br/>idle weights · resting face"]
     SQL --> D14["keepsakes + notes"] --> ROOM["CompanionRoom<br/>KeepsakePropFactory"]
-    ROOM --> D15["objects on the table"] --> SCENE["VRMModel+SceneProps<br/>3D scene"]
-    ROOM --> D16["table line"] --> CSM
+    ROOM --> D15["objects on the surface<br/>table · suitcases · chest"] --> SCENE["VRMModel+SceneProps<br/>3D scene"]
+    ROOM --> D16["keepsakes line"] --> CSM
     CLK --> D10["visit start"] --> CSM
     SQL --> D5["unused opener"] --> PPM["ProactivePresenceManager"]
     CLK --> D6["time signals"] --> PPM
@@ -882,10 +894,11 @@ flowchart TD
 | `Data/DataSources/Memory/Store/MemoryStore+Milestones.swift` | `companion_milestones` CRUD (`INSERT OR IGNORE` record with its `note`, oldest-first read, celebrated flag) |
 | `Data/DataSources/Memory/CompanionState/CompanionMilestoneTracker.swift` | `note` / `refreshDerived` / once-only `celebrationLine`; tells the room about a new keepsake |
 | `Presentation/Views/Journal/CompanionKeepsakesSection.swift` | Badge grid in the journal; dims keepsakes not yet reached |
-| `Domain/Entities/Companion/KeepsakeRoom.swift` | `RoomObjectKind`, `RoomObject`, `RoomSpot` / `RoomSlot`, pure `KeepsakeRoomRules` (objects, slots, placement, words) |
+| `Domain/Entities/Companion/KeepsakeRoom.swift` | `RoomObjectKind`, `RoomObject`, `RoomSpot` / `RoomSlot`, `KeepsakeSurface` / `RoomScene`, pure `KeepsakeRoomRules` (objects, slots, placement, words) |
+| `Core/Engine/Terrain/EnvironmentCatalog.swift` | `EnvironmentOption.keepsakeSurface` / `keepsakeSpot`, `roomScene(for:)` (interior → table, outdoor → suitcases, off → chest) |
 | `Core/Engine/VRM/Props/PropMeshBuilder.swift` | Procedural boxes, cylinders and faces into a `VRMPrimitive` |
 | `Core/Engine/VRM/Props/KeepsakeArt.swift` | Painted textures: card, notebook, sleeve, blank polaroid, pips, leaf, flower |
-| `Core/Engine/VRM/Props/KeepsakePropFactory.swift` | The table and one `VRMProp` per object kind |
+| `Core/Engine/VRM/Props/KeepsakePropFactory.swift` | The table, the suitcases and the chest, and one `VRMProp` per object kind |
 | `Core/Engine/VRM/Props/VRMModel+SceneProps.swift` | `placeProp` / `moveSceneProp` / `setSceneProp` / `removeSceneProp`, VRM 0.x pre-yaw, restore |
 | `Data/DataSources/Companion/CompanionRoom.swift` | Builds once per character, places, follows the environment / switch / new keepsakes; the prompt line |
 | `Core/Engine/VRM/UI/VRMMetalState+Room.swift` | `attachRoom` / `refreshRoom` / per-frame `updateRoom` |
@@ -1017,12 +1030,14 @@ shows the permission status, the pending count and the next fire date.
   heard once, in the greeting or the first reply, never both; and that a
   story offered at Friends is told once in the session and then listed
   under Their stories.
-- A room that remembers: with at least one keepsake, the table should
-  stand at the character's left in every environment without sinking into
-  the floor or a wall (give a scene its own `EnvironmentOption.keepsakeTable`
-  if it does), and on the same side for a VRM 0.x character (Ekaterina) as
-  for a 1.x one. The frame should show the first diary picture the right
-  way up and lit like the character; a keepsake landing mid-session should
-  appear on the table as the capsule rises; the switch should hide
-  everything at once; and the objects should keep their shading in the
-  shaded half of the day.
+- A room that remembers: with at least one keepsake, the surface should
+  stand at the character's left in every environment — the table indoors,
+  the suitcases in the city and on the campus, the chest on the terrain with
+  the 3D environment off — without sinking into the floor or a wall (give
+  a scene its own `EnvironmentOption.keepsakeSurface` / `keepsakeSpot` if
+  it does), swap when the environment changes, and stay on the same side
+  for a VRM 0.x character (Ekaterina) as for a 1.x one. The frame should
+  show the first diary picture the right way up and lit like the
+  character; a keepsake landing mid-session should appear beside them as
+  the capsule rises; the switch should hide everything at once; and the
+  objects should keep their shading in the shaded half of the day.

@@ -47,11 +47,19 @@ struct KeepsakePropTests {
         #expect(abs(cell.u0 - 2 / 3) < 1e-6 && cell.v0 == 0.5 && cell.u1 == 1 && cell.v1 == 1)
     }
 
-    @Test func factoryBuildsTheTableAndEveryObjectAtTableSize() async throws {
+    @Test func factoryBuildsEverySurfaceAndEveryObjectAtTableSize() async throws {
         guard let device = MTLCreateSystemDefaultDevice() else { return }
-        let table = try #require(KeepsakePropFactory.table(device: device))
-        #expect(abs(table.extent.y - KeepsakeRoomRules.tableHeight) < 1e-5)
+        let table = try #require(KeepsakePropFactory.surface(.table, device: device))
+        #expect(abs(table.extent.y - KeepsakeSurface.table.topHeight) < 1e-5)
         #expect(abs(table.extent.x - 2 * KeepsakeRoomRules.tableRadius) < 1e-4)
+        // Every surface reaches its top and spans the top the slots use.
+        for surface in KeepsakeSurface.allCases {
+            let prop = try #require(KeepsakePropFactory.surface(surface, device: device), "\(surface)")
+            #expect(prop.extent.y >= surface.topHeight - 1e-5, "\(surface) is too low")
+            #expect(prop.extent.x >= 2 * surface.topHalfExtent.x - 1e-4, "\(surface) is too narrow")
+            #expect(prop.extent.z >= 2 * surface.topHalfExtent.y - 1e-4, "\(surface) is too shallow")
+            #expect(prop.extent.y < 0.9 && prop.extent.x < 1 && prop.extent.z < 0.5, "\(surface) crowds the figure")
+        }
         let now = Date()
         let objects: [RoomObject] = [
             RoomObject(kind: .card, milestone: .firstConversation, achievedAt: now),
@@ -89,7 +97,7 @@ struct KeepsakePropTests {
     @Test func standingPropsJoinTheDrawListAndNotTheFigure() async throws {
         guard let harness = VRMRenderHarness(size: 32) else { return }
         let model = try await harness.load(SyntheticVRM(material: SyntheticVRM.mtoon()))
-        let table = try #require(KeepsakePropFactory.table(device: harness.device))
+        let table = try #require(KeepsakePropFactory.surface(.table, device: harness.device))
         let nodesBefore = model.nodes.count
         let boundsBefore = model.calculateBoundingBox()
         let itemsBefore = harness.renderer.buildRenderItems(model: model).count

@@ -4,9 +4,10 @@
 //
 //  A room that remembers — Living Companion (docs/Companion/LIVING_COMPANION.md).
 //  The keepsakes the user and the character collect become objects on a
-//  small table beside the character: which object each keepsake is, where
-//  it stands, and how the persona is told about them. Pure rules; the
-//  geometry is built by KeepsakePropFactory and placed by CompanionRoom.
+//  surface beside the character — a side table indoors, stacked suitcases
+//  outdoors, a chest on open ground: which object each keepsake is, where it stands,
+//  and how the persona is told about them. Pure rules; the geometry is
+//  built by KeepsakePropFactory and placed by CompanionRoom.
 //
 //  Created by Dedicatus on 05/11/2026.
 //
@@ -59,25 +60,83 @@ struct RoomSpot: Equatable, Sendable {
     var yaw: Float
 }
 
-/// An object's place on the table top: its spot plus a backward lean, the
-/// way a propped frame tips its top away from the viewer.
+/// An object's place on the surface top: its spot plus a backward lean,
+/// the way a propped frame tips its top away from the viewer.
 struct RoomSlot: Equatable, Sendable {
     var spot: RoomSpot
     var leanBack: Float = 0
 }
 
+/// What the keepsakes stand on, one per kind of scene: a side table is
+/// furniture for an interior, a street or a campus has two vintage
+/// suitcases set down and stacked, and open ground (the terrain shown with
+/// the 3D environment off) gets a wooden chest. Every surface's local
+/// frame has its base at the origin, +Y up, +Z toward the viewer, and the
+/// objects' slot origin on its top.
+enum KeepsakeSurface: String, CaseIterable, Sendable {
+    case table
+    case suitcase
+    case chest
+
+    /// Height of the top the objects stand on.
+    var topHeight: Float {
+        switch self {
+        case .table: return 0.68
+        case .suitcase: return 0.36
+        case .chest: return 0.46
+        }
+    }
+
+    /// Half the usable top about the slot origin, x and z (the table top
+    /// is round, with this radius).
+    var topHalfExtent: SIMD2<Float> {
+        switch self {
+        case .table: return SIMD2(KeepsakeRoomRules.tableRadius, KeepsakeRoomRules.tableRadius)
+        case .suitcase: return SIMD2(0.25, 0.17)
+        case .chest: return SIMD2(0.25, 0.18)
+        }
+    }
+
+    /// Where it stands unless the scene says otherwise: on the floor at
+    /// the character's left, a little behind their line, inside the
+    /// default portrait framing. The environment GLBs sit 2 cm below the
+    /// origin; the terrain is at 0.
+    var defaultSpot: RoomSpot {
+        switch self {
+        case .table, .suitcase: return RoomSpot(position: SIMD3<Float>(-0.5, -0.02, -0.4), yaw: 0)
+        case .chest: return RoomSpot(position: SIMD3<Float>(-0.5, 0, -0.4), yaw: 0)
+        }
+    }
+
+    /// How the persona hears of it.
+    var phrase: String {
+        switch self {
+        case .table: return "the small table beside you"
+        case .suitcase: return "the stacked suitcases beside you"
+        case .chest: return "the old wooden chest beside you"
+        }
+    }
+}
+
+/// What a scene gives the keepsakes: the surface and where it stands.
+struct RoomScene: Equatable, Sendable {
+    var surface: KeepsakeSurface
+    var spot: RoomSpot
+
+    init(surface: KeepsakeSurface, spot: RoomSpot? = nil) {
+        self.surface = surface
+        self.spot = spot ?? surface.defaultSpot
+    }
+}
+
 enum KeepsakeRoomRules {
 
-    /// The table stands on the floor at the character's left, a little
-    /// behind their line, inside the default portrait framing. An
-    /// environment can put it elsewhere (`EnvironmentOption.keepsakeTable`).
-    static let defaultTable = RoomSpot(position: SIMD3<Float>(-0.5, -0.02, -0.4), yaw: 0)
-    static let tableHeight: Float = 0.68
     static let tableRadius: Float = 0.19
 
     /// Every object has its own place, so nothing shuffles when a new
-    /// keepsake arrives. Table frame: origin at the top's centre, +Z toward
-    /// the viewer, +X to their right.
+    /// keepsake arrives. Top frame: origin at the slot origin on the
+    /// surface top, +Z toward the viewer, +X to their right. The slots fit
+    /// every surface (`isOnTop`).
     static func slot(for kind: RoomObjectKind) -> RoomSlot {
         switch kind {
         case .frame: return RoomSlot(spot: RoomSpot(position: [-0.03, 0, -0.07], yaw: 0), leanBack: radians(10))
@@ -127,18 +186,30 @@ enum KeepsakeRoomRules {
         }
     }
 
-    /// World placement of an object in `slot` on a table at `table`: the
-    /// table's turn first, then the object's own turn and lean. The slot's
-    /// position is measured on the table top, so the table's height is
+    /// Whether a slot at `position` (top frame), with `margin` around it,
+    /// is on `surface`'s top.
+    static func isOnTop(_ position: SIMD3<Float>, of surface: KeepsakeSurface, margin: Float = 0.04) -> Bool {
+        let half = surface.topHalfExtent
+        switch surface {
+        case .table:
+            return simd_length(SIMD2(position.x, position.z)) + margin <= half.x
+        case .suitcase, .chest:
+            return abs(position.x) + margin <= half.x && abs(position.z) + margin <= half.y
+        }
+    }
+
+    /// World placement of an object in `slot` on `scene`'s surface: the
+    /// surface's turn first, then the object's own turn and lean. The
+    /// slot's position is measured on the top, so the surface's height is
     /// added here.
-    static func placement(of slot: RoomSlot, on table: RoomSpot) -> (position: SIMD3<Float>, rotation: simd_quatf) {
-        let tableTurn = simd_quatf(angle: table.yaw, axis: SIMD3<Float>(0, 1, 0))
+    static func placement(of slot: RoomSlot, in scene: RoomScene) -> (position: SIMD3<Float>, rotation: simd_quatf) {
+        let surfaceTurn = simd_quatf(angle: scene.spot.yaw, axis: SIMD3<Float>(0, 1, 0))
         let ownTurn = simd_quatf(angle: slot.spot.yaw, axis: SIMD3<Float>(0, 1, 0))
         // A positive turn about +X tips the top toward the viewer; leaning
         // back is the opposite.
         let lean = simd_quatf(angle: -slot.leanBack, axis: SIMD3<Float>(1, 0, 0))
-        let onTop = slot.spot.position + SIMD3<Float>(0, tableHeight, 0)
-        return (table.position + tableTurn.act(onTop), simd_normalize(tableTurn * ownTurn * lean))
+        let onTop = slot.spot.position + SIMD3<Float>(0, scene.surface.topHeight, 0)
+        return (scene.spot.position + surfaceTurn.act(onTop), simd_normalize(surfaceTurn * ownTurn * lean))
     }
 
     // MARK: - What the persona is told
@@ -172,11 +243,11 @@ enum KeepsakeRoomRules {
         }
     }
 
-    /// Nil when the table is empty. The objects are real in the scene, so
-    /// the persona may refer to them, but never as a list.
-    static func promptLine(for objects: [RoomObject]) -> String? {
+    /// Nil when nothing stands there. The objects are real in the scene,
+    /// so the persona may refer to them, but never as a list.
+    static func promptLine(for objects: [RoomObject], on surface: KeepsakeSurface) -> String? {
         guard !objects.isEmpty else { return nil }
-        return "Keepsakes on the small table beside you, real objects in your room "
+        return "Keepsakes on \(surface.phrase), real objects in the scene with you "
             + "(mention one only when it fits, never list them): "
             + objects.map(describe).joined(separator: "; ") + "."
     }
