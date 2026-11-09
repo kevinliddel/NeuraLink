@@ -43,6 +43,11 @@ extension OpenAIRealtimeManager {
         let kgFacts = KnowledgeGraphManager.shared.getFormattedFacts()
         let companion = CompanionStateManager.shared.promptContext(
             characterName: state.selectedCharacterName)
+        // How to talk about itself, with something concrete to say
+        // (CompanionSelfTalk). OpenAI only: the local prompts stay short.
+        let selfTalk = SelfTalkRules.promptBlock(
+            everyday: CharacterLoreCatalogue.everyday(for: state.selectedCharacterName),
+            example: CharacterLoreCatalogue.selfTalkExample(for: state.selectedCharacterName))
 
         // Heavy personas (Ekaterina/Sonya) consume the model's attention
         // budget on character behaviour and de-prioritise tool calls. This
@@ -73,7 +78,7 @@ extension OpenAIRealtimeManager {
         // Only while perform_motion is offered (docs/Engine/GENERATIVE_MOTION.md).
         let motionInstruction = MotionSettings.offersTool ? CharacterPersona.motionInstructions : ""
         return persona.instructions + "\n"
-            + userContext + mentalModels + memoryContext + kgFacts + companion
+            + userContext + mentalModels + memoryContext + kgFacts + companion + selfTalk
             + FollowUpCoordinator.shared.mentionBlock()
             + factsTriggerInstruction + motionInstruction
     }

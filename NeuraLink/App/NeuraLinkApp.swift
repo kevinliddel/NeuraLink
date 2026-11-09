@@ -66,6 +66,16 @@ struct NeuraLinkApp: App {
                 }
             }
         }
+        // `-nl.debug.selfTalkProbe YES`: ask the OpenAI text model the five
+        // "who are you" probes with the selected character's real
+        // instructions and log how each reply reads (SelfTalkProbe).
+        if UserDefaults.standard.bool(forKey: "nl.debug.selfTalkProbe") {
+            Task {
+                let selected = RealtimeChatState.shared.selectedCharacterName
+                let character = selected.isEmpty ? (UserSettings.shared.selectedCharacter ?? "oz") : selected
+                await SelfTalkProbe.run(character: character)
+            }
+        }
         #endif
         // Proactive engagement loop (absence greeting + silence small talk),
         // only when the user opted in.

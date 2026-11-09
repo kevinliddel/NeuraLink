@@ -651,6 +651,28 @@ stays stable for the session (`CompanionInnerLife`):
   the emotion system while no emotion plays, fading out over the first
   ten minutes after the character loads (`VRMMetalState+Mood`). The mood
   is read once, when the character is shown (`carryMood`).
+- **Talking about itself (OpenAI).** A persona prompt is a casting sheet,
+  and asked "tell me about yourself" a model reads the sheet back ("I'm a
+  blunt tsundere who secretly cares") unless it is told how a person
+  answers and given something to answer with. The OpenAI session
+  instructions therefore carry an `[About yourself]` block
+  (`SelfTalkRules.promptBlock`, appended after the Companion State in
+  `buildSessionInstructions`): the rule (one concrete thing in your own
+  voice, then move on or ask back; never summarise your personality or
+  label yourself; some things stay yours until later), where "how are
+  you" is answered from (the mood, the away line and the keepsakes in the
+  Companion State), four everyday facts anyone may know
+  (`CharacterLoreCatalogue.everyday`: where the character grew up, its
+  mornings, a dislike, a skill, none of them a story the stages gate) and
+  one example exchange in voice (`selfTalkExample`). Imported characters
+  get the rule alone. The local models go without the block: their
+  prompts have to stay short. Five probe questions and a checker
+  (`SelfTalkRules.probes` / `violations`: the sheet's label words, or
+  three or more trait words in one reply) guard it; `SelfTalkTests`
+  checks the catalogue and the block, and in DEBUG builds
+  `-nl.debug.selfTalkProbe YES` asks the OpenAI text model all five with
+  the selected character's real instructions and logs how each reply
+  reads (`SelfTalkProbe`).
 
 Reset Personality clears the reveal history along with the diary, so the
 stories can be told again.
@@ -752,6 +774,8 @@ flowchart TD
 
     SQL --> D4["traits + diary<br/>mood · away line"] --> CSM["CompanionStateManager<br/>[Companion State] block"]
     LORE["CharacterLoreCatalogue"] --> D12["stage-gated story"] --> CSM
+    LORE --> D17["everyday facts · example"] --> SELF["SelfTalkRules<br/>[About yourself] block"]
+    SELF --> D18["how to answer 'who are you'<br/>OpenAI only"] --> ENG
     SQL --> D13["mood"] --> BODY["VRMMetalState+Mood<br/>idle weights · resting face"]
     SQL --> D14["keepsakes + notes"] --> ROOM["CompanionRoom<br/>KeepsakePropFactory"]
     ROOM --> D15["objects on the surface<br/>table · suitcases · chest"] --> SCENE["VRMModel+SceneProps<br/>3D scene"]
@@ -769,11 +793,11 @@ flowchart TD
     classDef core fill:#0f172a,stroke:#7c3aed,color:#a78bfa
     classDef decision fill:#1e293b,stroke:#94a3b8,color:#e2e8f0
 
-    class LC,CLK,REFL,HTTP,SQL,NOTIF,CSM,PPM,DESK,JUI,ENG,LORE,BODY,ROOM,SCENE core
+    class LC,CLK,REFL,HTTP,SQL,NOTIF,CSM,PPM,DESK,JUI,ENG,LORE,BODY,ROOM,SCENE,SELF core
 
     %% Data nodes (consistent system-wide)
     classDef data fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
-    class D1,D2,D3,D4,D5,D6,D7,D8,D9,D10,D11,D12,D13,D14,D15,D16 data
+    class D1,D2,D3,D4,D5,D6,D7,D8,D9,D10,D11,D12,D13,D14,D15,D16,D17,D18 data
 ```
 
 ### Reflection and notification
@@ -903,7 +927,9 @@ flowchart TD
 | `Data/DataSources/Companion/CompanionRoom.swift` | Builds once per character, places, follows the environment / switch / new keepsakes; the prompt line |
 | `Core/Engine/VRM/UI/VRMMetalState+Room.swift` | `attachRoom` / `refreshRoom` / per-frame `updateRoom` |
 | `Domain/Entities/Companion/CompanionLore.swift` | `LoreTier`, `LoreFragment`, `LoreReveal` and pure `LoreRules` (offer order, rest, prompt line) |
-| `Domain/Entities/Companion/CharacterLoreCatalogue.swift` | The authored fragments of the bundled characters, nine each |
+| `Domain/Entities/Companion/CharacterLoreCatalogue.swift` | The authored fragments of the bundled characters, nine each, plus their everyday facts and a self-talk example |
+| `Domain/Entities/Companion/CompanionSelfTalk.swift` | `SelfTalkRules`: the `[About yourself]` block (OpenAI only), the probe questions and the reply checker |
+| `Data/DataSources/Companion/SelfTalkProbe.swift` | DEBUG `-nl.debug.selfTalkProbe YES`: runs the probes against the OpenAI text model and logs the verdicts |
 | `Domain/Entities/Companion/CompanionMood.swift` | The six moods: parsing, prompt line, idle weights, resting face, fade |
 | `Data/DataSources/Memory/CompanionState/CompanionInnerLife.swift` | Per-visit hold of the story, the away line and the mood; the greeting and body hooks |
 | `Data/DataSources/Memory/Store/MemoryStore+Lore.swift` | `companion_lore_reveals` CRUD |
@@ -994,6 +1020,9 @@ shows the permission status, the pending count and the next fire date.
 
 - Check that reflection finishes inside the background window on 4 GB
   devices when running on the local model.
+- Run `-nl.debug.selfTalkProbe YES` with an OpenAI key for each bundled
+  character and read the log: every reply should pass the checker and
+  sound like the character, not like its description.
 - Check that a long-running conversation produces a second diary entry and a
   second notification series after 4 or more new turns.
 - Check that two silence breaks in one launch take different angles and
