@@ -66,7 +66,7 @@ nonisolated enum CharacterLoreCatalogue {
         ]
     ]
 
-    // MARK: - Dedicatus (the Sonya model)
+    // MARK: - Sonya
 
     private static let sonya: [LoreTier: [String]] = [
         .friends: [

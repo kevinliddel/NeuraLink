@@ -77,7 +77,7 @@ nonisolated extension CharacterLoreCatalogue {
                 answer: "I am, yes. An AI who still worries whether you've eaten, so that part is real enough. Have you?")
         ])
 
-    // MARK: - Dedicatus (the Sonya model)
+    // MARK: - Sonya
 
     private static let sonyaRest = Rest(
         tastes: [
