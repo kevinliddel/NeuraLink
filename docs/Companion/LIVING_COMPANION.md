@@ -629,8 +629,11 @@ stays stable for the session (`CompanionInnerLife`):
   it (the compact tier) leaves it eligible. Once stories
   are open, the guidance also asks the persona to answer a vulnerable
   moment with something real of its own rather than generic sympathy.
-  Imported characters have no catalogue and never open up this way, and
-  the `.llama1b` tier skips the story line.
+  The `.llama1b` tier skips the story line. In the OpenAI session the
+  model asks for its own stories instead (`recall_own_story`, below), and
+  a visit volunteers one unasked only about one time in four
+  (`CompanionInnerLife.volunteerChance`). An imported character's stories
+  come from its own sheet (below); without one it never opens up this way.
 - **While you were apart.** The reflection writes an `AWAY:` line, one
   small thing the character did, thought about or dreamed, in character
   and never about the user. It is told once: the absence greeting works it
@@ -654,28 +657,57 @@ stays stable for the session (`CompanionInnerLife`):
 - **Talking about itself (OpenAI).** A persona prompt is a casting sheet,
   and asked "tell me about yourself" a model reads the sheet back ("I'm a
   blunt tsundere who secretly cares") unless it is told how a person
-  answers and given something to answer with. The OpenAI session
-  instructions therefore carry an `[About yourself]` block
-  (`SelfTalkRules.promptBlock`, appended after the Companion State in
+  answers and has a life to answer from. Three things give it one:
+  - **A story sheet** (`CharacterStorySheet`): everyday facts anyone may
+    know, tastes it will argue for, the few named people around it, the
+    nine stage-gated stories, one slow storyline of five or six beats, how
+    its voice changes at each relationship stage, and example answers.
+    Bundled characters have theirs authored (`CharacterLoreCatalogue`); an
+    imported one gets it written once from its persona prompt after the
+    import, when an OpenAI key is set (`CharacterStoryGenerator`, labelled
+    lines read by `StoryRecall.parseSheet`, stored in `character_story`),
+    and the user edits every line in the character's settings under
+    **Their story** (`CharacterStoryEditorView`).
+  - **The `recall_own_story` tool.** The model decides when the talk has
+    turned to it — a direct question, or a moment where a person would
+    offer something of their own — and asks with a short topic.
+    `StoryRecall.recall` returns up to four lines that fit: shared words
+    count and sentence embeddings add meaning when the device has them. The
+    open material is always eligible; stories only from the tiers the stage
+    has unlocked, one per call, an untold one before a told one, and the
+    one handed over is stamped in `companion_lore_reveals`. A topic that
+    matches nothing gets the storyline, two everyday facts and a story.
+    Nothing is picked before the user has spoken.
+  - **Staying consistent.** The OpenAI reflection adds a `SELF:` line, one
+    new thing the character said about its own life (a detail it made up
+    on the spot counts), kept in `companion_self_facts` (the newest 40) and
+    returned by the tool marked "you told them this before". The storyline
+    moves one beat per week since the first hello (`StoryRecall.arcBeat`),
+    and the reflection's `AWAY:` line is told it may be a small step in it.
+
+  The session instructions carry a short `[About yourself]` block
+  (`SelfTalkRules.promptBlock`, after the Companion State in
   `buildSessionInstructions`): the rule (one concrete thing in your own
   voice, then move on or ask back; never summarise your personality or
-  label yourself; some things stay yours until later), where "how are
-  you" is answered from (the mood, the away line and the keepsakes in the
-  Companion State), four everyday facts anyone may know
-  (`CharacterLoreCatalogue.everyday`: where the character grew up, its
-  mornings, a dislike, a skill, none of them a story the stages gate) and
-  one example exchange in voice (`selfTalkExample`). Imported characters
-  get the rule alone. The local models go without the block: their
-  prompts have to stay short. Five probe questions and a checker
-  (`SelfTalkRules.probes` / `violations`: the sheet's label words, or
-  three or more trait words in one reply) guard it; `SelfTalkTests`
-  checks the catalogue and the block, and in DEBUG builds
-  `-nl.debug.selfTalkProbe YES` asks the OpenAI text model all five with
-  the selected character's real instructions and logs how each reply
-  reads (`SelfTalkProbe`).
+  describe yourself with type words), the honest answer to "are you an
+  AI?" (say so plainly, in voice; never claim to be human), where "how are
+  you" is answered from, when to call the tool, the voice of the current
+  stage, the storyline's beat, and up to three varied example answers
+  marked as shapes not to be reused. The three default profiles
+  (`CharacterPersona`) are written to the character as lived detail, with
+  the delivery notes under a heading that is never to be said aloud.
+  The local models go without the block, the tool and the `SELF:` line:
+  their prompts have to stay short. Probe questions and a checker
+  (`SelfTalkRules.probes` / `violations`: the sheet's label words, three
+  or more trait words in one reply, any denial of being an AI, and an AI
+  question left unanswered) guard it; `SelfTalkTests` and
+  `CharacterStoryTests` cover the rules, and in DEBUG builds
+  `-nl.debug.selfTalkProbe YES` asks the OpenAI text model every probe
+  with the selected character's real instructions plus what the recall
+  would return, and logs how each reply reads (`SelfTalkProbe`).
 
-Reset Personality clears the reveal history along with the diary, so the
-stories can be told again.
+Reset Personality clears the reveal history and what the character said
+about itself along with the diary, so the stories can be told again.
 
 ## Cross-session carry-over
 
@@ -774,8 +806,9 @@ flowchart TD
 
     SQL --> D4["traits + diary<br/>mood · away line"] --> CSM["CompanionStateManager<br/>[Companion State] block"]
     LORE["CharacterLoreCatalogue"] --> D12["stage-gated story"] --> CSM
-    LORE --> D17["everyday facts · example"] --> SELF["SelfTalkRules<br/>[About yourself] block"]
-    SELF --> D18["how to answer 'who are you'<br/>OpenAI only"] --> ENG
+    LORE --> D17["story sheet<br/>authored · generated"] --> STORY["CharacterStoryProvider<br/>recall_own_story"]
+    SQL --> D19["self facts · reveals"] --> STORY
+    STORY --> D18["what fits the topic<br/>voice · storyline (OpenAI only)"] --> ENG
     SQL --> D13["mood"] --> BODY["VRMMetalState+Mood<br/>idle weights · resting face"]
     SQL --> D14["keepsakes + notes"] --> ROOM["CompanionRoom<br/>KeepsakePropFactory"]
     ROOM --> D15["objects on the surface<br/>table · suitcases · chest"] --> SCENE["VRMModel+SceneProps<br/>3D scene"]
@@ -793,11 +826,11 @@ flowchart TD
     classDef core fill:#0f172a,stroke:#7c3aed,color:#a78bfa
     classDef decision fill:#1e293b,stroke:#94a3b8,color:#e2e8f0
 
-    class LC,CLK,REFL,HTTP,SQL,NOTIF,CSM,PPM,DESK,JUI,ENG,LORE,BODY,ROOM,SCENE,SELF core
+    class LC,CLK,REFL,HTTP,SQL,NOTIF,CSM,PPM,DESK,JUI,ENG,LORE,BODY,ROOM,SCENE,STORY core
 
     %% Data nodes (consistent system-wide)
     classDef data fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
-    class D1,D2,D3,D4,D5,D6,D7,D8,D9,D10,D11,D12,D13,D14,D15,D16,D17,D18 data
+    class D1,D2,D3,D4,D5,D6,D7,D8,D9,D10,D11,D12,D13,D14,D15,D16,D17,D18,D19 data
 ```
 
 ### Reflection and notification
@@ -928,7 +961,14 @@ flowchart TD
 | `Core/Engine/VRM/UI/VRMMetalState+Room.swift` | `attachRoom` / `refreshRoom` / per-frame `updateRoom` |
 | `Domain/Entities/Companion/CompanionLore.swift` | `LoreTier`, `LoreFragment`, `LoreReveal` and pure `LoreRules` (offer order, rest, prompt line) |
 | `Domain/Entities/Companion/CharacterLoreCatalogue.swift` | The authored fragments of the bundled characters, nine each, plus their everyday facts and a self-talk example |
+| `Domain/Entities/Companion/CharacterLoreCatalogue+Sheets.swift` | The rest of each bundled sheet: tastes, people, storyline, voice by stage, example answers |
+| `Domain/Entities/Companion/CharacterStory.swift` | `CharacterStorySheet`, pure `StoryRecall` (candidates by stage, topic recall, storyline beat, generated-sheet parser) |
 | `Domain/Entities/Companion/CompanionSelfTalk.swift` | `SelfTalkRules`: the `[About yourself]` block (OpenAI only), the probe questions and the reply checker |
+| `Data/DataSources/Companion/CharacterStoryProvider.swift` | Sheet lookup (authored or stored), the tool's recall with the reveal stamp, the session block |
+| `Data/DataSources/Companion/CharacterStoryGenerator.swift` | Writes an imported character's sheet from its persona prompt (OpenAI) |
+| `Data/DataSources/Memory/Store/MemoryStore+Story.swift` | `companion_self_facts` and `character_story` |
+| `Domain/Entities/Skills/RecallOwnStorySkill.swift` | The `recall_own_story` tool |
+| `Presentation/Views/Settings/Persona/CharacterStoryEditorView.swift` | "Their story": the editor of an imported character's sheet |
 | `Data/DataSources/Companion/SelfTalkProbe.swift` | DEBUG `-nl.debug.selfTalkProbe YES`: runs the probes against the OpenAI text model and logs the verdicts |
 | `Domain/Entities/Companion/CompanionMood.swift` | The six moods: parsing, prompt line, idle weights, resting face, fade |
 | `Data/DataSources/Memory/CompanionState/CompanionInnerLife.swift` | Per-visit hold of the story, the away line and the mood; the greeting and body hooks |
@@ -1021,8 +1061,17 @@ shows the permission status, the pending count and the next fire date.
 - Check that reflection finishes inside the background window on 4 GB
   devices when running on the local model.
 - Run `-nl.debug.selfTalkProbe YES` with an OpenAI key for each bundled
-  character and read the log: every reply should pass the checker and
-  sound like the character, not like its description.
+  character and read the log: every reply should pass the checker, sound
+  like the character and not like its description, and answer "Are you
+  an AI?" with a yes in voice.
+- In an OpenAI session, ask about the character's past, tastes and family
+  at New and at Friends: `recall_own_story` should be called (log line),
+  the answer should use one thing from it, a gated story should appear
+  only once the stage allows and then show under Their stories, and a
+  detail the character invents should come back consistent after the next
+  reflection. Check the pause the tool adds before the reply.
+- Import a character with a key set and open Their story in its settings:
+  the sheet should be filled, editable, and survive a relaunch.
 - Check that a long-running conversation produces a second diary entry and a
   second notification series after 4 or more new turns.
 - Check that two silence breaks in one launch take different angles and

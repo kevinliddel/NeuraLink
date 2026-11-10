@@ -35,7 +35,13 @@ final class CompanionInnerLife {
 
     private var visit: Visit?
 
-    init(store: MemoryStore = .shared, fragments: @escaping (String) -> [LoreFragment] = CharacterLoreCatalogue.fragments(for:)) {
+    /// With the story tool, how often a visit still volunteers a story unasked.
+    static let volunteerChance = 0.25
+
+    init(
+        store: MemoryStore = .shared,
+        fragments: @escaping (String) -> [LoreFragment] = { CharacterStoryProvider.shared.fragments(for: $0) }
+    ) {
         self.store = store
         self.fragments = fragments
     }
@@ -47,9 +53,15 @@ final class CompanionInnerLife {
     /// you were apart" makes sense. The lore line is skipped on the compact
     /// tier, where it would cost the small model too much attention — and
     /// a story that was never put to the model is not stamped shared.
-    func lines(character: String, stage: String, absent: Bool, compact: Bool, now: Date = Date()) -> [String] {
+    func lines(
+        character: String, stage: String, absent: Bool, compact: Bool, storiesByTool: Bool = false,
+        volunteerRoll: Double = Double.random(in: 0..<1), now: Date = Date()
+    ) -> [String] {
         guard PresenceSettings.shared.innerLifeEnabled, !character.isEmpty else { return [] }
-        let visit = refreshVisit(character: character, stage: stage, absent: absent, now: now)
+        // Where the model fetches its own stories (`recall_own_story`), a
+        // visit volunteers one only now and then; decided with the visit.
+        let volunteers = !storiesByTool || volunteerRoll < Self.volunteerChance
+        let visit = refreshVisit(character: character, stage: stage, absent: absent, volunteers: volunteers, now: now)
         var out: [String] = []
         if let mood = visit.mood { out.append(mood.promptLine) }
         if let away = visit.awayLine {
@@ -96,13 +108,13 @@ final class CompanionInnerLife {
 
     // MARK: - Visit
 
-    private func refreshVisit(character: String, stage: String, absent: Bool, now: Date) -> Visit {
+    private func refreshVisit(character: String, stage: String, absent: Bool, volunteers: Bool, now: Date) -> Visit {
         let foregroundAt = InteractionClock.shared.foregroundAt
         if let visit, visit.foregroundAt == foregroundAt, visit.character == character { return visit }
 
-        let lore = LoreRules.offer(
+        let lore = volunteers ? LoreRules.offer(
             from: fragments(character), stage: stage,
-            reveals: store.loreReveals(character: character), now: now, roll: Double.random(in: 0..<1))
+            reveals: store.loreReveals(character: character), now: now, roll: Double.random(in: 0..<1)) : nil
         let fresh = Visit(
             foregroundAt: foregroundAt, character: character,
             mood: currentMood(character: character, now: now),

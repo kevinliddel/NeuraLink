@@ -126,11 +126,11 @@ struct NeuraLinkTests {
     @Test("Character Personas")
     func testCharacterPersonas() {
         let sonya = CharacterPersona.forCharacter(named: "Sonya")
-        #expect(sonya.instructions.contains("Tsundere") == true)
+        #expect(sonya.instructions.contains("You are Sonya") == true)
         #expect(sonya.voice == "marin")
         
         let ekaterina = CharacterPersona.forCharacter(named: "Ekaterina")
-        #expect(ekaterina.instructions.contains("Onee-san") == true)
+        #expect(ekaterina.instructions.contains("You are Ekaterina") == true)
 
         let oz = CharacterPersona.forCharacter(named: "Oz")
         #expect(oz.instructions.contains("butler") == true)

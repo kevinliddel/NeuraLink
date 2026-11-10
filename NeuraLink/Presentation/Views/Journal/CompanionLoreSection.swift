@@ -18,7 +18,7 @@ struct CompanionLoreSection: View {
     let reveals: [LoreReveal]
 
     private var fragments: [LoreFragment] {
-        CharacterLoreCatalogue.fragments(for: character)
+        CharacterStoryProvider.shared.fragments(for: character)
     }
 
     /// Revealed fragments in reveal order, dropping ids the catalogue no

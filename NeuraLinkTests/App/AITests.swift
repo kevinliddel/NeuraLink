@@ -85,12 +85,12 @@ final class AITests: XCTestCase {
     func testCharacterPersonas() {
         // Test Sonya
         let sonya = CharacterPersona.forCharacter(named: "Sonya")
-        XCTAssertTrue(sonya.instructions.contains("Tsundere"))
+        XCTAssertTrue(sonya.instructions.contains("You are Sonya"))
         XCTAssertEqual(sonya.voice, "marin")  // Marin is the Tsundere voice
 
         // Test Ekaterina
         let ekaterina = CharacterPersona.forCharacter(named: "Ekaterina")
-        XCTAssertTrue(ekaterina.instructions.contains("Onee-san"))
+        XCTAssertTrue(ekaterina.instructions.contains("You are Ekaterina"))
 
         // Test Oz (the factory default)
         let oz = CharacterPersona.forCharacter(named: "Oz")

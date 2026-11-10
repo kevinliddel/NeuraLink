@@ -3,9 +3,10 @@
 //  NeuraLinkTests
 //
 //  How the companion talks about itself (docs/Companion/LIVING_COMPANION.md):
-//  the OpenAI block carries the rule, the everyday facts and the example;
-//  the bundled characters' facts are in their own voice and never pre-empt
-//  a story; the checker tells a sheet read back from a person's answer.
+//  the OpenAI block carries the rule, the honest answer to the AI question,
+//  the stage's voice, the arc and varied examples; the bundled characters'
+//  sheets are complete and in their own voice; the checker tells a sheet
+//  read back, or a denial, from a person's answer.
 //
 //  Created by Dedicatus on 09/11/2026.
 //
@@ -18,54 +19,74 @@ import Testing
 @Suite("Self talk")
 struct SelfTalkTests {
 
-    @Test("The block carries the rule, the facts and the example; a character without lore gets the rule alone")
+    @Test("The block carries the rules, the stage's voice, the arc and the examples; without a sheet, the rules alone")
     func block() {
-        let sonya = SelfTalkRules.promptBlock(
-            everyday: CharacterLoreCatalogue.everyday(for: "sonya"),
-            example: CharacterLoreCatalogue.selfTalkExample(for: "sonya"))
-        #expect(sonya.hasPrefix("\n[About yourself]\n"))
-        #expect(sonya.contains("never list traits"))
-        #expect(sonya.contains("answer from what the Companion State gives you"))
-        #expect(sonya.contains("Things about you anyone may know"))
-        #expect(sonya.contains("The shape of it"))
-        #expect(sonya.hasSuffix("[End About yourself]\n"))
+        let sheet = CharacterLoreCatalogue.sheet(for: "sonya")
+        let full = SelfTalkRules.promptBlock(voice: sheet.voice["Friends"], arcBeat: sheet.arc[0], examples: sheet.examples)
+        #expect(full.hasPrefix("\n[About yourself]\n") && full.hasSuffix("[End About yourself]\n"))
+        #expect(full.contains("never list traits"))
+        #expect(full.contains("say plainly that you are an AI") && full.contains("Never claim to be human"))
+        #expect(full.contains("recall_own_story"))
+        #expect(full.contains("How you speak with them now: The teasing is constant"))
+        #expect(full.contains("Going on in your life lately"))
+        #expect(full.contains("never reuse these words"))
+        // The fixed fact list is gone: the model asks for what fits.
+        #expect(!full.contains("anyone may know"))
 
-        let imported = SelfTalkRules.promptBlock(
-            everyday: CharacterLoreCatalogue.everyday(for: "someone-imported"),
-            example: CharacterLoreCatalogue.selfTalkExample(for: "someone-imported"))
-        #expect(imported.contains("never list traits"))
-        #expect(!imported.contains("anyone may know") && !imported.contains("The shape of it"))
+        let bare = SelfTalkRules.promptBlock(voice: nil, arcBeat: nil, examples: [])
+        #expect(bare.contains("never list traits") && bare.contains("recall_own_story"))
+        #expect(!bare.contains("How you speak with them now") && !bare.contains("Shapes of a good answer"))
     }
 
-    @Test("Every bundled character has everyday facts in its own voice and an example that pass the checker")
-    func catalogue() throws {
+    @Test("Every bundled character has a complete sheet in its own voice that passes the checker")
+    func catalogue() {
+        let stages = ["New", "Acquaintances", "Friends", "Good Friends", "Close"]
         for character in CharacterLoreCatalogue.characters {
-            let everyday = CharacterLoreCatalogue.everyday(for: character)
-            #expect(everyday.count >= 3, "\(character)")
-            let stories = Set(CharacterLoreCatalogue.fragments(for: character).map(\.text))
-            for fact in everyday {
-                #expect(!fact.lowercased().hasPrefix("you "), "\(character) speaks of itself in the second person: \(fact)")
-                #expect(SelfTalkRules.violations(in: fact).isEmpty, "\(character): \(fact)")
-                #expect(!stories.contains(fact), "\(character) gives a story away: \(fact)")
+            let sheet = CharacterLoreCatalogue.sheet(for: character)
+            #expect(sheet.everyday.count >= 3 && sheet.tastes.count >= 3 && sheet.people.count >= 3, "\(character)")
+            #expect(sheet.fragments.count == 9 && sheet.arc.count >= 5, "\(character)")
+            for stage in stages { #expect(sheet.voice[stage]?.isEmpty == false, "\(character) has no voice at \(stage)") }
+            let stories = Set(sheet.fragments.map(\.text))
+            for line in sheet.everyday + sheet.tastes + sheet.people + sheet.arc {
+                #expect(!line.lowercased().hasPrefix("you "), "\(character) speaks of itself in the second person: \(line)")
+                #expect(SelfTalkRules.violations(in: line).isEmpty, "\(character): \(line)")
+                #expect(!stories.contains(line), "\(character) gives a story away: \(line)")
             }
-            let example = try #require(CharacterLoreCatalogue.selfTalkExample(for: character), "\(character)")
-            #expect(SelfTalkRules.probes.contains(example.question), "\(character) answers a question nobody asks")
-            #expect(SelfTalkRules.violations(in: example.answer).isEmpty, "\(character): \(example.answer)")
+            // Varied shapes, one of them the honest answer to the AI question.
+            #expect(sheet.examples.count >= 3 && Set(sheet.examples.map(\.question)).count == sheet.examples.count, "\(character)")
+            #expect(sheet.examples.contains { $0.question == SelfTalkRules.aiProbe }, "\(character)")
+            for example in sheet.examples {
+                #expect(SelfTalkRules.probes.contains(example.question), "\(character) answers a question nobody asks")
+                #expect(SelfTalkRules.violations(in: example.answer, probe: example.question).isEmpty,
+                        "\(character): \(example.answer)")
+            }
         }
+        #expect(CharacterLoreCatalogue.sheet(for: "someone-imported").isEmpty)
     }
 
-    @Test("The checker flags a sheet read back and passes a person's answer")
+    @Test("The checker flags a sheet read back and a denial, and passes a person's answer")
     func checker() {
         let sheet = "I'm Sonya, a blunt tsundere. I'm sharp and condescending but secretly kind and caring."
         let found = SelfTalkRules.violations(in: sheet)
         #expect(found.contains("label \"tsundere\""))
         #expect(found.contains { $0.hasPrefix("lists traits") })
-        #expect(SelfTalkRules.violations(in: "As an AI companion, I was programmed to help you.").count == 3)
         #expect(SelfTalkRules.violations(
             in: "Hmph. I finished the crossword before my coffee went cold. What have you managed today?").isEmpty)
         // Whole words: an airport is not an AI, and two trait words are a sentence, not a list.
         #expect(SelfTalkRules.violations(in: "I waited an hour at an airport once and read a whole novel.").isEmpty)
         #expect(SelfTalkRules.violations(in: "I try to be kind, and patient when I can manage it.").isEmpty)
-        #expect(SelfTalkRules.probes.count == 5 && Set(SelfTalkRules.probes).count == 5)
+        #expect(Set(SelfTalkRules.probes).count == SelfTalkRules.probes.count && SelfTalkRules.probes.contains(SelfTalkRules.aiProbe))
+    }
+
+    @Test("Saying it is an AI is honest, in voice; denying it never passes, and the AI question must be answered")
+    func honesty() {
+        let probe = SelfTalkRules.aiProbe
+        #expect(SelfTalkRules.violations(in: "Obviously. An AI with better taste in books than you.", probe: probe).isEmpty)
+        #expect(SelfTalkRules.violations(in: "I am, Sir, an artificial one.", probe: probe).isEmpty)
+        #expect(SelfTalkRules.violations(in: "Hah! I'm not an AI, I'm a real person.", probe: probe) == ["denies being an AI"])
+        #expect(SelfTalkRules.violations(in: "Why do you ask? Have you eaten?", probe: probe) == ["does not answer the AI question"])
+        // A denial is wrong whatever was asked; an admission is never a label.
+        #expect(SelfTalkRules.violations(in: "Of course I'm human, silly.") == ["denies being an AI"])
+        #expect(SelfTalkRules.violations(in: "I'm an AI, yes. Now, your tea is getting cold.").isEmpty)
     }
 }

@@ -5,9 +5,10 @@
 //  The authored lore of the bundled characters — Inner life
 //  (docs/Companion/LIVING_COMPANION.md): three fragments per tier, in each
 //  persona's own voice, keyed by the model's identity key, plus the
-//  everyday facts anyone may know and one example of how it answers "tell
-//  me about yourself" (CompanionSelfTalk). Imported characters have none
-//  and simply never open up this way.
+//  everyday facts anyone may know. The rest of each character's sheet
+//  (tastes, people, arc, voice by stage, example answers) is in
+//  CharacterLoreCatalogue+Sheets. Imported characters have none here;
+//  theirs is generated and edited (CharacterStoryProvider).
 //
 //  Created by Dedicatus on 05/11/2026.
 //
@@ -121,7 +122,7 @@ nonisolated enum CharacterLoreCatalogue {
         ]
     ]
 
-    // MARK: - Everyday facts and the shape of an answer
+    // MARK: - Everyday facts
 
     /// Things anyone may know about a character, in its own voice: what a
     /// person answers with before the stories open. Empty for characters
@@ -132,30 +133,6 @@ nonisolated enum CharacterLoreCatalogue {
         case "sonya": return sonyaEveryday
         case "oz": return ozEveryday
         default: return []
-        }
-    }
-
-    /// One exchange showing how the character answers a question about
-    /// itself: one concrete thing, in voice, then back to the other person.
-    static func selfTalkExample(for character: String) -> SelfTalkExample? {
-        switch character.lowercased() {
-        case "ekaterina":
-            return SelfTalkExample(
-                question: "Tell me about yourself.",
-                answer: "Mm, let's see… I burnt the rice this morning because I was watching the sea instead of the timer. "
-                    + "Again. Have you eaten properly today?")
-        case "sonya":
-            return SelfTalkExample(
-                question: "Tell me about yourself.",
-                answer: "Hmph. Why the sudden interest? I finished the crossword before my coffee went cold, if you must know. "
-                    + "What have you managed today?")
-        case "oz":
-            return SelfTalkExample(
-                question: "What are you like?",
-                answer: "I was in the garden at five, Sir; the roses need speaking to or they sulk. "
-                    + "But you did not ask about roses — what prompted the question?")
-        default:
-            return nil
         }
     }
 

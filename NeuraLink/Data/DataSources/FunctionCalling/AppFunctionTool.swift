@@ -29,6 +29,7 @@ enum AppFunctionTool {
     static let playGame = "play_game"
     static let searchMemory = "search_memory"
     static let showPhoto = "show_photo"
+    static let recallOwnStory = "recall_own_story"
     static let performMotion = "perform_motion"
 
     // MARK: - OpenAI tool schema array
@@ -38,7 +39,7 @@ enum AppFunctionTool {
         var tools: [[String: Any]] = [
             emotionTool, weatherTool, searchTool, musicTool, reminderTool,
             noteTool, openAppTool, cameraTool, factTool, photoTool, identifySongTool,
-            playGameTool, searchMemoryTool, showPhotoTool
+            playGameTool, searchMemoryTool, showPhotoTool, recallOwnStoryTool
         ]
         // Generated body motion needs its model files and the user's switch
         // (docs/Engine/GENERATIVE_MOTION.md); without them the tool is not offered.
@@ -92,6 +93,28 @@ enum AppFunctionTool {
                 "type": "object",
                 "properties": [String: Any](),
                 "required": [String]()
+            ]
+        ]
+    }
+
+    private static var recallOwnStoryTool: [String: Any] {
+        [
+            "type": "function",
+            "name": recallOwnStory,
+            "description": "Recall something from YOUR OWN life: your past, your home and habits, your tastes and "
+                + "opinions, the people around you, what you have been doing lately, things you told the user about "
+                + "yourself before. Use it whenever the conversation turns to you — a direct question, or a moment "
+                + "where a person would offer something of their own. Answer from what comes back, in your own "
+                + "words; never read it out as a list.",
+            "parameters": [
+                "type": "object",
+                "properties": [
+                    "topic": [
+                        "type": "string",
+                        "description": "What about yourself, in a few words (e.g. 'childhood', 'music I like', 'my family', 'lately')."
+                    ]
+                ],
+                "required": ["topic"]
             ]
         ]
     }

@@ -238,6 +238,7 @@ struct CompanionJournalView: View {
         MemoryStore.shared.deleteJournal(character: character)
         MemoryStore.shared.deleteAllTraits(character: character)
         MemoryStore.shared.deleteLoreReveals(character: character)
+        MemoryStore.shared.deleteSelfFacts(character: character)
         reload()
         CompanionRoom.shared.refresh()
     }

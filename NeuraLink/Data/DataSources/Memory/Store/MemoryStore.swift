@@ -298,6 +298,20 @@ final class MemoryStore {
             revealed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (character, fragment)
         );
+        CREATE TABLE IF NOT EXISTS companion_self_facts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            character TEXT NOT NULL,
+            text TEXT NOT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (character, text)
+        );
+        CREATE TABLE IF NOT EXISTS character_story (
+            character TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            position INTEGER NOT NULL,
+            text TEXT NOT NULL,
+            PRIMARY KEY (character, kind, position)
+        );
         CREATE TABLE IF NOT EXISTS api_usage (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             created_at REAL NOT NULL,

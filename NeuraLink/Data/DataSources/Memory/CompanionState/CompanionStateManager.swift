@@ -23,7 +23,9 @@ final class CompanionStateManager {
     /// The single prompt hook shared by both engines (local buildSystemContent
     /// + OpenAI session instructions). `compact` trims the block for the
     /// 1B-model tier, where every system token eats attention budget.
-    func promptContext(characterName: String, compact: Bool = false) -> String {
+    /// `storiesByTool` is the OpenAI session, where the model asks for its
+    /// own stories and the block volunteers one only now and then.
+    func promptContext(characterName: String, compact: Bool = false, storiesByTool: Bool = false) -> String {
         // Facts can exist even if memory is disabled; dialogue-derived familiarity needs memory.
         let facts = store.fetchAllFacts()
         let events = memorySettings.isEnabled ? store.fetchRecentMessagesAcrossAll(limit: 120) : []
@@ -47,7 +49,8 @@ final class CompanionStateManager {
         // The character's own side (Inner life): mood, what it did while
         // apart, a story it may share — held for the visit like the absence.
         let inner = CompanionInnerLife.shared.lines(
-            character: characterName, stage: affinity.label, absent: absence != nil, compact: compact)
+            character: characterName, stage: affinity.label, absent: absence != nil, compact: compact,
+            storiesByTool: storiesByTool)
         // What stands on the keepsake table in the scene (a room that
         // remembers); it only changes when a keepsake lands. Not for the
         // smallest tier.

@@ -41,13 +41,14 @@ extension OpenAIRealtimeManager {
         let memoryContext = await RAGManager.shared.fetchContext(
             for: Self.sessionGroundingQuery, limit: 5, tokenBudget: 500)
         let kgFacts = KnowledgeGraphManager.shared.getFormattedFacts()
+        // The model fetches its own stories through `recall_own_story`,
+        // so the block only volunteers one now and then.
         let companion = CompanionStateManager.shared.promptContext(
-            characterName: state.selectedCharacterName)
-        // How to talk about itself, with something concrete to say
-        // (CompanionSelfTalk). OpenAI only: the local prompts stay short.
-        let selfTalk = SelfTalkRules.promptBlock(
-            everyday: CharacterLoreCatalogue.everyday(for: state.selectedCharacterName),
-            example: CharacterLoreCatalogue.selfTalkExample(for: state.selectedCharacterName))
+            characterName: state.selectedCharacterName, storiesByTool: true)
+        // How to talk about itself (CompanionSelfTalk): the rule, the voice
+        // of this stage, what is going on in its life. OpenAI only: the
+        // local prompts stay short.
+        let selfTalk = CharacterStoryProvider.shared.promptBlock(character: state.selectedCharacterName)
 
         // Heavy personas (Ekaterina/Sonya) consume the model's attention
         // budget on character behaviour and de-prioritise tool calls. This
