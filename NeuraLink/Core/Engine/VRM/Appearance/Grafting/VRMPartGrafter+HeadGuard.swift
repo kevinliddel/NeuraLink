@@ -32,17 +32,30 @@ extension VRMPartGrafter {
         kind == .outfit && (slot == .bodySkin || slot == .accessory)
     }
 
+    /// A donor primitive as drawn by one donor node. One mesh can hang
+    /// from two nodes (one on the head, one not), and what the graft
+    /// brings of it depends on the node.
+    struct GraftKey: Hashable {
+        let node: ObjectIdentifier
+        let primitive: ObjectIdentifier
+
+        init(_ node: VRMNode, _ primitive: VRMPrimitive) {
+            self.node = ObjectIdentifier(node)
+            self.primitive = ObjectIdentifier(primitive)
+        }
+    }
+
     /// What the graft brings for every selected donor primitive (the ones
-    /// in `skipping` are handled elsewhere), keyed by the primitive. Empty
-    /// when the head guard leaves nothing of the part.
+    /// in `skipping` are handled elsewhere), keyed by node and primitive.
+    /// Empty when the head guard leaves nothing of the part.
     static func graftSources(
         _ selection: [(node: VRMNode, mesh: VRMMesh, primitives: [VRMPrimitive])], kind: AppearancePartKind,
         donor: VRMModel, device: MTLDevice?, skipping: [ObjectIdentifier: VRMPrimitive]
-    ) -> [ObjectIdentifier: VRMPrimitive] {
-        var sources: [ObjectIdentifier: VRMPrimitive] = [:]
+    ) -> [GraftKey: VRMPrimitive] {
+        var sources: [GraftKey: VRMPrimitive] = [:]
         for entry in selection {
             for primitive in entry.primitives where skipping[ObjectIdentifier(primitive)] == nil {
-                sources[ObjectIdentifier(primitive)] = graftSource(
+                sources[GraftKey(entry.node, primitive)] = graftSource(
                     primitive, kind: kind, node: entry.node, donor: donor, device: device)
             }
         }

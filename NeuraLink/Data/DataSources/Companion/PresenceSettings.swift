@@ -79,6 +79,9 @@ final class PresenceSettings {
                 _innerLifeEnabled = newValue
                 UserDefaults.standard.set(newValue, forKey: Self.innerLifeKey)
             }
+            // A live session offers `recall_own_story` and the About yourself
+            // block as they were at connect: refresh both (debounced).
+            OpenAIRealtimeManager.postInstructionsChanged(reason: "inner life")
         }
     }
 

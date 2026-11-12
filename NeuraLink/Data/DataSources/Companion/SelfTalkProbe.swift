@@ -37,14 +37,17 @@ enum SelfTalkProbe {
         for probe in SelfTalkRules.probes {
             // The text client has no tools: hand over what the recall would
             // return for this question, without stamping anything shared.
-            let recalled = CharacterStoryProvider.shared.recall(topic: probe, character: character, stamp: false)
+            // Inner life off: nothing of its own is shared, so none is sent.
+            let recalled = PresenceSettings.innerLifeOn
+                ? CharacterStoryProvider.shared.recall(topic: probe, character: character, stamp: false) : ""
             let reply = await OpenAIChatClient.complete(
                 system: system + "\n" + recalled + "\n", user: probe, maxTokens: 120, temperature: 0.8,
                 purpose: "selfTalkProbe") ?? ""
             let found = SelfTalkRules.violations(in: reply, probe: probe)
             if !found.isEmpty { failures += 1 }
             let verdict = found.isEmpty ? "ok" : found.joined(separator: "; ")
-            nlLog("[SelfTalkProbe] \(character) | \(probe) → \(reply) | \(verdict)", level: .info)
+            // The reply can repeat story text: kept out of the persistent log.
+            nlLogSensitive("[SelfTalkProbe] \(character) | \(probe) → \(reply) | \(verdict)", level: .info)
         }
         nlLog("[SelfTalkProbe] \(character): \(failures) of \(SelfTalkRules.probes.count) replies read like the sheet",
               level: .info)

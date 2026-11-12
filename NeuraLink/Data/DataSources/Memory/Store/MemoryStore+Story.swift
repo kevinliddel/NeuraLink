@@ -43,7 +43,7 @@ extension MemoryStore {
         var items: [String] = []
         let query = "SELECT text FROM companion_self_facts WHERE character = ? ORDER BY id DESC;"
         if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
-            sqlite3_bind_text(statement, 1, (character as NSString).utf8String, -1, nil)
+            sqlite3_bind_text(statement, 1, (character as NSString).utf8String, -1, Self.storyTransient)
             while sqlite3_step(statement) == SQLITE_ROW {
                 if let text = sqlite3_column_text(statement, 0) { items.append(String(cString: text)) }
             }
@@ -78,7 +78,7 @@ extension MemoryStore {
         var rows: [StoryRow] = []
         let query = "SELECT kind, text, fragment_id FROM character_story WHERE character = ? ORDER BY kind, position;"
         if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
-            sqlite3_bind_text(statement, 1, (character.lowercased() as NSString).utf8String, -1, nil)
+            sqlite3_bind_text(statement, 1, (character.lowercased() as NSString).utf8String, -1, Self.storyTransient)
             while sqlite3_step(statement) == SQLITE_ROW {
                 guard let kind = sqlite3_column_text(statement, 0), let text = sqlite3_column_text(statement, 1) else { continue }
                 let id = sqlite3_column_text(statement, 2).map { String(cString: $0) } ?? ""
@@ -108,8 +108,11 @@ extension MemoryStore {
                 "INSERT INTO character_story (character, kind, position, text, fragment_id) VALUES (?, ?, \(position), ?, ?);",
                 texts: [key, row.kind, row.text, row.fragmentID])
         }
-        _ = sqlite3_exec(db, done ? "COMMIT;" : "ROLLBACK;", nil, nil, nil)
-        return done
+        // Saved only once the commit itself went through; a commit that
+        // fails leaves the transaction open, so it is rolled back too.
+        if done, sqlite3_exec(db, "COMMIT;", nil, nil, nil) == SQLITE_OK { return true }
+        _ = sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
+        return false
     }
 
     /// Removes a character's stored sheet (the character was deleted).
@@ -118,6 +121,10 @@ extension MemoryStore {
         defer { lock.unlock() }
         runStory("DELETE FROM character_story WHERE character = ?;", texts: [character.lowercased()])
     }
+
+    /// SQLITE_TRANSIENT: SQLite copies the bound text at once, so it does
+    /// not depend on a temporary string outliving the bind.
+    private static let storyTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
     /// One statement with text bindings; the caller holds the lock.
     /// False when it could not be prepared or did not run to completion.
@@ -130,7 +137,7 @@ extension MemoryStore {
             return false
         }
         for (index, text) in texts.enumerated() {
-            sqlite3_bind_text(statement, Int32(index + 1), (text as NSString).utf8String, -1, nil)
+            sqlite3_bind_text(statement, Int32(index + 1), (text as NSString).utf8String, -1, Self.storyTransient)
         }
         guard sqlite3_step(statement) == SQLITE_DONE else {
             nlLog("[MemoryStore] Story statement failed: \(String(cString: sqlite3_errmsg(db)!))", level: .info)

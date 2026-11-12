@@ -110,7 +110,7 @@ public enum VRMPartGrafter {
                 }
                 // An outfit stops at the neck: what rides the donor's head
                 // stays behind (VRMPartGrafter+HeadGuard).
-                guard let source = sources[ObjectIdentifier(primitive)] else { continue }
+                guard let source = sources[GraftKey(donorNode, primitive)] else { continue }
                 let clone = source === primitive ? primitive.shallowClone() : source
                 if let m = primitive.materialIndex {
                     clone.materialIndex = rehomeMaterial(m, donor: donor, host: host,

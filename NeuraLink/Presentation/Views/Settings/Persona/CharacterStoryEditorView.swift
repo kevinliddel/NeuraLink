@@ -171,8 +171,13 @@ struct CharacterStoryEditorView: View {
                 return
             }
             guard sheet == before else { return }
+            let stored = baseline
             show(written)
-            if !CharacterStoryProvider.shared.save(written, for: character) { generationFailed = true }
+            if !CharacterStoryProvider.shared.save(written, for: character) {
+                // Not stored: still unsaved, so closing the screen tries again.
+                baseline = stored
+                generationFailed = true
+            }
         }
     }
 }

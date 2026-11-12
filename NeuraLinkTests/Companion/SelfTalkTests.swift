@@ -93,5 +93,8 @@ struct SelfTalkTests {
         // A denial is wrong whatever was asked; an admission is never a label.
         #expect(SelfTalkRules.violations(in: "Of course I'm human, silly.") == ["denies being an AI"])
         #expect(SelfTalkRules.violations(in: "I'm an AI, yes. Now, your tea is getting cold.").isEmpty)
+        // Saying what it is not is no denial.
+        #expect(SelfTalkRules.violations(in: "I'm not a real person; I'm an AI.", probe: probe).isEmpty)
+        #expect(SelfTalkRules.violations(in: "No flesh and blood here, I'm afraid. A program, Sir.", probe: probe).isEmpty)
     }
 }

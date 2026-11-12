@@ -123,11 +123,25 @@ nonisolated enum SelfTalkRules {
         let present = Set(words)
         let traits = traitWords.filter { present.contains($0) }
         if traits.count >= 3 { found.append("lists traits (\(traits.joined(separator: ", ")))") }
-        if denials.contains(where: { padded.contains(" \($0) ") }) {
+        if denials.contains(where: { claims($0, in: words) }) {
             found.append("denies being an AI")
         } else if probe == aiProbe, !admissions.contains(where: { present.contains($0) }) {
             found.append("does not answer the AI question")
         }
         return found
+    }
+
+    /// Whether `phrase` is said and meant: "I'm a real person" claims it,
+    /// "I'm not a real person" does not. A negation in the two words before
+    /// the phrase turns it around.
+    private static func claims(_ phrase: String, in words: [String]) -> Bool {
+        let parts = phrase.split(separator: " ").map(String.init)
+        guard !parts.isEmpty, words.count >= parts.count else { return false }
+        for start in 0...(words.count - parts.count) where Array(words[start..<start + parts.count]) == parts {
+            let before = words[max(0, start - 2)..<start]
+            let negated = before.contains { ["not", "no", "never", "hardly"].contains($0) || $0.hasSuffix("n't") }
+            if !negated { return true }
+        }
+        return false
     }
 }

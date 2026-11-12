@@ -36,11 +36,14 @@ enum CharacterStoryGenerator {
     /// After an import: writes and stores the sheet when there is none yet.
     static func seedIfNeeded(character: String) {
         guard isAvailable, CharacterStoryProvider.shared.sheet(for: character).isEmpty else { return }
+        let slug = character.lowercased()
+        let importID = ImportedCharacterStore.shared.character(slug: slug)?.id
         Task {
-            // The character may have been deleted, or its sheet written by
-            // hand, while the model was writing.
+            // The character may have been deleted (and another imported
+            // under the same name), or its sheet written by hand, while the
+            // model was writing: the row must still be the one it was.
             guard let sheet = await generate(character: character),
-                  ImportedCharacterStore.shared.isImported(slug: character.lowercased()),
+                  let current = ImportedCharacterStore.shared.character(slug: slug)?.id, current == importID,
                   CharacterStoryProvider.shared.sheet(for: character).isEmpty
             else { return }
             CharacterStoryProvider.shared.save(sheet, for: character)
