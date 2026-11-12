@@ -105,14 +105,19 @@ public enum VRMPartGrafter {
                     borrowedFeet.append(foot)
                     continue
                 }
-                let clone = primitive.shallowClone()
+                // An outfit stops at the neck: what rides the donor's head
+                // stays behind (VRMPartGrafter+HeadGuard).
+                guard let source = graftSource(primitive, kind: kind, node: donorNode, donor: donor, device: host.device)
+                else { continue }
+                let clone = source === primitive ? primitive.shallowClone() : source
                 if let m = primitive.materialIndex {
                     clone.materialIndex = rehomeMaterial(m, donor: donor, host: host,
                                                          materialMap: &materialMap, textureMap: &textureMap, counts: counts)
                 }
-                usedJoints.formUnion(primitive.referencedJoints())
+                usedJoints.formUnion(source.referencedJoints())
                 newMesh.primitives.append(clone)
             }
+            if newMesh.primitives.isEmpty && borrowedFeet.isEmpty { continue }
             var skinIndex: Int?
             if let donorSkinIndex = donorNode.skin, donorSkinIndex < donor.skins.count {
                 let skin = resolveSkin(donor.skins[donorSkinIndex], usedJoints: usedJoints, donor: donor,
@@ -153,17 +158,8 @@ public enum VRMPartGrafter {
         // 5. Hide whatever already occupied these slots — the host's own
         // geometry AND anything an earlier graft put there, so choosing a
         // single garment overrides a whole-outfit pick.
-        var hidden = 0
         let justAdded = Set(host.meshes.suffix(counts.meshes).map { ObjectIdentifier($0) })
-        for mesh in host.meshes where !justAdded.contains(ObjectIdentifier(mesh)) {
-            for primitive in mesh.primitives {
-                guard let m = primitive.materialIndex, m < host.materials.count,
-                    kind.slots.contains(host.slot(ofMaterial: m))
-                else { continue }
-                host.hiddenPrimitives.insert(ObjectIdentifier(primitive))
-                hidden += 1
-            }
-        }
+        let hidden = hideOccupants(of: kind, in: host, sparing: justAdded)
 
         host.buildNodeLookupTable()
         host.updateNodeTransforms()
