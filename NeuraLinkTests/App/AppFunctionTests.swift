@@ -18,9 +18,13 @@ struct AppFunctionTests {
     @Test("All tools are correctly defined in schemas")
     func testToolSchemas() {
         let tools = AppFunctionTool.all
-        #expect(tools.count == 14)
-
         let names = tools.compactMap { $0["name"] as? String }
+        // Fourteen always; two more follow their switches (generated motion, Inner life).
+        let optional = [AppFunctionTool.performMotion, AppFunctionTool.recallOwnStory]
+        #expect(names.filter { !optional.contains($0) }.count == 14)
+        #expect(Set(names).count == names.count)
+        #expect(names.contains(AppFunctionTool.recallOwnStory) == PresenceSettings.innerLifeOn)
+        #expect(names.contains(AppFunctionTool.performMotion) == MotionSettings.offersTool)
         #expect(names.contains(AppFunctionTool.setEmotion))
         #expect(names.contains(AppFunctionTool.getWeather))
         #expect(names.contains(AppFunctionTool.searchMemory))

@@ -16,7 +16,8 @@ import SwiftUI
 struct PersonaSettingsView: View {
     let modelID: String
     let selectedConfig: LocalModelDownloadManager.ModelConfiguration
-    @State private var persona: CharacterPersona
+    // Default-internal so PersonaSettingsView+Imported can name the character.
+    @State var persona: CharacterPersona
     @State private var localPrompt: String
     // Default-internal so PersonaSettingsView+VoiceVoxDownload can read
     // the currently-selected speaker when scheduling the .vvm download.

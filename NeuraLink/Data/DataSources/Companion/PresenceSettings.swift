@@ -30,6 +30,7 @@ final class PresenceSettings {
     private static let followUpsKey = "com.neuralink.presence.followUps"
     private static let deskPresenceKey = "com.neuralink.presence.deskPresence"
     private static let deskAwayMinutesKey = "com.neuralink.presence.deskAwayMinutes"
+    private static let innerLifeKey = "com.neuralink.presence.innerLife"
 
     @ObservationIgnored private var _isPresenceEnabled: Bool = false
     @ObservationIgnored private var _isNotificationsEnabled: Bool = false
@@ -42,6 +43,7 @@ final class PresenceSettings {
     @ObservationIgnored private var _followUpsEnabled: Bool = true
     @ObservationIgnored private var _isDeskPresenceEnabled: Bool = false
     @ObservationIgnored private var _deskAwayMinutes: Double = 10
+    @ObservationIgnored private var _innerLifeEnabled: Bool = true
 
     private init() {
         let defaults = UserDefaults.standard
@@ -56,6 +58,31 @@ final class PresenceSettings {
         _followUpsEnabled = defaults.object(forKey: Self.followUpsKey) as? Bool ?? true
         _isDeskPresenceEnabled = defaults.bool(forKey: Self.deskPresenceKey)
         _deskAwayMinutes = defaults.object(forKey: Self.deskAwayMinutesKey) as? Double ?? 10
+        _innerLifeEnabled = defaults.object(forKey: Self.innerLifeKey) as? Bool ?? true
+    }
+
+    /// Inner life (docs/Companion/LIVING_COMPANION.md): stories the stage
+    /// unlocks, what the character did while apart, the mood it carries.
+    /// The Inner life switch, readable from any thread: `AppFunctionTool.all`
+    /// uses it to decide whether to offer `recall_own_story`.
+    nonisolated static var innerLifeOn: Bool {
+        UserDefaults.standard.object(forKey: innerLifeKey) as? Bool ?? true
+    }
+
+    var innerLifeEnabled: Bool {
+        get {
+            access(keyPath: \.innerLifeEnabled)
+            return _innerLifeEnabled
+        }
+        set {
+            withMutation(keyPath: \.innerLifeEnabled) {
+                _innerLifeEnabled = newValue
+                UserDefaults.standard.set(newValue, forKey: Self.innerLifeKey)
+            }
+            // A live session offers `recall_own_story` and the About yourself
+            // block as they were at connect: refresh both (debounced).
+            OpenAIRealtimeManager.postInstructionsChanged(reason: "inner life")
+        }
     }
 
     /// Character-initiated follow-ups on dated plans (docs/Companion/COMPANION_DEPTH.md).

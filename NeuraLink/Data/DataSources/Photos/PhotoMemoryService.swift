@@ -43,8 +43,10 @@ final class PhotoMemoryService {
         // The reaction is the "spoken result" that puts the phone away.
         PhoneEpisode.toolFinished()
         react(description: description, userWords: userWords)
-        remember(image: scaled, description: description, userWords: userWords, takenAt: takenAt)
-        CompanionMilestoneTracker.note(.firstPhoto)
+        let thumbnail = remember(image: scaled, description: description, userWords: userWords, takenAt: takenAt)
+        // The first photo becomes a polaroid on the keepsake table — with
+        // the picture when memory keeps one, blank otherwise.
+        CompanionMilestoneTracker.note(.firstPhoto, note: thumbnail ?? "")
     }
 
     /// Begins the phone episode and presents the picture on the widget right
@@ -77,8 +79,10 @@ final class PhotoMemoryService {
         ProactivePresenceManager.shared.engage(with: event)
     }
 
-    private func remember(image: UIImage, description: String, userWords: String, takenAt: Date) {
-        guard MemorySettings.shared.isEnabled else { return }
+    /// Returns the thumbnail's file name when memory is on and it was kept.
+    @discardableResult
+    private func remember(image: UIImage, description: String, userWords: String, takenAt: Date) -> String? {
+        guard MemorySettings.shared.isEnabled else { return nil }
         let character = RealtimeChatState.shared.selectedCharacterName
         let fact = Self.fact(from: description, userWords: userWords, takenAt: takenAt, character: character)
         let fileName = Self.saveThumbnail(image)
@@ -87,6 +91,7 @@ final class PhotoMemoryService {
             MemoryStore.shared.updateContext(id: id, context: Self.contextPrefix + fileName)
         }
         OpenAIRealtimeManager.postInstructionsChanged(reason: "photo memory")
+        return fileName
     }
 
     // MARK: - Pure helpers

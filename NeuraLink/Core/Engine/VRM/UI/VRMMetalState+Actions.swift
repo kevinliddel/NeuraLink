@@ -162,7 +162,7 @@ extension VRMMetalState {
                 }
             } else if randomAnimTimer >= 0 {
                 randomAnimTimer -= dt
-                if randomAnimTimer <= 0, let entry = randomAnimEntries.randomElement() {
+                if randomAnimTimer <= 0, let entry = nextIdleEntry() {
                     isPlayingRandomAnim = true
                     randomAnimElapsed = 0
                     // Once through, never looped; the blend home starts just
@@ -185,6 +185,7 @@ extension VRMMetalState {
         updatePhoneEpisode(dt: dt)
         updateListeningEpisode(dt: dt)
         updateAwayEpisode(dt: dt)
+        updateRoom()
 
         if !isPlayingAppear {
             updateTalkingGesture(dt: dt, model: model)
@@ -285,6 +286,14 @@ extension VRMMetalState {
             }
             // Suppress/restore auto-blink for blink-controlling emotions (e.g. wink)
             blinkController.enabled = !profile.controlsBlink
+        }
+        // Inner life: the mood the last session left rests on the face while
+        // no emotion plays, fading over the first minutes (VRMMetalState+Mood).
+        if emotion == "neutral" {
+            let resting = moodRestingFace()
+            for preset in vrmMoodPresets {
+                targetExpressionWeights[preset] = resting[preset] ?? 0
+            }
         }
 
         // Smooth lerp toward target weights (speed: 5x per second ~0.2 s cross-fade)

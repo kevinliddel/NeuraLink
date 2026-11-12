@@ -103,6 +103,10 @@ final class RealtimeChatState {
     var sessionUsage = RealtimeUsageMeter()
     var currentEmotion: String = "neutral"
     var emotionDuration: Float = 0
+    /// The mood the last session left, carried by the body (Inner life,
+    /// VRMMetalState+Mood), and when the character loaded with it.
+    var sessionMood: CompanionMood?
+    var sessionMoodAt: Date?
     private var lastParsedIndex: Int = 0
 
     // UI Controls

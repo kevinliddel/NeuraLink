@@ -111,6 +111,54 @@ struct VRMPartGraftTests {
         #expect(Counts(host) == base)
     }
 
+    /// Triangles of `model`'s skin and accessory primitives that ride the
+    /// head, over the meshes from `firstMesh` on, counting only what is drawn.
+    private func headTriangles(of model: VRMModel, device: MTLDevice, fromMesh firstMesh: Int = 0, upTo lastMesh: Int? = nil) -> Int {
+        var total = 0
+        for node in model.nodes {
+            guard let meshIndex = node.mesh, meshIndex >= firstMesh, meshIndex < (lastMesh ?? model.meshes.count),
+                let skinIndex = node.skin, skinIndex < model.skins.count
+            else { continue }
+            let joints = VRMPartGrafter.headJoints(of: model.skins[skinIndex], in: model)
+            for primitive in model.meshes[meshIndex].primitives {
+                guard let material = primitive.materialIndex,
+                    [.bodySkin, .accessory].contains(model.slot(ofMaterial: material)),
+                    !model.hiddenPrimitives.contains(ObjectIdentifier(primitive)),
+                    let split = primitive.splitAtHead(device: device, headJoints: joints)
+                else { continue }
+                total += split.head.count / 3
+            }
+        }
+        return total
+    }
+
+    @Test("An outfit stops at the neck: the donor's head skin stays behind and the host keeps its own")
+    func outfitLeavesTheHeadAlone() async throws {
+        guard let (host, donor) = try await loadPair(), let device = MTLCreateSystemDefaultDevice() else { return }
+        let base = Counts(host)
+        let ownHead = headTriangles(of: host, device: device)
+        let donorHead = headTriangles(of: donor, device: device)
+        // What used to come through the hair: body skin shaped for the donor's head.
+        #expect(donorHead > 0, "the donor's body reaches into its head (\(donorHead) triangles)")
+        #expect(ownHead > 0, "the host's body reaches into its head (\(ownHead) triangles)")
+        let indexCounts = host.meshes.flatMap(\.primitives).map(\.indexCount)
+
+        try VRMPartGrafter.graft(.outfit, from: donor, donorSlug: "sonya", onto: host)
+        #expect(headTriangles(of: host, device: device, fromMesh: base.meshes) == 0, "nothing grafted rides the head")
+        #expect(headTriangles(of: host, device: device, upTo: base.meshes) == ownHead, "the host's own head skin is still drawn")
+        // The outfit itself did arrive: there is grafted skin below the neck.
+        let graftedSkin = host.meshes[base.meshes...].flatMap(\.primitives).filter {
+            $0.materialIndex.map { host.slot(ofMaterial: $0) == .bodySkin } ?? false
+        }
+        #expect(graftedSkin.contains { $0.indexCount >= 3 })
+        checkInvariants(host, appendedFrom: base.nodes)
+
+        host.restoreBaseComposition()
+        #expect(Counts(host) == base)
+        #expect(host.meshes.flatMap(\.primitives).map(\.indexCount) == indexCounts, "the host's body is whole again")
+        #expect(host.meshes.flatMap(\.primitives).allSatisfy { $0.untrimmedIndices == nil })
+    }
+
     @Test("Grafting a part the donor lacks throws")
     func missingPart() async throws {
         guard let (host, _) = try await loadPair() else { return }

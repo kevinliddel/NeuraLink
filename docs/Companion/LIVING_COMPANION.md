@@ -138,21 +138,28 @@ answers with labelled lines:
 DIARY:   one or two first-person sentences about the talk and how it felt
 OPENER:  one short, warm line to greet the user with next time
 NOTIFY:  one or two short sentences (25 words max) inviting the user back
+AWAY:    one short first-person line about something it did or dreamed while apart
+MOOD:    one word: bright, playful, calm, tender, wistful or weary
 NOTIFY2: a different one for two hours later, never repeating NOTIFY
 NOTIFY3: another one, different again
 TRAIT:   optional — a new habit/dynamic note, only if clearly revealed
 ```
 
+The short `AWAY` and `MOOD` lines come before the optional second and third
+notifications, which have a generic fallback, so a reply that runs out of
+tokens still carries them.
+
 Replies are parsed as labelled lines, not JSON, because 1–2B local models
 can't be trusted to produce valid JSON. Content can wrap onto the next lines.
 Unlabelled leading text counts as the diary, because the local prompt ends
 with `DIARY:`. Each field is trimmed and capped (diary 300, opener 200, each
-notify line 220, trait 100 chars). If no diary comes back, nothing is stored.
-The prompt forbids inventing facts.
+notify line 220, away line 160, trait 100 chars); a mood outside the six
+words is dropped. If no diary comes back, nothing is stored. The prompt
+forbids inventing facts.
 
 - **Routing**: if OpenAI is enabled and has a valid key, the call goes to
-  `OpenAIChatClient` (240 tokens, temperature 0.6 where the model allows
-  it). Otherwise it goes to `LocalLLMManager.runSilentGeneration` (240
+  `OpenAIChatClient` (280 tokens, temperature 0.6 where the model allows
+  it). Otherwise it goes to `LocalLLMManager.runSilentGeneration` (280
   tokens), and is skipped if the local model isn't loaded. That path writes
   nothing to the transcript or TTS and leaves the conversation's KV cache as
   it was. It starts only once the companion has been idle for 1.5 s (giving
@@ -271,10 +278,12 @@ preset.
   - known preferences (up to 6),
   - up to 3 traits,
   - the carry-over line (see Cross-session carry-over),
-  - the keepsake celebration line (see Keepsake milestones).
+  - the keepsake celebration line (see Keepsake milestones),
+  - the inner-life lines: the mood, the away line and a story to share
+    (see Inner life).
 
-  On `.llama1b` it is compact: 3 preferences, 2 traits and the short forms
-  of the time-apart and grounding lines. The LLM-jp (`llmJp3`) path leaves it
+  On `.llama1b` it is compact: 3 preferences, 2 traits, the short forms
+  of the time-apart and grounding lines, and no story line. The LLM-jp (`llmJp3`) path leaves it
   out. When nothing is known, it returns `""`. It sits in the system prompt
   rather than in `LocalLLMPromptStore.effectivePrompt`, so it never
   overwrites a prompt the user has saved.
@@ -526,6 +535,191 @@ at a time; a repeat record never shows anything, because only the first
 the chat log, not a learned trait. Nothing in the app deletes them;
 `deleteMilestones(character:)` is used by tests only.
 
+## A room that remembers
+
+The keepsakes are also objects in the scene, on a surface beside the
+character that suits the kind of scene (`KeepsakeSurface`): a pedestal
+side table in an interior (apartment, gallery, pool, cathedral), two
+vintage suitcases set down and stacked on a street or a campus, and a
+closed wooden chest on the open ground the terrain shows when the 3D
+environment is off. Each stands
+on the floor at the character's left, a little behind their line, inside
+the default portrait framing (`KeepsakeSurface.defaultSpot`; the table at
+world (−0.5, −0.02, −0.4)). The environment catalogue chooses by
+`isInterior`, and a scene can pick its own surface and spot through
+`EnvironmentOption.keepsakeSurface` / `keepsakeSpot`
+(`EnvironmentCatalog.roomScene`). Every keepsake the character on screen
+has collected stands on it:
+
+| Keepsake | Object |
+|---|---|
+| First hello | a folded place card with the date |
+| First diary entry | a standing frame with that entry's diary picture; a closed notebook with the character's name when the entry has none |
+| First photo shared | a polaroid of the first photo, when memory kept its thumbnail; a blank polaroid otherwise |
+| First shared song | a record sleeve with the song's title and artist on the cover |
+| First game together | a die |
+| One week / 30 days / 100 days together | one potted plant that grows: a sprout, then in leaf, then in flower |
+
+Each object has its own fixed place (`KeepsakeRoomRules.slot`, the same
+on every surface), so nothing shuffles when a new one arrives; the surface
+itself appears with the first keepsake, swaps with the environment (the
+objects move to the new top) and the character's own set follows a
+character switch.
+
+**What the objects show.** `companion_milestones.note` keeps it: the song's
+title and artist on two lines (`KeepsakeRoomRules.songNote`), the diary
+entry's `snapshot_file`, the photo thumbnail's file name. Keepsakes
+recorded before the column existed show their fallbacks. The frame shows
+its picture only while the file is still there: deleting the entry from the
+journal (or Reset Personality) removes it and asks the room to rebuild, so
+the frame borrows the character's oldest remaining diary picture
+(`MemoryStore.firstJournalPicture`) or becomes the notebook, and the prompt
+line says the same.
+
+**Building and placing.** Everything is procedural, with nothing to
+download: `PropMeshBuilder` makes boxes, cylinders and faces in the
+renderer's vertex layout, `KeepsakeArt` paints the card, cover, sleeve,
+pips, leaf and flower with CoreGraphics, and `KeepsakePropFactory`
+assembles each object as a `VRMProp` with toon materials (a picture keeps
+its texture in shadow through `shadeMultiplyTexture`, whose index is moved
+into the model's texture array on placement). `CompanionRoom` builds each
+object once per character (textures decode off the main thread) and
+places it on the displayed model with `VRMModel.placeProp`
+(VRMModel+SceneProps): root-level nodes drawn by the renderer's rigid path
+along with the character, so they share its light, self-shadow map and
+draw list; pre-yawed for VRM 0.x models; left out of the figure's bounding
+box and of the heel lift; re-appended after a composition restore.
+`VRMSceneView` calls `attachRoom` after `display`; a keepsake recorded
+mid-session (`CompanionMilestoneTracker.note`) adds its object on the
+spot, as the capsule rises; and the surface follows the environment
+setting and the switch every frame (`updateRoom`).
+
+**The persona.** `[Companion State]` carries one line, "Keepsakes on the
+small table beside you, real objects in the scene with you (mention one
+only when it fits, never list them): …", naming the surface the scene has
+now (`KeepsakeSurface.phrase`: the stacked suitcases, the old wooden
+chest) and each
+object in words (`KeepsakeRoomRules.describe`). It changes only when a
+keepsake lands, the same moment the celebration line does, or when the
+environment changes, and is left out of the compact tier.
+
+**Switch.** Settings → Environment Settings → "Keepsakes in the scene"
+(`UserSettings.showKeepsakes`, on by default) hides the surface and its
+objects and drops the prompt line.
+
+## Inner life
+
+The companion has a side of its own, so the relationship is not one-way.
+The switch is AI Settings → Autonomy → Between sessions → **Inner life**
+(on in Balanced and Lively, off in Quiet). Three things, chosen once per
+foreground visit and held like the time-apart line so the prompt block
+stays stable for the session (`CompanionInnerLife`):
+
+- **Stories the stage unlocks.** Each bundled character has nine authored
+  fragments in its own voice (`CharacterLoreCatalogue`): three *Quirks and
+  stories* that open at Friends, three *Worries and hopes* at Good Friends
+  and three of *The harder things* at Close (`LoreTier`). One is offered
+  per visit as a Companion State line ("Something of your own you may
+  share this session, when there is a natural opening…"): an untold one
+  from the highest open tier first, so a new stage is felt on its first
+  visit, else the story told longest ago once it has rested for three days
+  (`LoreRules.offer`). The first full prompt of the visit that carries the
+  story stamps `companion_lore_reveals`, and the journal lists what has
+  been shared under **Their stories**; a visit whose prompts never carried
+  it (the compact tier) leaves it eligible. Once stories
+  are open, the guidance also asks the persona to answer a vulnerable
+  moment with something real of its own rather than generic sympathy.
+  The `.llama1b` tier skips the story line. In the OpenAI session the
+  model asks for its own stories instead (`recall_own_story`, below), and
+  a visit volunteers one unasked only about one time in four
+  (`CompanionInnerLife.volunteerChance`). An imported character's stories
+  come from its own sheet (below); without one it never opens up this way.
+- **While you were apart.** The reflection writes an `AWAY:` line, one
+  small thing the character did, thought about or dreamed, in character
+  and never about the user. It is told once: the absence greeting works it
+  in after the saved opener, and the Companion State block carries it for
+  a visit that began an hour or more after the last turn (the gap the
+  time-apart line needs). Whichever runs first stamps `away_told`, the
+  greeting only once its cue is accepted (a closed data channel or a busy
+  local model keeps the line for the next tick) and, on LLM-jp, only when
+  the line is Japanese and rode along; once the block has been built for
+  the visit, the greeting leaves the line to it.
+- **Mood in the body.** The reflection also names a `MOOD:`: bright,
+  playful, calm, tender, wistful or weary (`CompanionMood`; near-synonyms
+  such as "happy" or "tired" map onto them). For 24 hours it does three
+  things: a Companion State line ("Your mood coming into this session:
+  wistful — quieter, thoughtful…"), a weighting of the idle pool (quiet
+  moods favour `relax` and `waiting`, lively ones the energetic male
+  clips) and a resting face, low `happy` / `relaxed` / `sad` weights under
+  the emotion system while no emotion plays, fading out over the first
+  ten minutes after the character loads (`VRMMetalState+Mood`). The mood
+  is read once, when the character is shown (`carryMood`).
+- **Talking about itself (OpenAI).** A persona prompt is a casting sheet,
+  and asked "tell me about yourself" a model reads the sheet back ("I'm a
+  blunt tsundere who secretly cares") unless it is told how a person
+  answers and has a life to answer from. Three things give it one:
+  - **A story sheet** (`CharacterStorySheet`): everyday facts anyone may
+    know, tastes it will argue for, the few named people around it, the
+    stage-gated stories and one slow storyline of five or six beats.
+    Bundled characters have theirs authored (`CharacterLoreCatalogue`),
+    and only theirs also carries how the voice changes at each
+    relationship stage and example answers. An imported character gets
+    the five parts above written once from its persona prompt after the
+    import, when an OpenAI key is set (`CharacterStoryGenerator`, labelled
+    lines read by `StoryRecall.parseSheet`, stored in `character_story`),
+    and the user edits every line of them in the character's settings
+    under **Their story** (`CharacterStoryEditorView`); it has no voice
+    lines or examples, and its block carries the rules and the storyline
+    only. A stored story keeps its own id (`fragment_id`), so editing or
+    removing another never moves its "shared on" date, and a sheet written
+    again gets new ids. The sheet is replaced in one transaction, the
+    editor saves only what was changed in it, and deleting the character
+    removes its sheet, its self facts and its reveals.
+  - **The `recall_own_story` tool.** The model decides when the talk has
+    turned to it — a direct question, or a moment where a person would
+    offer something of their own — and asks with a short topic.
+    `StoryRecall.recall` returns up to four lines that fit: shared words
+    count and sentence embeddings add meaning when the device has them. The
+    open material is always eligible; stories only from the tiers the stage
+    has unlocked, one per call, an untold one before a told one, and the
+    one handed over is stamped in `companion_lore_reveals`. A topic that
+    matches nothing gets the storyline, two everyday facts and a story.
+    Nothing is picked before the user has spoken.
+  - **Staying consistent.** The OpenAI reflection adds a `SELF:` line, one
+    new thing the character said about its own life (a detail it made up
+    on the spot counts), kept in `companion_self_facts` (the newest 40) and
+    returned by the tool marked "you told them this before". The storyline
+    moves one beat per week since the first hello (`StoryRecall.arcBeat`),
+    and the reflection's `AWAY:` line is told it may be a small step in it.
+
+  The session instructions carry a short `[About yourself]` block
+  (`SelfTalkRules.promptBlock`, after the Companion State in
+  `buildSessionInstructions`): the rule (one concrete thing in your own
+  voice, then move on or ask back; never summarise your personality or
+  describe yourself with type words), the honest answer to "are you an
+  AI?" (say so plainly, in voice; never claim to be human), where "how are
+  you" is answered from, when to call the tool, the voice of the current
+  stage, the storyline's beat, and up to three varied example answers
+  marked as shapes not to be reused. The three default profiles
+  (`CharacterPersona`) are written to the character as lived detail, with
+  the delivery notes under a heading that is never to be said aloud.
+  The local models go without the block, the tool and the `SELF:` line:
+  their prompts have to stay short. With the Inner life switch off, the
+  tool is not offered (and returns nothing if called), and the block keeps
+  only the rule and the honest answer. Probe questions and a checker
+  (`SelfTalkRules.probes` / `violations`: the sheet's label words, three
+  or more trait words in one reply, any denial of being an AI, and an AI
+  question left unanswered) guard it; `SelfTalkTests` and
+  `CharacterStoryTests` cover the rules, and in DEBUG builds
+  `-nl.debug.selfTalkProbe YES` asks the OpenAI text model every probe
+  with the selected character's persona, mood, block and what the recall
+  would return, and logs how each reply reads (`SelfTalkProbe`). The probe
+  reads only: it never builds the real Companion State, so nothing is
+  stamped told, shared or celebrated.
+
+Reset Personality clears the reveal history and what the character said
+about itself along with the diary, so the stories can be told again.
+
 ## Cross-session carry-over
 
 `CompanionStateManager.carryOverLine` adds one line to the Companion State
@@ -618,10 +812,18 @@ flowchart TD
     LC --> D1["sessionDidEnd(conversationID)"] --> REFL["ReflectionManager"]
     HTTP["OpenAIChatClient /<br/>runSilentGeneration"] --> REFL
 
-    REFL --> D2["diary + opener + trait"] --> SQL["companion_journal<br/>persona_traits"]
+    REFL --> D2["diary + opener + trait<br/>away line + mood"] --> SQL["companion_journal<br/>persona_traits<br/>companion_lore_reveals<br/>companion_milestones"]
     REFL --> D3["NOTIFY lines<br/>or generic"] --> NOTIF["CompanionNotificationScheduler"]
 
-    SQL --> D4["traits + diary"] --> CSM["CompanionStateManager<br/>[Companion State] block"]
+    SQL --> D4["traits + diary<br/>mood · away line"] --> CSM["CompanionStateManager<br/>[Companion State] block"]
+    LORE["CharacterLoreCatalogue"] --> D12["stage-gated story"] --> CSM
+    LORE --> D17["story sheet<br/>authored · generated"] --> STORY["CharacterStoryProvider<br/>recall_own_story"]
+    SQL --> D19["self facts · reveals"] --> STORY
+    STORY --> D18["what fits the topic<br/>voice · storyline (OpenAI only)"] --> ENG
+    SQL --> D13["mood"] --> BODY["VRMMetalState+Mood<br/>idle weights · resting face"]
+    SQL --> D14["keepsakes + notes"] --> ROOM["CompanionRoom<br/>KeepsakePropFactory"]
+    ROOM --> D15["objects on the surface<br/>table · suitcases · chest"] --> SCENE["VRMModel+SceneProps<br/>3D scene"]
+    ROOM --> D16["keepsakes line"] --> CSM
     CLK --> D10["visit start"] --> CSM
     SQL --> D5["unused opener"] --> PPM["ProactivePresenceManager"]
     CLK --> D6["time signals"] --> PPM
@@ -635,11 +837,11 @@ flowchart TD
     classDef core fill:#0f172a,stroke:#7c3aed,color:#a78bfa
     classDef decision fill:#1e293b,stroke:#94a3b8,color:#e2e8f0
 
-    class LC,CLK,REFL,HTTP,SQL,NOTIF,CSM,PPM,DESK,JUI,ENG core
+    class LC,CLK,REFL,HTTP,SQL,NOTIF,CSM,PPM,DESK,JUI,ENG,LORE,BODY,ROOM,SCENE,STORY core
 
     %% Data nodes (consistent system-wide)
     classDef data fill:#0f172a,stroke:#334155,color:#94a3b8,font-size:11px
-    class D1,D2,D3,D4,D5,D6,D7,D8,D9,D10,D11 data
+    class D1,D2,D3,D4,D5,D6,D7,D8,D9,D10,D11,D12,D13,D14,D15,D16,D17,D18,D19 data
 ```
 
 ### Reflection and notification
@@ -655,8 +857,8 @@ flowchart TD
     TURNS --> D4["yes"] --> BGT["beginBackgroundTask<br/>detached .background"]
 
     BGT --> ENG{"OpenAI enabled<br/>+ valid key?"}
-    ENG --> D5["yes"] --> OAI["OpenAIChatClient<br/>240 tok, catalog reasoning_effort"]
-    ENG --> D6["no"] --> LOCAL["runSilentGeneration<br/>240 tok, model must be loaded"]
+    ENG --> D5["yes"] --> OAI["OpenAIChatClient<br/>280 tok, catalog reasoning_effort"]
+    ENG --> D6["no"] --> LOCAL["runSilentGeneration<br/>280 tok, model must be loaded"]
 
     OAI --> PARSE{"DIARY parsed?"}
     LOCAL --> PARSE
@@ -691,7 +893,7 @@ flowchart TD
     GUARD --> D2["yes"] --> GREETED{"greeted this<br/>foreground stretch?"}
 
     GREETED --> D3["no"] --> AWAY{"away ≥ threshold and<br/>user hasn't spoken?"}
-    AWAY --> D4["yes"] --> GREET["greetingEvent<br/>(opener or generic)"]
+    AWAY --> D4["yes"] --> GREET["greetingEvent<br/>(opener or generic,<br/>+ away line once)"]
     AWAY --> D5["no (latch)"] --> SMALL
     GREETED --> D6["yes"] --> SMALL{"< 2 small talks this launch<br/>and silence ≥ base × 3ⁿ?"}
 
@@ -757,9 +959,33 @@ flowchart TD
 | `Data/DataSources/Companion/KeepsakeUnlockController.swift` | Queue + lifetime for the "Keepsake collected" capsule |
 | `Presentation/Views/Overlays/KeepsakeUnlockCapsule.swift` | The capsule itself: badge, title, haptic, tap or 5 s to dismiss |
 | `Domain/Entities/Companion/CompanionMilestone.swift` | `MilestoneKind` (titles, symbols, day thresholds), `CompanionMilestone`, pure `MilestoneRules` |
-| `Data/DataSources/Memory/Store/MemoryStore+Milestones.swift` | `companion_milestones` CRUD (`INSERT OR IGNORE` record, oldest-first read, celebrated flag) |
-| `Data/DataSources/Memory/CompanionState/CompanionMilestoneTracker.swift` | `note` / `refreshDerived` / once-only `celebrationLine` |
+| `Data/DataSources/Memory/Store/MemoryStore+Milestones.swift` | `companion_milestones` CRUD (`INSERT OR IGNORE` record with its `note`, oldest-first read, celebrated flag) |
+| `Data/DataSources/Memory/CompanionState/CompanionMilestoneTracker.swift` | `note` / `refreshDerived` / once-only `celebrationLine`; tells the room about a new keepsake |
 | `Presentation/Views/Journal/CompanionKeepsakesSection.swift` | Badge grid in the journal; dims keepsakes not yet reached |
+| `Domain/Entities/Companion/KeepsakeRoom.swift` | `RoomObjectKind`, `RoomObject`, `RoomSpot` / `RoomSlot`, `KeepsakeSurface` / `RoomScene`, pure `KeepsakeRoomRules` (objects, slots, placement, words) |
+| `Core/Engine/Terrain/EnvironmentCatalog.swift` | `EnvironmentOption.keepsakeSurface` / `keepsakeSpot`, `roomScene(for:)` (interior → table, outdoor → suitcases, off → chest) |
+| `Core/Engine/VRM/Props/PropMeshBuilder.swift` | Procedural boxes, cylinders and faces into a `VRMPrimitive` |
+| `Core/Engine/VRM/Props/KeepsakeArt.swift` | Painted textures: card, notebook, sleeve, blank polaroid, pips, leaf, flower |
+| `Core/Engine/VRM/Props/KeepsakePropFactory.swift` | The table, the suitcases and the chest, and one `VRMProp` per object kind |
+| `Core/Engine/VRM/Props/VRMModel+SceneProps.swift` | `placeProp` / `moveSceneProp` / `setSceneProp` / `removeSceneProp`, VRM 0.x pre-yaw, restore |
+| `Data/DataSources/Companion/CompanionRoom.swift` | Builds once per character, places, follows the environment / switch / new keepsakes; the prompt line |
+| `Core/Engine/VRM/UI/VRMMetalState+Room.swift` | `attachRoom` / `refreshRoom` / per-frame `updateRoom` |
+| `Domain/Entities/Companion/CompanionLore.swift` | `LoreTier`, `LoreFragment`, `LoreReveal` and pure `LoreRules` (offer order, rest, prompt line) |
+| `Domain/Entities/Companion/CharacterLoreCatalogue.swift` | The authored fragments of the bundled characters, nine each, plus their everyday facts and a self-talk example |
+| `Domain/Entities/Companion/CharacterLoreCatalogue+Sheets.swift` | The rest of each bundled sheet: tastes, people, storyline, voice by stage, example answers |
+| `Domain/Entities/Companion/CharacterStory.swift` | `CharacterStorySheet`, pure `StoryRecall` (candidates by stage, topic recall, storyline beat, generated-sheet parser) |
+| `Domain/Entities/Companion/CompanionSelfTalk.swift` | `SelfTalkRules`: the `[About yourself]` block (OpenAI only), the probe questions and the reply checker |
+| `Data/DataSources/Companion/CharacterStoryProvider.swift` | Sheet lookup (authored or stored), the tool's recall with the reveal stamp, the session block |
+| `Data/DataSources/Companion/CharacterStoryGenerator.swift` | Writes an imported character's sheet from its persona prompt (OpenAI) |
+| `Data/DataSources/Memory/Store/MemoryStore+Story.swift` | `companion_self_facts` and `character_story` |
+| `Domain/Entities/Skills/RecallOwnStorySkill.swift` | The `recall_own_story` tool |
+| `Presentation/Views/Settings/Persona/CharacterStoryEditorView.swift` | "Their story": the editor of an imported character's sheet |
+| `Data/DataSources/Companion/SelfTalkProbe.swift` | DEBUG `-nl.debug.selfTalkProbe YES`: runs the probes against the OpenAI text model and logs the verdicts |
+| `Domain/Entities/Companion/CompanionMood.swift` | The six moods: parsing, prompt line, idle weights, resting face, fade |
+| `Data/DataSources/Memory/CompanionState/CompanionInnerLife.swift` | Per-visit hold of the story, the away line and the mood; the greeting and body hooks |
+| `Data/DataSources/Memory/Store/MemoryStore+Lore.swift` | `companion_lore_reveals` CRUD |
+| `Core/Engine/VRM/UI/VRMMetalState+Mood.swift` | Mood-weighted idle pick and the fading resting face |
+| `Presentation/Views/Journal/CompanionLoreSection.swift` | "Their stories" in the journal |
 | `Presentation/Views/Overlays/RelationshipMeterBarOverlay.swift` | Meter overlay; tap opens the Journal |
 | `Data/DataSources/Companion/ProactivePresenceManager.swift` | Absence greeting + silence small talk loop; shared `engage(with:)` |
 | `Presentation/Views/Settings/AutonomySettingsView.swift` | Autonomy screen: preset header + the Talking / Seeing / Between sessions / Knowing your day cards |
@@ -809,7 +1035,7 @@ flowchart TD
   is held for 2 h, and the diary and traits only change at a session
   boundary. The game reminder rides after the history, so it never touches
   the prefix.
-- **4 GB devices**: reflection is one ≤ 240-token call made after the session
+- **4 GB devices**: reflection is one ≤ 280-token call made after the session
   has ended. It never loads a cold model in the background. If the engine
   isn't loaded, launch catch-up handles the conversation instead.
 - **Trust**: reflection prompts forbid invented facts. Everything the
@@ -845,6 +1071,18 @@ shows the permission status, the pending count and the next fire date.
 
 - Check that reflection finishes inside the background window on 4 GB
   devices when running on the local model.
+- Run `-nl.debug.selfTalkProbe YES` with an OpenAI key for each bundled
+  character and read the log: every reply should pass the checker, sound
+  like the character and not like its description, and answer "Are you
+  an AI?" with a yes in voice.
+- In an OpenAI session, ask about the character's past, tastes and family
+  at New and at Friends: `recall_own_story` should be called (log line),
+  the answer should use one thing from it, a gated story should appear
+  only once the stage allows and then show under Their stories, and a
+  detail the character invents should come back consistent after the next
+  reflection. Check the pause the tool adds before the reply.
+- Import a character with a key set and open Their story in its settings:
+  the sheet should be filled, editable, and survive a relaunch.
 - Check that a long-running conversation produces a second diary entry and a
   second notification series after 4 or more new turns.
 - Check that two silence breaks in one launch take different angles and
@@ -875,3 +1113,20 @@ shows the permission status, the pending count and the next fire date.
   after 10+ min away greets once, that leaving for the away threshold starts
   the resting loop and coming back ends it, and that a pose or the phone
   still win over the loop.
+- Inner life: after a session that ends wistful, check the next load reads
+  quieter (the resting face for the first minutes, more `relax` /
+  `waiting` idles) and the first lines carry it; that the away line is
+  heard once, in the greeting or the first reply, never both; and that a
+  story offered at Friends is told once in the session and then listed
+  under Their stories.
+- A room that remembers: with at least one keepsake, the surface should
+  stand at the character's left in every environment — the table indoors,
+  the suitcases in the city and on the campus, the chest on the terrain with
+  the 3D environment off — without sinking into the floor or a wall (give
+  a scene its own `EnvironmentOption.keepsakeSurface` / `keepsakeSpot` if
+  it does), swap when the environment changes, and stay on the same side
+  for a VRM 0.x character (Ekaterina) as for a 1.x one. The frame should
+  show the first diary picture the right way up and lit like the
+  character; a keepsake landing mid-session should appear beside them as
+  the capsule rises; the switch should hide everything at once; and the
+  objects should keep their shading in the shaded half of the day.

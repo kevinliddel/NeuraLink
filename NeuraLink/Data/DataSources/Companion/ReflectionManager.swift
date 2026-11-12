@@ -29,7 +29,13 @@ final class ReflectionManager: @unchecked Sendable {
     private static let transcriptTurns = 16
     /// Small on purpose: jetsam-safe on 4 GB devices, fits the ~30 s
     /// backgrounding window.
-    private static let maxTokens = 240
+    /// Room for every label at its cap; AWAY and MOOD sit before the
+    /// optional second and third notification lines (which have a generic
+    /// fallback) so a reply cut short still carries them.
+    private static let maxTokens = 280
+    /// Extra room for the OpenAI reflection's SELF: line.
+    private static let extendedTokens = 60
+    private static let selfFactLengthRange = 12...160
     /// Catch-up ignores conversations older than this.
     private static let catchUpWindow: TimeInterval = 7 * 86_400
 
@@ -42,6 +48,15 @@ final class ReflectionManager: @unchecked Sendable {
         /// Optional distilled personality note (Phase 2). Empty when the
         /// conversation revealed nothing new.
         let trait: String
+        /// AWAY: — one thing the companion did or dreamed while apart
+        /// (Inner life).
+        var awayLine: String = ""
+        /// MOOD: — how the talk left it (`CompanionMood` raw value, "" if
+        /// none was recognised).
+        var mood: String = ""
+        /// SELF: — something new the companion said about its own life
+        /// (OpenAI reflection only), kept so it stays consistent.
+        var selfFact: String = ""
     }
 
     /// Trait pool bounds (Phase 2): at most this many per character; the
@@ -178,18 +193,28 @@ final class ReflectionManager: @unchecked Sendable {
             diary: reflection.diary,
             opener: reflection.opener,
             notificationLine: reflection.notificationLine,
-            lastMessageID: messages.map(\.id).max() ?? 0
+            lastMessageID: messages.map(\.id).max() ?? 0,
+            awayLine: reflection.awayLine,
+            mood: reflection.mood
         )
         guard journalID > 0 else { return }
-        CompanionMilestoneTracker.note(.firstDiary, character: character)
         nlLogSensitive("[Reflection] \(character) diary: \(reflection.diary)", level: .info)
         // The picture of her world that goes with this entry: the latest
         // candid capture of the scene, if this session produced one.
         let snapshotFile = CompanionSceneCapture.keepForJournal(entryID: journalID)
         if let snapshotFile { MemoryStore.shared.setJournalSnapshot(id: journalID, file: snapshotFile) }
-        await MainActor.run { CompanionSnapshotWriter.shared.scheduleRefresh() }
+        // The first entry's picture goes into the frame on the keepsake
+        // table; the tracker reaches the capsule and the scene, so it runs
+        // on the main actor like the widget refresh.
+        await MainActor.run {
+            CompanionMilestoneTracker.note(.firstDiary, character: character, note: snapshotFile ?? "")
+            CompanionSnapshotWriter.shared.scheduleRefresh()
+        }
 
         recordTrait(character: character, trait: reflection.trait)
+        if selfFactLengthRange.contains(reflection.selfFact.count) {
+            MemoryStore.shared.addSelfFact(character: character, text: reflection.selfFact)
+        }
 
         if await scheduleReturnNotifications(
             conversationID: conversationID, reflection: reflection, snapshotFile: snapshotFile) > 0 {
@@ -253,10 +278,14 @@ final class ReflectionManager: @unchecked Sendable {
         let openAI = OpenAISettings.shared
         let userName = UserSettings.shared.name
         if openAI.isEnabled && openAI.hasValidKey {
+            // The cloud model also notes what the character said about
+            // itself and lets its storyline colour the away line; the local
+            // prompt stays as short as it was.
+            let arcBeat = await MainActor.run { CharacterStoryProvider.shared.arcBeat(character: character) }
             return await OpenAIChatClient.complete(
-                system: systemInstruction(character: character, userName: userName),
+                system: systemInstruction(character: character, userName: userName, extended: true, arcBeat: arcBeat),
                 user: transcript,
-                maxTokens: maxTokens,
+                maxTokens: maxTokens + extendedTokens,
                 temperature: 0.6,
                 purpose: "reflection")
         }
@@ -268,10 +297,20 @@ final class ReflectionManager: @unchecked Sendable {
 
     // MARK: - Prompts
 
-    static func systemInstruction(character: String, userName: String = "") -> String {
+    /// `extended` (the OpenAI reflection) adds the SELF: line and ties the
+    /// away line to the character's storyline (`arcBeat`).
+    static func systemInstruction(
+        character: String, userName: String = "", extended: Bool = false, arcBeat: String? = nil
+    ) -> String {
         let name = character.isEmpty ? "the user's AI companion" : character.capitalized
         let user = userName.trimmingCharacters(in: .whitespacesAndNewlines)
         let who = user.isEmpty ? "your user" : user
+        let arcHint = extended ? (arcBeat.map { " It may be a small step in what is going on in your life: \"\($0)\"" } ?? "") : ""
+        let selfLine = extended ? """
+
+        SELF: one short first-person fact about your own life that you told \(who) in this conversation \
+        (a detail you came up with on the spot counts) — ONLY if you said something new about yourself; otherwise omit this line.
+        """ : ""
         return """
         You are \(name), privately reflecting on a conversation you just had with \(who). \
         Reply with EXACTLY these labeled lines and nothing else:
@@ -280,6 +319,9 @@ final class ReflectionManager: @unchecked Sendable {
         NOTIFY: one or two short sentences (25 words max) sent to \(who) as a phone notification — \
         a warm, conversational message in your own voice that picks up something specific from the \
         conversation and invites them back. Address them directly, never as "the user".
+        AWAY: one short first-person sentence about something small you did, thought about or dreamed \
+        between now and the next time you see \(who) — in character, nothing about \(who) that isn't in the conversation.\(arcHint)
+        MOOD: one word for how this conversation left you: \(CompanionMood.promptVocabulary).\(selfLine)
         NOTIFY2: a different notification for two hours later if they still haven't come back — \
         same rules, new angle, never repeating NOTIFY.
         NOTIFY3: another one for later still — same rules, different again.
@@ -313,6 +355,7 @@ final class ReflectionManager: @unchecked Sendable {
     /// Returns nil when no usable diary was produced.
     static func parse(_ raw: String) -> Reflection? {
         var diary = "", opener = "", notify = "", notify2 = "", notify3 = "", trait = "", head = ""
+        var away = "", mood = "", selfFact = ""
         var current = ""
 
         for rawLine in raw.split(whereSeparator: \.isNewline) {
@@ -327,6 +370,12 @@ final class ReflectionManager: @unchecked Sendable {
                 current = "n3"; notify3 = rest
             } else if let rest = strip(label: "NOTIFY:", from: line) {
                 current = "n"; notify = rest
+            } else if let rest = strip(label: "AWAY:", from: line) {
+                current = "a"; away = rest
+            } else if let rest = strip(label: "MOOD:", from: line) {
+                current = "m"; mood = rest
+            } else if let rest = strip(label: "SELF:", from: line) {
+                current = "s"; selfFact = rest
             } else if let rest = strip(label: "TRAIT:", from: line) {
                 current = "t"; trait = rest
             } else {
@@ -336,6 +385,9 @@ final class ReflectionManager: @unchecked Sendable {
                 case "n": notify += " " + line
                 case "n2": notify2 += " " + line
                 case "n3": notify3 += " " + line
+                case "a": away += " " + line
+                case "m": mood += " " + line
+                case "s": selfFact += " " + line
                 case "t": trait += " " + line
                 default: head += (head.isEmpty ? "" : " ") + line
                 }
@@ -349,9 +401,13 @@ final class ReflectionManager: @unchecked Sendable {
         notify = clean(notify, cap: notifyCap)
         let extras = [clean(notify2, cap: notifyCap), clean(notify3, cap: notifyCap)].filter { !$0.isEmpty }
         trait = clean(trait, cap: 100)
+        away = clean(away, cap: 160)
+        // Only the six moods the body and the prompt know; anything else is "none".
+        let moodKey = CompanionMood.parse(mood)?.rawValue ?? ""
         guard !diary.isEmpty else { return nil }
         return Reflection(
-            diary: diary, opener: opener, notificationLine: notify, extraNotificationLines: extras, trait: trait)
+            diary: diary, opener: opener, notificationLine: notify, extraNotificationLines: extras, trait: trait,
+            awayLine: away, mood: moodKey, selfFact: clean(selfFact, cap: 160))
     }
 
     // MARK: - Trait pool (Phase 2)

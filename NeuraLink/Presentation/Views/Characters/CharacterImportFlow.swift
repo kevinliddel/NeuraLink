@@ -120,6 +120,9 @@ struct CharacterImportFlow: ViewModifier {
                 self.candidate = nil
                 ImportedCharacterStore.shared.noteExternalMutation()
                 VRMModelRegistry.shared.refresh()
+                // Its own life, written once from the persona prompt when a key is set;
+                // editable afterwards in the character's settings.
+                CharacterStoryGenerator.seedIfNeeded(character: row.slug)
                 onImported(row)
                 pendingSetup = row
             } catch {

@@ -7,8 +7,8 @@
 //  deletable here (trust + App Store safety): the relationship stage, a
 //  calendar of the days you talked with the diary and keepsakes on them
 //  (diary pictures open full screen in ZoomableImageViewer), distilled
-//  personality traits, and a reset. Opened by tapping the relationship
-//  meter capsule.
+//  personality traits, the stories the character has shared about itself,
+//  and a reset. Opened by tapping the relationship meter capsule.
 //
 //  Created by Dedicatus on 08/09/2026. Calendar redesign 13/10/2026.
 //
@@ -27,6 +27,7 @@ struct CompanionJournalView: View {
     @State private var milestones: [CompanionMilestone] = []
     @State private var conversations: [Int64: Conversation] = [:]
     @State private var traits: [PersonaTrait] = []
+    @State private var loreReveals: [LoreReveal] = []
     @State private var portrait: UIImage?
     @State private var daysTogether = 0
     @State private var confirmReset = false
@@ -58,6 +59,7 @@ struct CompanionJournalView: View {
                 )
                 CompanionKeepsakesSection(character: character)
                 personalitySection
+                CompanionLoreSection(character: character, displayName: displayName, reveals: loreReveals)
                 resetSection
             }
             .listStyle(.insetGrouped)
@@ -76,7 +78,7 @@ struct CompanionJournalView: View {
             ) {
                 Button("Reset Personality", role: .destructive) { performReset() }
             } message: {
-                Text("Deletes the diary and every learned personality note. Chat history, keepsakes and remembered facts are kept.")
+                Text("Deletes the diary, every learned personality note and the stories shared with you. Chat history, keepsakes and remembered facts are kept.")
             }
             .zoomableImageViewer($viewedPicture)
             .onAppear { reload() }
@@ -187,7 +189,7 @@ struct CompanionJournalView: View {
                 confirmReset = true
             }
             .buttonStyle(.borderless)
-            .disabled(entries.isEmpty && traits.isEmpty)
+            .disabled(entries.isEmpty && traits.isEmpty && loreReveals.isEmpty)
         }
     }
 
@@ -199,6 +201,7 @@ struct CompanionJournalView: View {
         entries = store.journalEntries(character: character, limit: 2_000)
         milestones = store.milestones(character: character)
         traits = store.traits(character: character)
+        loreReveals = store.loreReveals(character: character)
         conversations = Dictionary(uniqueKeysWithValues: store.fetchConversations().map { ($0.id, $0) })
         daysTogether = store.distinctUserMessageDays(character: character)
         portrait = CompanionPortrait.image(for: character)
@@ -219,6 +222,8 @@ struct CompanionJournalView: View {
         CompanionSceneCapture.removeJournalFile(named: entry.snapshotFile)
         MemoryStore.shared.deleteJournalEntry(id: entry.id)
         reload()
+        // The frame on the keepsake table may have shown this picture.
+        CompanionRoom.shared.refresh()
     }
 
     private func deleteTraits(at offsets: IndexSet) {
@@ -232,7 +237,10 @@ struct CompanionJournalView: View {
         for entry in entries { CompanionSceneCapture.removeJournalFile(named: entry.snapshotFile) }
         MemoryStore.shared.deleteJournal(character: character)
         MemoryStore.shared.deleteAllTraits(character: character)
+        MemoryStore.shared.deleteLoreReveals(character: character)
+        MemoryStore.shared.deleteSelfFacts(character: character)
         reload()
+        CompanionRoom.shared.refresh()
     }
 }
 

@@ -26,10 +26,14 @@ struct AutonomyFlags: Equatable, Sendable {
     var engagement = false
     /// Generated body motion for each spoken reply (OpenAI voice mode).
     var gestures = false
+    /// Stories the stage unlocks, what it did while apart, the mood it carries.
+    var innerLife = false
 
     var onCount: Int {
-        [autoTurn, interrupt, senseTone, keepTalking, presence, notifications, followUps, widgets, engagement, gestures]
-            .filter { $0 }.count
+        [
+            autoTurn, interrupt, senseTone, keepTalking, presence, notifications, followUps, widgets, engagement,
+            gestures, innerLife
+        ].filter { $0 }.count
     }
 }
 
@@ -68,11 +72,13 @@ enum AutonomyPreset: String, CaseIterable, Sendable {
         case .balanced:
             return AutonomyFlags(
                 autoTurn: true, interrupt: true, senseTone: true, keepTalking: false,
-                presence: true, notifications: false, followUps: true, widgets: true, engagement: false, gestures: true)
+                presence: true, notifications: false, followUps: true, widgets: true, engagement: false, gestures: true,
+                innerLife: true)
         case .lively:
             return AutonomyFlags(
                 autoTurn: true, interrupt: true, senseTone: true, keepTalking: true,
-                presence: true, notifications: true, followUps: true, widgets: true, engagement: true, gestures: true)
+                presence: true, notifications: true, followUps: true, widgets: true, engagement: true, gestures: true,
+                innerLife: true)
         }
     }
 

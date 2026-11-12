@@ -23,7 +23,9 @@ final class CompanionStateManager {
     /// The single prompt hook shared by both engines (local buildSystemContent
     /// + OpenAI session instructions). `compact` trims the block for the
     /// 1B-model tier, where every system token eats attention budget.
-    func promptContext(characterName: String, compact: Bool = false) -> String {
+    /// `storiesByTool` is the OpenAI session, where the model asks for its
+    /// own stories and the block volunteers one only now and then.
+    func promptContext(characterName: String, compact: Bool = false, storiesByTool: Bool = false) -> String {
         // Facts can exist even if memory is disabled; dialogue-derived familiarity needs memory.
         let facts = store.fetchAllFacts()
         let events = memorySettings.isEnabled ? store.fetchRecentMessagesAcrossAll(limit: 120) : []
@@ -44,10 +46,19 @@ final class CompanionStateManager {
         // Fresh keepsakes: the first build stamps them celebrated and the line
         // holds for the session (stable block), then it disappears for good.
         let keepsake = CompanionMilestoneTracker.celebrationLine(character: characterName, store: store)
+        // The character's own side (Inner life): mood, what it did while
+        // apart, a story it may share — held for the visit like the absence.
+        let inner = CompanionInnerLife.shared.lines(
+            character: characterName, stage: affinity.label, absent: absence != nil, compact: compact,
+            storiesByTool: storiesByTool)
+        // What stands on the keepsake table in the scene (a room that
+        // remembers); it only changes when a keepsake lands. Not for the
+        // smallest tier.
+        let room = compact ? nil : CompanionRoom.shared.promptLine(character: characterName)
 
         // If nothing meaningful is known, don't inject noise.
         if preferenceLines.isEmpty && relationship == nil && tone == nil && absence == nil
-            && grounding.isEmpty && traits.isEmpty && carryOver == nil && keepsake == nil {
+            && grounding.isEmpty && traits.isEmpty && carryOver == nil && keepsake == nil && inner.isEmpty && room == nil {
             return ""
         }
 
@@ -71,12 +82,14 @@ final class CompanionStateManager {
         }
         if let carryOver { out += "- \(carryOver)\n" }
         if let keepsake { out += "- \(keepsake)\n" }
-        out += """
-        - Behavior guidance: Keep personality consistent across turns. Use known preferences naturally when relevant. \
-        Pick up threads from your last conversation naturally when relevant — never act like a stranger. \
-        Avoid mentioning that you have a "relationship meter" or internal state.
-        [End Companion State]\n
-        """
+        if let room { out += "- \(room)\n" }
+        for line in inner { out += "- \(line)\n" }
+        out += "- Behavior guidance: Keep personality consistent across turns. Use known preferences naturally when relevant. "
+            + "Pick up threads from your last conversation naturally when relevant — never act like a stranger. "
+        if CompanionInnerLife.shared.sharesInReturn(stage: affinity.label) {
+            out += LoreRules.mutualSharingGuidance + " "
+        }
+        out += "Avoid mentioning that you have a \"relationship meter\" or internal state.\n[End Companion State]\n"
         return out
     }
 

@@ -40,7 +40,7 @@ A high-performance, native iOS VRM character viewer and AI companion built from 
     <td><strong>Lip-Sync</strong><br/>Mouth shapes read from the audio as it plays, on both the Realtime and the local voice path. See <a href="./docs/Engine/LipSync.md">Lip-Sync</a></td>
   </tr>
   <tr>
-    <td><strong>Living Companion</strong><br/>Diary reflections after each session, proactive greetings, keepsakes, mini-games and desk presence. See <a href="./docs/Companion/LIVING_COMPANION.md">Living Companion</a></td>
+    <td><strong>Living Companion</strong><br/>Diary reflections after each session, proactive greetings, keepsakes that stand as objects in the room, mini-games, desk presence and an inner life that opens up as you grow close. See <a href="./docs/Companion/LIVING_COMPANION.md">Living Companion</a></td>
     <td><strong>Presence Beyond the App</strong><br/>Voice chat with the screen off, home-screen widgets and a Live Activity. See <a href="./docs/Companion/PRESENCE_BEYOND_APP.md">Presence Beyond the App</a></td>
   </tr>
   <tr>

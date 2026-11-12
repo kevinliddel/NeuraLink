@@ -135,6 +135,7 @@ final class ImportedCharacterStore {
         }
         MemoryStore.shared.deleteImportedCharacter(slug: slug)
         MemoryStore.shared.deletePersonaRows(character: slug)
+        CharacterStoryProvider.shared.delete(character: slug)
         MemoryStore.shared.deleteAppearanceSpec(character: slug)
         lastUpdated = Date()
     }

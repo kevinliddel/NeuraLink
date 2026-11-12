@@ -226,6 +226,10 @@ public struct VRMSceneView: View {
             guard !Task.isCancelled else { return }
             let entry = VRMModelRegistry.shared.entry(named: characterName)
             state.display(model, gender: entry?.gender ?? .fallback, isImported: entry?.isImported ?? false)
+            // The mood the last session left (Inner life) shapes idles and the face.
+            state.carryMood(for: characterName)
+            // Their keepsakes on the table beside them (a room that remembers).
+            state.attachRoom(for: characterName)
             // Saved customization (docs/Engine/CHARACTER_CUSTOMIZATION.md) —
             // applied on top of the fresh model, never by reloading it, and
             // awaited before the scene is declared ready so the character is
@@ -253,6 +257,8 @@ public struct VRMSceneView: View {
                     let model = try await VRMModel.load(from: defaultEntry.url, device: device)
                     guard !Task.isCancelled else { return }
                     state.display(model, gender: defaultEntry.gender, isImported: defaultEntry.isImported)
+                    state.carryMood(for: defaultEntry.name)
+                    state.attachRoom(for: defaultEntry.name)
                     await AppearanceApplier.shared.applyStoredAndWait(
                         slug: defaultEntry.name.lowercased(), to: state)
                     EnvironmentLoadState.shared.markBaseSceneReady()

@@ -27,6 +27,13 @@ struct JournalEntry: Identifiable, Equatable, Sendable {
     /// Candid capture of the scene adopted by this reflection (file name in
     /// the scene-captures directory); nil when none was fresh.
     var snapshotFile: String? = nil
+    /// What the companion did or dreamed while apart (Inner life); told
+    /// once, through the greeting or the prompt block.
+    var awayLine: String = ""
+    var awayTold: Bool = false
+    /// The mood the conversation left (`CompanionMood` raw value), "" when
+    /// the reflection gave none.
+    var mood: String = ""
 }
 
 /// A distilled personality trait the companion has picked up ("teases the

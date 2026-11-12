@@ -30,14 +30,16 @@ extension MemoryStore {
         diary: String,
         opener: String,
         notificationLine: String,
-        lastMessageID: Int64 = 0
+        lastMessageID: Int64 = 0,
+        awayLine: String = "",
+        mood: String = ""
     ) -> Int64 {
         lock.lock()
         defer { lock.unlock() }
         let query = """
         INSERT INTO companion_journal
-            (character, conversation_id, diary, opener, notification_line, last_message_id)
-        VALUES (?, ?, ?, ?, ?, ?);
+            (character, conversation_id, diary, opener, notification_line, last_message_id, away_line, mood)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?);
         """
         var statement: OpaquePointer?
         var newID: Int64 = -1
@@ -48,6 +50,8 @@ extension MemoryStore {
             sqlite3_bind_text(statement, 4, (opener as NSString).utf8String, -1, nil)
             sqlite3_bind_text(statement, 5, (notificationLine as NSString).utf8String, -1, nil)
             sqlite3_bind_int64(statement, 6, lastMessageID)
+            sqlite3_bind_text(statement, 7, (awayLine as NSString).utf8String, -1, nil)
+            sqlite3_bind_text(statement, 8, (mood as NSString).utf8String, -1, nil)
             if sqlite3_step(statement) == SQLITE_DONE {
                 newID = sqlite3_last_insert_rowid(db)
             } else {
@@ -67,6 +71,11 @@ extension MemoryStore {
     /// Marks an entry's notification as scheduled/delivered.
     func markJournalNotified(id: Int64) {
         setJournalFlag(id: id, column: "notified")
+    }
+
+    /// Marks an entry's away line as told (Inner life: once, ever).
+    func markAwayTold(id: Int64) {
+        setJournalFlag(id: id, column: "away_told")
     }
 
     private func setJournalFlag(id: Int64, column: String) {
@@ -129,6 +138,28 @@ extension MemoryStore {
         fetchJournal(where: "character = ?", bindText: character, limit: 1).first
     }
 
+    /// The oldest diary picture a character has — the frame on the
+    /// keepsake table, for a "first diary" keepsake noted before pictures
+    /// were kept with it.
+    func firstJournalPicture(character: String) -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        let query = """
+        SELECT snapshot_file FROM companion_journal
+        WHERE character = ? AND snapshot_file IS NOT NULL AND snapshot_file != '' ORDER BY id ASC LIMIT 1;
+        """
+        var statement: OpaquePointer?
+        var file: String?
+        if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
+            sqlite3_bind_text(statement, 1, (character as NSString).utf8String, -1, nil)
+            if sqlite3_step(statement) == SQLITE_ROW {
+                file = sqlite3_column_text(statement, 0).map { String(cString: $0) }
+            }
+        }
+        sqlite3_finalize(statement)
+        return file
+    }
+
     /// Spoken user turns added since the conversation's latest reflection
     /// (all of them when it has none) — reflection's ≥N-new-turns guard. A
     /// session boundary never resets the active conversation, so a plain
@@ -160,7 +191,7 @@ extension MemoryStore {
         defer { lock.unlock() }
         let query = """
         SELECT id, character, conversation_id, diary, opener, notification_line,
-               notified, opener_used, created_at, snapshot_file
+               notified, opener_used, created_at, snapshot_file, away_line, away_told, mood
         FROM companion_journal WHERE \(clause) ORDER BY id DESC LIMIT ?;
         """
         var statement: OpaquePointer?
@@ -209,7 +240,10 @@ extension MemoryStore {
             notified: sqlite3_column_int(statement, 6) == 1,
             openerUsed: sqlite3_column_int(statement, 7) == 1,
             createdAt: Self.parseSQLiteTimestamp(createdRaw) ?? Date(),
-            snapshotFile: sqlite3_column_text(statement, 9).map { String(cString: $0) }
+            snapshotFile: sqlite3_column_text(statement, 9).map { String(cString: $0) },
+            awayLine: sqlite3_column_text(statement, 10).map { String(cString: $0) } ?? "",
+            awayTold: sqlite3_column_int(statement, 11) == 1,
+            mood: sqlite3_column_text(statement, 12).map { String(cString: $0) } ?? ""
         )
     }
 

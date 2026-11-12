@@ -72,6 +72,19 @@ which is the faithful option, because VRoid deletes the skin its own outfit
 hides. A single garment leaves the host's skin alone. If the new garment
 covers less than the old one, it can expose a carved-away gap.
 
+**An outfit stops at the neck** (`VRMPartGrafter+HeadGuard`): VRoid's body
+mesh reaches into the head (the scalp cap under the hair, the top of the
+neck), and an outfit's accessories often sit on it (glasses, hairpins), all
+shaped for the donor's head. On a host with a smaller head they came through
+the hair as patches of skin. So for the skin and accessory slots of an
+outfit, triangles that ride the head are left to the host: the donor's are
+not brought over, and the host's own stay drawn while the rest of its body
+makes way. "Rides the head" is read from the skin weights (the strongest
+joint of all three corners is the head bone or a bone under it), never from
+a height. Garments are brought whole. The host-side narrowing is an index
+trim that `restoreBaseComposition` undoes. A donor whose outfit is all on
+the head brings nothing, so the graft is refused before the host is touched.
+
 **Donor list** (`refreshDonors`): the tiles come from the parts library plus
 every other registered character (bundled and imported).
 

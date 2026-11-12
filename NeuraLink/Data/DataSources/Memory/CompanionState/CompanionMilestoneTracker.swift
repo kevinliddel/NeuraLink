@@ -16,13 +16,16 @@ enum CompanionMilestoneTracker {
 
     /// Notes an event milestone for `character` (default: the selected
     /// model's identity key, the same key the journal files under).
-    static func note(_ kind: MilestoneKind, character: String? = nil, store: MemoryStore = .shared) {
+    /// `note` is what its object on the keepsake table shows (the song,
+    /// the picture file) — see KeepsakeRoomRules.
+    static func note(_ kind: MilestoneKind, character: String? = nil, note: String = "", store: MemoryStore = .shared) {
         let key = character ?? RealtimeChatState.shared.selectedCharacterName
         guard !key.isEmpty else { return }
-        if store.recordMilestone(character: key, kind: kind) {
+        if store.recordMilestone(character: key, kind: kind, note: note) {
             nlLog("[Milestone] \(key) collected \(kind.rawValue)", level: .info)
             KeepsakeUnlockController.shared.present(
-                CompanionMilestone(kind: kind, character: key, achievedAt: Date(), celebratedAt: nil))
+                CompanionMilestone(kind: kind, character: key, achievedAt: Date(), celebratedAt: nil, note: note))
+            CompanionRoom.shared.refresh()
         }
     }
 

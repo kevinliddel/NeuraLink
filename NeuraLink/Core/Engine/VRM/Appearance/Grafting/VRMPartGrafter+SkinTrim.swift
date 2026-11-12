@@ -98,7 +98,9 @@ extension VRMPartGrafter {
     /// heel is: a shoe whose ankle sits far above its sole.
     static func raiseFigure(by lift: Float, in host: VRMModel) {
         guard abs(lift) > 0.0005 else { return }
-        for node in host.nodes where node.parent == nil {
+        // Props standing in the room are not the figure: they stay on the floor.
+        let standing = host.scenePropNodeIDs
+        for node in host.nodes where node.parent == nil && !standing.contains(ObjectIdentifier(node)) {
             node.translation.y += lift
             node.updateLocalMatrix()
         }
@@ -111,7 +113,8 @@ extension VRMPartGrafter {
     static func lowerFigure(in host: VRMModel) {
         let lift = host.groundedShoeLift
         guard lift != 0 else { return }
-        for node in host.nodes where node.parent == nil {
+        let standing = host.scenePropNodeIDs
+        for node in host.nodes where node.parent == nil && !standing.contains(ObjectIdentifier(node)) {
             node.translation.y -= lift
             node.updateLocalMatrix()
         }
