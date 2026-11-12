@@ -89,20 +89,20 @@ nonisolated enum StoryRecall {
     }
 
     /// The lines that answer `topic`, best first: shared words count, and
-    /// `similarity` (0…1, sentence embeddings when the device has them)
-    /// adds meaning. At most one gated story comes back per call, an
+    /// `similarity` (a line's closeness to the topic, 0…1, from sentence
+    /// embeddings when the device has them) adds meaning. At most one gated story comes back per call, an
     /// untold one before a told one, so a reveal stays a reveal. A topic
     /// that matches nothing ("yourself") gets a general hand: the arc,
     /// two everyday facts and one story.
     static func recall(
         topic: String, candidates: [SelfKnowledge], told: Set<String>,
-        similarity: ((String, String) -> Double)? = nil
+        similarity: ((String) -> Double)? = nil
     ) -> [SelfKnowledge] {
         let wanted = keywords(topic)
         let scored: [(item: SelfKnowledge, score: Double)] = candidates.map { item in
             var score = Double(wanted.intersection(keywords(item.text)).count)
             if let similarity {
-                let meaning = similarity(topic, item.text)
+                let meaning = similarity(item.text)
                 if meaning > 0.35 { score += 2 * meaning }
             }
             // An untold story edges out a told one that matches as well.

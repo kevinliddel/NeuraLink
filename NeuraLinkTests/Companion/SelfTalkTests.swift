@@ -33,6 +33,11 @@ struct SelfTalkTests {
         // The fixed fact list is gone: the model asks for what fits.
         #expect(!full.contains("anyone may know"))
 
+        // Inner life off: the rule and the honest answer stay, nothing of its own life is offered.
+        let off = SelfTalkRules.promptBlock(voice: "x", arcBeat: "y", examples: sheet.examples, innerLife: false)
+        #expect(off.contains("never list traits") && off.contains("Never claim to be human"))
+        #expect(!off.contains("recall_own_story") && !off.contains("Going on in your life") && !off.contains("Shapes of a good answer"))
+
         let bare = SelfTalkRules.promptBlock(voice: nil, arcBeat: nil, examples: [])
         #expect(bare.contains("never list traits") && bare.contains("recall_own_story"))
         #expect(!bare.contains("How you speak with them now") && !bare.contains("Shapes of a good answer"))

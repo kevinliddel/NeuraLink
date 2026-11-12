@@ -4,8 +4,8 @@
 //
 //  A developer probe for how the persona talks about itself — Inner life
 //  (docs/Companion/LIVING_COMPANION.md): asks the OpenAI text model the
-//  SelfTalkRules.probes with the character's real instructions (persona,
-//  Companion State, About yourself, and what a story recall would return) and logs every reply with
+//  SelfTalkRules.probes with the character's instructions (persona, its
+//  mood, About yourself, and what a story recall would return), read-only and logs every reply with
 //  what the checker found. `-nl.debug.selfTalkProbe YES` in DEBUG builds;
 //  needs a valid OpenAI key.
 //
@@ -26,8 +26,12 @@ enum SelfTalkProbe {
             return 0
         }
         let persona = CharacterPersona.forCharacter(named: character)
-        let system = CharacterPersona.strippingEmotionInstructions(persona.instructions) + "\n"
-            + CompanionStateManager.shared.promptContext(characterName: character, storiesByTool: true)
+        // Read-only context: building the real Companion State would stamp
+        // an away line told, a story shared or a keepsake celebrated without
+        // the user ever hearing it. The mood line is the part the answers
+        // lean on, and reading it changes nothing.
+        let mood = CompanionInnerLife.shared.bodyMood(character: character).map { "\n[Companion State]\n- \($0.promptLine)\n[End Companion State]\n" } ?? ""
+        let system = CharacterPersona.strippingEmotionInstructions(persona.instructions) + "\n" + mood
             + CharacterStoryProvider.shared.promptBlock(character: character)
         var failures = 0
         for probe in SelfTalkRules.probes {

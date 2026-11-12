@@ -39,11 +39,13 @@ enum AppFunctionTool {
         var tools: [[String: Any]] = [
             emotionTool, weatherTool, searchTool, musicTool, reminderTool,
             noteTool, openAppTool, cameraTool, factTool, photoTool, identifySongTool,
-            playGameTool, searchMemoryTool, showPhotoTool, recallOwnStoryTool
+            playGameTool, searchMemoryTool, showPhotoTool
         ]
         // Generated body motion needs its model files and the user's switch
         // (docs/Engine/GENERATIVE_MOTION.md); without them the tool is not offered.
         if MotionSettings.offersTool { tools.append(motionTool) }
+        // The character's own stories belong to Inner life; off, the tool is not offered.
+        if PresenceSettings.innerLifeOn { tools.append(recallOwnStoryTool) }
         return tools
     }
 

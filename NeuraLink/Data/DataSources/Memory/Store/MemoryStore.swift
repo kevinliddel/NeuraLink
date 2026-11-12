@@ -310,6 +310,7 @@ final class MemoryStore {
             kind TEXT NOT NULL,
             position INTEGER NOT NULL,
             text TEXT NOT NULL,
+            fragment_id TEXT NOT NULL DEFAULT '',
             PRIMARY KEY (character, kind, position)
         );
         CREATE TABLE IF NOT EXISTS api_usage (
@@ -396,6 +397,12 @@ final class MemoryStore {
         if !columnExists(table: "companion_milestones", column: "note") {
             _ = sqlite3_exec(
                 db, "ALTER TABLE companion_milestones ADD COLUMN note TEXT NOT NULL DEFAULT '';", nil, nil, nil)
+        }
+        // A story keeps its own id, so editing or deleting another one never
+        // moves its "shared on" date (rows from before fall back to position).
+        if !columnExists(table: "character_story", column: "fragment_id") {
+            _ = sqlite3_exec(
+                db, "ALTER TABLE character_story ADD COLUMN fragment_id TEXT NOT NULL DEFAULT '';", nil, nil, nil)
         }
         // Gender label for imported characters (CharacterGender); rows
         // from before the column keep the female clip pools they had.

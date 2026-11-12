@@ -32,6 +32,23 @@ extension VRMPartGrafter {
         kind == .outfit && (slot == .bodySkin || slot == .accessory)
     }
 
+    /// What the graft brings for every selected donor primitive (the ones
+    /// in `skipping` are handled elsewhere), keyed by the primitive. Empty
+    /// when the head guard leaves nothing of the part.
+    static func graftSources(
+        _ selection: [(node: VRMNode, mesh: VRMMesh, primitives: [VRMPrimitive])], kind: AppearancePartKind,
+        donor: VRMModel, device: MTLDevice?, skipping: [ObjectIdentifier: VRMPrimitive]
+    ) -> [ObjectIdentifier: VRMPrimitive] {
+        var sources: [ObjectIdentifier: VRMPrimitive] = [:]
+        for entry in selection {
+            for primitive in entry.primitives where skipping[ObjectIdentifier(primitive)] == nil {
+                sources[ObjectIdentifier(primitive)] = graftSource(
+                    primitive, kind: kind, node: entry.node, donor: donor, device: device)
+            }
+        }
+        return sources
+    }
+
     /// What a graft of `kind` brings of a donor primitive: all of it,
     /// except for an outfit's skin and accessories, which stop at the neck.
     static func graftSource(

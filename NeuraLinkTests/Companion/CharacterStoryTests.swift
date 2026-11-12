@@ -68,7 +68,7 @@ struct CharacterStoryTests {
         let said = ["I once got locked in the bookshop overnight and read by torchlight."]
         let items = StoryRecall.recall(
             topic: "frightening night", candidates: candidates(stage: "New", said: said), told: [],
-            similarity: { _, text in text.contains("torchlight") ? 0.9 : 0 })
+            similarity: { text in text.contains("torchlight") ? 0.9 : 0 })
         #expect(items.first?.kind == .said)
         let text = StoryRecall.resultText(items, told: [])
         #expect(text.contains("you told them this before; stay consistent"))
@@ -138,10 +138,42 @@ struct CharacterStoryTests {
         #expect(provider.fragments(for: character).map(\.id) == ["\(character).friends.1", "\(character).close.1"])
 
         sheet.everyday = ["I moved across town."]
-        provider.save(sheet, for: character)
+        #expect(provider.save(sheet, for: character))
         #expect(provider.sheet(for: character).everyday == ["I moved across town."])
         provider.delete(character: character)
         #expect(provider.sheet(for: character).isEmpty)
+    }
+
+    @Test("A story keeps its id through edits, so removing one never moves another's shared date")
+    func stableStoryIDs() {
+        let character = "story-test-ids"
+        let provider = CharacterStoryProvider.shared
+        let store = MemoryStore.shared
+        defer { provider.delete(character: character) }
+        let first = CharacterStoryProvider.newFragmentID(character: character, tier: .friends)
+        let second = CharacterStoryProvider.newFragmentID(character: character, tier: .friends)
+        #expect(first != second && first.hasPrefix("\(character).friends."))
+        var sheet = CharacterStorySheet(fragments: [
+            LoreFragment(id: first, tier: .friends, text: "The wrong tour group."),
+            LoreFragment(id: second, tier: .friends, text: "The harmonica on the roof.")
+        ])
+        provider.save(sheet, for: character)
+        store.recordLoreReveal(character: character, fragmentID: second)
+
+        // The first story goes; the second keeps its id and with it its reveal.
+        sheet.fragments.removeFirst()
+        provider.save(sheet, for: character)
+        let kept = provider.fragments(for: character)
+        #expect(kept.map(\.id) == [second] && kept.first?.text == "The harmonica on the roof.")
+        #expect(store.loreReveals(character: character).map(\.fragmentID) == [second])
+
+        // A sheet written again gets new ids and inherits no reveal.
+        let rewritten = CharacterStoryProvider.withFreshIDs(sheet, character: character)
+        #expect(rewritten.fragments.first?.id != second && rewritten.fragments.first?.text == sheet.fragments.first?.text)
+
+        // Deleting the character takes its reveals with it.
+        provider.delete(character: character)
+        #expect(store.loreReveals(character: character).isEmpty)
     }
 
     // MARK: - What it said about itself

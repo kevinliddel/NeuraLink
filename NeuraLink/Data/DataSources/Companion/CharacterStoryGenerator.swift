@@ -29,14 +29,18 @@ enum CharacterStoryGenerator {
             maxTokens: 1_100, temperature: 0.9, purpose: "characterStory")
         else { return nil }
         let sheet = StoryRecall.parseSheet(raw, character: character)
-        return sheet.isEmpty ? nil : sheet
+        // Fresh story ids, so what an earlier sheet shared is not credited to these.
+        return sheet.isEmpty ? nil : CharacterStoryProvider.withFreshIDs(sheet, character: character)
     }
 
     /// After an import: writes and stores the sheet when there is none yet.
     static func seedIfNeeded(character: String) {
         guard isAvailable, CharacterStoryProvider.shared.sheet(for: character).isEmpty else { return }
         Task {
+            // The character may have been deleted, or its sheet written by
+            // hand, while the model was writing.
             guard let sheet = await generate(character: character),
+                  ImportedCharacterStore.shared.isImported(slug: character.lowercased()),
                   CharacterStoryProvider.shared.sheet(for: character).isEmpty
             else { return }
             CharacterStoryProvider.shared.save(sheet, for: character)

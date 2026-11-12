@@ -55,8 +55,11 @@ nonisolated enum SelfTalkRules {
     /// The block for the OpenAI session instructions. `voice` is how the
     /// character speaks at the current stage, `arcBeat` what is going on
     /// in its life this week, `examples` shapes of a good answer. A
-    /// character without a story sheet still gets the rules.
-    static func promptBlock(voice: String?, arcBeat: String?, examples: [SelfTalkExample]) -> String {
+    /// character without a story sheet still gets the rules. With Inner
+    /// life off (`innerLife` false) only the rule and the honest answer
+    /// remain: nothing of the character's own life is offered.
+    static func promptBlock(voice: String?, arcBeat: String?, examples: [SelfTalkExample], innerLife: Bool = true) -> String {
+        guard innerLife else { return "\n[About yourself]\n- \(guidance)\n- \(honesty)\n[End About yourself]\n" }
         var out = "\n[About yourself]\n- \(guidance)\n- \(honesty)\n- \(fromTheDay)\n- \(recallGuidance)\n"
         if let voice, !voice.isEmpty { out += "- How you speak with them now: \(voice)\n" }
         if let arcBeat, !arcBeat.isEmpty { out += "- Going on in your life lately: \"\(arcBeat)\"\n" }

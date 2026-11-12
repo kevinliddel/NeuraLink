@@ -82,7 +82,8 @@ not brought over, and the host's own stay drawn while the rest of its body
 makes way. "Rides the head" is read from the skin weights (the strongest
 joint of all three corners is the head bone or a bone under it), never from
 a height. Garments are brought whole. The host-side narrowing is an index
-trim that `restoreBaseComposition` undoes.
+trim that `restoreBaseComposition` undoes. A donor whose outfit is all on
+the head brings nothing, so the graft is refused before the host is touched.
 
 **Donor list** (`refreshDonors`): the tiles come from the parts library plus
 every other registered character (bundled and imported).

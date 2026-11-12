@@ -87,8 +87,11 @@ public enum VRMPartGrafter {
             }
             if !picked.isEmpty { selection.append((node, mesh, picked)) }
         }
-        guard selection.contains(where: { $0.primitives.contains { feet.clones[ObjectIdentifier($0)] == nil } })
-        else { throw VRMPartGraftError.donorHasNoPart(kind) }
+        // What each picked primitive brings once the head is left to the
+        // host. A donor whose part is all on the head brings nothing: fail
+        // here, before anything of the host is appended to or hidden.
+        let sources = graftSources(selection, kind: kind, donor: donor, device: host.device, skipping: feet.clones)
+        guard !sources.isEmpty else { throw VRMPartGraftError.donorHasNoPart(kind) }
 
         // 2 + 3. Re-home materials/textures, resolve skins, append meshes.
         var textureMap: [Int: Int] = [:]
@@ -107,8 +110,7 @@ public enum VRMPartGrafter {
                 }
                 // An outfit stops at the neck: what rides the donor's head
                 // stays behind (VRMPartGrafter+HeadGuard).
-                guard let source = graftSource(primitive, kind: kind, node: donorNode, donor: donor, device: host.device)
-                else { continue }
+                guard let source = sources[ObjectIdentifier(primitive)] else { continue }
                 let clone = source === primitive ? primitive.shallowClone() : source
                 if let m = primitive.materialIndex {
                     clone.materialIndex = rehomeMaterial(m, donor: donor, host: host,

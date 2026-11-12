@@ -660,14 +660,21 @@ stays stable for the session (`CompanionInnerLife`):
   answers and has a life to answer from. Three things give it one:
   - **A story sheet** (`CharacterStorySheet`): everyday facts anyone may
     know, tastes it will argue for, the few named people around it, the
-    nine stage-gated stories, one slow storyline of five or six beats, how
-    its voice changes at each relationship stage, and example answers.
-    Bundled characters have theirs authored (`CharacterLoreCatalogue`); an
-    imported one gets it written once from its persona prompt after the
+    stage-gated stories and one slow storyline of five or six beats.
+    Bundled characters have theirs authored (`CharacterLoreCatalogue`),
+    and only theirs also carries how the voice changes at each
+    relationship stage and example answers. An imported character gets
+    the five parts above written once from its persona prompt after the
     import, when an OpenAI key is set (`CharacterStoryGenerator`, labelled
     lines read by `StoryRecall.parseSheet`, stored in `character_story`),
-    and the user edits every line in the character's settings under
-    **Their story** (`CharacterStoryEditorView`).
+    and the user edits every line of them in the character's settings
+    under **Their story** (`CharacterStoryEditorView`); it has no voice
+    lines or examples, and its block carries the rules and the storyline
+    only. A stored story keeps its own id (`fragment_id`), so editing or
+    removing another never moves its "shared on" date, and a sheet written
+    again gets new ids. The sheet is replaced in one transaction, the
+    editor saves only what was changed in it, and deleting the character
+    removes its sheet, its self facts and its reveals.
   - **The `recall_own_story` tool.** The model decides when the talk has
     turned to it — a direct question, or a moment where a person would
     offer something of their own — and asks with a short topic.
@@ -697,14 +704,18 @@ stays stable for the session (`CompanionInnerLife`):
   (`CharacterPersona`) are written to the character as lived detail, with
   the delivery notes under a heading that is never to be said aloud.
   The local models go without the block, the tool and the `SELF:` line:
-  their prompts have to stay short. Probe questions and a checker
+  their prompts have to stay short. With the Inner life switch off, the
+  tool is not offered (and returns nothing if called), and the block keeps
+  only the rule and the honest answer. Probe questions and a checker
   (`SelfTalkRules.probes` / `violations`: the sheet's label words, three
   or more trait words in one reply, any denial of being an AI, and an AI
   question left unanswered) guard it; `SelfTalkTests` and
   `CharacterStoryTests` cover the rules, and in DEBUG builds
   `-nl.debug.selfTalkProbe YES` asks the OpenAI text model every probe
-  with the selected character's real instructions plus what the recall
-  would return, and logs how each reply reads (`SelfTalkProbe`).
+  with the selected character's persona, mood, block and what the recall
+  would return, and logs how each reply reads (`SelfTalkProbe`). The probe
+  reads only: it never builds the real Companion State, so nothing is
+  stamped told, shared or celebrated.
 
 Reset Personality clears the reveal history and what the character said
 about itself along with the diary, so the stories can be told again.

@@ -18,6 +18,8 @@ final class RecallOwnStorySkill: Skill {
     var pendingUIAction: (() -> Void)?
 
     func execute(arguments: [String: Any]) async -> String {
+        // Inner life off: nothing of its own is shared, and nothing is stamped.
+        guard PresenceSettings.shared.innerLifeEnabled else { return "You keep that to yourself for now." }
         let topic = (arguments["topic"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let character = RealtimeChatState.shared.selectedCharacterName
         let result = CharacterStoryProvider.shared.recall(topic: topic, character: character)

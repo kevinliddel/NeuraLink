@@ -63,6 +63,12 @@ final class PresenceSettings {
 
     /// Inner life (docs/Companion/LIVING_COMPANION.md): stories the stage
     /// unlocks, what the character did while apart, the mood it carries.
+    /// The Inner life switch, readable from any thread: `AppFunctionTool.all`
+    /// uses it to decide whether to offer `recall_own_story`.
+    nonisolated static var innerLifeOn: Bool {
+        UserDefaults.standard.object(forKey: innerLifeKey) as? Bool ?? true
+    }
+
     var innerLifeEnabled: Bool {
         get {
             access(keyPath: \.innerLifeEnabled)
